@@ -646,6 +646,29 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: market read refresh crashed")
 
+    # 2026-09-23, user-directed: the FRED macro feed (etl/fetch_macro.py) was
+    # a pull, not a watched file drop, so it was never wired into anything --
+    # "run it manually or via Windows Task Scheduler" per its own docstring,
+    # and neither ever actually happened (every series sat stale for 5+
+    # weeks, discovered this session). User: "schedule to pull them as part
+    # of jobs (with catch up when i open and didn't fetch) not windows
+    # schedular" -- rides this same once/day nightly job + its existing
+    # catch-up-if-overdue behavior (_due_or_overdue/maybe_run_nightly above)
+    # instead of a second, separate OS-level scheduled task. fetch_macro()
+    # has its own internal throttle (ref_settings.macro_fetch_min_interval_min,
+    # default 6h) on top of this, so calling it here is always safe even if
+    # the nightly job somehow fires more than once in a stretch. Missing
+    # FRED_API_KEY raises inside fetch_macro() -- caught here like every
+    # other step, so a never-configured key doesn't break the rest of the
+    # nightly run, just this one step.
+    log.info("nightly: FRED macro feed fetch starting")
+    try:
+        from etl.fetch_macro import fetch_macro
+        result = fetch_macro(trigger="nightly")
+        log.info("nightly: FRED macro feed fetch done: %s", result)
+    except Exception:
+        log.exception("nightly: FRED macro feed fetch crashed")
+
     # 2026-09-21, user-directed: TASK_142's stale-analytics check was only
     # ever run manually (`python -m etl.daily_health_check`) -- wiring it in
     # here so a breach gets caught (and its meta_warning raised) automatically

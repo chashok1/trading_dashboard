@@ -100,9 +100,18 @@ _SECTOR_ETF = {
 # this table) which now shows breadth stats + $ exposure instead of a single
 # ETF-proxy sub-row. User: "add a SECTORS panel in the middle with
 # corresponding ETFs (starts with X) similar to other panels."
+# 2026-09-23 -- 'cannabis' added, right after 'country_etfs' (same column in
+# the rail, index.html) -- MSOS/TOKE, the 2 cannabis-tagged ETFs (the rest of
+# that universe is individual equities). Members: db/seeds_macro_area.sql.
+# 2026-09-23 follow-up -- 'commodities_credit' retired, split into 3 by
+# commodity type: 'commodities_energy' (WTI/Brent/Nat Gas),
+# 'commodities_metals' (Gold/Silver/GLD/SLV/PPLT/PALL), 'commodities_ag'
+# (Copper/URA/CORN/WEAT/SOYB/WOOD) -- user: "Commodities -> Is there way to
+# separate them into multple panels by some grouping?" -> "yes".
 _AREA_ORDER = [
-    "volatility", "top9", "rates_duration", "credit", "commodities_credit",
-    "usd_currency", "country_etfs", "crypto", "sector_etfs", "remaining",
+    "volatility", "top9", "rates_duration", "credit",
+    "commodities_energy", "commodities_metals", "commodities_ag",
+    "usd_currency", "country_etfs", "cannabis", "crypto", "sector_etfs", "remaining",
 ]
 
 # Canonical area display name, matching the side-rail section headers in
@@ -115,11 +124,20 @@ _AREA_ORDER = [
 _AREA_DISPLAY_NAME = {
     "volatility":          "Volatility",
     "top9":                "Major Markets",
-    "rates_duration":      "Rates & Duration",
+    # 2026-09-23 -- "Rates & Duration" -> "USD, Rates, & Duration": Dollar
+    # ($DXY) moved in here (rates_duration, sort_order=10) after a brief
+    # stop in Major Markets. See db/seeds_macro_area.sql's own comment.
+    "rates_duration":      "USD, Rates, & Duration",
     "credit":              "Credit",
-    "commodities_credit":  "Commodities",
-    "usd_currency":        "USD & Currency",
+    "commodities_energy":  "Energy",
+    "commodities_metals":  "Precious Metals",
+    "commodities_ag":      "Industrial & Ag",
+    # 2026-09-23 -- "USD & Currency" -> "Currency": Dollar ($DXY) moved out
+    # (first into Major Markets, then into Rates & Duration -- see above),
+    # so the old name no longer fits. See db/seeds_macro_area.sql.
+    "usd_currency":        "Currency",
     "country_etfs":        "Country ETFs",
+    "cannabis":            "Cannabis",
     "crypto":              "Crypto",
     "sector_etfs":         "Sectors",
     "remaining":           "Tech & ETFs",
@@ -365,6 +383,68 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
               AND sector IS NOT NULL
         """), {"d": anchor}).mappings().all()
 
+        # 2026-09-24 -- current holdings per ACCOUNT (ref_accounts.short_name
+        # -- e.g. F-A, F-M, HSA, IRA -- not just per broker), for the new
+        # "Accounts" area built below (outside this session block, so
+        # computed here while `s` is still open). Same grouping/query
+        # pattern as etl/generate_account_watchlist_files.py::
+        # _held_symbols_for_group (a short_name can span >1 account_number
+        # of the SAME source, e.g. HSA's "HSA" + "HSA_Brokerage" rows --
+        # union across them, not one row per raw account), plus excluding
+        # digit-containing symbols (option contracts like NON40O26D) --
+        # user: "No need to display those." 2026-09-24 follow-up -- grouped
+        # by account (not flattened) specifically so the frontend can show a
+        # separator before each account's block -- user: "display a
+        # separator row as a header for account symbols start".
+        holdings_by_group: dict[str, list[str]] = {}
+        try:
+            acct_rows = s.execute(text("""
+                SELECT short_name, source, account_number FROM ref_accounts
+                WHERE is_active = TRUE AND short_name IS NOT NULL AND short_name <> ''
+                ORDER BY short_name
+            """)).fetchall()
+            groups: dict[str, dict[str, list]] = {}
+            for short_name, source, account_number in acct_rows:
+                groups.setdefault(short_name, {}).setdefault(source, []).append(account_number)
+
+            for short_name, by_source in groups.items():
+                syms: set[str] = set()
+                f_accts = by_source.get("F")
+                if f_accts:
+                    latest_f = s.execute(text(
+                        "SELECT MAX(snapshot_date) FROM hist_f "
+                        "WHERE account_number = ANY(:a) AND snapshot_date <= :d"
+                    ), {"a": f_accts, "d": anchor}).scalar()
+                    if latest_f:
+                        rows = s.execute(text("""
+                            SELECT DISTINCT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym
+                            FROM hist_f
+                            WHERE account_number = ANY(:a) AND snapshot_date = :d
+                              AND NOT is_cash(COALESCE(NULLIF(tos_symbol, ''), symbol), type, description)
+                        """), {"a": f_accts, "d": latest_f}).fetchall()
+                        syms |= {r[0] for r in rows if r[0]}
+
+                cs_accts = by_source.get("CS")
+                if cs_accts:
+                    latest_cs = s.execute(text(
+                        "SELECT MAX(snapshot_date) FROM hist_cs "
+                        "WHERE account = ANY(:a) AND snapshot_date <= :d"
+                    ), {"a": cs_accts, "d": anchor}).scalar()
+                    if latest_cs:
+                        rows = s.execute(text("""
+                            SELECT DISTINCT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym
+                            FROM hist_cs
+                            WHERE account = ANY(:a) AND snapshot_date = :d
+                              AND NOT is_cash(COALESCE(NULLIF(tos_symbol, ''), symbol), security_type, description)
+                        """), {"a": cs_accts, "d": latest_cs}).fetchall()
+                        syms |= {r[0] for r in rows if r[0]}
+
+                clean = sorted(sym for sym in syms if sym and not any(c.isdigit() for c in sym))
+                if clean:
+                    holdings_by_group[short_name] = clean
+        except Exception:
+            holdings_by_group = {}
+
     # --- Build per-area results ---
     # Group members by area
     from collections import defaultdict
@@ -372,13 +452,14 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
     for r in members_rows:
         area_members[r["area_key"]].append(dict(r))
 
-    areas_out: list[dict] = []
-    for area_key in _AREA_ORDER:
-        if area_key not in area_members:
-            continue
-        members_cfg = area_members[area_key]
-        label = _AREA_DISPLAY_NAME.get(area_key, area_key)
-
+    # 2026-09-24 -- factored out of the ref_macro_area loop below so the new
+    # "Accounts" areas (live holdings, not a ref_macro_area row) can reuse
+    # the exact same per-member computation -- closure captures every map
+    # already built above (rr_map/tech_map/q_map/etc.), same as the loop did
+    # inline before. members_cfg is a list of {member_symbol, role, label}
+    # dicts either way, so this function doesn't need to know which source
+    # it came from.
+    def _build_area_result(area_key: str, label: str, members_cfg: list[dict]) -> dict:
         member_details: list[dict] = []
         sigs: list[int] = []
         rr_positions: list[float] = []
@@ -515,6 +596,11 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "desc": desc_map.get(sym),
                 "drivers": _category_drivers_for(sym, fund_map, bridge_map, quad_lookup),
                 "inverted": inverted,
+                # 2026-09-24 -- passthrough only, None for every area except
+                # "accounts" below. Lets the frontend insert a separator row
+                # before each account's block of symbols -- user: "display a
+                # separator row as a header for account symbols start".
+                "account_group": mc.get("account_group"),
             })
 
         # Area roll-up
@@ -536,7 +622,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         area_trade = _sign(sum(trade_sigs)) if trade_sigs else None
         area_trend = _sign(sum(trend_sigs)) if trend_sigs else None
 
-        areas_out.append({
+        return {
             "area_key": area_key,
             "label": label,
             "stance": _stance_label(area_stance_raw),
@@ -549,7 +635,41 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "hot_pct": hot_pct,
             "cold_pct": cold_pct,
             "members": member_details,
-        })
+        }
+
+    areas_out: list[dict] = []
+    for area_key in _AREA_ORDER:
+        if area_key not in area_members:
+            continue
+        areas_out.append(_build_area_result(
+            area_key, _AREA_DISPLAY_NAME.get(area_key, area_key), area_members[area_key]))
+
+    # 2026-09-24, user-directed: "similar to macro rail panel add a new
+    # panel for accounts below that -> display all stocks in all accounts."
+    # Unlike every area above (ref_macro_area, a hand-curated, rarely-
+    # changing membership list edited via /ref), these members are whatever
+    # is ACTUALLY held right now (holdings_by_group, computed inside the
+    # session block above) -- refreshes automatically as positions change,
+    # no seed-file edit needed. role='dual' for every holding (real tradable
+    # stocks, same as Tech & ETFs). Digit-containing symbols (option
+    # contracts, e.g. NON40O26D) already excluded when holdings_by_group
+    # was built -- user: "No need to display those."
+    # 2026-09-24 follow-up -- one panel, one header ("I only need one header
+    # bar 'Accounts'"), 5 CSS columns (frontend-only concern).
+    # 2026-09-24 follow-up 2 -- "display a separator row as a header for
+    # account symbols start": members_cfg is now built account-by-account
+    # (short_name order) instead of one flattened/de-duped union, each
+    # member tagged account_group=short_name -- a stock held in 2 accounts
+    # now appears once per account (a real, distinct position each time),
+    # and web/macro_areas.js inserts a separator row wherever account_group
+    # changes.
+    if holdings_by_group:
+        members_cfg = [
+            {"member_symbol": sym, "role": "dual", "label": "Accounts", "account_group": short_name}
+            for short_name in sorted(holdings_by_group)
+            for sym in holdings_by_group[short_name]
+        ]
+        areas_out.append(_build_area_result("accounts", "Accounts", members_cfg))
 
     # --- Sectors roll-up ---
     from collections import defaultdict as _dd

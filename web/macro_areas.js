@@ -108,9 +108,22 @@
 
   // 7×14 mini candle, reusing market_bar.js's SVG builder via the shared
   // mtTip API (window.mtTip.candleSvg) — no duplicate candle-drawing code.
+  // 2026-09-23, user-directed: "2 year treasury -> align the value and
+  // range bar with others in that panel (it doesn't have candle stick like
+  // others, that is skewing)" -- candleSvg() returns nothing for a
+  // degenerate/flat OHLC (DGS2:FRED's open=high=low=last, since the RR-
+  // sourced quote override has no real intraday range) -- that missing
+  // element shrank the row's .msr-data-cluster, and since the cluster is
+  // right-anchored (margin-left:auto on .msr-row), everything before the
+  // candle (price, range bar) shifted right relative to rows that DO get a
+  // candle. Always reserving its 7px slot -- present or not -- keeps every
+  // row's cluster the same total width regardless of candle content, same
+  // principle as .msr-dur's fixed-width-even-when-empty spans.
   function _candleHtml(m) {
-    if (!window.mtTip || !window.mtTip.candleSvg) return '';
-    return window.mtTip.candleSvg(m.open, m.high, m.low, m.last) || '';
+    var svg = (window.mtTip && window.mtTip.candleSvg)
+      ? (window.mtTip.candleSvg(m.open, m.high, m.low, m.last) || '')
+      : '';
+    return '<span class="msr-candle-slot">' + svg + '</span>';
   }
 
   // Solid %chg chip (tape convention, TASK_116) — replaces the plain colored
@@ -378,7 +391,12 @@
     var tickPx = Math.round(pct * 100);          // clamped, for bar positioning
     var isHot  = (hot_pct  !== null && hot_pct  !== undefined) ? (rr_pos >= hot_pct)  : (rr_pos >= 0.80);
     var isCold = (cold_pct !== null && cold_pct !== undefined) ? (rr_pos <= cold_pct) : (rr_pos <= 0.20);
-    var extreme = isHot || isCold;
+    // 2026-09-23, user-directed: the tick used to share one "extreme" class
+    // (red) for both ends of the range -- split into .hot/.cold so the
+    // bottom (cold, near LRR) can get its own color (light bright green)
+    // distinct from the top (hot, near TRR, still red). See styles.css's
+    // own comment on .msr-rb-tick.cold.
+    var tickCls = isHot ? ' hot' : isCold ? ' cold' : '';
     var title = actualPct + '% of range';
     if (vals && vals.last != null && vals.lrr != null && vals.trr != null) {
       title = (vals.label ? vals.label + ' ' : '') + vals.last + ' — ' + actualPct +
@@ -388,7 +406,7 @@
       '<div class="msr-rb-wrap">' +
         '<div class="msr-rb" title="' + esc(title) + '">' +
           '<div class="msr-rb-fill" style="width:' + tickPx + '%"></div>' +
-          '<div class="msr-rb-tick' + (extreme ? ' extreme' : '') +
+          '<div class="msr-rb-tick' + tickCls +
                '" style="left:' + tickPx + '%"></div>' +
         '</div>' +
         (showPct ? '<span class="msr-pct">' + actualPct + '%</span>' : '') +
@@ -407,6 +425,21 @@
   function _fmtPrice(v) {
     if (v === null || v === undefined) return null;
     return v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  // 2026-09-23, user-directed ("USD, Rates & Duration -> i need to see the
+  // actual price values. display the price between text and range bar with
+  // small font"): plain .msr-price span (already existed, 8px, unused until
+  // now) inserted between the symbol name and the Td/Tn+range-bar cluster in
+  // railAreaRow below. role='curve' members (TNX:CGI/TYX:CGI/DGS2:FRED) are
+  // stored in the internal x10 "index level" scale (see etl/derive.py's
+  // reverse-symbol scale-fix) -- showing that raw number (e.g. "47.6") isn't
+  // an "actual price" a person recognizes, so those divide back down and
+  // print as a real yield ("4.76%") instead.
+  function _railPriceTxt(m) {
+    if (m.last == null) return null;
+    if (m.role === 'curve') return (m.last / 10).toFixed(2) + '%';
+    return _fmtPrice(m.last);
   }
 
   // Standalone, fixed-width price and %chg columns — siblings of
@@ -434,10 +467,36 @@
   // via its own gauge-role branch below).
   var _MACRO6_EXCLUDED_AREAS = { usd_currency: true, country_etfs: true };
 
+  // 2026-09-24, user-directed: "display a separator row as a header for
+  // account symbols start" -- the "accounts" area's members carry an
+  // account_group (short_name, e.g. "F-A") tagged server-side; every other
+  // area's members don't (account_group is undefined/null for them), so
+  // this is a no-op everywhere except that one panel. Flows as a normal
+  // column-flow item (not column-span:all -- see styles.css's own comment
+  // on why that first pass was wrong).
+  // 2026-09-24 follow-up -- "each account should have sort arrows": own
+  // .msr-sort-btn per separator (data-area + data-group, see the shared
+  // click handler's composite-key handling below); glyph/title computed
+  // from the CURRENT _railSort state at render time since this markup is
+  // rebuilt from scratch on every renderRail() call, unlike the static
+  // per-area header buttons in index.html.
+  function _accountGroupSepHtml(shortName, areaKey) {
+    var mode = _railSort[areaKey + ':' + shortName] || 0;
+    return '<div class="msr-group-sep">' + esc(shortName) +
+      '<button class="msr-sort-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
+      '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button></div>';
+  }
+
   function railAreaRow(area) {
     var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
+    var prevGroup;
     return members.map(function (m) {
+      var sep = '';
+      if (m.account_group != null && m.account_group !== prevGroup) {
+        sep = _accountGroupSepHtml(m.account_group, area.area_key);
+        prevGroup = m.account_group;
+      }
       if (m.role === 'gauge') {
         var zone = m.zone || '—';
         var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
@@ -459,6 +518,11 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
+            // 2026-09-23, user-directed: "display the actual values in
+            // small font between desc and the text Investable/Elevated" --
+            // .msr-gauge-vix already existed in styles.css (9px, gray) but
+            // was never wired in anywhere until now.
+            '<span class="msr-gauge-vix">' + esc(_fmtPrice(m.last) || '') + '</span>' +
             '<div class="msr-gauge-wrap">' +
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
@@ -470,7 +534,21 @@
         );
       }
       var dispName = _memberDisplayName(m, area);
-      return (
+      // 2026-09-23 -- rates_duration's Td/Tn slots (.msr-dur, 22px each =
+      // 44px reserved) render EMPTY for every row here (DXY/DGS2:FRED/
+      // TNX:CGI/TYX:CGI all have no drv_technicals a_trade_value/
+      // a_trend_value -- durArrow() returns a title-only blank span when
+      // val is null, see its own definition) -- that reserved-but-unused
+      // 44px is the actual "space in between" the user meant, not free
+      // slack in the row as a whole (a 2-line stack and a shrinkable
+      // sibling were both tried first; genuinely no spare width existed
+      // anywhere else). Swapping the price into that exact slot instead of
+      // Td/Tn adds zero net width -- same row, same line, same length.
+      var isRates = area.area_key === 'rates_duration';
+      var leadCluster = isRates
+        ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
+        : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
+      return sep + (
         '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
           (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
@@ -484,8 +562,7 @@
             symLink(esc(dispName), m.symbol, dispName !== m.symbol ? dispName : m.desc) +
           '</span>' +
           '<div class="msr-data-cluster">' +
-            durArrow(m.trade, 'Td') +
-            durArrow(m.trend, 'Tn') +
+            leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, label: dispName }) +
             _candleHtml(m) +
@@ -633,12 +710,25 @@
     top9:                'macroRailTop9',
     rates_duration:      'macroRailRates',
     credit:              'macroRailCredit',
-    commodities_credit:  'macroRailCommodities',
+    // 2026-09-23 -- commodities_credit retired, split into 3 by commodity
+    // type -- user: "Commodities -> Is there way to separate them into
+    // multple panels by some grouping?" See db/seeds_macro_area.sql.
+    commodities_energy:  'macroRailEnergy',
+    commodities_metals:  'macroRailMetals',
+    commodities_ag:      'macroRailAg',
     usd_currency:        'macroRailUsd',
     country_etfs:        'macroRailCountry',
+    cannabis:            'macroRailCannabis',
     crypto:               'macroRailCrypto',
     sector_etfs:         'macroRailSectorEtfs',
     remaining:           'macroRailRemaining',
+    // 2026-09-24 -- "Accounts" panel: live current holdings (not a
+    // ref_macro_area row) -- user: "add a new panel for accounts ...
+    // display all stocks in all accounts." One merged area (was briefly 2,
+    // one per broker -- "I only need one header bar 'Accounts'"), laid out
+    // in 5 columns via CSS (see styles.css's own comment). See
+    // api/routers/macro_areas.py's own comment on holdings_by_source.
+    accounts:            'macroRailAccounts',
   };
 
   // Per-panel member sort, toggled by each panel's header .msr-sort-btn
@@ -661,11 +751,9 @@
     'Sort: % change low to high (click to reset)',
   ];
 
-  function _sortedMembers(area) {
-    var members = area.members || [];
-    var mode = _railSort[area.area_key] || 0;
-    if (!mode) return members;
-    return members.slice().sort(function (a, b) {
+  function _sortByMode(list, mode) {
+    if (!mode) return list;
+    return list.slice().sort(function (a, b) {
       var av = (a && a.pct_change != null) ? a.pct_change : null;
       var bv = (b && b.pct_change != null) ? b.pct_change : null;
       if (av == null && bv == null) return 0;
@@ -675,13 +763,41 @@
     });
   }
 
+  // 2026-09-24, user-directed: "each account should have sort arrows" --
+  // the "accounts" area's members carry an account_group tag (see
+  // railAreaRow's separator logic) and need sorting WITHIN each group
+  // independently (a click on one account's arrow must not reorder any
+  // other account, and must never merge/reorder across the group
+  // boundaries the separators rely on) -- every other area still sorts as
+  // one flat list, unchanged.
+  function _sortedMembers(area) {
+    var members = area.members || [];
+    if (area.area_key === 'accounts') {
+      var order = [], byGroup = {};
+      members.forEach(function (m) {
+        var g = m.account_group || '';
+        if (!byGroup[g]) { byGroup[g] = []; order.push(g); }
+        byGroup[g].push(m);
+      });
+      var out = [];
+      order.forEach(function (g) {
+        var mode = _railSort[area.area_key + ':' + g] || 0;
+        out = out.concat(_sortByMode(byGroup[g], mode));
+      });
+      return out;
+    }
+    return _sortByMode(members, _railSort[area.area_key] || 0);
+  }
+
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest && ev.target.closest('.msr-sort-btn');
     if (!btn) return;
     var area = btn.getAttribute('data-area');
     if (!area) return;
-    var mode = ((_railSort[area] || 0) + 1) % 3;
-    _railSort[area] = mode;
+    var group = btn.getAttribute('data-group');
+    var key = group ? (area + ':' + group) : area;
+    var mode = ((_railSort[key] || 0) + 1) % 3;
+    _railSort[key] = mode;
     btn.textContent = _SORT_GLYPH[mode];
     btn.title = _SORT_TITLE[mode];
     if (_lastAreasData) renderRail(_lastAreasData);
@@ -818,11 +934,36 @@
   // original check still stands unchanged. User: "add Volatility & Major
   // Market panels that you see on actionable screen to dashboard screen on
   // the right side."
+  // 2026-09-24, user-directed: "Accounts bar should have collapsable arrow
+  // at the end" -- same self-contained toggle pattern as market_read.js's
+  // Macro Rail/Sectors toggles (static header bar, own localStorage key,
+  // wired once here since #macroRailAccounts is static markup too, not
+  // rebuilt by renderRail() itself -- only its inner content is).
+  var ACCOUNTS_COLLAPSE_KEY = 'macroRailAccounts_collapsed';
+  function _applyAccountsCollapse(collapsed) {
+    var body = document.getElementById('macroRailAccounts');
+    var btn = document.getElementById('accountsToggle');
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (btn) {
+      btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Accounts panel');
+    }
+  }
+
   function init() {
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
+    var acctToggle = document.getElementById('accountsToggle');
+    if (acctToggle) {
+      _applyAccountsCollapse(localStorage.getItem(ACCOUNTS_COLLAPSE_KEY) === '1');
+      acctToggle.addEventListener('click', function () {
+        var collapsed = localStorage.getItem(ACCOUNTS_COLLAPSE_KEY) !== '1';
+        localStorage.setItem(ACCOUNTS_COLLAPSE_KEY, collapsed ? '1' : '0');
+        _applyAccountsCollapse(collapsed);
+      });
+    }
   }
 
   if (document.readyState === 'loading') {

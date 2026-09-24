@@ -27,6 +27,20 @@
   --mr-neu-bg: #f3f4f6;
   --mr-warn: #b45309;
   --mr-warn-bg: #fdf3e3;
+  /* 2026-09-23, user-directed: differentiate the Breadth tiles whose bars
+     mean "count up/down vs last week" (SSS, PS) from the ones whose bars
+     mean "net longs minus shorts up/down" (ETF, CALL, RR) -- the latter
+     keep --mr-bull/--mr-bear; the former's bar chart + delta text switch to
+     this blue/gold pair (.mr-tile-count, web/market_read.js::breadthTile).
+     The current/max 13wk readout ("35/86") stays green/red on EVERY tile
+     regardless -- user: "leave the count as in green or red" (clarified:
+     "just the count only" -- i.e. only that one readout, not the whole
+     tile; see .mr-tile-curmax below, deliberately NOT overridden inside
+     .mr-tile-count). Gold is the user's pick after 2 rejected passes
+     (amber read "too close to red"; blue/violet was too low-contrast as a
+     pair). */
+  --mr-count-up: #2563eb;
+  --mr-count-dn: #ca8a04;
   --warn: #b45309;
   --ok: #16a34a;
 
@@ -1028,17 +1042,10 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   border-bottom: 1px solid var(--border, #eee);
 }
 a.dash-news-list-row:hover { text-decoration: underline; }
-/* 2026-08-10 -- "Market News" header row, shown only when expanded (hidden
-   along with the body when collapsed, see web/dashboard_news_list.js) --
-   user: "remove the headers for both when collapsed. only add the header
-   row when expanded (Hedgeye & Market News)." Label only, no button --
-   the toggle itself lives on the Accounts filter bar now (was a per-panel
-   corner button, removed as redundant: "news bar still has toggle button
-   on the panel that is extra button"). */
-.dash-news-list-hdr {
-  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--text-3, #a8a29e); margin-bottom: 4px;
-}
+/* 2026-09-23 -- "Market News" header row now uses .msr-section-hdr (same
+   fixed height as every other collapsible bar in this column) instead of
+   its own one-off style; its collapse arrow reuses .msr-sort-btn too. See
+   web/dashboard_news_list.js. */
 /* 2026-08-14 -- Yahoo/CNBC link chips beside "Market News" -- small pill
    look (not just a bare "↗" icon) so each one reads as its own distinct,
    labeled link at a glance, not just a generic external-link glyph.
@@ -1051,32 +1058,6 @@ a.dash-news-list-row:hover { text-decoration: underline; }
   border-radius: 999px; padding: 1px 6px;
 }
 .dash-news-ext-link:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
-/* Filter-bar toggle button (.cat-filter-toggle) reuses this class for its
-   chip look -- position:absolute below is only meaningful on the (now
-   removed) per-panel corner button; .cat-filter-toggle resets it to static. */
-.dash-news-list-toggle {
-  position: absolute; top: 6px; right: 8px; z-index: 1;
-  background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0); border-radius: 4px;
-  cursor: pointer; font-size: 14px; line-height: 1;
-  color: var(--text-2, #57534e); padding: 2px 6px;
-}
-.dash-news-list-toggle:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
-
-/* ===========================================================================
- * Hedgeye collapse toggle — shared header row, identical across the 3
- * Dashboard Hedgeye panels (Mkt Situation / center / INFL). Clicking any
- * one collapses/expands all 3 together (web/hedgeye_collapse.js).
- * ========================================================================= */
-.he-collapse-hdr {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  color: #534ab7; margin-bottom: 4px;
-}
-.he-collapse-btn {
-  background: none; border: none; cursor: pointer; font-size: 10px;
-  color: #534ab7; padding: 0 2px; line-height: 1;
-}
-.he-collapse-btn:hover { color: var(--text-1, #1c1917); }
 
 /* ===========================================================================
  * Market Tape — slim horizontal ribbon below the topbar (market_bar.js)
@@ -1792,11 +1773,22 @@ svg.rr-candle {
 
 /* ── TASK_85: Macro side rail ────────────────────────────────────────── */
 /* Rail section header */
+/* 2026-09-23, user-directed: "make same height for consistency and reduce
+   the height to as min as possible where i can see the font and click
+   collapsable arrow at the end" -- every collapsible header bar in the
+   Dashboard middle column (rail bands, Sectors (Signal Strength), and the
+   new Breadth/Themes/Macro Rail bars) shares this one class, so a single
+   fixed height+line-height here makes them all match. height:14px is just
+   enough for the tallest inline content (the 10px collapse arrow +
+   line-height:1) plus the 2px/2px padding; white-space:nowrap+overflow:
+   hidden stops a long legend/note (e.g. Breadth's flip-days text) from
+   wrapping to a 2nd line and growing the bar taller than its siblings. */
 .msr-section-hdr {
   font-size: 7.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.4px; color: var(--text-2, #666);
   padding: 2px 8px; border-bottom: 1px solid var(--border, #ececec);
   background: #f4f4f8; display: flex; align-items: center; gap: 6px;
+  height: 14px; line-height: 1; overflow: hidden; white-space: nowrap;
 }
 .msr-legend { font-size: 9px; font-weight: 400; text-transform: none;
               letter-spacing: 0; color: #888; margin-left: auto; }
@@ -1804,9 +1796,13 @@ svg.rr-candle {
    colors (ranked/bench/km), the $ held/P&L marker, and the actionable
    outline (see memberListHtml, web/market_read.js). No margin-left:auto of
    its own -- sits right after the title; the collapse button's own
-   margin-left:auto (.msr-sort-btn) still pushes IT to the bar's far right. */
+   margin-left:auto (.msr-sort-btn) still pushes IT to the bar's far right.
+   min-width:0 + ellipsis (added alongside .msr-section-hdr's own nowrap
+   above) lets this shrink and truncate instead of wrapping/overflowing when
+   its content is long (e.g. Breadth's flip-days note). */
 .mr-sect-legend { font-size: 9px; font-weight: 400; text-transform: none;
-                  letter-spacing: 0; color: #888; }
+                  letter-spacing: 0; color: #888; min-width: 0; overflow: hidden;
+                  text-overflow: ellipsis; }
 .mr-sect-legend .mr-mem-dot { margin: 0 3px 0 6px; vertical-align: middle; }
 .mr-sect-legend .mr-mem-dot:first-child { margin-left: 0; }
 /* 2026-09-22, user-directed: "remove [the 'Total: rows N · books N' line]
@@ -1845,6 +1841,13 @@ svg.rr-candle {
   position: static; top: auto; right: auto;
   width: 7px; height: 14px; flex-shrink: 0; display: block;
 }
+/* 2026-09-23, user-directed: reserves the candle's 7px width even when
+   web/macro_areas.js::_candleHtml() has nothing to draw (degenerate/flat
+   OHLC, e.g. DGS2:FRED) -- without this, a row missing its candle shrinks
+   its whole .msr-data-cluster, and since that cluster is right-anchored
+   (margin-left:auto on .msr-row), the price/range-bar before it shift
+   right relative to rows that DO get a candle. */
+.msr-candle-slot { display: inline-block; width: 7px; height: 14px; flex-shrink: 0; }
 /* Candle in the Actionable grid's %CHG cell (2026-07-06): same fix as
    .msr-row above — the base svg.rr-candle rule is position:absolute for
    the tape's corner-overlay use case, which has no meaning inside this
@@ -1890,6 +1893,16 @@ svg.rr-candle {
 .msr-price { font-size: 8px; color: var(--text-3, #94a3b8); white-space: nowrap;
              flex: 0 0 34px; overflow: hidden; text-overflow: ellipsis;
              font-variant-numeric: tabular-nums; text-align: right; }
+/* 2026-09-23, user-directed: rates_duration's price value replaces the
+   Td/Tn duration arrows (.msr-dur, 22px x2 = 44px reserved) instead of
+   sitting alongside them -- those always render empty for this panel (no
+   drv_technicals trade/trend data for yield/index instruments), so that
+   reserved-but-blank 44px was the actual "space in between" the user meant
+   -- 2 earlier attempts (added as a 3rd sibling, then a 2nd line) both
+   missed this and either overflowed the panel or had nowhere to fit.
+   34px comfortably fits inside the reclaimed 44px, no shrink-to-fit needed
+   this time -- real headroom, not a guess. */
+.msr-price.msr-price-fit { flex: 0 0 34px; }
 /* %chg — own fixed-width column (sibling of .msr-price, not nested inside
    it) so it lines up at the same x-position regardless of the price's or
    the %chg's own digit count. Both right-aligned so the digits themselves
@@ -1945,7 +1958,12 @@ svg.rr-candle {
   position: absolute; top: -3px; width: 2px; height: 9px;
   background: var(--text-1, #111); transform: translateX(-1px); border-radius: 1px;
 }
-.msr-rb-tick.extreme { background: #ef4444; }
+.msr-rb-tick.hot { background: #ef4444; }
+/* 2026-09-23, user-directed: "change bottom side to light bright green" --
+   was sharing the same red as .hot (top of range) under one generic
+   "extreme" class; now its own color so the two ends read distinctly
+   (see web/macro_areas.js::railRangeBar's isHot/isCold split). */
+.msr-rb-tick.cold { background: #4ade80; }
 .msr-pct { font-size: 10px; color: var(--text-2, #666);
            font-variant-numeric: tabular-nums; min-width: 18px; text-align: right; }
 /* Volatility gauge text (investable/chop/elevated) — centered in the row
@@ -1954,7 +1972,12 @@ svg.rr-candle {
    cluster (.msr-vol-cluster): flex:1 lets it absorb all the row's leftover
    space, and justify-content:center centers the fixed-width badge inside
    that space — the badge itself no longer needs its own margin-left:auto. */
-.msr-gauge-wrap { flex: 1 1 auto; display: flex; justify-content: center; min-width: 0; }
+/* 2026-09-23, user-directed: "move that label to the right side little bit
+   so you can fit 3 digits" -- padding-left nudges the centered badge right
+   of true-center, giving the new .msr-gauge-vix value span (sibling,
+   before this) room for a 3-digit reading (e.g. MOVE ~100+) without
+   crowding the badge. */
+.msr-gauge-wrap { flex: 1 1 auto; display: flex; justify-content: center; min-width: 0; padding-left: 16px; }
 .msr-gauge { font-size: 10px; font-weight: 700; padding: 1px 6px;
              border-radius: 8px; width: 62px;
              text-align: center; flex-shrink: 0; }
@@ -2137,6 +2160,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    another flex child here, no separate margin rule needed -- this gap
    alone covers both sides of it). */
 .cat-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* 2026-09-23 -- #catScorecardBody/#marketViewBody wrap the 3 cat-section
+   cards each collapsible header now controls -- flex+gap here reproduces
+   the 4px spacing those cards used to get for free as direct .cat-col
+   children (a plain div wrapper has no gap of its own by default). */
+#catScorecardBody, #marketViewBody { display: flex; flex-direction: column; gap: 4px; }
 /* 2026-08-09 -- Accounts filter bar, shared above the 3 stacked grids.
    Checkbox-per-account chips, not a dropdown -- few enough accounts
    (typically <10) that seeing all options at once beats a click-to-open
@@ -2147,26 +2175,22 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px;
   font-size: 11px;
 }
+/* 2026-09-23 -- "Market View" title on the source-filter bar -- same small
+   uppercase treatment as .msr-section-hdr's title text, so this bar reads
+   as a named section like every other collapsible bar in the column,
+   instead of just starting with "Source:". */
+.mv-title {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--text-2, #666); align-self: center;
+}
 .cat-acct-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-2); }
 .cat-acct-chip input { margin: 0; cursor: pointer; }
 .cat-acct-chip:has(input:checked) { color: var(--text-1); font-weight: 600; }
-/* 2026-08-10 -- Hedgeye/News collapse toggles, alongside the Accounts
-   filter -- user: "add both of these toggles icons on grids filter bar."
-   .cat-filter-toggle resets position:static (both source buttons are
-   normally position:absolute, corner-badge style, in their own panel) so
-   they lay out inline in this flex row instead, and gives both a matching
-   visible chip (background+border) regardless of their own base class --
-   .he-collapse-btn on its own is bare colored text at 10px, easy to miss
-   entirely against the page background. User: "toggle icons for hedgeye
-   and news panels -> they are not on the filter toolbar. make sure they
-   are." */
+/* 2026-09-23 -- the Hedgeye/News/Market Read collapse toggle buttons that
+   used to sit here (.cat-filter-toggle chips) were all removed -- each
+   panel now carries its own collapse arrow in its own header bar instead
+   (see hedgeye_collapse.js, dashboard_news_list.js, market_read.js). */
 .cat-filter-bar { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; }
-.cat-filter-toggle {
-  position: static; flex-shrink: 0;
-  background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0); border-radius: 4px;
-  font-size: 14px; line-height: 1; padding: 5px 8px; color: var(--text-2, #57534e);
-}
-.cat-filter-toggle:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
 /* 2026-08-10 -- gap shrunk 8px -> 2px ("a thin line") per user request,
    now that this rail has 5 panels stacked instead of 3. */
 .right-rail { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -2191,6 +2215,57 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    themselves (.macro-rail-row), for one consistent spacing throughout. */
 .macro-rail-row { display: flex; align-items: flex-start; gap: 4px; }
 .macro-rail-col { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 130px; }
+/* 2026-09-24, user-directed: "I only need one header bar 'Accounts' and
+   display 5 columns and adjust the rows" -- one panel spanning the full
+   row width (see index.html's inline flex:1 1 100% override on that one
+   .macro-rail-col), its .msr-row list flowed into 5 CSS columns instead of
+   the usual single-column stack every other rail panel uses. break-inside:
+   avoid keeps a single row from getting visually split across two columns
+   at the break point. Row content/markup is completely unchanged (same
+   .msr-row/.msr-name-tick/.msr-rb/.msr-chg etc. as every other panel) --
+   purely a column-flow change, same principle as the old masonry attempt
+   this codebase already tried and reverted for the macro-rail-col layout
+   itself (see that rule's own comment above) -- except here there's no
+   need to target a SPECIFIC column, so plain CSS columns fit perfectly. */
+/* 2026-09-24, user-directed height tuning history (chronological): "50%
+   taller" (fixed height+scroll -> clipped a row, "partial row") -> reverted
+   to unbounded -> "+4 rows" (min-height 304px) -> "-76px" (228px) -> "+38px"
+   (this change): 228+38=266px. Switched to min-height + overflow-y:visible
+   at the "-76px" step specifically so further tuning like this can only
+   ever ADD/remove blank space below the content, never crop a row --
+   that guarantee holds regardless of the exact number from here on. */
+.dash-macro-rail-5col { column-count: 5; column-gap: 8px; min-height: 266px; overflow-y: visible; }
+.dash-macro-rail-5col .msr-row { break-inside: avoid; }
+/* 2026-09-24, user-directed: "display a separator row as a header for
+   account symbols start" -- one of these before each account's block of
+   symbols in the Accounts panel (web/macro_areas.js::_accountGroupSepHtml).
+   First pass used column-span:all -- wrong: that forces every account into
+   its OWN full-width mini-grid (all 5 columns re-flow from scratch after
+   each one), which looks fragmented/empty-heavy for a 2-symbol account.
+   User's own mockup showed accounts flowing straight through the SAME
+   columns, continuing into the next column mid-account with no repeated
+   header when one splits across a column break -- so this is now just
+   another item in the normal column flow (no column-span), same as a
+   .msr-row. break-inside:avoid keeps the separator's OWN label from being
+   split by a column break (unlike an account's row list, which flows
+   through). Same small-caps chrome as .msr-section-hdr (7.5px) so it reads
+   as a sub-header, not a data row. */
+.msr-group-sep {
+  break-inside: avoid;
+  font-size: 7.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; color: var(--text-2, #666);
+  background: #f4f4f8; padding: 2px 8px;
+  border-top: 1px solid var(--border, #ececec);
+  border-bottom: 1px solid var(--border, #ececec);
+  /* 2026-09-24, user-directed: "sorting arrows should be right justified"
+     -- .msr-sort-btn already has margin-left:auto (same as every other
+     header's sort/collapse button), but that only pushes it right inside a
+     FLEX container -- this div wasn't one, so the button just sat inline
+     right after the account name instead. Same flex treatment as
+     .msr-section-hdr, which already gets this right. */
+  display: flex; align-items: center;
+}
+.msr-group-sep:first-child { border-top: none; }
 
 /* Risk Dial / What changed keep their own height cap + internal scroll
    (unchanged from the pre-relayout row-1 behavior). What changed's cap
@@ -2245,11 +2320,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    browser attached to measure the real rendered .msr-row height. */
 .dash-macro-rail { max-height: 150px; overflow-y: auto; }
 #macroRailTop9.dash-macro-rail { max-height: 170px; }
-/* 2026-09-01 -- USD & Currency shrunk 2 rows (~19px/row incl. border,
-   .msr-row) off the 150px default -- user: "reduce the height by two
-   rows (about 25%)". 2*19=38px cut, 150-38=112 (25.3%, matches "about
-   25%" closely). */
-#macroRailUsd.dash-macro-rail { max-height: 112px; }
+/* 2026-09-01 -- USD & Currency (now "Currency") shrunk 2 rows off the
+   150px default -- user: "reduce the height by two rows (about 25%)".
+   2026-09-23 -- briefly joined the "grow to fit, no scrollbar" group below
+   after Dollar moved out and FXE/FXB/FXC/FXY/YCS pushed it to 9 rows, then
+   reverted the same day -- user: "use the fixe height and scroll bar so i
+   can see only 4 rows until Japaneese... row." Own fixed cap again, see
+   its own rule further down (after the "grow to fit" group), sized for 4
+   rows instead of 2026-09-01's original 6. */
 /* 2026-08-23 -- Sectors/Commodities/Tech & ETFs grown to fit their full
    content instead of capping + internally scrolling like
    Volatility/Major Markets above -- user: "increase height so i don't see
@@ -2258,18 +2336,30 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    overflow, same as every other non-rail panel on this screen.
    2026-08-27 -- Country ETFs joined this group -- its 150px default cap
    started scrolling once EWY (South Korea) brought it to 8 members. User:
-   "remove the vertical scroll bar from Country ETFs panel."
+   "remove the vertical scroll bar from Country ETFs panel." Reverted
+   2026-09-23 (see its own fixed-height rule below, same as Currency).
    2026-08-27 follow-up -- Sectors ETF panel (11 GICS SPDR ETFs) joined
    too, same reason -- user: "expand sectors table so no vertical
    scrollbar." */
 #macroRailSectors.dash-macro-rail,
 #macroRailCommodities.dash-macro-rail,
 #macroRailRemaining.dash-macro-rail,
-#macroRailCountry.dash-macro-rail,
 #macroRailSectorEtfs.dash-macro-rail {
   max-height: none;
   overflow-y: visible;
 }
+/* 2026-09-23, user-directed: back to a fixed height + scrollbar (reverses
+   the "grow to fit" change two entries up) -- "use the fixe height and
+   scroll bar so i can see only 4 rows until Japaneese... row" -- 4 rows
+   (British Pound/Canadian Dollar/Euro/Japanese Yen) visible, FXE/FXB/FXC/
+   FXY/YCS scroll below. 4*19=76px, same ~19px/row estimate used throughout
+   this block. */
+#macroRailUsd.dash-macro-rail { max-height: 76px; overflow-y: auto; }
+/* 2026-09-23, user-directed: Country ETFs back to fixed height + scrollbar
+   too (reverses its own 2026-08-27 "grow to fit" join above) -- "add
+   vertical scroll bar -> have a fixed height so i can see only 4 rows."
+   Same 4-row budget/estimate as Currency just above. */
+#macroRailCountry.dash-macro-rail { max-height: 76px; overflow-y: auto; }
 /* 2026-08-08 -- align columns across the right-rail tables (Indicator/
    Symbol -- Event merged into Indicator 2026-08-10, see above -- all
    columns now that Indicator's Signal column is removed: label / Date /
@@ -3396,7 +3486,9 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mr-tile-left { flex: 1; min-width: 0; }
 .mr-tile-curmax {
   flex-shrink: 0; text-align: right; white-space: nowrap;
-  font-size: 11px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums;
+  /* 2026-09-23, user-directed: increase the current/max 13wk readout
+     (e.g. "35/86") font size -- was 11px, bumped to 14px for legibility. */
+  font-size: 14px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums;
 }
 /* 2026-09-21, user-directed ("color it"): green at/above the 13wk high,
    red below it -- same read as the "vs max 13wk" delta segment. */
@@ -3418,6 +3510,18 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mr-bar-spark .mr-bar-up { fill: var(--mr-bull); }
 .mr-bar-spark .mr-bar-dn { fill: var(--mr-bear); }
 .mr-bar-spark .mr-bar-flat { fill: var(--mr-neu); }
+/* 2026-09-23, user-directed: "differentiate colors for top 4 bar tiles --
+   one where the count up/down by week and the other longs-shorts up/down."
+   .mr-tile-count marks a tile whose bar means "count vs last week" (SSS,
+   PS) -- overrides the shared green/red (--mr-bull/--mr-bear) with the
+   blue/gold pair above, for the bar chart and the "vs 3wk ago"/"vs max
+   13wk" delta text only. Deliberately does NOT touch .mr-tile-curmax (the
+   "35/86" current/max readout) -- user: "leave the count as in green or
+   red." */
+.mr-tile-count .mr-bar-spark .mr-bar-up { fill: var(--mr-count-up); }
+.mr-tile-count .mr-bar-spark .mr-bar-dn { fill: var(--mr-count-dn); }
+.mr-tile-count .mr-tile-delta .up { color: var(--mr-count-up); }
+.mr-tile-count .mr-tile-delta .dn { color: var(--mr-count-dn); }
 /* Full-column invisible hover target per bar, 2026-09-22 (user: "I need to
    see popover anywhere i hover on the bar even if the bar is so small") --
    a small/near-zero bar leaves most of its column's height empty above it;

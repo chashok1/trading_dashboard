@@ -1,8 +1,15 @@
 /* market_read.js — TASK_145: "Market Read" panel for the Dashboard screen
  * (index.html). Replaces web/quad_rotation_panel.js (2026-08-31, now
- * retired) in the same slot (#quadRotationPanel, middle column) and reuses
- * its collapse/expand button (#qrFilterToggle) + localStorage key
- * (qrPanel_collapsed) so the user's collapsed/expanded state carries over.
+ * retired) in the same slot (#quadRotationPanel, middle column).
+ *
+ * 2026-09-23 -- the single #qrFilterToggle button on the filter bar (far
+ * from the panel, controlled Breadth+Themes together) was replaced with 3
+ * small header bars, one directly above each independently-collapsible
+ * section: Breadth (#mrBreadthToggle/mrBreadth_collapsed), Themes
+ * (#mrThemesToggle/mrThemes_collapsed), and Macro Rail
+ * (#macroRailToggle/macroRail_collapsed, static markup in index.html above
+ * #macroRailsWrap). See _sectionHeaderHtml/_wireSectionToggle and
+ * _applyMacroRailCollapse below.
  *
  * Design: docs/market_state_factor_sss_design.md (Addendum A-H). Mockup
  * (acceptance reference, same bands/columns/glyphs): docs/mockups/
@@ -301,7 +308,15 @@
       // now green within 20% of it.
       curMaxCls = b.hero >= b.max_13wk * 0.8 ? 'up' : 'dn';
     }
-    return '<div class="mr-tile">' +
+    // 2026-09-23, user-directed: "differentiate colors for top 4 bar tiles
+    // -- one where the count up/down by week and the other longs-shorts up/
+    // down" -- .mr-tile-count (SSS/PS, barMode 'delta') switches the bar
+    // chart + delta text to blue/gold instead of the shared green/red; the
+    // current/max readout below stays green/red on every tile regardless
+    // (user: "leave the count as in green or red" -- see styles.css's own
+    // comment on .mr-tile-count for the full back-and-forth).
+    var tileModeCls = barMode === 'delta' ? ' mr-tile-count' : '';
+    return '<div class="mr-tile' + tileModeCls + '">' +
       '<div class="mr-tile-top">' +
         '<div class="mr-tile-left">' +
           '<div class="mr-tile-lbl">' + esc(_mrBreadthHeaderText(b)) + '</div>' +
@@ -314,10 +329,17 @@
 
   function breadthStripHtml(data) {
     var tiles = (data.breadth || []).map(breadthTile).join('');
+    return '<div class="mr-tiles">' + tiles + '</div>';
+  }
+
+  // 2026-09-23, user-directed: this note used to sit under the breadth tiles
+  // (.mr-flipnote) -- moved into the "Breadth" header bar itself (see
+  // render()) alongside the new collapse button, so it now returns bare text
+  // instead of a wrapping div.
+  function flipNoteText(data) {
     var flipHtml = (data.flip_days || []).slice(0, 6)
       .map(function (f) { return '<b>' + f.date + ' (' + f.flips + ')</b>'; }).join(' · ');
-    return '<div class="mr-tiles">' + tiles + '</div>' +
-      (flipHtml ? '<div class="mr-flipnote">RR flip days (≥09 outlook changes = regime-shift marker): ' + flipHtml + '</div>' : '');
+    return flipHtml ? 'RR flip days (≥09 outlook changes = regime-shift marker): ' + flipHtml : '';
   }
 
   /* ---- Band ③ theme grid ---- */
@@ -382,17 +404,48 @@
         (q.conflicts ? ' · ' + q.conflicts + ' conflicts ⚠' : '') + '</span>' : '') + '</div>';
   }
 
+  // 2026-09-23 -- small header bar (same .msr-section-hdr chrome as the
+  // macro rail panels) above each of the 3 independently-collapsible
+  // sections in this column: Breadth, Themes, Macro Rail. Replaces the old
+  // single #qrFilterToggle button on the filter bar (far from the panel it
+  // controlled, and controlled Breadth+Themes together as one block).
+  function _sectionHeaderHtml(title, extraHtml, btnId, collapsed) {
+    return '<div class="msr-section-hdr">' + esc(title) +
+      (extraHtml ? '<span class="mr-sect-legend">' + extraHtml + '</span>' : '') +
+      '<button class="msr-sort-btn" id="' + btnId + '" type="button" title="Collapse/expand panel" ' +
+        'aria-label="' + (collapsed ? 'Expand' : 'Collapse') + ' ' + esc(title) + ' panel">' +
+        (collapsed ? '&#9652;' : '&#9662;') + '</button></div>';
+  }
+
+  function _wireSectionToggle(btnId, bodyId, storageKey, title) {
+    var btn = document.getElementById(btnId);
+    var body = document.getElementById(bodyId);
+    if (!btn || !body) return;
+    btn.addEventListener('click', function () {
+      var collapsed = body.style.display !== 'none';
+      body.style.display = collapsed ? 'none' : 'block';
+      localStorage.setItem(storageKey, collapsed ? '1' : '0');
+      btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' ' + title + ' panel');
+    });
+  }
+
   function render(data) {
     var panel = document.getElementById('quadRotationPanel');
     var body = document.getElementById('quadRotationPanelBody');
     if (!panel || !body) return;
     if (!data || !(data.themes || []).length) { panel.style.display = 'none'; return; }
 
-    var collapsed = localStorage.getItem('qrPanel_collapsed') === '1';
-    body.innerHTML = '<div id="qrPanelBody" style="display:' + (collapsed ? 'none' : 'block') + ';">' +
-      breadthStripHtml(data) + themeGridHtml(data) + '</div>';
+    var breadthCollapsed = localStorage.getItem('mrBreadth_collapsed') === '1';
+    var themesCollapsed = localStorage.getItem('mrThemes_collapsed') === '1';
+    body.innerHTML =
+      _sectionHeaderHtml('Breadth', flipNoteText(data), 'mrBreadthToggle', breadthCollapsed) +
+      '<div id="qrBreadthBody" style="display:' + (breadthCollapsed ? 'none' : 'block') + ';">' + breadthStripHtml(data) + '</div>' +
+      _sectionHeaderHtml('Themes', '', 'mrThemesToggle', themesCollapsed) +
+      '<div id="qrThemesBody" style="display:' + (themesCollapsed ? 'none' : 'block') + ';">' + themeGridHtml(data) + '</div>';
     panel.style.display = 'block';
-    _qrSyncToggleButton(collapsed);
+    _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth');
+    _wireSectionToggle('mrThemesToggle', 'qrThemesBody', 'mrThemes_collapsed', 'Themes');
 
     var headlineBand = document.getElementById('regimeLineBand');
     if (headlineBand) {
@@ -424,22 +477,6 @@
     }
   }
   window._mrExpandRail = _mrExpandRail;
-
-  function _qrSyncToggleButton(collapsed) {
-    var btn = document.getElementById('qrFilterToggle');
-    if (!btn) return;
-    btn.innerHTML = '🧭 ' + (collapsed ? '&#9652;' : '&#9662;');
-    btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Market Read');
-  }
-
-  window._qrPanelToggle = function () {
-    var body = document.getElementById('qrPanelBody');
-    if (!body) return;
-    var nowHidden = body.style.display === 'none';
-    body.style.display = nowHidden ? 'block' : 'none';
-    localStorage.setItem('qrPanel_collapsed', nowHidden ? '0' : '1');
-    _qrSyncToggleButton(!nowHidden);
-  };
 
   /* ---- Band ④ sector cards (renders into #marketReadSectorCards) ---- */
   var _MEM_KIND_LABEL = { ranked: 'Hedgeye ranked pick', bench: 'Hedgeye benchmark/watchlist', km: 'Hedgeye KM signal' };
@@ -703,13 +740,35 @@
     }
   }
 
+  // 2026-09-23 -- Macro Rail header bar is static markup (index.html, above
+  // #macroRailsWrap), not JS-rendered like Breadth/Themes above, so it's
+  // wired the same way as the Sectors toggle just below: present on page
+  // load, own localStorage key, no dependency on a render() pass first.
+  var MACRO_RAIL_COLLAPSE_KEY = 'macroRail_collapsed';
+  function _applyMacroRailCollapse(collapsed) {
+    var body = document.getElementById('macroRailsWrap');
+    var btn = document.getElementById('macroRailToggle');
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (btn) {
+      btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Macro Rail panel');
+    }
+  }
+
   function init() {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var rb = document.getElementById('refreshBtn');
     if (rb) rb.addEventListener('click', function () { setTimeout(load, 300); });
-    var toggleBtn = document.getElementById('qrFilterToggle');
-    if (toggleBtn) toggleBtn.addEventListener('click', window._qrPanelToggle);
+    var railToggle = document.getElementById('macroRailToggle');
+    if (railToggle) {
+      _applyMacroRailCollapse(localStorage.getItem(MACRO_RAIL_COLLAPSE_KEY) === '1');
+      railToggle.addEventListener('click', function () {
+        var collapsed = localStorage.getItem(MACRO_RAIL_COLLAPSE_KEY) !== '1';
+        localStorage.setItem(MACRO_RAIL_COLLAPSE_KEY, collapsed ? '1' : '0');
+        _applyMacroRailCollapse(collapsed);
+      });
+    }
     var sectToggle = document.getElementById('marketReadSectorsToggle');
     if (sectToggle) {
       _applySectorsCollapse(localStorage.getItem(SECTORS_COLLAPSE_KEY) === '1');

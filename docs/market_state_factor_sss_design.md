@@ -44,9 +44,9 @@ Two genuine data gaps on top of the rendering gap:
    move, so "how is the dollar doing" can't be answered beyond today.
    `drv_quote`/`hist_y` history is loaded; 5d/20d returns are a window
    function away.
-2. **Commodities are one bucket.** The user named oil separately from
-   metals/ags. `ref_macro_area` has `commodities_credit` and `top9`; there is
-   no `energy` / `metals` split.
+2. ~~**Commodities are one bucket.**~~ Resolved 2026-09-23: split into
+   `commodities_energy` / `commodities_metals` / `commodities_ag`, each its
+   own rail panel (see `db/seeds_macro_area.sql`).
 
 ### Proposal — Band ⓪ "Market State" on `/`
 

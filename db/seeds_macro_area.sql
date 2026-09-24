@@ -422,3 +422,127 @@ ON CONFLICT (area_key, member_symbol) DO NOTHING;
 -- 2-year yield is found. DELETE, same convention as that removal.
 DELETE FROM ref_macro_area
 WHERE area_key = 'rates_duration' AND member_symbol = 'DGS2:FRED';
+
+-- 2026-09-23: new "Cannabis" area -- MSOS and TOKE (the only 2 cannabis-
+-- tagged tickers that are ETFs, per ref_sector; the rest of the cannabis
+-- universe is individual equities, not asked for here), role='dual' -- both
+-- have live drv_rr/drv_technicals/drv_quote data already (TOKE has no
+-- a_trade_value/a_trend_value yet, same as any other dual member with
+-- partial data -- Trade/Trend just render blank for it, nothing special).
+-- User: "add a new panel 'cannabis' in macro rail under Country ETFs ->
+-- MSOS and TOKE." Area placed right after country_etfs in _AREA_ORDER
+-- (api/routers/macro_areas.py), same column in the rail.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('cannabis', 'Cannabis', 'MSOS', 'dual', 10),
+  ('cannabis', 'Cannabis', 'TOKE', 'dual', 20)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-09-23: user request -- "move dollar from USD & Currency to Major
+-- markets top -> remove USD & from USD & Currency -> remove RSP from Major
+-- markets". Three changes, all idempotent (safe to re-run):
+-- 1) $DXY moves from usd_currency to top9, sort_order=5 (ahead of SPX's 10,
+--    so it's the first row in Major Markets). Label stays 'Dollar' -- no
+--    change needed, it was already a specific per-row override, not a
+--    generic area-name repeat.
+-- NOTE: a plain UPDATE ... WHERE area_key='usd_currency' here is NOT safe
+-- to replay -- the original seed INSERTs above (top9 AND usd_currency both
+-- once carried a $DXY row, ON CONFLICT DO NOTHING) resurrect a stray row at
+-- their old key every time this whole file re-runs after $DXY has already
+-- moved away from it (its old key becomes "free" again). DELETE-elsewhere +
+-- upsert-the-target is replay-safe regardless of how many stray copies a
+-- given run resurrects earlier in the file -- discovered when this exact
+-- UPDATE chain hit "duplicate key ... (rates_duration, $DXY)" on a second
+-- run of the follow-up move below.
+DELETE FROM ref_macro_area WHERE member_symbol = '$DXY' AND area_key <> 'top9';
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
+VALUES ('top9', 'Dollar', '$DXY', 'rr_only', 5)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, label = EXCLUDED.label;
+
+-- 2) RSP dropped entirely from Major Markets.
+DELETE FROM ref_macro_area WHERE area_key = 'top9' AND member_symbol = 'RSP';
+
+-- 3) usd_currency panel renamed "USD & Currency" -> "Currency" (Dollar
+--    itself no longer lives here, per #1) -- both the area's display name
+--    (_AREA_DISPLAY_NAME in api/routers/macro_areas.py, index.html header)
+--    and the generic-label rows here that used to repeat the old area name
+--    (FXE/FXB/FXC/FXY/YCS -- same convention as "Major Markets"/"Country
+--    ETFs" repeat rows elsewhere in this table).
+UPDATE ref_macro_area SET label = 'Currency'
+WHERE area_key = 'usd_currency' AND label = 'USD & Currency';
+
+-- 2026-09-23 follow-up: user request -- "move the dollar to Rates &
+-- Duration change the heading to USD, Rates, & Duration". $DXY moves again,
+-- this time from top9 to rates_duration, sort_order=10 (ahead of TNX:CGI's
+-- 20, first row -- same "put it at the top" placement as its prior move).
+-- Label stays 'Dollar'. Area renamed "Rates & Duration" -> "USD, Rates, &
+-- Duration" -- both _AREA_DISPLAY_NAME (api/routers/macro_areas.py),
+-- index.html's header, and the generic-label rows here (TLT/IEF) that used
+-- to repeat the old area name, same convention as the Currency rename above.
+-- Same replay-safety note as the top9 move above -- delete-elsewhere +
+-- upsert, not a plain UPDATE.
+DELETE FROM ref_macro_area WHERE member_symbol = '$DXY' AND area_key <> 'rates_duration';
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
+VALUES ('rates_duration', 'Dollar', '$DXY', 'rr_only', 10)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, label = EXCLUDED.label;
+
+UPDATE ref_macro_area SET label = 'USD, Rates, & Duration'
+WHERE area_key = 'rates_duration' AND label = 'Rates & Duration';
+
+-- 2026-09-23 follow-up 2: user request -- "remove TLT & IEF". Both were the
+-- only 2 members carrying the old "Rates & Duration" generic label (just
+-- renamed above) -- dropped entirely, not relabeled.
+DELETE FROM ref_macro_area WHERE area_key = 'rates_duration' AND member_symbol IN ('TLT', 'IEF');
+
+-- 2026-09-23 follow-up 3: user request -- "add 2Yr from FRED, use RR for
+-- riskrange". DGS2:FRED already carries real, live Hedgeye Risk Range data
+-- (drv_rr.lrr/trr, currently ~45.5/48.5) -- only its raw yield/last-price
+-- was unreliable (Yahoo's thin-volume 2YY=F futures proxy, see
+-- etl/derive.py's own comment on the FRED-sourced quote override added
+-- alongside this). role='curve', same as TNX:CGI/TYX:CGI (10Y/30Y) --
+-- sort_order=15, between Dollar (10) and 10Y Treasury (20): ascending
+-- Treasury maturity order.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('rates_duration', '2Y Treasury', 'DGS2:FRED', 'curve', 15)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-09-23 follow-up 4: user request -- "Commodities -> Is there way to
+-- separate them into multple panels by some grouping?" -> "yes". The old
+-- single commodities_credit panel (15 members) split into 3 by commodity
+-- type: Energy, Precious Metals, Industrial & Ag. commodities_credit
+-- retired entirely (all 15 members move out; nothing stays there).
+-- Dual-role members' labels updated from the generic "Commodities" repeat
+-- to their new group's name, same convention as the Currency rename.
+-- DELETE-elsewhere + INSERT-ON-CONFLICT-DO-UPDATE, same replay-safety
+-- pattern as the $DXY moves above -- commodities_credit's own original
+-- seed INSERT (near the top of this file) would otherwise resurrect these
+-- 15 rows there on every replay once their old key is vacated.
+DELETE FROM ref_macro_area WHERE area_key = 'commodities_credit'
+  AND member_symbol IN ('/CL','/BZ','/GC','/HG','/NG','/SI',
+                         'GLD','SLV','URA','PPLT','PALL','CORN','WEAT','SOYB','WOOD');
+
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_energy', 'WTI',      '/CL', 'rr_only', 10),
+  ('commodities_energy', 'Brent',    '/BZ', 'rr_only', 20),
+  ('commodities_energy', 'Nat Gas',  '/NG', 'rr_only', 30)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET
+  label = EXCLUDED.label, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;
+
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_metals', 'Gold',             '/GC',  'rr_only', 10),
+  ('commodities_metals', 'Silver',           '/SI',  'rr_only', 20),
+  ('commodities_metals', 'Precious Metals',  'GLD',  'dual',    30),
+  ('commodities_metals', 'Precious Metals',  'SLV',  'dual',    40),
+  ('commodities_metals', 'Precious Metals',  'PPLT', 'dual',    50),
+  ('commodities_metals', 'Precious Metals',  'PALL', 'dual',    60)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET
+  label = EXCLUDED.label, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;
+
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_ag', 'Copper',            '/HG',  'rr_only', 10),
+  ('commodities_ag', 'Industrial & Ag',   'URA',  'dual',    20),
+  ('commodities_ag', 'Industrial & Ag',   'CORN', 'dual',    30),
+  ('commodities_ag', 'Industrial & Ag',   'WEAT', 'dual',    40),
+  ('commodities_ag', 'Industrial & Ag',   'SOYB', 'dual',    50),
+  ('commodities_ag', 'Industrial & Ag',   'WOOD', 'dual',    60)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET
+  label = EXCLUDED.label, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;

@@ -886,17 +886,33 @@ def load_rr(session: Session, wb: Workbook, source_file: str) -> tuple[int, int,
         # Find Buy and Sell Trade columns
         buy_trade = None
         sell_trade = None
+        prev_close = None
         for key in raw:
             if key and "buy" in key.lower():
                 buy_trade = to_numeric(raw[key])
             elif key and "sell" in key.lower():
                 sell_trade = to_numeric(raw[key])
+            elif key and "prev" in key.lower():
+                prev_close = to_numeric(raw[key])
+
+        # 2026-09-24, user-directed bug fix, scoped to UST2Y only: the report
+        # actually has a 4th column (PREV.) distinct from BUY/SELL TRADE --
+        # confirmed against the user's own report row (UST2Y BUY 4.55 / SELL
+        # 4.85 / PREV 4.71, all different numbers) -- but last_price was
+        # always hardcoded to buy_trade for every symbol, on the (wrong, for
+        # UST2Y at least) assumption that "there's no separate price". User:
+        # "This is only for 2 Year and not for anything else" -- every other
+        # symbol keeps the existing buy_trade fallback unchanged; only UST2Y
+        # uses the real PREV. column when present.
+        last_price = buy_trade
+        if symbol == "UST2Y" and prev_close is not None:
+            last_price = prev_close
 
         rows_read += 1
         records.append({
             "snapshot_date":  market_close.date() if hasattr(market_close, 'date') else market_close,
             "symbol":         symbol,
-            "last_price":     buy_trade,  # Use buy_trade as last_price since there's no separate price
+            "last_price":     last_price,
             "buy_trade":      buy_trade,
             "sell_trade":     sell_trade,
             "name":           to_text(raw.get("Description", "")),

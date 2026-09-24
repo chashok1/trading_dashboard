@@ -1257,6 +1257,61 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
             rec[f] = val
         merged.append(rec)
 
+    # 2026-09-23, user-directed: "for 2 year, use all the values from RR
+    # instead" -- superseded the FRED (hist_macro) override tried first.
+    # DGS2:FRED's raw yield/last-price/net_chng now comes from the SAME
+    # Hedgeye RR feed (hist_rr.last_price) that already supplies its
+    # LRR/TRR (drv_rr.lrr/trr, via buy_trade/sell_trade), instead of FRED or
+    # Yahoo -- one consistent source for the whole row instead of mixing
+    # feeds. Looked up from ref_rrt directly (not from whatever Y/CACHE
+    # candidate the merge loop above happened to find) so a day with zero
+    # Yahoo data for this symbol still gets a row. The raw (unscaled) value
+    # still flows through the SAME reverse-scale step below
+    # (ref_rrt.reverse='Y' already flags these, rr_reverse_scale=10) as
+    # LRR/TRR themselves (_derive_rr_impl uses the identical scale factor on
+    # buy_trade/sell_trade) -- last_price lands on the exact same scale it's
+    # being measured against.
+    # NOTE: the LIKE pattern is a bound param, not inlined into the SQL
+    # string -- SQLAlchemy's text() parses ":word" inside a literal as a
+    # bind-parameter placeholder, so '%:FRED' written directly in the SQL
+    # raises (caught by the try/except below, which silently ate this on
+    # the first pass -- found by testing the query standalone).
+    try:
+        _rr_syms = [r[0] for r in session.execute(text("""
+            SELECT DISTINCT ON (tos_ticker) tos_ticker
+            FROM ref_rrt WHERE tos_ticker LIKE :pat AND reverse = 'Y'
+            ORDER BY tos_ticker, loaded_at DESC
+        """), {"pat": "%:FRED"}).fetchall()]
+    except Exception:
+        _rr_syms = []
+
+    for _rsym in _rr_syms:
+        _rr_rows = session.execute(text("""
+            SELECT snapshot_date, last_price FROM hist_rr
+            WHERE tos_symbol = :sym AND snapshot_date <= :d AND last_price IS NOT NULL
+            ORDER BY snapshot_date DESC LIMIT 2
+        """), {"sym": _rsym, "d": ceil}).fetchall()
+        if not _rr_rows:
+            continue
+        _latest_date, _latest_val = _rr_rows[0]
+        _latest_val = float(_latest_val)
+        _prior_val = float(_rr_rows[1][1]) if len(_rr_rows) > 1 else None
+        _net_chng = (_latest_val - _prior_val) if _prior_val is not None else None
+        _pct_change = (_net_chng / _prior_val * 100.0) if (_net_chng is not None and _prior_val) else None
+
+        _rec = next((m for m in merged if m['tos_symbol'] == _rsym), None)
+        if _rec is None:
+            _rec = {'as_of_date': as_of_date, 'tos_symbol': _rsym, 'export_time': None}
+            merged.append(_rec)
+        _rec['last_price'] = _rec['open_price'] = _rec['high_price'] = _rec['low_price'] = _latest_val
+        _rec['net_chng'] = _net_chng
+        _rec['pct_change'] = _pct_change
+        _rec['rsi'] = None
+        _rec['imp_volatility'] = None
+        _rec['export_date'] = _latest_date
+        _rec['loaded_at'] = datetime.combine(_latest_date, datetime.min.time())
+        _rec['source'] = 'RR'
+
     # Task 4: load EOD line values from drv_technicals (already derived for D)
     # and ref_settings thresholds to compute live pct_brr / zone / distances.
     tech_map: dict[str, dict] = {}
@@ -1304,6 +1359,9 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     # rescaled. Fixing here (before pct_brr/zone/dist_to_trend below use
     # `price`) also fixes those derived fields for the same symbols, not
     # just last_price.
+    # 2026-09-23 -- 'RR' added alongside Y/CACHE: the RR-sourced override
+    # block above (hist_rr.last_price) writes the same raw (unscaled)
+    # plain-percent yield shape, so it needs the identical rescale.
     _reverse_syms: set[str] = set()
     try:
         for r in session.execute(text("""
@@ -1318,7 +1376,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     rr_reverse_scale = _f("rr_reverse_scale", 10.0)
 
     for rec in merged:
-        if rec["tos_symbol"] in _reverse_syms and rec.get("source") in ("Y", "CACHE"):
+        if rec["tos_symbol"] in _reverse_syms and rec.get("source") in ("Y", "CACHE", "RR"):
             for _f2 in ("last_price", "open_price", "high_price", "low_price", "net_chng"):
                 if rec.get(_f2) is not None:
                     rec[_f2] = float(rec[_f2]) * rr_reverse_scale

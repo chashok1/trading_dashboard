@@ -13,8 +13,16 @@ it covers **both** halves: it carries economic series *and* EOD equity index
 levels (`SP500`, `NASDAQCOM`, `DJIA`, `RU2000PR`, `VIXCLS`). Index levels lag
 ~1 day and have no intraday — fine for regime context off EOD TOS exports.
 
-It is also the only **pull** ingest (not a watched file drop), so it is **not**
-wired into `etl/scheduler.py`. Run it on a daily schedule after the US close.
+It is also the only **pull** ingest (not a watched file drop) among the 17
+source feeds, so it doesn't go through `etl_load.py`'s file-watch path. It
+does, however, ride the scheduler's own once/day **nightly job**
+(`etl/scheduler.py::run_nightly_outcomes`, 2026-09-23) — `fetch_macro()` runs
+there with `trigger="nightly"`, same catch-up-if-overdue behavior as every
+other nightly step (fires immediately on scheduler startup if the last run
+wasn't today or yesterday, e.g. the computer was off overnight). No Windows
+Task Scheduler entry needed. Manual runs (`python -m etl.fetch_macro`) and
+the in-app "Refresh data" button still work too, same as before — all three
+paths share the same throttle (`ref_settings.macro_fetch_min_interval_min`).
 
 ## Relationship to existing econ tables
 
@@ -122,5 +130,7 @@ can't disturb the actionable logic. (The `/cockpit` route now 301-redirects to
 
 1. Add `FRED_API_KEY=...` to `.env`.
 2. `python -m db.init_db`  (creates tables/view + seeds the catalog).
-3. `python -m etl.fetch_macro --full`  (backfill), then daily `python -m etl.fetch_macro`.
+3. `python -m etl.fetch_macro --full`  (one-time backfill) — daily refreshes
+   after that ride the scheduler's nightly job automatically, no manual
+   re-run needed (see "Why it's separate" above).
 4. Check `GET /api/macro`.

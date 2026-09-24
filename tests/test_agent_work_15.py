@@ -143,14 +143,25 @@ def test_S5_seeds_macro_area_has_8_areas():
     credit area (still 8 areas total, different names). Legitimate seed-data
     evolution, not drift to revert — updated the expected set rather than
     re-pinning the stale names.
+
+    2026-09-23: grown to 13 — added sector_etfs and cannabis (each its own
+    panel), then commodities_credit split into commodities_energy/_metals/
+    _ag (3 panels by commodity type; user: "Commodities -> Is there way to
+    separate them into multple panels by some grouping?"). This regex scans
+    the seed file's INSERT VALUES text, not live DB state, so
+    commodities_credit still appears here even though a later DELETE in the
+    same file empties it out on every apply — same "legitimate evolution,
+    update the expected set" call as the original rewrite above.
     """
     seed = _read("db/seeds_macro_area.sql")
     # Extract first positional argument to INSERT VALUES (the area_key)
     area_keys = set(re.findall(r"'([a-z_]+)',\s*'[^']*',\s*'", seed))
-    assert len(area_keys) == 8, \
-        f"Expected 8 distinct area_keys, got {len(area_keys)}: {sorted(area_keys)}"
+    assert len(area_keys) == 13, \
+        f"Expected 13 distinct area_keys, got {len(area_keys)}: {sorted(area_keys)}"
     expected = {"usd_currency", "country_etfs", "volatility", "rates_duration",
-                "credit", "commodities_credit", "crypto", "remaining"}
+                "credit", "commodities_credit", "commodities_energy",
+                "commodities_metals", "commodities_ag", "crypto", "remaining",
+                "sector_etfs", "cannabis"}
     assert area_keys == expected, \
         f"area_keys mismatch: got {sorted(area_keys)} expected {sorted(expected)}"
 

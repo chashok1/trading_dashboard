@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260923f">
+  <link rel="stylesheet" href="/static/styles.css?v=20260924j">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -241,7 +241,7 @@
               <div class="collapsible-note-body">
                 <ul>
                   <li><strong>File watcher</strong> — watches the 17 source folders and loads + re-derives new files automatically.<span class="job-schedule">Continuous, whenever the scheduler is running.</span></li>
-                  <li><strong>Nightly job</strong> — refreshes rule-outcome scoring, the source-ranking recompute, the factor-outcome refresh, the volume-curve model, the data-freshness health check, and a trade-mode summary email.<span class="job-schedule">~10:00 PM local (configurable) — catches up immediately if the computer was off through last night's run.</span></li>
+                  <li><strong>Nightly job</strong> — refreshes rule-outcome scoring, the source-ranking recompute, the factor-outcome refresh, the volume-curve model, the FRED macro feed (rates/inflation/jobs/credit indicators), the data-freshness health check, and a trade-mode summary email.<span class="job-schedule">~10:00 PM local (configurable) — catches up immediately if the computer was off through last night's run.</span></li>
                   <li><strong>Watch-alert digest email</strong> — sends one combined email for any price/level alerts you've set up that are still active.<span class="job-schedule">~3:00 PM local (configurable) — catches up if missed.</span></li>
                   <li><strong>Intraday quote refresh</strong> — lightweight price-only refresh from Yahoo.<span class="job-schedule">10:00 AM and 3:00 PM ET, weekdays, while the market is open — catches up on a missed slot within market hours.</span></li>
                   <li><strong>End-of-day price confirmation</strong> — confirms closing prices from Yahoo.<span class="job-schedule">4:15 PM ET, weekdays.</span></li>
@@ -289,49 +289,70 @@
                (#quadRotationPanel) instead of before it: summary first,
                detail below, matching the click-to-jump interaction (which
                scrolls down into these panels, not up). -->
+          <!-- 2026-09-23 -- small collapsible header bar above the 5-column
+               macro rail strip (Volatility/Rates/Credit/Major Markets/
+               Sectors/USD/Country/Tech & ETFs/Commodities/Crypto), same
+               .msr-section-hdr chrome as each individual band's own header
+               below. This group had no collapse control at all before --
+               wired in web/market_read.js (_applyMacroRailCollapse/init()). -->
+          <div class="msr-section-hdr">Macro Rail<button class="msr-sort-btn" id="macroRailToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Macro Rail panel">&#9662;</button></div>
           <div id="macroRailsWrap">
           <div class="macro-rail-row">
-          <!-- 2026-08-24 -- Sectors moved back to the right rail (see
-               .right-rail's own comment) -- user: "move the sectors back
-               to side panel." Volatility and Major Markets moved into its
-               now-empty column 1 instead -- "move the volatility and
-               major markets to center columns instead". Same container
-               ids, same markup as their original right-rail versions;
-               web/macro_areas.js::railAreaRow() targets them by id
-               regardless of parent, so no script change needed. -->
-          <!-- 2026-08-24 -- "move volatility to col 1 above major markets.
-               move commodities to col 3 below USD". -->
+          <!-- 2026-09-23 -- full 5-column reorg per user-supplied ASCII
+               layout:
+                 col1: Rates & Duration / Currency / Credit / Cannabis
+                 col2: Major Markets / Volatility / Crypto
+                 col3: Sectors / Country ETFs
+                 col4: Commodities
+                 col5: Tech & ETFs
+               Same container ids/markup throughout -- web/macro_areas.js::
+               railAreaRow() and web/market_read.js target every panel by id
+               regardless of parent column, so no script change needed.
+               (Older per-move comments from this block's long rearrangement
+               history are gone -- git history has them if ever needed.) -->
           <div class="macro-rail-col">
-          <section class="cockpit-band rail-band" id="macroVolatilityBand">
-            <div class="msr-section-hdr">Volatility<button class="msr-sort-btn" data-area="volatility" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
-          <!-- 2026-08-24 -- Rates & Duration moved here (col 1), below
-               Volatility -- user: "move rates to col1 below volatility". -->
           <section class="cockpit-band rail-band" id="macroRatesBand">
-            <div class="msr-section-hdr">Rates &amp; Duration<button class="msr-sort-btn" data-area="rates_duration" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div class="msr-section-hdr">USD, Rates, &amp; Duration<button class="msr-sort-btn" data-area="rates_duration" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <!-- 2026-08-24 -- Credit moved here (col 1), below Rates &
-               Duration -- user: "also credit to below rates". -->
+          <section class="cockpit-band rail-band" id="macroUsdBand">
+            <div class="msr-section-hdr">Currency<button class="msr-sort-btn" data-area="usd_currency" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
           <section class="cockpit-band rail-band" id="macroCreditBand">
             <div class="msr-section-hdr">Credit<button class="msr-sort-btn" data-area="credit" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
+          <!-- 2026-09-23 -- swapped with Crypto (col2) -- user: "switch
+               cannibas and Crypto panels". -->
+          <section class="cockpit-band rail-band" id="macroCryptoBand">
+            <div class="msr-section-hdr">Crypto<button class="msr-sort-btn" data-area="crypto" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
           </div>
 
-          <!-- 2026-08-27 -- Commodities <-> Sectors ETF panel swapped
-               (Commodities moved to col 5, Sectors moved here) -- user:
-               "switch Commodities (Col2) and Sectors postitions (col5)". -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroTop9Band">
             <div class="msr-section-hdr">Major Markets<button class="msr-sort-btn" data-area="top9" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
+          <section class="cockpit-band rail-band" id="macroVolatilityBand">
+            <div class="msr-section-hdr">Volatility<button class="msr-sort-btn" data-area="volatility" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <!-- 2026-09-23 -- swapped with Cannabis (col1), same user request. -->
+          <section class="cockpit-band rail-band" id="macroCannabisBand">
+            <div class="msr-section-hdr">Cannabis<button class="msr-sort-btn" data-area="cannabis" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailCannabis" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
+          <div class="macro-rail-col">
           <!-- TASK_145 pulled Sectors out of here into a standalone
                always-visible band above -- moved back 2026-09-21, user:
                "move the sectors back into its place as before" (now that
@@ -346,52 +367,75 @@
             <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          </div>
-
-          <div class="macro-rail-col">
-          <section class="cockpit-band rail-band" id="macroUsdBand">
-            <div class="msr-section-hdr">USD &amp; Currency<button class="msr-sort-btn" data-area="usd_currency" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
           <section class="cockpit-band rail-band" id="macroCountryBand">
             <div class="msr-section-hdr">Country ETFs<button class="msr-sort-btn" data-area="country_etfs" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
 
-          <!-- 2026-08-24 -- "Switch Col 4 and 5" -- Tech & ETFs now col 4,
-               Symbol/Indicator now col 5.
-               2026-08-27 -- Indicator/Symbol moved OUT to the right rail
-               (see .right-rail's own comment); the Sectors ETF panel took
-               col 5 instead, moved down from col 4 -- user: "move the
-               INDICATOR panel to the side panel above INFL. and Symbol to
-               the bottom side panel. move Sectors panel to col 5" (the ETF
-               panel, confirmed over the breadth-based right-rail one). -->
+          <!-- 2026-09-23 -- Commodities split into 3 panels by commodity
+               type (was one 15-member panel) -- user: "Commodities -> Is
+               there way to separate them into multple panels by some
+               grouping?" -> "yes". Members: db/seeds_macro_area.sql. -->
+          <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroEnergyBand">
+            <div class="msr-section-hdr">Energy<button class="msr-sort-btn" data-area="commodities_energy" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailEnergy" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <section class="cockpit-band rail-band" id="macroMetalsBand">
+            <div class="msr-section-hdr">Precious Metals<button class="msr-sort-btn" data-area="commodities_metals" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailMetals" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <section class="cockpit-band rail-band" id="macroAgBand">
+            <div class="msr-section-hdr">Industrial &amp; Ag<button class="msr-sort-btn" data-area="commodities_ag" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailAg" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroRemainingBand">
             <div class="msr-section-hdr">Tech &amp; ETFs<button class="msr-sort-btn" data-area="remaining" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
-
-          <div class="macro-rail-col">
-          <!-- 2026-08-27 -- Commodities moved here, swapped with the
-               Sectors ETF panel (now col 2) -- user: "switch Commodities
-               (Col2) and Sectors postitions (col5)". -->
-          <section class="cockpit-band rail-band" id="macroCommoditiesBand">
-            <div class="msr-section-hdr">Commodities<button class="msr-sort-btn" data-area="commodities_credit" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
-          <!-- 2026-09-01 -- Crypto moved here (col 5), below Commodities --
-               user: "move the crypto panel above to the col 5 under
-               commodities panel." (Previously col 3, below USD & Currency.) -->
-          <section class="cockpit-band rail-band" id="macroCryptoBand">
-            <div class="msr-section-hdr">Crypto<button class="msr-sort-btn" data-area="crypto" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
           </div>
+          </div>
+
+          <!-- 2026-09-24 -- "Accounts" panel: live current holdings (all
+               stocks you actually hold, not a hand-curated watchlist like
+               the macro rail panels above) -- user: "similar to macro rail
+               panel add a new panel for accounts below that -> try to save
+               space -> you can wrap the list into two panels if you need to
+               -> display all stocks in all accounts." Same row style as
+               Tech & ETFs (candle/Td/Tn/range bar/%chg), member list
+               computed fresh from holdings each request instead of a
+               ref_macro_area row -- see api/routers/macro_areas.py's own
+               comment.
+               2026-09-24 follow-up -- was briefly 2 panels side by side
+               (one per broker), then "panel widths should be same Tech &
+               ETFs panel width" (narrowed each to 1/5 of the row). User then:
+               "I only need one header bar 'Accounts' and display 5 columns
+               and adjust the rows" -- merged into ONE panel spanning the
+               full row width, its member list (still one combined,
+               de-duped holdings list, see the router) laid out in 5 CSS
+               columns instead of one, via .dash-macro-rail-5col -- same row
+               markup/content as every other panel, purely a column-flow
+               change. -->
+          <div class="macro-rail-row">
+          <div class="macro-rail-col" style="flex: 1 1 100%; max-width: none;">
+          <section class="cockpit-band rail-band" id="macroAccountsBand">
+            <!-- 2026-09-24, user-directed: "Accounts bar should have
+                 collapsable arrow at the end and each account should have
+                 sort arrows" -- sorting moved down to each account's own
+                 separator row (web/macro_areas.js::_accountGroupSepHtml);
+                 this top-level button is now a collapse toggle instead of a
+                 sort toggle, same self-contained pattern as Macro Rail's
+                 (see web/macro_areas.js::init(), own localStorage key). -->
+            <div class="msr-section-hdr">Accounts<button class="msr-sort-btn" id="accountsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Accounts panel">&#9662;</button></div>
+            <div id="macroRailAccounts" class="dash-macro-rail dash-macro-rail-5col"><div class="msr-loading">Loading…</div></div>
+          </section>
           </div>
           </div>
 
@@ -415,18 +459,16 @@
                grids -- user: "Can we add a filter bar for second column ->
                accounts filter." Populated + wired in app.js::
                loadCatAccountFilter().
-               2026-08-10 -- Hedgeye/News collapse toggles + the Returns
-               column's period radios added alongside it, all as SIBLINGS
-               of #catAccountFilter (not inside it) -- loadCatAccountFilter()
-               fully rewrites that div's innerHTML on every account-filter
-               change/refresh, which would wipe out static controls placed
-               inside it. User: "toggle icons for hedgeye and news panels ->
-               they are not on the filter toolbar. make sure they are." /
-               "add radio buttons on to the filter bar (there is space)."
-               Toggle buttons reuse their existing shared-state wiring
-               (data-he-toggle / data-news-toggle, see hedgeye_collapse.js /
-               dashboard_news_list.js) -- clicking either one here stays in
-               sync with the toggle on that panel itself. Radios wired by
+               2026-08-10 -- Returns column's period radios added alongside
+               it, as a SIBLING of #catAccountFilter (not inside it) --
+               loadCatAccountFilter() fully rewrites that div's innerHTML on
+               every account-filter change/refresh, which would wipe out
+               static controls placed inside it.
+               2026-09-23 -- the Hedgeye/News/Market Read toggle buttons that
+               used to sit alongside these radios were removed -- each panel
+               now carries its own collapse arrow in its own header bar
+               instead (see hedgeye_collapse.js, dashboard_news_list.js,
+               market_read.js). Radios wired by
                app.js::_initCatReturnsPeriod -- selecting a period re-runs
                reloadFactorScorecards() so each grid's Returns column
                (added as the LAST <td> per row, not a separate chart, see
@@ -458,26 +500,18 @@
               <label><input type="radio" name="catReturnsPeriod" value="qtd"> QTD</label>
               <label><input type="radio" name="catReturnsPeriod" value="ytd"> YTD</label>
             </div>
-            <button class="he-collapse-btn cat-filter-toggle" type="button" data-he-toggle
-                    aria-label="Collapse Hedgeye panels" title="Hedgeye panels">📊 &#9662;</button>
-            <!-- 2026-09-01 -- collapse/expand button on the filter bar, same
-                 pattern/placement as the Hedgeye and News toggles beside it.
-                 2026-09-21 (TASK_145) -- repurposed from the retired Quad
-                 Rotation tiles to the Market Read panel (same id/localStorage
-                 key so the user's collapsed/expanded state carries over);
-                 the two Quad Rotation computations (quad stance, price
-                 breadth) survive as grid columns inside Market Read instead
-                 of their own tiles. Deliberately NOT class="he-collapse-btn"
-                 -- that class is queried generically by hedgeye_collapse.js
-                 (shared state across the 3 Hedgeye panels only); reusing it
-                 here would make Hedgeye's toggle also relabel this button.
-                 Wired independently in web/market_read.js (_qrPanelToggle /
-                 init()), own localStorage key (qrPanel_collapsed, unchanged
-                 from before). -->
-            <button class="cat-filter-toggle" type="button" id="qrFilterToggle"
-                    aria-label="Collapse Market Read" title="Market Read">🧭 &#9662;</button>
-            <button class="dash-news-list-toggle cat-filter-toggle" type="button" data-news-toggle
-                    aria-label="Collapse news" title="News">📰 &#9662;</button>
+            <!-- 2026-09-23 -- the old "🧭 Market Read" filter-bar toggle
+                 (id="qrFilterToggle") that used to sit here was removed --
+                 it controlled the Breadth+Themes panels together, from far
+                 above them. Replaced with 3 small header bars sitting
+                 directly on each panel instead: Breadth/Themes (rendered by
+                 web/market_read.js::render(), inside #quadRotationPanelBody)
+                 and Macro Rail (static bar below, above #macroRailsWrap).
+                 2026-09-23 follow-up -- the 📊 Hedgeye and 📰 News toggle
+                 buttons that used to sit here too were removed the same way
+                 -- each panel's own header bar (Hedgeye: #hedgeyeDashHdr;
+                 News: #dashNewsListHdr) now carries its own collapse arrow
+                 instead, matching every other panel in this column. -->
           </div>
 
           <!-- 2026-08-13 -- Portfolio Mix: same Asset Allocation/Beta/
@@ -650,12 +684,16 @@
                innerHTML into, and what the shared collapse toggle below
                shows/hides -- keeps the two concerns (has data vs. user
                collapsed it) from fighting over the same style.display. -->
+          <!-- 2026-09-23 -- own header restyled to the same .msr-section-hdr/
+               .msr-sort-btn chrome (small font, arrow at the end, same fixed
+               height) as every other collapsible bar in this column --
+               replaces the old .he-collapse-hdr look + the separate 📊
+               toggle button that used to live on the filter bar (see
+               hedgeye_collapse.js, now a single self-contained toggle for
+               just this one panel instead of a 3-panel broadcast). -->
           <div id="hedgeyeDashPanel" style="display:none;">
-            <div class="he-collapse-hdr" data-he-toggle>
-              <span>Hedgeye</span>
-              <button class="he-collapse-btn" type="button" aria-label="Collapse Hedgeye panels">&#9662;</button>
-            </div>
-            <div id="hedgeyeDashPanelBody" class="he-collapse-body"></div>
+            <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
+            <div id="hedgeyeDashPanelBody"></div>
           </div>
 
           <!-- 2026-08-10 -- Market news list, fixed-height/scrollable, one
@@ -687,6 +725,12 @@
                above the whole card. -->
           <!-- 2026-08-10 -- Asset class moved above Sector per user
                request (same for the Market View trio below). -->
+          <!-- 2026-09-23 -- single collapsible header added above all 3 of
+               these $-weighted cards together (own #catScorecardBody wrapper,
+               toggled by web/app.js) -- same .msr-section-hdr/.msr-sort-btn
+               chrome as every other collapsible bar in this column. -->
+          <div class="msr-section-hdr" id="catScorecardHdr">Asset Class / Sector / Style<button class="msr-sort-btn" id="catScorecardToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Asset Class / Sector / Style panel">&#9662;</button></div>
+          <div id="catScorecardBody">
           <section class="cockpit-band cat-section" id="assetClassScorecardBand">
             <div class="cat-body">
               <div class="cat-chart">
@@ -716,6 +760,7 @@
               <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
             </div>
           </section>
+          </div>
 
           <!-- 2026-08-09 -- Market View: same chart+table format as the 3
                $ grids above (pie chart + table with the same caret
@@ -735,7 +780,16 @@
                Hedgeye quad outlook to one of the RR/CALL/ETF/II/SSS/PS
                per-symbol outlook sources. User: "add a filter above those
                graphs for filtering by source." -->
+          <!-- 2026-09-23 -- collapse arrow appended to this same filter bar
+               (reuses .msr-sort-btn, whose own margin-left:auto pushes it to
+               the bar's far right automatically) instead of a separate
+               header -- toggles #marketViewBody below (web/app.js).
+               2026-09-23 follow-up -- "Market View" title added at the front
+               -- unlike every other collapsible bar in this column, this one
+               previously only said "Source:", with nothing naming the
+               section it collapses. -->
           <div class="cat-account-filter market-view-source-filter" id="marketViewSourceFilter">
+            <span class="mv-title">Market View</span>
             <label for="marketViewSourceSelect" style="font-weight:600;color:var(--text-2);">Source:</label>
             <select id="marketViewSourceSelect">
               <option value="">All (Hedgeye quad outlook)</option>
@@ -746,7 +800,9 @@
               <option value="SSS">SSS — Signal Strength High</option>
               <option value="PS">PS — Price Strength Rank</option>
             </select>
+            <button class="msr-sort-btn" id="marketViewToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Market View panel">&#9662;</button>
           </div>
+          <div id="marketViewBody">
           <section class="cockpit-band cat-section" id="marketViewAssetClassBand">
             <div class="cat-body">
               <div class="cat-chart">
@@ -776,6 +832,7 @@
               <div class="cat-table-col" id="marketViewStyleBody">Loading…</div>
             </div>
           </section>
+          </div>
         </div>
       </div>
 
@@ -947,7 +1004,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20260921a"></script>
+  <script src="/static/app.js?v=20260923a"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -959,7 +1016,7 @@
        already does (web/actionable.html loads this same script for that).
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/market_read.js?v=20260923d" defer></script>
+  <script src="/static/market_read.js?v=20260923h" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260916a" defer></script>
@@ -973,7 +1030,7 @@
        hedgeye panels (together) ... collapable and expandable." Loaded
        after hedgeye_panel.js (not that hooks into it -- purely reads/
        writes the .he-collapse-body elements' display + localStorage). -->
-  <script src="/static/hedgeye_collapse.js" defer></script>
+  <script src="/static/hedgeye_collapse.js?v=20260923a" defer></script>
   <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
@@ -985,7 +1042,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20260922i" defer></script>
+  <script src="/static/macro_areas.js?v=20260924d" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
@@ -1010,7 +1067,7 @@
        removed 2026-08-10) -- user: "instead of scrolling, add a panel below
        Hedgeye's TOP 3 things panel ... fixed height to fit 5 or 6 latest
        news." See web/dashboard_news_list.js. -->
-  <script src="/static/dashboard_news_list.js?v=20260814b" defer></script>
+  <script src="/static/dashboard_news_list.js?v=20260923a" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->

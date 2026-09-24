@@ -49,6 +49,27 @@ window.state = state;
 
 const $ = (id) => document.getElementById(id);
 
+// 2026-09-23 -- generic collapse/expand wiring for a header-bar button
+// (.msr-sort-btn) + the body div it controls -- localStorage-persisted, own
+// key per caller. Same behavior as web/market_read.js's _wireSectionToggle,
+// duplicated here rather than shared across files (small, self-contained,
+// no cross-file dependency needed for 2 call sites).
+function _wireCollapseToggle(btnId, bodyId, storageKey, title) {
+  const btn = $(btnId), body = $(bodyId);
+  if (!btn || !body) return;
+  const apply = (collapsed) => {
+    body.style.display = collapsed ? 'none' : '';
+    btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+    btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' ' + title + ' panel');
+  };
+  apply(localStorage.getItem(storageKey) === '1');
+  btn.addEventListener('click', () => {
+    const collapsed = body.style.display !== 'none';
+    localStorage.setItem(storageKey, collapsed ? '1' : '0');
+    apply(collapsed);
+  });
+}
+
 function fmtNum(v, digits = 2) {
   if (v === null || v === undefined || v === '') return '';
   const n = Number(v);
@@ -2858,6 +2879,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.marketViewSource = srcSel.value || null;
     reloadMarketView();
   });
+  // 2026-09-23 -- collapsible header for the $ Asset Class/Sector/Style
+  // trio, and a collapse arrow on the Market View source filter bar for its
+  // own trio below -- same self-contained show/hide-a-body-div pattern as
+  // every other collapsible bar in this column (see web/market_read.js).
+  _wireCollapseToggle('catScorecardToggle', 'catScorecardBody', 'catScorecard_collapsed', 'Asset Class / Sector / Style');
+  _wireCollapseToggle('marketViewToggle', 'marketViewBody', 'marketView_collapsed', 'Market View');
   // 2026-08-10 -- Returns chart period selector (Today/Yest/MTD/QTD/YTD),
   // shared across the 3 column-2 grids -- wired once here; each grid's own
   // loadFactorScorecard() populates the rows this reads from.
