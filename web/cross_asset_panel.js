@@ -157,16 +157,46 @@
     '</div>';
   }
 
-  function render(data) {
+  // 2026-09-24, user-directed: "display that along with gold message in
+  // that panel box" -- "that" = the Market Read headline the user asked
+  // about ("Cash/short FI, Rates up, USD bullish; ... Lists vs Quad model
+  // disagree on: ... Quad model: Quad 2 · 5 conflicts") -- reuses GET
+  // /api/market-read's own `headline`/`quad` fields verbatim (same thin-
+  // read convention as the rule cards below; no re-derivation here), same
+  // wording web/market_read.js's headlineHtml() renders on the Market Read
+  // band -- this is a second display of that data, not a second source of
+  // truth for it.
+  function quadConflictCard(mr) {
+    if (!mr || !mr.headline) return '';
+    var q = mr.quad || {};
+    var badge = q.label
+      ? '<span style="font-size:8.5px; font-weight:700; color:' + (q.conflicts ? '#b91c1c' : '#78716c') +
+        '; background:' + (q.conflicts ? '#fde2e2' : '#f5f5f4') + '; padding:2px 8px; ' +
+        'border-radius:100px; white-space:nowrap;">' + esc(q.label) +
+        (q.conflicts ? ' &middot; ' + q.conflicts + ' conflicts &#9888;' : '') + '</span>'
+      : '';
+    return '<div style="display:flex; flex-direction:column; gap:5px; padding:8px 10px; ' +
+      'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' +
+      (q.conflicts ? '#b91c1c' : 'var(--border,#e5e5e2)') + '; border-radius:6px;">' +
+      '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">' +
+        '<span style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917);">Lists vs Quad model</span>' +
+        badge +
+      '</div>' +
+      '<div style="font-size:10px; color:var(--text-2,#57534e); line-height:1.4;">' + esc(mr.headline) + '</div>' +
+    '</div>';
+  }
+
+  function render(data, mr) {
     var panel = document.getElementById('crossAssetPanel');
     var body = document.getElementById('crossAssetBody');
     if (!panel || !body) return;
     var rows = (data && data.rows) || [];
-    if (!rows.length) { panel.style.display = 'none'; return; }
+    var mrCard = quadConflictCard(mr);
+    if (!rows.length && !mrCard) { panel.style.display = 'none'; return; }
 
     body.innerHTML =
       '<div style="display:flex; flex-direction:column; gap:6px; padding:2px 0 6px;">' +
-      rows.map(ruleCard).join('') +
+      mrCard + rows.map(ruleCard).join('') +
       '</div>';
     panel.style.display = 'block';
   }
@@ -179,8 +209,12 @@
   async function load() {
     try {
       var d = currentDate();
-      var data = await fetchJson('/api/cockpit/cross-asset-signals' + (d ? '?date=' + encodeURIComponent(d) : ''));
-      render(data);
+      var qs = d ? '?date=' + encodeURIComponent(d) : '';
+      var [data, mr] = await Promise.all([
+        fetchJson('/api/cockpit/cross-asset-signals' + qs),
+        fetchJson('/api/market-read' + qs).catch(function () { return null; }),
+      ]);
+      render(data, mr);
     } catch (e) {
       var el = document.getElementById('crossAssetPanel');
       if (el) el.style.display = 'none';
