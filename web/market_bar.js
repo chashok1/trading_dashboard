@@ -702,9 +702,14 @@
   // 2026-09-23, user-directed: a tab left open overnight was firing real
   // yfinance pulls around 1 AM -- this check only ever looked at staleness,
   // never the clock. Mirrors etl/yahoo_fetch.py::is_auto_refresh_window
-  // (weekday, 9:30 AM-8 PM ET) so an off-hours tab doesn't even issue the
-  // request (server would skip it anyway, but skipping here avoids the
-  // persistent '!' icon _runQuoteRefresh shows on any non-ok auto result).
+  // (weekday, 9:30 AM-4 PM ET -- regular market hours) so an off-hours tab
+  // doesn't even issue the request (server would skip it anyway, but
+  // skipping here avoids the persistent '!' icon _runQuoteRefresh shows on
+  // any non-ok auto result).
+  // 2026-09-24, user-directed: narrowed from 9:30 AM-8 PM (deliberately
+  // wider, for after-hours coverage) down to the actual 9:30 AM-4 PM market
+  // session -- "market hours are 9:30AM - 4PM ET not 8PM ... narrow it to
+  // only market hours".
   function _isAutoRefreshWindowET() {
     try {
       const parts = new Intl.DateTimeFormat('en-US', {
@@ -716,7 +721,7 @@
       if (weekday === 'Sat' || weekday === 'Sun') return false;
       const hm = [parseInt(get('hour'), 10), parseInt(get('minute'), 10)];
       const cmp = (a, b) => a[0] - b[0] || a[1] - b[1];
-      return cmp(hm, [9, 30]) >= 0 && cmp(hm, [20, 0]) < 0;
+      return cmp(hm, [9, 30]) >= 0 && cmp(hm, [16, 0]) < 0;
     } catch (e) {
       return true; // if ET conversion fails for some reason, let the server decide
     }
@@ -750,31 +755,34 @@
   // quote lands (see _checkAutoRefresh's key-change reset above).
   async function _runQuoteRefresh(btn, auto) {
     if (btn.disabled) return;
+    // Spin/glyph target the inner .mt-quotes-icon span, not the button
+    // itself -- see ensureToolbarIcon's own comment on why.
+    const icon = btn.querySelector('.mt-quotes-icon') || btn;
     btn.disabled = true;
-    btn.classList.add('mt-spin');
+    icon.classList.add('mt-spin');
     try {
       const url = '/api/yahoo-fetch/quotes-now' + (auto ? '?auto=1' : '');
       const r = await fetch(url, {method: 'POST'});
       const d = await r.json();
-      btn.classList.remove('mt-spin');
+      icon.classList.remove('mt-spin');
       const ok = !d.error && !d.skipped;
       if (ok) {
-        btn.textContent = '✓';
+        icon.textContent = '✓';
         loadTape();
         if (typeof window.reloadMacroAreas === 'function') window.reloadMacroAreas();
       } else if (auto) {
-        btn.textContent = '!';
+        icon.textContent = '!';
         btn.disabled = false;
         return;
       } else {
-        btn.textContent = d.error ? '!' : '–';
+        icon.textContent = d.error ? '!' : '–';
       }
     } catch (e) {
-      btn.classList.remove('mt-spin');
-      btn.textContent = '!';
+      icon.classList.remove('mt-spin');
+      icon.textContent = '!';
       if (auto) { btn.disabled = false; return; }
     }
-    setTimeout(() => { btn.textContent = '⟳'; btn.disabled = false; }, 3000);
+    setTimeout(() => { icon.textContent = '⟳'; btn.disabled = false; }, 3000);
   }
 
   async function loadTape() {
@@ -859,7 +867,15 @@
     btn.title = 'Fetch latest Yahoo quotes now (auto-runs at 10 AM/3 PM ET, or here if stale >30 min while visible)';
     btn.setAttribute('aria-label', 'Fetch latest Yahoo quotes now');
     btn.style.cssText = 'font-size:14px;line-height:1;padding:2px 8px;';
-    btn.textContent = '⟳';
+    // 2026-09-24, user-directed: "when fetching the whole button is
+    // rotating instead of just the curved arrow -- fix it" -- the glyph now
+    // lives in its own inner span (.mt-quotes-icon) so the spin animation
+    // (styles.css) can target just that span, not the button's own
+    // border/background box.
+    const icon = document.createElement('span');
+    icon.className = 'mt-quotes-icon';
+    icon.textContent = '⟳';
+    btn.appendChild(icon);
     btn.addEventListener('click', () => _runQuoteRefresh(btn, false));
     wrap.appendChild(btn);
 

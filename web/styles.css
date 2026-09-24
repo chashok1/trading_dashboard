@@ -1114,7 +1114,12 @@ a.dash-news-list-row:hover { text-decoration: underline; }
    (manual or auto-triggered) is in flight, and the last-fetch-time label
    shown below it on Actionable/Portfolio (web/market_bar.js). */
 @keyframes mt-icon-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-#mtQuotesIconBtn.mt-spin { display: inline-block; animation: mt-icon-spin 0.8s linear infinite; }
+/* 2026-09-24, user-directed: "when fetching the whole button is rotating
+   instead of just the curved arrow -- fix it" -- the glyph now lives in its
+   own inner span (.mt-quotes-icon, web/market_bar.js::ensureToolbarIcon) so
+   only the ⟳ character spins, not the button's own border/background box. */
+.mt-quotes-icon { display: inline-block; }
+.mt-quotes-icon.mt-spin { animation: mt-icon-spin 0.8s linear infinite; }
 /* 2026-09-21, user-directed: "smallest font that i can see (or used)" --
    7px is the smallest already in active use elsewhere (.ucr-corner-label,
    .dv-tag), not a new untested size. */
