@@ -53,6 +53,21 @@ CURVE_INVERT_DAYS = 5
 # volatility instead of reusing HY's number as-is.
 IG_WIDEN_BP = 10.0
 
+# 2026-09-24, user-directed: "Generally Quad 2 is good for risk assets but
+# there is a caveat. if inflation/energy/rates all going up too much too
+# fast, it is not good for risk assets." -- Quad 2 (growth accelerating,
+# inflation decelerating) is the historically bullish-for-risk-assets
+# regime, but that playbook assumes inflation is COOLING; if inflation
+# expectations, energy, and rates are all running hot together even inside
+# a nominal Quad 2 read, that's the classic setup that forces the Fed
+# hawkish and drags risk assets down anyway (stagflation-adjacent, not the
+# "goldilocks" Quad 2 the playbook expects). Lookback window is a code
+# constant (like CURVE_INVERT_DAYS etc. above); the 3 magnitude thresholds
+# are ref_settings-driven instead (rd_quad2_* below, see build_context) so
+# they can be loosened/tightened without a code change -- starting values
+# are a reasonable first cut per the user's own framing, not backtested.
+QUAD2_OVERHEAT_DAYS = 10   # trading days for all 3 deltas below
+
 
 def _normalize_tnx(last: Optional[float]) -> Optional[float]:
     """TNX:CGI's drv_quote is inconsistently scaled day to day (TL/TD source:
@@ -65,6 +80,51 @@ def _normalize_tnx(last: Optional[float]) -> Optional[float]:
         return None
     last = float(last)
     return last * 10 if last < 15 else last
+
+
+def _dominant_quad(session: Session, as_of_date: date) -> Optional[int]:
+    """The dashboard's own "which quad are we in" number (1-4) -- same
+    60-day sliding-window blend api/routers/dash.py::_compute_quad_window
+    computes for the Regime Band's "Win (Q1)" label (GET /api/quad-window).
+    Trimmed to just the dominant-quad int (no months_out/quarter legs, this
+    module doesn't need them) so etl doesn't import from api (that would
+    invert the usual api-depends-on-etl direction) -- reuses the same pure
+    helpers (etl.derive_macro) dash.py's own version calls, so this can
+    never disagree with what the Regime Band shows. Feeds _g_quad2_overheat
+    below."""
+    from etl.derive_macro import window_weights, build_effective_distribution
+
+    h, decay_hl = 60, 0.0
+    rows = session.execute(text(
+        "SELECT setting_name, setting_value FROM ref_settings"
+        " WHERE setting_name IN ('quad_lookahead_days','quad_lookahead_decay_hl')"
+    )).fetchall()
+    cfg = {r[0]: r[1] for r in rows}
+    try: h = int(cfg.get('quad_lookahead_days', h))
+    except (TypeError, ValueError): pass
+    try: decay_hl = float(cfg.get('quad_lookahead_decay_hl', decay_hl))
+    except (TypeError, ValueError): pass
+
+    all_monthly = session.execute(text(
+        "SELECT year, period_num, quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods WHERE period_type='monthly'"
+        " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
+        "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
+    )).mappings().all()
+    if not all_monthly:
+        return None
+
+    def _frac(p):
+        v = [p["quad1_pct"], p["quad2_pct"], p["quad3_pct"], p["quad4_pct"]]
+        total = sum(float(x or 0) for x in v) or 1.0
+        return [float(x or 0) / total for x in v]
+
+    pcts_by_month = {(p["year"], p["period_num"]): _frac(p) for p in all_monthly}
+    weighted, _coverage = window_weights(as_of_date, list(pcts_by_month.keys()), h, decay_hl)
+    eff_frac = build_effective_distribution(weighted, pcts_by_month)
+    if not any(eff_frac):
+        return None
+    return max(range(4), key=lambda i: eff_frac[i]) + 1
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +232,33 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         ), {"sid": series_id, "d": as_of_date, "n": lookback_days + 2}).all()
         return [(r[0], float(r[1])) for r in rows if r[1] is not None]
 
+    # 2026-09-24 -- WTI's own daily drv_quote history (not hist_macro --
+    # /CL is a TOS/RR symbol, not a FRED series), for _g_quad2_overheat's
+    # "energy up too much too fast" leg. Same DESC [(date, value), ...]
+    # shape as _macro_series above so _series_delta works on either.
+    def _quote_series(sym: str, lookback_days: int) -> Optional[list]:
+        rows = session.execute(text(
+            "SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol = :sym "
+            "AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT :n"
+        ), {"sym": sym, "d": as_of_date, "n": lookback_days + 2}).all()
+        return [(r[0], float(r[1])) for r in rows if r[1] is not None]
+
+    # 2026-09-24 -- _g_quad2_overheat's 3 magnitude thresholds, ref_settings-
+    # driven (like TASK_146's rd_* gauges) so they're tunable without a code
+    # change; defaults match this gauge's own seed row comment in
+    # db/baseline.sql.
+    q2_settings = {}
+    for name, default in (
+        ("rd_quad2_t10yie_bp", 15.0), ("rd_quad2_wti_pct", 10.0), ("rd_quad2_dgs10_bp", 25.0),
+    ):
+        row = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = :n"
+        ), {"n": name}).scalar()
+        try:
+            q2_settings[name] = float(row) if row is not None else default
+        except (TypeError, ValueError):
+            q2_settings[name] = default
+
     return {
         "rr": rr_map,
         "quote": quote_map,
@@ -184,9 +271,13 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
-        "dgs10": _macro_series("DGS10", 3),
+        "dgs10": _macro_series("DGS10", QUAD2_OVERHEAT_DAYS),
         "dgs3mo": _macro_series("DGS3MO", 3),
         "ig_oas": _macro_series("BAMLC0A0CM", CREDIT_WIDEN_DAYS),
+        "t10yie": _macro_series("T10YIE", QUAD2_OVERHEAT_DAYS),
+        "wti_series": _quote_series("/CL", QUAD2_OVERHEAT_DAYS),
+        "dominant_quad": _dominant_quad(session, as_of_date),
+        "q2_overheat_settings": q2_settings,
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
         "nfci": _macro_series("NFCI", 3),
         "icsa": _macro_series("ICSA", 90),
@@ -878,6 +969,50 @@ def _g_exposed_bear_themes(ctx):
     return pct >= threshold, pct, f"${bear_dollar:,.0f} in bear-stance themes ({pct:.0f}% of risk $)"
 
 
+# 2026-09-24, user-directed: "Gernerally Quad 2 is good for risk assets but
+# there is a caveat. if inflation/energy/rates all going up too much too
+# fast, it is not good for risk assets." See QUAD2_OVERHEAT_DAYS's own
+# comment above for the full reasoning. Only evaluates/fires when the
+# dashboard's own dominant-quad read (_dominant_quad) is 2 -- every other
+# quad returns a quiet (not-fired) reading, since the caveat is specifically
+# about Quad 2's own playbook, not a general inflation/energy/rates gauge.
+def _g_quad2_overheat(ctx):
+    quad = ctx.get("dominant_quad")
+    if quad is None:
+        return None, None, "Quad regime unavailable"
+    if quad != 2:
+        return False, quad, f"Quad {quad} (this caveat only applies in Quad 2)"
+
+    settings = ctx.get("q2_overheat_settings") or {}
+    t10yie_th = settings.get("rd_quad2_t10yie_bp", 15.0)
+    wti_th = settings.get("rd_quad2_wti_pct", 10.0)
+    dgs10_th = settings.get("rd_quad2_dgs10_bp", 25.0)
+
+    t10yie_d = _series_delta(ctx.get("t10yie"), QUAD2_OVERHEAT_DAYS)
+    dgs10_d = _series_delta(ctx.get("dgs10"), QUAD2_OVERHEAT_DAYS)
+    wti_d = _series_delta(ctx.get("wti_series"), QUAD2_OVERHEAT_DAYS)
+    if t10yie_d is None or dgs10_d is None or wti_d is None:
+        return None, None, "Quad 2, but inflation/energy/rates history unavailable to check the overheat caveat"
+
+    t10yie_bp = t10yie_d[1] * 100
+    dgs10_bp = dgs10_d[1] * 100
+    wti_latest, wti_delta = wti_d
+    wti_prior = wti_latest - wti_delta
+    if not wti_prior:
+        return None, None, "Quad 2, but WTI history unavailable to check the overheat caveat"
+    wti_pct = wti_delta / wti_prior * 100
+
+    fired = t10yie_bp >= t10yie_th and wti_pct >= wti_th and dgs10_bp >= dgs10_th
+    window_txt = (f"10Y breakeven {t10yie_bp:+.0f}bp, WTI {wti_pct:+.0f}%, "
+                  f"10Y yield {dgs10_bp:+.0f}bp over {QUAD2_OVERHEAT_DAYS}d")
+    if fired:
+        detail = (f"Quad 2, but inflation/energy/rates are overheating together ({window_txt}) "
+                  "-- historically bad for risk assets despite Quad 2 usually being favorable")
+    else:
+        detail = f"Quad 2 ({window_txt} -- not overheating)"
+    return fired, wti_pct, detail
+
+
 GAUGES: list[tuple[str, Callable]] = [
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),
@@ -916,6 +1051,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("rr_flip_day", _g_rr_flip_day),
     ("lists_quad_conflict", _g_lists_quad_conflict),
     ("exposed_bear_themes", _g_exposed_bear_themes),
+    ("quad2_overheat", _g_quad2_overheat),
 ]
 
 

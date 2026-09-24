@@ -310,27 +310,26 @@
           </div>
           <div id="macroRailsWrap">
           <div class="macro-rail-row">
-          <!-- 2026-09-23 -- full 5-column reorg per user-supplied ASCII
-               layout:
-                 col1: Rates & Duration / Currency / Credit / Cannabis
-                 col2: Major Markets / Volatility / Crypto
-                 col3: Sectors / Country ETFs
-                 col4: Commodities
-                 col5: Tech & ETFs
+          <!-- 2026-09-24 -- 5-column reorg per user-supplied layout:
+                 col1: Major Markets / USD, Rates & Duration / Credit / Crypto
+                 col2: Volatility / Cannabis / Currency
+                 col3: Energy / Precious Metals / Industrial & Ag (unchanged)
+                 col4: Sectors / Country ETFs
+                 col5: Tech & ETFs (unchanged)
                Same container ids/markup throughout -- web/macro_areas.js::
                railAreaRow() and web/market_read.js target every panel by id
                regardless of parent column, so no script change needed.
                (Older per-move comments from this block's long rearrangement
                history are gone -- git history has them if ever needed.) -->
           <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroTop9Band">
+            <div class="msr-section-hdr">Major Markets<button class="msr-sort-btn" data-area="top9" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
           <section class="cockpit-band rail-band" id="macroRatesBand">
             <div class="msr-section-hdr">USD, Rates, &amp; Duration<button class="msr-sort-btn" data-area="rates_duration" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
-          <section class="cockpit-band rail-band" id="macroUsdBand">
-            <div class="msr-section-hdr">Currency<button class="msr-sort-btn" data-area="usd_currency" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
           <section class="cockpit-band rail-band" id="macroCreditBand">
@@ -338,8 +337,6 @@
             <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <!-- 2026-09-23 -- swapped with Crypto (col2) -- user: "switch
-               cannibas and Crypto panels". -->
           <section class="cockpit-band rail-band" id="macroCryptoBand">
             <div class="msr-section-hdr">Crypto<button class="msr-sort-btn" data-area="crypto" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
@@ -347,41 +344,19 @@
           </div>
 
           <div class="macro-rail-col">
-          <section class="cockpit-band rail-band" id="macroTop9Band">
-            <div class="msr-section-hdr">Major Markets<button class="msr-sort-btn" data-area="top9" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
           <section class="cockpit-band rail-band" id="macroVolatilityBand">
             <div class="msr-section-hdr">Volatility<button class="msr-sort-btn" data-area="volatility" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <!-- 2026-09-23 -- swapped with Cannabis (col1), same user request. -->
           <section class="cockpit-band rail-band" id="macroCannabisBand">
             <div class="msr-section-hdr">Cannabis<button class="msr-sort-btn" data-area="cannabis" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCannabis" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
-          </div>
 
-          <div class="macro-rail-col">
-          <!-- TASK_145 pulled Sectors out of here into a standalone
-               always-visible band above -- moved back 2026-09-21, user:
-               "move the sectors back into its place as before" (now that
-               macroRailsWrap itself is always visible again, there's no
-               longer a reason to keep it separate). Same ids
-               (#macroSectorEtfsBand / #macroRailSectorEtfs); web/market_read.js
-               still overwrites #macroRailSectorEtfs's content with the SSS
-               sector cards after web/macro_areas.js's own rail render runs --
-               both target by id, so this move needed no script change. -->
-          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
-            <div class="msr-section-hdr">Sectors<button class="msr-sort-btn" data-area="sector_etfs" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
-          <section class="cockpit-band rail-band" id="macroCountryBand">
-            <div class="msr-section-hdr">Country ETFs<button class="msr-sort-btn" data-area="country_etfs" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          <section class="cockpit-band rail-band" id="macroUsdBand">
+            <div class="msr-section-hdr">Currency<button class="msr-sort-btn" data-area="usd_currency" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
 
@@ -403,6 +378,27 @@
           <section class="cockpit-band rail-band" id="macroAgBand">
             <div class="msr-section-hdr">Industrial &amp; Ag<button class="msr-sort-btn" data-area="commodities_ag" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailAg" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
+          <div class="macro-rail-col">
+          <!-- TASK_145 pulled Sectors out of here into a standalone
+               always-visible band above -- moved back 2026-09-21, user:
+               "move the sectors back into its place as before" (now that
+               macroRailsWrap itself is always visible again, there's no
+               longer a reason to keep it separate). Same ids
+               (#macroSectorEtfsBand / #macroRailSectorEtfs); web/market_read.js
+               still overwrites #macroRailSectorEtfs's content with the SSS
+               sector cards after web/macro_areas.js's own rail render runs --
+               both target by id, so this move needed no script change. -->
+          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
+            <div class="msr-section-hdr">Sectors<button class="msr-sort-btn" data-area="sector_etfs" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <section class="cockpit-band rail-band" id="macroCountryBand">
+            <div class="msr-section-hdr">Country ETFs<button class="msr-sort-btn" data-area="country_etfs" title="Sort: default order (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
 

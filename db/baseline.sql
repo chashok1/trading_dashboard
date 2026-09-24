@@ -8857,3 +8857,26 @@ SELECT sig.source_code, 'flip_day',
        COUNT(*) FILTER (WHERE sig.flip_day AND dd.fwd20_dd > -5)
 FROM sig JOIN dd ON dd.as_of_date = sig.as_of_date
 GROUP BY sig.source_code;
+
+-- 2026-09-24 -- Risk Dial gauge: "Quad 2 Overheat" caveat. User: "Generally
+-- Quad 2 is good for risk assets but there is a caveat. if inflation/
+-- energy/rates all going up too much too fast, it is not good for risk
+-- assets." Fires only when the dashboard's own dominant-quad read is Quad 2
+-- AND 10Y breakeven inflation (T10YIE) + WTI crude + the 10Y Treasury yield
+-- (DGS10) are all up past their own threshold over the trailing 10 trading
+-- days. Predicate logic: etl/derive_risk_dial.py::_g_quad2_overheat.
+-- Shipped ACTIVE (unlike TASK_146's gauges) -- this is a stated market
+-- caveat the user already holds as a rule of thumb, not an unvalidated
+-- data-mined pattern needing a backtest review first.
+INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
+    ('quad2_overheat', 'Quad 2 overheating (inflation/energy/rates)', 2, TRUE, 'macro',
+     'Fires when dominant quad = 2 AND 10Y breakeven + WTI + 10Y yield are all up past their own '
+     'threshold (ref_settings rd_quad2_t10yie_bp/rd_quad2_wti_pct/rd_quad2_dgs10_bp) over the '
+     'trailing 10 trading days (etl/derive_risk_dial.py::QUAD2_OVERHEAT_DAYS).')
+ON CONFLICT (gauge_key) DO NOTHING;
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('rd_quad2_t10yie_bp', '15', 'quad2_overheat gauge: 10Y breakeven inflation rise (bp/10 trading days) that counts as overheating.'),
+    ('rd_quad2_wti_pct', '10', 'quad2_overheat gauge: WTI crude rise (%/10 trading days) that counts as overheating.'),
+    ('rd_quad2_dgs10_bp', '25', 'quad2_overheat gauge: 10Y Treasury yield rise (bp/10 trading days) that counts as overheating.')
+ON CONFLICT (setting_name) DO NOTHING;
