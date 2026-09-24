@@ -266,8 +266,10 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         tech_map = {r["tos_symbol"]: dict(r) for r in tech_rows}
 
         # Load drv_quote for last_price
+        # net_chng (2026-09-24) -- feeds the rail's "$" dollar-change radio
+        # mode (web/macro_areas.js) alongside the existing pct_change.
         q_rows = s.execute(text("""
-            SELECT tos_symbol, last_price, pct_change
+            SELECT tos_symbol, last_price, pct_change, net_chng
             FROM drv_quote
             WHERE as_of_date = :d
         """), {"d": anchor}).mappings().all()
@@ -473,9 +475,11 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             # last price: prefer drv_quote, fall back to drv_technicals
             last = None
             pct_chg = None
+            net_chg = None
             if sym in q_map:
                 last = _maybe_float(q_map[sym].get("last_price"))
                 pct_chg = _maybe_float(q_map[sym].get("pct_change"))
+                net_chg = _maybe_float(q_map[sym].get("net_chng"))
             if last is None and sym in tech_map:
                 last = _maybe_float(tech_map[sym].get("last_price"))
 
@@ -503,6 +507,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "label": mc.get("label"),
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
+                    "net_chng": _maybe_float(net_chg),
                     "open": ohlc.get("open"),
                     "high": ohlc.get("high"),
                     "low": ohlc.get("low"),
@@ -574,6 +579,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "label": mc.get("label"),
                 "last": _maybe_float(last),
                 "pct_change": _maybe_float(pct_chg),
+                "net_chng": _maybe_float(net_chg),
                 "open": ohlc.get("open"),
                 "high": ohlc.get("high"),
                 "low": ohlc.get("low"),

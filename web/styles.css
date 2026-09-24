@@ -1925,6 +1925,30 @@ svg.rr-candle {
            font-variant-numeric: tabular-nums;
            white-space: nowrap; box-sizing: border-box; display: inline-block;
            color: #fff; flex: 0 0 46px; }
+/* Price/$-change modes (2026-09-24, macro_areas.js::_chgChipHtml,
+   _chipCompactPrice/_chipCompactDollarChg) -- same chip, printing a price
+   or a $ change instead of a %chg. Both formatters' own worst case is
+   "999.9"-shaped (5 chars, under 1000, 1 decimal) or "99999"-shaped (5
+   bare digits, at/above 1000, 0 decimals); $-change adds a leading sign on
+   top of that ("+999.9"/"+99999", 6 chars) -- same length class as the
+   "-99.9%" the %chg pill was already sized for, so this just drops the
+   padding down to 0 (user: "leave no margin on both sides") without
+   shrinking narrower than the %chg pill it replaces (user: "width should
+   not go below % width") -- a narrower pill made every row visibly reflow
+   width when the radio was flipped, which the shared 46px avoids. */
+.msr-chg-alt { font-size: 9px; padding: 0; }
+/* %/Price/$ radio group (index.html's "Macro Rail" header) -- compact
+   enough to fit the header bar's fixed 14px height (.msr-section-hdr)
+   alongside the title and collapse button. margin-left:auto absorbs the
+   header's leftover space, same trick .msr-sort-btn uses, so this + the
+   collapse button both land flush right together. */
+.msr-mode-toggle { margin-left: auto; display: flex; align-items: center;
+                    gap: 5px; font-size: 8px; font-weight: 400;
+                    text-transform: none; letter-spacing: 0; color: #888; }
+.msr-mode-toggle label { display: inline-flex; align-items: center;
+                          gap: 1px; cursor: pointer; }
+.msr-mode-toggle input[type="radio"] { width: 8px; height: 8px; margin: 0;
+                                        cursor: pointer; }
 /* Data cluster (non-gauge rail row, 2026-07-04): Td/Tn/range-bar/candle/
    %chg chip grouped into one flex unit so they stay tightly packed next to
    each other, with margin-left:auto on the WHOLE cluster (not just the

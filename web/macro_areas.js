@@ -126,18 +126,49 @@
     return '<span class="msr-candle-slot">' + svg + '</span>';
   }
 
+  // 2026-09-24, user-directed: "% and $ radio buttons in the header -- if i
+  // choose $ display the actual value instead (with same colors, no
+  // change)", then a 3rd option added: "add one more radio button 'Price',
+  // use that for price, use $ for dollar change" -- one global toggle (not
+  // per-panel) covering every rail panel + the Accounts panel, since they
+  // all render through this one chip helper. 'pct' = %chg (default),
+  // 'price' = the symbol's current price, 'dollar' = the $ change (net_chng,
+  // NOT price -- see _chipCompactDollarChg). _chgMode persists across
+  // reloads (localStorage) the same way _railSort's per-panel choices
+  // persist in memory. Color logic is untouched by any of this -- still
+  // driven by pct's up/down/flat sign regardless of which text is printed.
+  var _CHG_MODE_KEY = 'macroRailChgMode';
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1 };
+  var _chgMode = (function () {
+    try {
+      var v = localStorage.getItem(_CHG_MODE_KEY);
+      return _CHG_MODES[v] ? v : 'pct';
+    } catch (e) { return 'pct'; }
+  })();
+
   // Solid %chg chip (tape convention, TASK_116) — replaces the plain colored
   // % text. Honors the member `inverted` flag (HY/HYSPRD: rising = risk-off
   // = red), same convention as market_bar.js's dirClass/INVERTED.
-  function _chgChipHtml(pct, inverted) {
+  // opts.price / opts.dollarChg (2026-09-24): the row's already-formatted
+  // price / $-change strings (see railAreaRow's two call sites) -- one of
+  // them is shown instead of the %chg text depending on _chgMode. Falls
+  // back to the % text whenever the mode's own value is unavailable for
+  // this member, so a missing price/$chg never blanks the chip.
+  function _chgChipHtml(pct, inverted, opts) {
     if (pct === null || pct === undefined) return '<span class="msr-chg"></span>';
     var n = Number(pct);
     var flat = Math.abs(n) < 0.001;
     var up = !flat && (inverted ? n < 0 : n > 0);
     var down = !flat && (inverted ? n > 0 : n < 0);
     var bg = up ? '#1d9e75' : down ? '#d4537e' : '#888';
-    var txt = flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
-    return '<span class="msr-chg" style="background:' + bg + ';">' + esc(txt) + '</span>';
+    opts = opts || {};
+    var altTxt = _chgMode === 'price' ? opts.price
+               : _chgMode === 'dollar' ? opts.dollarChg
+               : null;
+    var txt = altTxt != null ? altTxt
+            : flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
+    var cls = 'msr-chg' + (altTxt != null ? ' msr-chg-alt' : '');
+    return '<span class="' + cls + '" style="background:' + bg + ';">' + esc(txt) + '</span>';
   }
 
   // Friendly display name for a non-gauge member (2026-07-04) — ref_macro_
@@ -442,6 +473,45 @@
     return _fmtPrice(m.last);
   }
 
+  // $-mode chip text (2026-09-24). The chip's fixed width was built for a
+  // 6-char %chg ("-99.9%") — a full "$1,234.5"-style price (leading "$",
+  // thousands comma) was overflowing that box and spilling past the panel
+  // edge, per user report ("too much buffer ... pushing it outside the
+  // panel"). No "$" prefix, no thousands separator, and 0 decimals once the
+  // value clears 1000 (SPX/BTC-sized numbers don't need the extra decimal
+  // digit) keeps this close to the same length range as the %chg text it
+  // replaces. Curve members already print a compact "N.NN%" yield via
+  // _railPriceTxt — left as-is, nothing to shrink there.
+  function _chipCompactPrice(v) {
+    if (v === null || v === undefined) return null;
+    var digits = Math.abs(v) >= 1000 ? 0 : 1;
+    return v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function _chipPriceTxt(m) {
+    if (m.role === 'curve') return _railPriceTxt(m);
+    return _chipCompactPrice(m.last);
+  }
+
+  // $-change chip text (2026-09-24, "use $ for dollar change") — same
+  // compact/no-thousands-comma shaping as _chipCompactPrice (same 46px
+  // pill, same worst-case length), plus an explicit sign since a bare
+  // "1.25" doesn't read as up/down the way "+1.25"/"-1.25" does (the %chg
+  // text it replaces already carries that same leading sign). Curve
+  // members' net_chng is in the same x10 "index level" scale their price
+  // is (etl/derive.py's reverse-symbol scale-fix) — divided back down here
+  // too, same treatment _railPriceTxt gives their price.
+  function _chipCompactDollarChg(v) {
+    if (v === null || v === undefined) return null;
+    var digits = Math.abs(v) >= 1000 ? 0 : 1;
+    var txt = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return (v > 0 ? '+' : v < 0 ? '-' : '') + txt;
+  }
+  function _chipDollarChgTxt(m) {
+    if (m.net_chng === null || m.net_chng === undefined) return null;
+    var v = m.role === 'curve' ? (m.net_chng / 10) : m.net_chng;
+    return _chipCompactDollarChg(v);
+  }
+
   // Standalone, fixed-width price and %chg columns — siblings of
   // .msr-name-tick (not nested inside it, and not nested inside each other),
   // so both line up at the same x-position on every row regardless of
@@ -528,7 +598,8 @@
             '</div>' +
             '<div class="msr-vol-cluster">' +
               _candleHtml(m) +
-              _chgChipHtml(m.pct_change, m.inverted) +
+              _chgChipHtml(m.pct_change, m.inverted,
+                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m) }) +
             '</div>' +
           '</div>'
         );
@@ -566,7 +637,8 @@
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, label: dispName }) +
             _candleHtml(m) +
-            _chgChipHtml(m.pct_change, m.inverted) +
+            _chgChipHtml(m.pct_change, m.inverted,
+                         { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m) }) +
           '</div>' +
         '</div>'
       );
@@ -950,9 +1022,29 @@
     }
   }
 
+  // 2026-09-24 -- %/Price/$ radio group (index.html's "Macro Rail" header)
+  // -- global toggle, so flipping it re-renders every panel including
+  // Accounts in one shot via the same renderRail(_lastAreasData) path the
+  // per-panel sort arrows already use. Reflects the persisted _chgMode on
+  // load so a refresh doesn't silently reset back to %.
+  function _initChgModeToggle() {
+    var radios = document.querySelectorAll('input[name="msrValueMode"]');
+    if (!radios.length) return;
+    radios.forEach(function (r) {
+      r.checked = (r.value === _chgMode);
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        _chgMode = _CHG_MODES[r.value] ? r.value : 'pct';
+        try { localStorage.setItem(_CHG_MODE_KEY, _chgMode); } catch (e) {}
+        if (_lastAreasData) renderRail(_lastAreasData);
+      });
+    });
+  }
+
   function init() {
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
+    _initChgModeToggle();
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var acctToggle = document.getElementById('accountsToggle');

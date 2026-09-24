@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260924j">
+  <link rel="stylesheet" href="/static/styles.css?v=20260924m">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -295,7 +295,19 @@
                .msr-section-hdr chrome as each individual band's own header
                below. This group had no collapse control at all before --
                wired in web/market_read.js (_applyMacroRailCollapse/init()). -->
-          <div class="msr-section-hdr">Macro Rail<button class="msr-sort-btn" id="macroRailToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Macro Rail panel">&#9662;</button></div>
+          <!-- 2026-09-24 -- %/Price/$ radio group: global toggle (not
+               per-panel) switching every rail panel's + the Accounts
+               panel's %chg chip between %chg, current price, and $ change
+               (net_chng) -- same colors in all 3 modes -- see
+               web/macro_areas.js::_initChgModeToggle/_chgChipHtml. -->
+          <div class="msr-section-hdr">Macro Rail
+            <span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change">
+              <label><input type="radio" name="msrValueMode" value="pct" checked> %</label>
+              <label><input type="radio" name="msrValueMode" value="dollar"> $</label>
+              <label><input type="radio" name="msrValueMode" value="price"> Price</label>
+            </span>
+            <button class="msr-sort-btn" id="macroRailToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Macro Rail panel">&#9662;</button>
+          </div>
           <div id="macroRailsWrap">
           <div class="macro-rail-row">
           <!-- 2026-09-23 -- full 5-column reorg per user-supplied ASCII
@@ -1042,7 +1054,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20260924d" defer></script>
+  <script src="/static/macro_areas.js?v=20260924g" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
