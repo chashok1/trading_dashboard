@@ -3684,3 +3684,9 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 #indicatorBand .mini-grid, #nearEarningsBand .mini-grid { font-size: 9px; }
 #indicatorBand .mini-grid th, #nearEarningsBand .mini-grid th { font-size: 8px; padding: 1px 4px; line-height: 1.1; }
 #indicatorBand .mini-grid td, #nearEarningsBand .mini-grid td { font-size: 9px; padding: 1px 4px; line-height: 1.15; }
+
+/* 2026-09-30, user-directed: larger text in the Dashboard Hedgeye panel. Its
+   text is sized inline (9-11px in web/hedgeye_panel.js, shared with the
+   Actionable screen), so the whole panel body is scaled instead of editing every
+   size. Adjust the factor to taste (1.0 = previous size). */
+#hedgeyeDashPanelBody { zoom: 1.25; }

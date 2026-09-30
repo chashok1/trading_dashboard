@@ -636,6 +636,27 @@ async function loadQuadOutlook() {
   } catch(e) { console.error('Quad outlook:', e); }
 }
 
+// 2026-09-30, user-directed: hovering the Qx text (only) in the right-side Quads panel
+// shows the SAME popover as the quads on the left regime line
+// (_showQuadPop: "<period> - Quad N" with Bull/Bear factors for that quad).
+// Factors come from /api/quad/band-factors, stored by loadRegimeBand() in
+// state.quadBandFactors; read lazily at hover time since the two loads race.
+function _qoQuadNum(quad) {
+  const m = /(\d)/.exec(quad || '');
+  return m ? m[1] : '';
+}
+function _wireQuadPanelPops(el) {
+  el.querySelectorAll('.qo-quad[data-qo-quad]').forEach(tr => {
+    const n = tr.dataset.qoQuad;
+    if (!n) return;
+    tr.addEventListener('mouseover', () => {
+      const { bull, bear } = _bullBearForQuadNum(state.quadBandFactors || [], n);
+      _showQuadPop(tr, `${tr.dataset.qoLabel || 'Quad'} — Quad ${n}`, bull, bear);
+    });
+    tr.addEventListener('mouseout', () => _hideQuadPop());
+  });
+}
+
 function _renderQuadOutlookPanel(data) {
   const el = $('quadOutlookBody');
   if (!el) return;
@@ -674,7 +695,7 @@ function _renderQuadOutlookPanel(data) {
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
        + `<span style="display:inline-block;width:48px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `<span class="qo-quad" data-qo-quad="${_qoQuadNum(quad)}" data-qo-label="${escapeHtml(`${lbl}`)}" style="font-weight:600;color:${qcol};cursor:help;">${escapeHtml(_qdLbl(quad))}</span>`
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
        + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
@@ -699,7 +720,7 @@ function _renderQuadOutlookPanel(data) {
       h += `<tr>`
          + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
          + `<span style="display:inline-block;width:48px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-         + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+         + `<span class="qo-quad" data-qo-quad="${_qoQuadNum(quad)}" data-qo-label="${escapeHtml(`Global ${lbl}`)}" style="font-weight:600;color:${qcol};cursor:help;">${escapeHtml(_qdLbl(quad))}</span>`
          + `</td>`
          + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
          + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="Global ${escapeHtml(quad)} 100%">`
@@ -719,7 +740,7 @@ function _renderQuadOutlookPanel(data) {
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
        + `<span style="display:inline-block;width:38px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `<span class="qo-quad" data-qo-quad="${_qoQuadNum(quad)}" data-qo-label="${escapeHtml(`${lbl}`)}" style="font-weight:600;color:${qcol};cursor:help;">${escapeHtml(_qdLbl(quad))}</span>`
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
        + `</tr>`;
@@ -727,6 +748,7 @@ function _renderQuadOutlookPanel(data) {
 
   h += '</table>';
   el.innerHTML = h;
+  _wireQuadPanelPops(el);
 
   // 2026-09-30, user-directed: smallest possible Quarterly/Global/Monthly
   // header rows (.qo-compact, styles.css), and the panel at HALF its previous
@@ -1124,6 +1146,7 @@ async function loadRegimeBand() {
     }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
+    state.quadBandFactors = allFactors;   // also read by the right-side Quads panel popovers
     // 2026-08-08 -- compact format per user request: "60d Win(Q1). Aug(Q3)
     // 40% . Sep(Q1)50% . Oct(Q2)10%   Qtr(Q2)" -- replaces the old
     // "Window (60d): Quad 1 — 08 (Q3) 40% · 09 (Q1) 50% ..." wording.

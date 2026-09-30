@@ -409,6 +409,25 @@
   // sections in this column: Breadth, Themes, Macro Rail. Replaces the old
   // single #qrFilterToggle button on the filter bar (far from the panel it
   // controlled, and controlled Breadth+Themes together as one block).
+  // 2026-09-30, user-directed: start each day EXPANDED, then remember the
+  // collapse state for the rest of that day. Stored as "YYYY-MM-DD:1|0"
+  // (1 = collapsed); a value from an earlier day (or the old bare "0"/"1"
+  // format) reads as expanded.
+  function _todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function _dailyCollapsed(key) {
+    try {
+      var v = localStorage.getItem(key) || '';
+      var i = v.indexOf(':');
+      return i > 0 && v.slice(0, i) === _todayStr() && v.slice(i + 1) === '1';
+    } catch (e) { return false; }
+  }
+  function _dailyStore(key, collapsed) {
+    try { localStorage.setItem(key, _todayStr() + ':' + (collapsed ? '1' : '0')); } catch (e) {}
+  }
+
   function _sectionHeaderHtml(title, extraHtml, btnId, collapsed) {
     return '<div class="msr-section-hdr">' + esc(title) +
       (extraHtml ? '<span class="mr-sect-legend">' + extraHtml + '</span>' : '') +
@@ -417,14 +436,14 @@
         (collapsed ? '&#9652;' : '&#9662;') + '</button></div>';
   }
 
-  function _wireSectionToggle(btnId, bodyId, storageKey, title) {
+  function _wireSectionToggle(btnId, bodyId, storageKey, title, daily) {
     var btn = document.getElementById(btnId);
     var body = document.getElementById(bodyId);
     if (!btn || !body) return;
     btn.addEventListener('click', function () {
       var collapsed = body.style.display !== 'none';
       body.style.display = collapsed ? 'none' : 'block';
-      localStorage.setItem(storageKey, collapsed ? '1' : '0');
+      if (daily) _dailyStore(storageKey, collapsed); else localStorage.setItem(storageKey, collapsed ? '1' : '0');
       btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
       btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' ' + title + ' panel');
     });
@@ -436,7 +455,7 @@
     if (!panel || !body) return;
     if (!data || !(data.themes || []).length) { panel.style.display = 'none'; return; }
 
-    var breadthCollapsed = localStorage.getItem('mrBreadth_collapsed') === '1';
+    var breadthCollapsed = _dailyCollapsed('mrBreadth_collapsed');
     var themesCollapsed = localStorage.getItem('mrThemes_collapsed') === '1';
     body.innerHTML =
       _sectionHeaderHtml('Breadth', flipNoteText(data), 'mrBreadthToggle', breadthCollapsed) +
@@ -444,7 +463,7 @@
       _sectionHeaderHtml('Themes', '', 'mrThemesToggle', themesCollapsed) +
       '<div id="qrThemesBody" style="display:' + (themesCollapsed ? 'none' : 'block') + ';">' + themeGridHtml(data) + '</div>';
     panel.style.display = 'block';
-    _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth');
+    _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth', true);
     _wireSectionToggle('mrThemesToggle', 'qrThemesBody', 'mrThemes_collapsed', 'Themes');
 
     var headlineBand = document.getElementById('regimeLineBand');

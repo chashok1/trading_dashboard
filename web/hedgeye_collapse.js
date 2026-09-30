@@ -16,6 +16,25 @@
 (function () {
   var KEY = 'heDashPanels_collapsed';
 
+  // 2026-09-30, user-directed: start each day EXPANDED, then remember the
+  // collapse state for the rest of that day. Stored as "YYYY-MM-DD:1|0"
+  // (1 = collapsed); a value from an earlier day (or the old bare "0"/"1"
+  // format) reads as expanded.
+  function _todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function _dailyCollapsed(key) {
+    try {
+      var v = localStorage.getItem(key) || '';
+      var i = v.indexOf(':');
+      return i > 0 && v.slice(0, i) === _todayStr() && v.slice(i + 1) === '1';
+    } catch (e) { return false; }
+  }
+  function _dailyStore(key, collapsed) {
+    try { localStorage.setItem(key, _todayStr() + ':' + (collapsed ? '1' : '0')); } catch (e) {}
+  }
+
   function _isDashboard() {
     return window.location.pathname.replace(/\/+$/, '') === '' || window.location.pathname === '/';
   }
@@ -57,10 +76,10 @@
     var btn = document.getElementById('hedgeyeDashToggle');
     if (!btn) return;
     _addNewsLinks(btn);
-    _applyState(localStorage.getItem(KEY) === '1');
+    _applyState(_dailyCollapsed(KEY));
     btn.addEventListener('click', function () {
-      var collapsed = localStorage.getItem(KEY) !== '1';
-      localStorage.setItem(KEY, collapsed ? '1' : '0');
+      var collapsed = !_dailyCollapsed(KEY);   // flip today's state
+      _dailyStore(KEY, collapsed);
       _applyState(collapsed);
     });
   }
