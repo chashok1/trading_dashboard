@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import statistics
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -384,6 +385,25 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             WHERE as_of_date = :d
               AND sector IS NOT NULL
         """), {"d": anchor}).mappings().all()
+
+        # 2026-09-30 -- the same sector rows ~5 market days ago, so the
+        # Sectors panel can show whether each sector's Trade-line breadth is
+        # RISING (the Rotate-in rule). Nearest loaded date on/before
+        # anchor-7 days, at most 4 days older (your loads can skip days).
+        prev_sector_rows = []
+        try:
+            prev_d = s.execute(text(
+                "SELECT MAX(as_of_date) FROM drv_technicals "
+                "WHERE as_of_date <= :d AND as_of_date >= :lo"
+            ), {"d": anchor - timedelta(days=7), "lo": anchor - timedelta(days=11)}).scalar()
+            if prev_d:
+                prev_sector_rows = s.execute(text("""
+                    SELECT tos_symbol, sector, last_price, a_trade_value, a_trend_value
+                    FROM drv_technicals
+                    WHERE as_of_date = :d AND sector IS NOT NULL
+                """), {"d": prev_d}).mappings().all()
+        except Exception:
+            prev_sector_rows = []
 
         # 2026-09-24 -- current holdings per ACCOUNT (ref_accounts.short_name
         # -- e.g. F-A, F-M, HSA, IRA -- not just per broker), for the new
@@ -763,6 +783,21 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "above_trend": above_trend,
         })
 
+    # Prior-week Trade-line breadth per sector (same rule as above).
+    prev_trade: dict[str, float] = {}
+    _prev: dict[str, list] = _dd(list)
+    for row in prev_sector_rows:
+        sec_raw = row.get("sector")
+        if not sec_raw or sec_raw.strip().lower() not in _GICS_11_LOWER:
+            continue
+        last = _maybe_float(row.get("last_price"))
+        tv = _maybe_float(row.get("a_trade_value"))
+        _prev[_GICS_DISPLAY.get(sec_raw.strip().lower(), sec_raw.strip())].append(
+            last is not None and tv is not None and last > tv)
+    for sec, flags in _prev.items():
+        if len(flags) >= 5:
+            prev_trade[sec] = sum(flags) / len(flags)
+
     sector_scores: list[dict] = []
     for sec, syms in sec_data.items():
         n = len(syms)
@@ -773,22 +808,54 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         score = (pct_trade + pct_trend) / 2
         etf_symbol = _SECTOR_ETF.get(sec)
         etf = _sector_etf_proxy(etf_symbol, q_map, tech_map, rr_map, ms_map) if etf_symbol else None
+        if etf:
+            # 2026-09-30 -- 6-caret MacroNet strip (+ its hover drivers) for the
+            # sector ETF, same data the rail rows carry (web/macro_areas.js
+            # _macro6CaretsHtml), shown next to the ETF in the Rotate-in detail.
+            etf["macro6"] = ms_map.get(etf_symbol, {}).get("macro6")
+            etf["drivers"] = _category_drivers_for(etf_symbol, fund_map, bridge_map, quad_lookup)
+        prev = prev_trade.get(sec)
         sector_scores.append({
             "sector": sec,
             "n": n,
             "pct_above_trade": round(pct_trade, 2),
             "pct_above_trend": round(pct_trend, 2),
+            "pct_above_trade_prev": round(prev, 2) if prev is not None else None,
+            "td_change": round(pct_trade - prev, 2) if prev is not None else None,
             "score": round(score, 2),
             "etf": etf,
         })
     sector_scores.sort(key=lambda x: -x["score"])
 
-    leaders   = [s["sector"] for s in sector_scores[:3] if s["score"] >= 0.5]
-    laggards  = [s["sector"] for s in reversed(sector_scores) if s["score"] < 0.3][:2]
-    rotate_in = [
-        s["sector"] for s in sector_scores
-        if s["pct_above_trend"] >= 0.5 and s["pct_above_trade"] < 0.5
+    # 2026-09-30, user-directed redesign, backed by a history test (153 days,
+    # sector ETF forward returns vs the other sectors): near-term = Trade
+    # line. Rotate-in = Trade-line breadth still under 60% but up 10+ points
+    # over ~5 market days (the only bucket with an edge: ~+1.0% over 10d,
+    # ~55% hit rate; small sample). No Trend requirement (the old "Trend good,
+    # Trade weak" rule was the worst bucket). Already-strong-and-rising
+    # sectors underperformed, so they are NOT rotate-ins. Leaders/Laggards
+    # are a current-snapshot read (no edge over 5-10d), now Trade-first.
+    leaders = [
+        s_["sector"] for s_ in sorted(
+            (x for x in sector_scores
+             if x["pct_above_trade"] >= 0.5 and x["pct_above_trend"] >= 0.5),
+            key=lambda x: (-x["pct_above_trade"], -x["pct_above_trend"]))
     ][:3]
+    laggards = [
+        s_["sector"] for s_ in sorted(
+            (x for x in sector_scores if x["pct_above_trade"] < 0.3),
+            key=lambda x: x["pct_above_trade"])
+    ][:2]
+    rotate_cands = sorted(
+        (x for x in sector_scores
+         if x["pct_above_trade"] < 0.6 and x["td_change"] is not None and x["td_change"] >= 0.10),
+        key=lambda x: -x["td_change"])[:3]
+    rotate_in = [x["sector"] for x in rotate_cands]
+    # Caution flag: sector ETF's RR outlook is Bearish (breadth and ETF disagree).
+    rotate_caution = [
+        x["sector"] for x in rotate_cands
+        if ((x.get("etf") or {}).get("outlook") or "").strip().lower() == "bearish"
+    ]
 
     top_down = _build_top_down(areas_out)
 
@@ -800,6 +867,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "leaders": leaders,
             "laggards": laggards,
             "rotate_in": rotate_in,
+            "rotate_caution": rotate_caution,
         },
         "top_down": top_down,
     }

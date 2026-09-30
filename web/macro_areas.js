@@ -700,8 +700,23 @@
         (sectorObj.pct_above_trade != null ? Math.round(sectorObj.pct_above_trade * 100) + '% Td' : '—')
         + ' / ' + (sectorObj.pct_above_trend != null ? Math.round(sectorObj.pct_above_trend * 100) + '% Tn' : '—')]);
     }
+    // 2026-09-30 -- Rotate-in is driven by the Trade line: show how its breadth
+    // moved over ~5 market days (was -> now).
+    if (sectorObj.td_change != null && sectorObj.pct_above_trade_prev != null) {
+      var dch = Math.round(sectorObj.td_change * 100);
+      rows.push(['Td breadth, 5 days',
+        Math.round(sectorObj.pct_above_trade_prev * 100) + '% &rarr; ' + Math.round(sectorObj.pct_above_trade * 100) +
+        '% (' + (dch >= 0 ? '+' : '') + dch + ' pts)']);
+    }
     if (etf.symbol) {
-      if (etf.outlook) rows.push([esc(etf.symbol) + ' RR Outlook', esc(etf.outlook)]);
+      // Caution (Rotate-in sector whose ETF outlook is Bearish) sits right next to
+      // the outlook word, coloured, instead of in its own row.
+      if (etf.outlook) {
+        var bearish = String(etf.outlook).trim().toLowerCase() === 'bearish';
+        rows.push([esc(etf.symbol) + ' RR Outlook',
+        (bearish ? '<span style="color:#991b1b;">' + esc(etf.outlook) + '</span>' : esc(etf.outlook)) +
+        (sectorObj.caution ? ' <span style="color:#d97706;font-weight:700;" title="Breadth is turning up but the ETF outlook is Bearish">&#9888; Caution</span>' : '')]);
+      }
       // Td/Tn arrows + RR bar combined into one row, same
       // [durArrow(Td)][durArrow(Tn)][railRangeBar] cluster every other
       // rail-panel row uses (railAreaRow's .msr-data-cluster) -- was two
@@ -725,7 +740,8 @@
           var glyph = dir === 'up' ? '&#8599;' : dir === 'down' ? '&#8600;' : '&ndash;';
           return '<span class="' + cls + '">' + esc(label) + glyph + '</span>';
         };
-        rows.push([esc(etf.symbol),
+        // Quad carets next to the ETF symbol, same strip as the macro rail rows.
+        rows.push([_macro6CaretsHtml(etf.macro6, etf.symbol, etf.drivers) + esc(etf.symbol),
           '<span class="msr-data-cluster" style="margin-left:0;">'
           + arrowHtml(etf.td, 'Td') + '&nbsp;'
           + arrowHtml(etf.tn, 'Tn') + '&nbsp;'
@@ -762,26 +778,35 @@
       for (var i = 0; i < all.length; i++) { if (all[i].sector === name) return all[i]; }
       return null;
     }
+    var cautionSet = {};
+    (sectors.rotate_caution || []).forEach(function (n) { cautionSet[n] = true; });
     function chip(name) {
       var exp = exposureMap && exposureMap[name];
       var expTxt = (exp && exp.market_value)
         ? ' (' + (typeof fmtUsd === 'function' ? fmtUsd(exp.market_value, { compact: true }) : '$' + Math.round(exp.market_value)) + ')'
         : '';
-      return esc(name) + expTxt;
+      return esc(name) + expTxt + (cautionSet[name] && this_rotate ? ' <span style="color:#d97706;font-weight:700;" title="ETF outlook is Bearish">&#9888;&#xFE0E;</span>' : '');
     }
+    var this_rotate = false;
     function chipList(names) { return (names || []).map(chip).join(' &middot; '); }
 
     var leaders  = chipList(sectors.leaders);
     var laggards = chipList(sectors.laggards);
+    this_rotate = true;
     var rotateIn = chipList(sectors.rotate_in);
+    this_rotate = false;
     var subrows = '';
-    if (leaders)  subrows += '<div class="msr-sec-subrow"><span class="msr-sec-up">&#9650;</span> <span class="msr-sec-lbl">Leaders:</span> ' + leaders + '</div>';
-    if (laggards) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-down">&#9660;</span> <span class="msr-sec-lbl">Laggards:</span> ' + laggards + '</div>';
+    if (leaders)  subrows += '<div class="msr-sec-subrow"><span class="msr-sec-up">&#9650;</span> <span class="msr-sec-lbl" title="Current snapshot: Trade AND Trend breadth both 50%+. Not a forecast.">Leaders:</span> ' + leaders + '</div>';
+    if (laggards) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-down">&#9660;</span> <span class="msr-sec-lbl" title="Current snapshot: Trade breadth under 30%. Not a forecast.">Laggards:</span> ' + laggards + '</div>';
     if (rotateIn) {
-      subrows += '<div class="msr-sec-subrow"><span class="msr-sec-rotate">&#8635;</span> <span class="msr-sec-lbl">Rotate in:</span> ' + rotateIn + '</div>';
+      subrows += '<div class="msr-sec-subrow"><span class="msr-sec-rotate">&#8635;</span> <span class="msr-sec-lbl" title="Trade breadth under 60% but up 10+ points over ~5 market days (early turn)">Rotate in:</span> ' + rotateIn + '</div>';
       var rotateNames = sectors.rotate_in || [];
       var showRotateNames = rotateNames.length > 1;
-      subrows += rotateNames.map(function (name) { return rotateDetailHtml(findSector(name), showRotateNames); }).join('');
+      subrows += rotateNames.map(function (name) {
+        var so = findSector(name);
+        if (so) so.caution = !!cautionSet[name];
+        return rotateDetailHtml(so, showRotateNames);
+      }).join('');
     }
 
     if (!subrows) subrows = '<span class="mra-muted">—</span>';
@@ -849,13 +874,40 @@
   var _lastAreasData = null;
   var _SORT_GLYPH = ['⇅', '↓', '↑'];   // ⇅ ↓ ↑
   var _SORT_TITLE = [
-    'Sort: default order (click to sort % change high to low)',
+    'Sort: most bullish first (click to sort % change high to low)',
     'Sort: % change high to low (click for low to high)',
-    'Sort: % change low to high (click to reset)',
+    'Sort: % change low to high (click to return to most bullish first)',
   ];
 
+  // 2026-09-30, user-directed default order for every rail panel, the Accounts
+  // groups and the Signal Strength rows: most bullish on top (outlook Bullish,
+  // quad glyphs green) down to most bearish (outlook Bearish, glyphs red).
+  // Key = outlook (Bullish > none/neutral > Bearish), then net quad-glyph
+  // score (each of the 6 carets +1 green / -1 red, the two big ones -- 60D
+  // window and Qtr -- count double), then the API's own order. Gauge rows
+  // (Volatility) have no carets/outlook logic and keep their API order.
+  function _bullScore(m) {
+    if (!m || m.role === 'gauge') return [0, 0];
+    var o = String(m.outlook || '').trim().toLowerCase();
+    var oRank = o === 'bullish' ? 1 : o === 'bearish' ? -1 : 0;
+    var net = 0;
+    if (m.macro6) {
+      _MACRO6_ORDER.forEach(function (pair) {
+        var leg = m.macro6[pair[0]];
+        var n = leg && leg.stance != null ? Number(leg.stance) : 0;
+        net += (n > 0 ? 1 : n < 0 ? -1 : 0) * (pair[2] ? 2 : 1);
+      });
+    }
+    return [oRank, net];
+  }
+  function _bullishFirst(list) {
+    return list.map(function (m, i) { return { m: m, i: i, k: _bullScore(m) }; })
+      .sort(function (a, b) { return (b.k[0] - a.k[0]) || (b.k[1] - a.k[1]) || (a.i - b.i); })
+      .map(function (x) { return x.m; });
+  }
+
   function _sortByMode(list, mode) {
-    if (!mode) return list;
+    if (!mode) return _bullishFirst(list);
     return list.slice().sort(function (a, b) {
       var av = (a && a.pct_change != null) ? a.pct_change : null;
       var bv = (b && b.pct_change != null) ? b.pct_change : null;

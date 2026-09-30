@@ -20,7 +20,8 @@
 // tradingview.com/symbols/... and confirmed working in the tape.
 //
 // 2026-08-10 follow-up -- RSP (S&P 500 Equal Weight ETF) added per user
-// request, next to SPY, in both session variants.
+// request, next to SPY, in both session variants. 2026-09-30: removed again
+// per user request ("remove RSP from it").
 //
 // 2026-08-10 follow-up -- CBOE:VXN/CBOE:VXD/CBOEFTSE:RVX/CBOE:GVZ/CBOE:OVX/
 // TVC:MOVE (the 6 missing vol gauges beyond VIX) were ALSO added in the
@@ -41,7 +42,6 @@ const _DTV_SYMS_REGULAR = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P 500' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
-  { symbol: 'AMEX:RSP',             title: 'RSP' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq 100' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Jones' },
@@ -60,7 +60,6 @@ const _DTV_SYMS_FUTURES = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P Fut' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
-  { symbol: 'AMEX:RSP',             title: 'RSP' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq Fut' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Fut' },
@@ -114,14 +113,15 @@ function _dtvBuildTickerTape(syms) {
 
 function _dtvEnsureMount() {
   if (window.location.pathname.replace(/\/+$/, '') !== '' && window.location.pathname !== '/') return null;
-  const topbar = document.querySelector('header.topbar');
-  if (!topbar) return null;
   let tape = document.getElementById('dtvChartTape');
   if (tape) return tape;
   tape = document.createElement('div');
   tape.id = 'dtvChartTape';
   tape.className = 'tv-chart-tape';
-  topbar.insertAdjacentElement('afterend', tape);
+  // 2026-09-30, user-directed: "display TV bar at the bottom" -- last child of
+  // <body> (a full-height flex column, <main> scrolls), so it sits at the
+  // bottom of the screen, below the scrolling content.
+  document.body.appendChild(tape);
   return tape;
 }
 

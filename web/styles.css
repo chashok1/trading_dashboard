@@ -1093,8 +1093,10 @@ a.dash-news-list-row:hover { text-decoration: underline; }
    the static Single Ticker card row per user request (the scrolling was
    wanted after all). */
 .tv-chart-tape {
+  /* 2026-09-30: now at the BOTTOM of the page (last flex child of body). */
   padding: 0; background: #f0eefb; margin-top: 2px;
-  position: sticky; top: 0; z-index: 90; flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  position: relative; z-index: 90; flex-shrink: 0;
   overflow: hidden;
 }
 .tv-chart-tape .tradingview-widget-container,
@@ -3580,7 +3582,11 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    on the right (web/market_read.js::_themeGridColHtml/_MR_LEFT_COL_GROUPS).
    Stacks to 1 column under 900px so it doesn't get crushed on a narrow
    viewport. */
-.mr-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+/* 2026-09-30, user-directed: the two theme columns should read as two separate
+   panels -- grey (the border colour) shows through the gap between them, each
+   column keeps the white card background. */
+.mr-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; background: var(--border); }
+.mr-grid-2col > .mr-scroll { background: var(--card-bg); }
 @media (max-width: 900px) {
   .mr-grid-2col { grid-template-columns: 1fr; }
 }
