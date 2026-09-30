@@ -451,6 +451,9 @@
     // distinct from the top (hot, near TRR, still red). See styles.css's
     // own comment on .msr-rb-tick.cold.
     var tickCls = isHot ? ' hot' : isCold ? ' cold' : '';
+    // 2026-09-30, user-directed: the tick's travel range is inset 3px at each
+    // end so it never sits on top of the end dots (0% -> 3px, 100% -> width-3px).
+    var tickPos = 'calc(3px + (100% - 6px) * ' + pct.toFixed(4) + ')';
     // 2026-09-30, user-directed: tiny solid dot at each end of the bar -- green
     // if today's edge >= the previous reading, red if lower (left = LRR, right
     // = TRR). No dot when there is no previous reading to compare.
@@ -473,9 +476,9 @@
       '<div class="msr-rb-wrap">' +
         '<div class="msr-rb" title="' + esc(title) + '">' +
           dotL + dotR +
-          '<div class="msr-rb-fill" style="width:' + tickPx + '%"></div>' +
+          '<div class="msr-rb-fill" style="width:' + tickPos + '"></div>' +
           '<div class="msr-rb-tick' + tickCls +
-               '" style="left:' + tickPx + '%"></div>' +
+               '" style="left:' + tickPos + '"></div>' +
         '</div>' +
         (showPct ? '<span class="msr-pct">' + actualPct + '%</span>' : '') +
       '</div>'
