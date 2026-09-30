@@ -51,6 +51,16 @@ def _yf_symbols(session) -> list[dict]:
     return result
 
 
+def _et_now():
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        return datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        from datetime import datetime
+        return datetime.now()
+
+
 def _fetch_yfinance(yf_sym: str, full: bool) -> list[dict]:
     """Download yfinance daily adjusted closes for yf_sym.
     Returns list of {symbol, obs_date, close}.
@@ -58,7 +68,8 @@ def _fetch_yfinance(yf_sym: str, full: bool) -> list[dict]:
     import yfinance as yf
     import pandas as pd
 
-    period = "max" if full else "10d"
+    # 2026-09-30: 45d (was 10d) so a few days of missed runs self-heal.
+    period = "max" if full else "45d"
     ticker = yf.Ticker(yf_sym)
     hist = ticker.history(period=period, auto_adjust=True)
     if hist is None or hist.empty:
@@ -71,6 +82,10 @@ def _fetch_yfinance(yf_sym: str, full: bool) -> list[dict]:
             continue
         try:
             obs_date = dt.date() if hasattr(dt, "date") else date.fromisoformat(str(dt)[:10])
+            # Closing prices only: skip today's bar until the session is over
+            # (an intraday bar would be frozen in by ON CONFLICT DO NOTHING).
+            if obs_date >= _et_now().date() and _et_now().hour * 60 + _et_now().minute < 16 * 60 + 15:
+                continue
             rows.append({
                 "symbol": yf_sym,
                 "obs_date": obs_date,

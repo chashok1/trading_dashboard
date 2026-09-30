@@ -914,6 +914,33 @@ _MARKET_CLOSE_ET = (16, 0)
 _hourly_quote_done_today: set = set()  # {(date, (hour, minute)), ...}
 
 
+_quote_hist_done_date = None
+
+
+def maybe_run_quote_history_fetch() -> None:
+    """2026-09-30: nightly Yahoo daily-CLOSE pull (etl/fetch_quotes.py) for the
+    USD-correlation panel, then re-derive the correlation for the anchor date.
+    Mon-Fri at/after 16:30 ET, once per day. Independent of whether any TOS
+    export was loaded that day, and the 45d pull window heals missed days."""
+    global _quote_hist_done_date
+    now_et = _yahoo_fetch_et_now()
+    if now_et.weekday() >= 5 or (now_et.hour, now_et.minute) < (16, 30):
+        return
+    if _quote_hist_done_date == now_et.date():
+        return
+    _quote_hist_done_date = now_et.date()   # set first: no retry storm on failure
+    from etl.fetch_quotes import fetch_quotes
+    result = fetch_quotes()
+    log.info("scheduler: Yahoo close history pull: %s", result)
+    from etl.db import session_scope
+    from etl.derive import get_anchor_date
+    from etl.derive_usd_correlation import derive_usd_correlation
+    with session_scope() as s:
+        anchor = get_anchor_date(s)
+        if anchor:
+            derive_usd_correlation(s, anchor)
+
+
 def maybe_run_hourly_quote_refresh() -> None:
     """Fire the lightweight intraday quote refresh at each fixed ET time in
     _INTRADAY_QUOTE_TIMES. Delegates entirely to fetch_hourly_quotes().
@@ -1244,6 +1271,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_yahoo_fetch failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_quote_history_fetch()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_quote_history_fetch failed (continuing)")
                     except Exception:
                         pass
             if tick % 60 == 0:

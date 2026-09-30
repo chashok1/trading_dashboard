@@ -36,6 +36,7 @@ log = logging.getLogger("derive_usd_correlation")
 WINDOWS = [15, 30, 90, 120, 180]
 STATS_WINDOW_30 = 30    # rolling 30D corr
 STATS_LOOKBACK  = 252   # 252 rolling-30D points for the 52-wk stats block
+MAX_STALE_DAYS  = 5     # latest aligned price older than this -> NULL (shown as "—")
 
 # FX sign convention (TASK_82 Part 3 — enforced here for any future FX asset):
 #   /6E  EUR/USD  (~1.14) — INVERSE  to USD (up-dollar → down /6E)
@@ -188,6 +189,13 @@ def _derive_usd_correlation_impl(
         )
         if len(common) < 2:
             continue
+
+        # 2026-09-30: if the latest aligned price is stale (feed stopped, e.g.
+        # a missed pull), show "—" instead of a correlation on old dates.
+        if (as_of_date - common[-1]).days > MAX_STALE_DAYS:
+            log.warning("derive_usd_correlation: %s stale (last %s) -- NULL row",
+                        asset["asset_key"], common[-1])
+            common = []
 
         usd_seq   = [usd_prices[d]   for d in common]
         asset_seq = [asset_prices[d] for d in common]
