@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260930d">
+  <link rel="stylesheet" href="/static/styles.css?v=20260930h">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -433,7 +433,7 @@
                change. -->
           <div class="macro-rail-row">
           <div class="macro-rail-col" style="flex: 1 1 100%; max-width: none;">
-          <section class="cockpit-band rail-band" id="macroAccountsBand">
+          <section class="cockpit-band rail-band msr-band-views" id="macroAccountsBand" data-view="rows">
             <!-- 2026-09-24, user-directed: "Accounts bar should have
                  collapsable arrow at the end and each account should have
                  sort arrows" -- sorting moved down to each account's own
@@ -441,10 +441,10 @@
                  this top-level button is now a collapse toggle instead of a
                  sort toggle, same self-contained pattern as Macro Rail's
                  (see web/macro_areas.js::init(), own localStorage key). -->
-            <div class="msr-section-hdr">Accounts<span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeAcct" value="pct" checked> %</label><label><input type="radio" name="msrValueModeAcct" value="dollar"> $</label><label><input type="radio" name="msrValueModeAcct" value="price"> Price</label><label><input type="radio" name="msrValueModeAcct" value="cards"> Cards</label></span><button class="msr-sort-btn" id="accountsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Accounts panel">&#9662;</button></div>
-            <div id="macroRailAccounts" class="dash-macro-rail dash-macro-rail-5col"><div class="msr-loading">Loading…</div></div>
+            <div class="msr-section-hdr">Accounts<span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeAcct" value="pct" checked> %</label><label><input type="radio" name="msrValueModeAcct" value="dollar"> $</label><label><input type="radio" name="msrValueModeAcct" value="price"> Price</label><label><input type="radio" name="msrValueModeAcct" value="cards"> Sectors</label><label><input type="radio" name="msrValueModeAcct" value="style"> Style</label></span><button class="msr-sort-btn" id="accountsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Accounts panel">&#9662;</button></div>
+            <div id="macroRailAccounts" data-vb="rows" class="dash-macro-rail dash-macro-rail-5col"><div class="msr-loading">Loading…</div></div>
             <!-- 2026-09-30 -- alt view: holdings grouped into sector cards (same look as Signal Strength); see web/macro_areas.js view toggle -->
-            <div id="macroRailAccountsCards" class="dash-macro-rail msr-alt-body"></div>
+            <div id="macroRailAccountsCards" data-vb="cards style" class="dash-macro-rail"></div>
           </section>
           </div>
           </div>
@@ -460,11 +460,12 @@
                bar) per user request: "These panels should be in their own
                section in the middle column above the filter bar and below
                the panels (volatility/major markets/etc)." -->
-          <section class="cockpit-band" id="marketReadSectorsBand">
-            <div class="msr-section-hdr">Sectors (Signal Strength)<span class="mr-sect-legend"><span class="mr-mem-dot mr-mem-dot-ranked"></span>Ranked <span class="mr-mem-dot mr-mem-dot-bench"></span>Bench <span class="mr-mem-dot mr-mem-dot-km"></span>KM · $ held (green/red = gain/loss) · green outline = actionable</span><span class="mr-sect-total" id="marketReadSectorsTotal" title="Total rows across every sector"></span><span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeSss" value="pct"> %</label><label><input type="radio" name="msrValueModeSss" value="dollar"> $</label><label><input type="radio" name="msrValueModeSss" value="price"> Price</label><label><input type="radio" name="msrValueModeSss" value="cards" checked> Cards</label></span><button class="msr-sort-btn" id="marketReadSectorsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Sectors panel">&#9662;</button></div>
-            <div id="marketReadSectorCards" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          <section class="cockpit-band msr-band-views" id="marketReadSectorsBand" data-view="cards">
+            <div class="msr-section-hdr">Sectors (Signal Strength)<span class="mr-sect-legend"><span class="mr-mem-dot mr-mem-dot-ranked"></span>Ranked <span class="mr-mem-dot mr-mem-dot-bench"></span>Bench <span class="mr-mem-dot mr-mem-dot-km"></span>KM · $ held (green/red = gain/loss) · green outline = actionable</span><span class="mr-sect-total" id="marketReadSectorsTotal" title="Total rows across every sector"></span><span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeSss" value="pct"> %</label><label><input type="radio" name="msrValueModeSss" value="dollar"> $</label><label><input type="radio" name="msrValueModeSss" value="price"> Price</label><label><input type="radio" name="msrValueModeSss" value="cards" checked> Sectors</label><label><input type="radio" name="msrValueModeSss" value="style"> Style</label></span><button class="msr-sort-btn" id="marketReadSectorsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Sectors panel">&#9662;</button></div>
+            <div id="marketReadSectorCards" data-vb="cards" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
             <!-- 2026-09-30 -- alt view: Hedgeye list stocks as rows (same look as Accounts); see web/macro_areas.js view toggle -->
-            <div id="marketReadSectorRows" class="dash-macro-rail dash-macro-rail-5col msr-alt-body"></div>
+            <div id="marketReadSectorRows" data-vb="rows" class="dash-macro-rail dash-macro-rail-5col"></div>
+            <div id="marketReadSectorStyle" data-vb="style" class="dash-macro-rail"></div>
           </section>
 
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
@@ -1028,7 +1029,7 @@
        already does (web/actionable.html loads this same script for that).
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/market_read.js?v=20260930b" defer></script>
+  <script src="/static/market_read.js?v=20260930g" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260924c" defer></script>
@@ -1054,7 +1055,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20260930d" defer></script>
+  <script src="/static/macro_areas.js?v=20260930h" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

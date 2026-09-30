@@ -399,6 +399,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         # separator before each account's block -- user: "display a
         # separator row as a header for account symbols start".
         holdings_by_group: dict[str, list[str]] = {}
+        holdings_mv: dict[tuple, float] = {}   # (short_name, sym) -> market value, for the Accounts cards
         try:
             acct_rows = s.execute(text("""
                 SELECT short_name, source, account_number FROM ref_accounts
@@ -411,6 +412,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
 
             for short_name, by_source in groups.items():
                 syms: set[str] = set()
+                mv_sum: dict[str, float] = {}
                 f_accts = by_source.get("F")
                 if f_accts:
                     latest_f = s.execute(text(
@@ -419,12 +421,16 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     ), {"a": f_accts, "d": anchor}).scalar()
                     if latest_f:
                         rows = s.execute(text("""
-                            SELECT DISTINCT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym
+                            SELECT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym, SUM(current_value) AS mv
                             FROM hist_f
                             WHERE account_number = ANY(:a) AND snapshot_date = :d
                               AND NOT is_cash(COALESCE(NULLIF(tos_symbol, ''), symbol), type, description)
+                            GROUP BY 1
                         """), {"a": f_accts, "d": latest_f}).fetchall()
                         syms |= {r[0] for r in rows if r[0]}
+                        for r in rows:
+                            if r[0] and r[1] is not None:
+                                mv_sum[r[0]] = mv_sum.get(r[0], 0.0) + float(r[1])
 
                 cs_accts = by_source.get("CS")
                 if cs_accts:
@@ -434,18 +440,26 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     ), {"a": cs_accts, "d": anchor}).scalar()
                     if latest_cs:
                         rows = s.execute(text("""
-                            SELECT DISTINCT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym
+                            SELECT COALESCE(NULLIF(tos_symbol, ''), symbol) AS sym, SUM(market_value) AS mv
                             FROM hist_cs
                             WHERE account = ANY(:a) AND snapshot_date = :d
                               AND NOT is_cash(COALESCE(NULLIF(tos_symbol, ''), symbol), security_type, description)
+                            GROUP BY 1
                         """), {"a": cs_accts, "d": latest_cs}).fetchall()
                         syms |= {r[0] for r in rows if r[0]}
+                        for r in rows:
+                            if r[0] and r[1] is not None:
+                                mv_sum[r[0]] = mv_sum.get(r[0], 0.0) + float(r[1])
 
                 clean = sorted(sym for sym in syms if sym and not any(c.isdigit() for c in sym))
                 if clean:
                     holdings_by_group[short_name] = clean
+                    for sym in clean:
+                        if sym in mv_sum:
+                            holdings_mv[(short_name, sym)] = mv_sum[sym]
         except Exception:
             holdings_by_group = {}
+            holdings_mv = {}
 
         # 2026-09-30, user-directed: Accounts/Signal Strength panels each get
         # a toggle to show the OTHER panel's presentation. The Signal Strength
@@ -643,6 +657,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 # before each account's block of symbols -- user: "display a
                 # separator row as a header for account symbols start".
                 "account_group": mc.get("account_group"),
+                "market_value": mc.get("market_value"),
                 # 2026-09-30 -- lets the Accounts panel's card view group
                 # holdings by sector.
                 "sector": tech.get("sector"),
@@ -710,7 +725,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
     # changes.
     if holdings_by_group:
         members_cfg = [
-            {"member_symbol": sym, "role": "dual", "label": "Accounts", "account_group": short_name}
+            {"member_symbol": sym, "role": "dual", "label": "Accounts", "account_group": short_name,
+             "market_value": holdings_mv.get((short_name, sym))}
             for short_name in sorted(holdings_by_group)
             for sym in holdings_by_group[short_name]
         ]

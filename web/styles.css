@@ -1838,10 +1838,11 @@ svg.rr-candle {
 .mr-sect-total + .msr-mode-toggle { margin-left: 8px; }
 .msr-mode-toggle { margin-right: 6px; }
 .msr-mode-toggle + .msr-sort-btn { margin-left: 0; }
-.msr-alt-body { display: none; }
-.msr-view-alt > .msr-alt-body { display: block; }
-.msr-view-alt > .dash-macro-rail:not(.msr-alt-body) { display: none !important; }
-.panel-collapsed > .msr-alt-body { display: none !important; }
+.msr-band-views > [data-vb] { display: none; }
+.msr-band-views[data-view="rows"] > [data-vb~="rows"],
+.msr-band-views[data-view="cards"] > [data-vb~="cards"],
+.msr-band-views[data-view="style"] > [data-vb~="style"] { display: block; }
+.msr-band-views.panel-collapsed > [data-vb] { display: none !important; }
 .msr-legend-up  { color: #166534; }
 .msr-legend-down { color: #991b1b; }
 /* Per-area row — ~18px target height (TASK_116: candle + Td/Tn + range bar
@@ -3689,3 +3690,11 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    api/routers/cockpit.py::get_risk_dial / etl/derive_risk_dial.py). */
 .rd-stale-suffix { color: var(--mr-warn); font-weight: 500; font-size: 11px; }
 
+
+/* 2026-09-30 -- Accounts Sectors/Style cards and Signal Strength Style cards:
+   grow to fit, no scrollbar (they're .dash-macro-rail, whose default caps
+   height at 150px and scrolls). */
+#macroRailAccountsCards.dash-macro-rail,
+#marketReadSectorStyle.dash-macro-rail { max-height: none; overflow-y: visible; }
+/* Accounts cards: account + held amount beside the symbol. */
+.mr-mem-hold { font-size: 8px; color: #888; }

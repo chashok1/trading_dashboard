@@ -150,20 +150,23 @@
   Object.keys(_MODE_KEYS).forEach(function (g) {
     try {
       var v = localStorage.getItem(_MODE_KEYS[g]);
-      _modes[g] = (_CHG_MODES[v] || (g !== 'rail' && v === 'cards')) ? v : (g === 'sss' ? 'cards' : 'pct');
+      _modes[g] = (_CHG_MODES[v] || (g !== 'rail' && (v === 'cards' || v === 'style'))) ? v : (g === 'sss' ? 'cards' : 'pct');
     } catch (e) { _modes[g] = (g === 'sss' ? 'cards' : 'pct'); }
   });
   var _chgMode = _modes.rail;
   // 'cards' (Accounts/Signal Strength radio option) isn't a chip mode -- rows
   // rendered while it's selected are hidden anyway, so they just use %.
-  function _useMode(group) { _chgMode = (_modes[group] === 'cards' ? 'pct' : _modes[group]) || 'pct'; }
+  function _useMode(group) { var m = _modes[group]; _chgMode = (m === 'cards' || m === 'style') ? 'pct' : (m || 'pct'); }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
+  // 2026-09-30 -- 'style' option: same cards, grouped by equity style tag.
+  // Bands carry data-view (rows|cards|style); bodies declare which views they
+  // serve via data-vb (styles.css .msr-band-views).
   function _applyViews() {
     var a = document.getElementById('macroAccountsBand');
-    if (a) a.classList.toggle('msr-view-alt', _modes.accounts === 'cards');
+    if (a) a.setAttribute('data-view', _modes.accounts === 'style' ? 'style' : _modes.accounts === 'cards' ? 'cards' : 'rows');
     var b = document.getElementById('marketReadSectorsBand');
-    if (b) b.classList.toggle('msr-view-alt', _modes.sss !== 'cards');
+    if (b) b.setAttribute('data-view', _modes.sss === 'style' ? 'style' : _modes.sss === 'cards' ? 'cards' : 'rows');
   }
 
   // Solid %chg chip (tape convention, TASK_116) — replaces the plain colored
@@ -927,40 +930,70 @@
   // pill per distinct symbol (a stock held in 2 accounts shows once), outline
   // green/red = actionable buy/sell, else gray; same classes as
   // market_read.js's member pills.
-  function renderAccountsCards(areas) {
-    var el = document.getElementById('macroRailAccountsCards');
-    if (!el) return;
-    _chgMode = 'pct';
-    var acct = null;
-    areas.forEach(function (a) { if (a.area_key === 'accounts') acct = a; });
-    if (!acct || !(acct.members || []).length) {
-      el.innerHTML = '<div class="msr-loading">No holdings.</div>';
-      return;
-    }
-    var bySector = {}, seen = {};
-    acct.members.forEach(function (m) {
-      if (seen[m.symbol]) return;
-      seen[m.symbol] = true;
-      var sec = m.sector || 'Unclassified';
-      (bySector[sec] = bySector[sec] || []).push(m);
+  function _styleTags(m) {
+    var t = (m.drivers || []).filter(function (d) { return d.category === 'Equity Style'; })
+                             .map(function (d) { return d.sub_cat; });
+    return t.length ? t : ['No style'];
+  }
+
+  // Cards for one area's members, grouped by sector or (style) by each
+  // style tag -- a stock can sit in several style cards.
+  function _groupedCardsHtml(members, byStyle, showHolding) {
+    var groups = {}, seen = {};
+    members.forEach(function (m) {
+      (byStyle ? _styleTags(m) : [m.sector || 'Unclassified']).forEach(function (g) {
+        // Accounts cards: one pill per (stock, account) holding.
+        var k = g + '|' + m.symbol + (showHolding ? '|' + m.account_group : '');
+        if (seen[k]) return;
+        seen[k] = true;
+        (groups[g] = groups[g] || []).push(m);
+      });
     });
     var buy = { ADD: 1, INCREASE: 1 }, sell = { REMOVE: 1, REDUCE: 1 };
-    var cards = Object.keys(bySector).sort().map(function (sec) {
-      var pills = bySector[sec].map(function (m) {
+    var cards = Object.keys(groups).sort().map(function (g) {
+      var pills = groups[g].map(function (m) {
         var cls = buy[m.action] ? 'mr-mem-buy' : sell[m.action] ? 'mr-mem-sell' : 'mr-mem-noact';
         var pct = '';
         if (m.pct_change != null) {
           var txt = (m.pct_change >= 0 ? '+' : '') + Number(m.pct_change).toFixed(1) + '%';
           pct = ' <span class="mr-mem-pct ' + (m.pct_change < 0 ? 'dn' : 'up') + '">' + esc(txt) + '</span>';
         }
+        // Accounts cards only: account + held amount in $K, e.g. "F-A $5.3K".
+        var hold = '';
+        if (showHolding && m.account_group) {
+          var mv = m.market_value;
+          var k$ = mv == null ? '' : ' $' + (Math.abs(mv) < 10000 ? (mv / 1000).toFixed(1) : Math.round(mv / 1000)) + 'K';
+          hold = ' <span class="mr-mem-hold">' + esc(m.account_group) + k$ + '</span>';
+        }
         return '<span class="mr-mem ' + cls + '" title="' + esc(m.symbol + (m.action ? ' - ' + m.action : '')) + '">' +
-               symLink(esc(m.symbol), m.symbol, m.desc) + pct + '</span>';
+               symLink(esc(m.symbol), m.symbol, m.desc) + hold + pct + '</span>';
       }).join(' ');
-      return '<div class="mr-sm"><div class="mr-sm-name"><span class="mr-sm-name-left"><b>' + esc(sec) +
-             '</b></span><span class="mr-tile-curmax">' + bySector[sec].length + '</span></div>' +
+      return '<div class="mr-sm"><div class="mr-sm-name"><span class="mr-sm-name-left"><b>' + esc(g) +
+             '</b></span><span class="mr-tile-curmax">' + groups[g].length + '</span></div>' +
              '<div class="mr-sm-members">' + pills + '</div></div>';
     }).join('');
-    el.innerHTML = '<div class="mr-sect">' + cards + '</div>';
+    return '<div class="mr-sect">' + cards + '</div>';
+  }
+
+  // Accounts: Sectors or Style cards (one container, per the radio).
+  // Signal Strength: Style cards only (its Sectors cards are market_read.js's).
+  function renderAccountsCards(areas) {
+    var byKey = {};
+    areas.forEach(function (a) { byKey[a.area_key] = a; });
+    var el = document.getElementById('macroRailAccountsCards');
+    if (el) {
+      var acct = byKey.accounts;
+      el.innerHTML = (acct && (acct.members || []).length)
+        ? _groupedCardsHtml(acct.members, _modes.accounts === 'style', true)
+        : '<div class="msr-loading">No holdings.</div>';
+    }
+    var sl = document.getElementById('marketReadSectorStyle');
+    if (sl) {
+      var sss = byKey.sss_signal;
+      sl.innerHTML = (sss && (sss.members || []).length)
+        ? _groupedCardsHtml(sss.members, true)
+        : '<div class="msr-loading">No data.</div>';
+    }
   }
 
   /* ── legacy full-width card (kept for backward-compat) ─────────────── */
@@ -1110,7 +1143,7 @@
       r.checked = (r.value === _modes[g]);
       r.addEventListener('change', function () {
         if (!r.checked) return;
-        _modes[g] = (_CHG_MODES[r.value] || (g !== 'rail' && r.value === 'cards')) ? r.value : 'pct';
+        _modes[g] = (_CHG_MODES[r.value] || (g !== 'rail' && (r.value === 'cards' || r.value === 'style'))) ? r.value : 'pct';
         try { localStorage.setItem(_MODE_KEYS[g], _modes[g]); } catch (e) {}
         _applyViews();
         if (_lastAreasData) renderRail(_lastAreasData);
