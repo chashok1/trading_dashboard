@@ -257,6 +257,17 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         """), {"d": anchor}).mappings().all()
         rr_map = {r["tos_symbol"]: dict(r) for r in rr_rows}
 
+        # 2026-09-30, user-directed: risk-range bar end dots (green = today's
+        # LRR/TRR >= the previous reading, red = lower). Previous reading = the
+        # most recent EARLIER drv_rr row per symbol (your loads can skip days).
+        prev_rr_rows = s.execute(text("""
+            SELECT DISTINCT ON (tos_symbol) tos_symbol, lrr, trr
+            FROM drv_rr
+            WHERE as_of_date < :d
+            ORDER BY tos_symbol, as_of_date DESC
+        """), {"d": anchor}).mappings().all()
+        prev_rr_map = {r["tos_symbol"]: dict(r) for r in prev_rr_rows}
+
         # Load drv_technicals for anchor date
         tech_rows = s.execute(text("""
             SELECT tos_symbol, a_trade_value, a_trend_value,
@@ -657,6 +668,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "rr_pos": _pct(rr_pos_val),
                 "lrr": lrr,
                 "trr": trr,
+                "prev_lrr": _prev_range_val(lrr, prev_rr_map.get(sym, {}).get("lrr")),
+                "prev_trr": _prev_range_val(trr, prev_rr_map.get(sym, {}).get("trr")),
                 "trade": trade_sig,
                 "trend": trend_sig,
                 "trade_val": trade_val,
@@ -807,7 +820,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         pct_trend = sum(1 for x in syms if x["above_trend"]) / n
         score = (pct_trade + pct_trend) / 2
         etf_symbol = _SECTOR_ETF.get(sec)
-        etf = _sector_etf_proxy(etf_symbol, q_map, tech_map, rr_map, ms_map) if etf_symbol else None
+        etf = _sector_etf_proxy(etf_symbol, q_map, tech_map, rr_map, ms_map, prev_rr_map) if etf_symbol else None
         if etf:
             # 2026-09-30 -- 6-caret MacroNet strip (+ its hover drivers) for the
             # sector ETF, same data the rail rows carry (web/macro_areas.js
@@ -978,7 +991,19 @@ def _category_drivers_for(sym: str, fund_map: dict, bridge_map: dict,
     return drivers
 
 
-def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms_map: dict) -> Optional[dict]:
+def _prev_range_val(cur, prev) -> Optional[float]:
+    """Previous risk-range edge for the bar's end dot, or None when missing or
+    on a different scale than today's (e.g. TNX:CGI flips between a x10 index
+    convention and plain percent day to day -- see api/_helpers.py::rr_pos)."""
+    c, p = _maybe_float(cur), _maybe_float(prev)
+    if c is None or p is None or c <= 0 or p <= 0:
+        return None
+    ratio = c / p
+    return p if 0.2 < ratio < 5 else None
+
+
+def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms_map: dict,
+                      prev_rr_map: Optional[dict] = None) -> Optional[dict]:
     """Single-symbol ETF read for a sector row: price/%chg (drv_quote, so it
     reflects the latest intraday quote on the anchor date), Trade/Trend
     direction (drv_technicals), and Risk Range position (drv_rr) — same
@@ -1005,6 +1030,8 @@ def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms
         "rr_pos": _pct(rr_pos_val),
         "lrr": lrr,
         "trr": trr,
+        "prev_lrr": _prev_range_val(lrr, ((prev_rr_map or {}).get(symbol) or {}).get("lrr")),
+        "prev_trr": _prev_range_val(trr, ((prev_rr_map or {}).get(symbol) or {}).get("trr")),
         "outlook": r.get("outlook"),
         "monthly_score": _maybe_float(ms_map.get(symbol)),
     }

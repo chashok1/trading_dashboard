@@ -3690,3 +3690,13 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    Actionable screen), so the whole panel body is scaled instead of editing every
    size. Adjust the factor to taste (1.0 = previous size). */
 #hedgeyeDashPanelBody { zoom: 1.25; }
+
+/* 2026-09-30, user-directed: very small solid dots at the two ends of the
+   risk-range bar -- green = today's edge >= previous reading, red = lower
+   (left = LRR, right = TRR). See web/macro_areas.js::railRangeBar. */
+.msr-rb-dot { position: absolute; top: 50%; width: 4px; height: 4px; border-radius: 50%;
+  transform: translate(-50%, -50%); z-index: 1; pointer-events: none; }
+.msr-rb-dot.l { left: 0; }
+.msr-rb-dot.r { left: 100%; }
+.msr-rb-dot.up { background: #16a34a; }
+.msr-rb-dot.dn { background: #dc2626; }

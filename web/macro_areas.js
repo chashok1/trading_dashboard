@@ -451,14 +451,28 @@
     // distinct from the top (hot, near TRR, still red). See styles.css's
     // own comment on .msr-rb-tick.cold.
     var tickCls = isHot ? ' hot' : isCold ? ' cold' : '';
+    // 2026-09-30, user-directed: tiny solid dot at each end of the bar -- green
+    // if today's edge >= the previous reading, red if lower (left = LRR, right
+    // = TRR). No dot when there is no previous reading to compare.
+    var dotL = '', dotR = '';
+    if (vals) {
+      var _dot = function (side, cur, prev) {
+        if (cur == null || prev == null) return '';
+        return '<span class="msr-rb-dot ' + side + (Number(cur) >= Number(prev) ? ' up' : ' dn') + '"></span>';
+      };
+      dotL = _dot('l', vals.lrr, vals.prev_lrr);
+      dotR = _dot('r', vals.trr, vals.prev_trr);
+    }
     var title = actualPct + '% of range';
     if (vals && vals.last != null && vals.lrr != null && vals.trr != null) {
       title = (vals.label ? vals.label + ' ' : '') + vals.last + ' — ' + actualPct +
-        '% of range (LRR ' + vals.lrr + ' / TRR ' + vals.trr + ')';
+        '% of range (LRR ' + vals.lrr + (vals.prev_lrr != null ? ' (was ' + vals.prev_lrr + ')' : '') +
+        ' / TRR ' + vals.trr + (vals.prev_trr != null ? ' (was ' + vals.prev_trr + ')' : '') + ')';
     }
     return (
       '<div class="msr-rb-wrap">' +
         '<div class="msr-rb" title="' + esc(title) + '">' +
+          dotL + dotR +
           '<div class="msr-rb-fill" style="width:' + tickPx + '%"></div>' +
           '<div class="msr-rb-tick' + tickCls +
                '" style="left:' + tickPx + '%"></div>' +
@@ -659,7 +673,7 @@
           '<div class="msr-data-cluster">' +
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
-                         { last: m.last, lrr: m.lrr, trr: m.trr, label: dispName }) +
+                         { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
             _candleHtml(m) +
             _chgChipHtml(m.pct_change, m.inverted,
                          { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m) }) +
@@ -746,7 +760,7 @@
           + arrowHtml(etf.td, 'Td') + '&nbsp;'
           + arrowHtml(etf.tn, 'Tn') + '&nbsp;'
           + railRangeBar(etf.rr_pos, 0.8, 0.2, true,
-                         { last: etf.last, lrr: etf.lrr, trr: etf.trr, label: etf.symbol })
+                         { last: etf.last, lrr: etf.lrr, trr: etf.trr, prev_lrr: etf.prev_lrr, prev_trr: etf.prev_trr, label: etf.symbol })
           + '</span>']);
       }
     }
