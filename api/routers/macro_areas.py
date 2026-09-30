@@ -447,6 +447,42 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         except Exception:
             holdings_by_group = {}
 
+        # 2026-09-30, user-directed: Accounts/Signal Strength panels each get
+        # a toggle to show the OTHER panel's presentation. The Signal Strength
+        # list needs rail-row data (candle/Td/Tn/range bar/%chg) per stock, so
+        # it is built here as one more area, one group per SSS sector (reuses
+        # the account_group separator mechanism). Ranked -> bench -> km order,
+        # same as /api/market-read/sectors.
+        sss_by_sector: dict[str, list[str]] = {}
+        try:
+            from etl.derive_sss_breadth import _normalize_sss_sector, _parse_rank
+            snap = s.execute(text(
+                "SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d"
+            ), {"d": anchor}).scalar()
+            if snap:
+                kind_order = {"ranked": 0, "bench": 1, "km": 2, None: 3}
+                raw = s.execute(text(
+                    "SELECT symbol, tos_symbol, sector, anlst_best_idea_rank "
+                    "FROM hist_sss WHERE snapshot_date = :snap"
+                ), {"snap": snap}).mappings().all()
+                tmp: dict[str, list] = {}
+                for r in raw:
+                    sym = r["tos_symbol"] or r["symbol"]
+                    if not sym:
+                        continue
+                    kind, rank, _b = _parse_rank(r["anlst_best_idea_rank"])
+                    sec = _normalize_sss_sector(r["sector"]) or "Unclassified"
+                    tmp.setdefault(sec, []).append(
+                        (kind_order.get(kind, 3), rank if rank is not None else 999, sym))
+                for sec in sorted(tmp):
+                    seen: set[str] = set()
+                    for _k, _r, sym in sorted(tmp[sec]):
+                        if sym not in seen:
+                            seen.add(sym)
+                            sss_by_sector.setdefault(sec, []).append(sym)
+        except Exception:
+            sss_by_sector = {}
+
     # --- Build per-area results ---
     # Group members by area
     from collections import defaultdict
@@ -607,6 +643,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 # before each account's block of symbols -- user: "display a
                 # separator row as a header for account symbols start".
                 "account_group": mc.get("account_group"),
+                # 2026-09-30 -- lets the Accounts panel's card view group
+                # holdings by sector.
+                "sector": tech.get("sector"),
             })
 
         # Area roll-up
@@ -676,6 +715,14 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             for sym in holdings_by_group[short_name]
         ]
         areas_out.append(_build_area_result("accounts", "Accounts", members_cfg))
+
+    if sss_by_sector:
+        sss_cfg = [
+            {"member_symbol": sym, "role": "dual", "label": "Signal Strength", "account_group": sec}
+            for sec in sss_by_sector
+            for sym in sss_by_sector[sec]
+        ]
+        areas_out.append(_build_area_result("sss_signal", "Signal Strength", sss_cfg))
 
     # --- Sectors roll-up ---
     from collections import defaultdict as _dd

@@ -1828,7 +1828,21 @@ svg.rr-candle {
   font-size: 10px; line-height: 1; color: var(--text-2, #666); padding: 1px 2px;
 }
 .msr-sort-btn:hover { color: var(--text-1, #222); }
-.msr-legend-up   { color: #166534; }
+/* 2026-09-30 -- rows/cards view toggle in the Accounts + Sectors (Signal
+   Strength) headers; sits just left of the collapse arrow. The alt-view body
+   is hidden by the JS via inline display; .panel-collapsed (set by each
+   panel's collapse handler) must win over it, hence !important. */
+.msr-view-btn { margin-left: auto; margin-right: 6px; font-size: 9px; text-decoration: underline; }
+.msr-view-btn + .msr-sort-btn { margin-left: 0; }
+/* 2026-09-30 -- radios always sit flush right, just before the collapse arrow, in every panel header; the Signal Strength row total (auto margin) now sits left of them. */
+.mr-sect-total + .msr-mode-toggle { margin-left: 8px; }
+.msr-mode-toggle { margin-right: 6px; }
+.msr-mode-toggle + .msr-sort-btn { margin-left: 0; }
+.msr-alt-body { display: none; }
+.msr-view-alt > .msr-alt-body { display: block; }
+.msr-view-alt > .dash-macro-rail:not(.msr-alt-body) { display: none !important; }
+.panel-collapsed > .msr-alt-body { display: none !important; }
+.msr-legend-up  { color: #166534; }
 .msr-legend-down { color: #991b1b; }
 /* Per-area row — ~18px target height (TASK_116: candle + Td/Tn + range bar
    + %chg chip anatomy) */

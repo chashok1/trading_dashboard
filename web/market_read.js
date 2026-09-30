@@ -734,6 +734,8 @@
     var body = document.getElementById('marketReadSectorCards');
     var btn = document.getElementById('marketReadSectorsToggle');
     if (body) body.style.display = collapsed ? 'none' : '';
+    var band = document.getElementById('marketReadSectorsBand');
+    if (band) band.classList.toggle('panel-collapsed', collapsed);
     if (btn) {
       btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
       btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Sectors panel');

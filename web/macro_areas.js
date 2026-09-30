@@ -139,12 +139,32 @@
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
   var _CHG_MODES = { pct: 1, price: 1, dollar: 1 };
-  var _chgMode = (function () {
+  // 2026-09-30, user-directed: "radio buttons should control its own
+  // panels" -- one independent mode per radio group: 'rail' (Macro Rail
+  // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
+  // _chgMode is the mode for the panel currently being rendered (set by
+  // _useMode before each render).
+  var _MODE_KEYS = { rail: _CHG_MODE_KEY, accounts: 'macroRailChgMode_accounts', sss: 'macroRailChgMode_sss' };
+  var _MODE_OF_AREA = { accounts: 'accounts', sss_signal: 'sss' };
+  var _modes = {};
+  Object.keys(_MODE_KEYS).forEach(function (g) {
     try {
-      var v = localStorage.getItem(_CHG_MODE_KEY);
-      return _CHG_MODES[v] ? v : 'pct';
-    } catch (e) { return 'pct'; }
-  })();
+      var v = localStorage.getItem(_MODE_KEYS[g]);
+      _modes[g] = (_CHG_MODES[v] || (g !== 'rail' && v === 'cards')) ? v : (g === 'sss' ? 'cards' : 'pct');
+    } catch (e) { _modes[g] = (g === 'sss' ? 'cards' : 'pct'); }
+  });
+  var _chgMode = _modes.rail;
+  // 'cards' (Accounts/Signal Strength radio option) isn't a chip mode -- rows
+  // rendered while it's selected are hidden anyway, so they just use %.
+  function _useMode(group) { _chgMode = (_modes[group] === 'cards' ? 'pct' : _modes[group]) || 'pct'; }
+  // Radio group picks the view too: Accounts shows rows unless 'cards';
+  // Signal Strength shows cards only when 'cards', rows otherwise.
+  function _applyViews() {
+    var a = document.getElementById('macroAccountsBand');
+    if (a) a.classList.toggle('msr-view-alt', _modes.accounts === 'cards');
+    var b = document.getElementById('marketReadSectorsBand');
+    if (b) b.classList.toggle('msr-view-alt', _modes.sss !== 'cards');
+  }
 
   // Solid %chg chip (tape convention, TASK_116) — replaces the plain colored
   // % text. Honors the member `inverted` flag (HY/HYSPRD: rising = risk-off
@@ -558,6 +578,7 @@
   }
 
   function railAreaRow(area) {
+    _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
     var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     var prevGroup;
@@ -801,7 +822,14 @@
     // in 5 columns via CSS (see styles.css's own comment). See
     // api/routers/macro_areas.py's own comment on holdings_by_source.
     accounts:            'macroRailAccounts',
+    // 2026-09-30 -- Hedgeye Signal Strength list as rows (alt view of the
+    // Sectors (Signal Strength) panel), one separator per SSS sector.
+    sss_signal:          'marketReadSectorRows',
   };
+
+  // Areas whose members carry an account_group tag (separator row + per-group
+  // sort) -- Accounts groups by account, Signal Strength rows by sector.
+  var _GROUPED_AREAS = { accounts: true, sss_signal: true };
 
   // Per-panel member sort, toggled by each panel's header .msr-sort-btn
   // (index.html) -- keyed by area_key, in-memory only (resets on reload).
@@ -844,7 +872,7 @@
   // one flat list, unchanged.
   function _sortedMembers(area) {
     var members = area.members || [];
-    if (area.area_key === 'accounts') {
+    if (_GROUPED_AREAS[area.area_key]) {
       var order = [], byGroup = {};
       members.forEach(function (m) {
         var g = m.account_group || '';
@@ -891,6 +919,48 @@
       if (!container) return;
       container.innerHTML = byContainer[containerId] || '<div class="msr-loading">No data.</div>';
     });
+    renderAccountsCards(areas);
+  }
+
+  // 2026-09-30, user-directed: Accounts panel "Cards" view -- the same
+  // holdings, grouped into sector cards like Sectors (Signal Strength). One
+  // pill per distinct symbol (a stock held in 2 accounts shows once), outline
+  // green/red = actionable buy/sell, else gray; same classes as
+  // market_read.js's member pills.
+  function renderAccountsCards(areas) {
+    var el = document.getElementById('macroRailAccountsCards');
+    if (!el) return;
+    _chgMode = 'pct';
+    var acct = null;
+    areas.forEach(function (a) { if (a.area_key === 'accounts') acct = a; });
+    if (!acct || !(acct.members || []).length) {
+      el.innerHTML = '<div class="msr-loading">No holdings.</div>';
+      return;
+    }
+    var bySector = {}, seen = {};
+    acct.members.forEach(function (m) {
+      if (seen[m.symbol]) return;
+      seen[m.symbol] = true;
+      var sec = m.sector || 'Unclassified';
+      (bySector[sec] = bySector[sec] || []).push(m);
+    });
+    var buy = { ADD: 1, INCREASE: 1 }, sell = { REMOVE: 1, REDUCE: 1 };
+    var cards = Object.keys(bySector).sort().map(function (sec) {
+      var pills = bySector[sec].map(function (m) {
+        var cls = buy[m.action] ? 'mr-mem-buy' : sell[m.action] ? 'mr-mem-sell' : 'mr-mem-noact';
+        var pct = '';
+        if (m.pct_change != null) {
+          var txt = (m.pct_change >= 0 ? '+' : '') + Number(m.pct_change).toFixed(1) + '%';
+          pct = ' <span class="mr-mem-pct ' + (m.pct_change < 0 ? 'dn' : 'up') + '">' + esc(txt) + '</span>';
+        }
+        return '<span class="mr-mem ' + cls + '" title="' + esc(m.symbol + (m.action ? ' - ' + m.action : '')) + '">' +
+               symLink(esc(m.symbol), m.symbol, m.desc) + pct + '</span>';
+      }).join(' ');
+      return '<div class="mr-sm"><div class="mr-sm-name"><span class="mr-sm-name-left"><b>' + esc(sec) +
+             '</b></span><span class="mr-tile-curmax">' + bySector[sec].length + '</span></div>' +
+             '<div class="mr-sm-members">' + pills + '</div></div>';
+    }).join('');
+    el.innerHTML = '<div class="mr-sect">' + cards + '</div>';
   }
 
   /* ── legacy full-width card (kept for backward-compat) ─────────────── */
@@ -1016,6 +1086,8 @@
     var body = document.getElementById('macroRailAccounts');
     var btn = document.getElementById('accountsToggle');
     if (body) body.style.display = collapsed ? 'none' : '';
+    var band = document.getElementById('macroAccountsBand');
+    if (band) band.classList.toggle('panel-collapsed', collapsed);
     if (btn) {
       btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
       btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Accounts panel');
@@ -1028,14 +1100,19 @@
   // per-panel sort arrows already use. Reflects the persisted _chgMode on
   // load so a refresh doesn't silently reset back to %.
   function _initChgModeToggle() {
-    var radios = document.querySelectorAll('input[name="msrValueMode"]');
+    // 2026-09-30 -- each radio group (name msrValueMode / ...Acct / ...Sss)
+    // controls only its own panel.
+    var GROUP_OF_NAME = { msrValueMode: 'rail', msrValueModeAcct: 'accounts', msrValueModeSss: 'sss' };
+    var radios = document.querySelectorAll('input[name^="msrValueMode"]');
     if (!radios.length) return;
     radios.forEach(function (r) {
-      r.checked = (r.value === _chgMode);
+      var g = GROUP_OF_NAME[r.name] || 'rail';
+      r.checked = (r.value === _modes[g]);
       r.addEventListener('change', function () {
         if (!r.checked) return;
-        _chgMode = _CHG_MODES[r.value] ? r.value : 'pct';
-        try { localStorage.setItem(_CHG_MODE_KEY, _chgMode); } catch (e) {}
+        _modes[g] = (_CHG_MODES[r.value] || (g !== 'rail' && r.value === 'cards')) ? r.value : 'pct';
+        try { localStorage.setItem(_MODE_KEYS[g], _modes[g]); } catch (e) {}
+        _applyViews();
         if (_lastAreasData) renderRail(_lastAreasData);
       });
     });
@@ -1045,6 +1122,7 @@
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
     _initChgModeToggle();
+    _applyViews();
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var acctToggle = document.getElementById('accountsToggle');
