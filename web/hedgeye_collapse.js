@@ -30,10 +30,33 @@
     }
   }
 
+  // 2026-09-30, user-directed: the Yahoo and CNBC news links (ext_links
+  // panel_keys market_news / market_news_cnbc, GET /api/ext-links) moved here
+  // from the removed Market News panel -- small pill chips before the arrow.
+  function _esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function _addNewsLinks(btn) {
+    fetch('/api/ext-links').then(function (r) { return r.ok ? r.json() : {}; }).then(function (links) {
+      var html = '';
+      [['market_news', 'Yahoo'], ['market_news_cnbc', 'CNBC']].forEach(function (p) {
+        var l = links && links[p[0]];
+        if (!l || !l.url) return;
+        html += '<a href="' + _esc(l.url) + '" target="_blank" rel="noopener" class="he-ext-link" title="' +
+          _esc(l.label || p[1]) + '" style="margin-left:6px;">' + _esc(l.label || p[1]) +
+          ' <span style="font-size:7px; opacity:0.55;">&#8599;</span></a>';
+      });
+      if (html) btn.insertAdjacentHTML('beforebegin', html);
+    }).catch(function () { /* links are non-critical */ });
+  }
+
   function _init() {
     if (!_isDashboard()) return;
     var btn = document.getElementById('hedgeyeDashToggle');
     if (!btn) return;
+    _addNewsLinks(btn);
     _applyState(localStorage.getItem(KEY) === '1');
     btn.addEventListener('click', function () {
       var collapsed = localStorage.getItem(KEY) !== '1';

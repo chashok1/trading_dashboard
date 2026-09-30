@@ -1006,58 +1006,18 @@ tbody td {
 }
 tbody td.num { font-variant-numeric: tabular-nums; }
 
-/* ===========================================================================
- * Dashboard News List — fixed-height, two-column, one headline per line
- * (web/dashboard_news_list.js). GET /api/market-news (Yahoo Finance RSS via
- * the server), Dashboard-only. Renders in cat-col, below the Hedgeye "Top 3
- * Things" card. 2026-08-10 -- replaces the earlier bottom-fixed auto-scroll
- * marquee -- user: "instead of scrolling, add a panel below Hedgeye's TOP 3
- * things panel that will have single line news and a scroll bar -- fixed
- * height to fit maybe 5 or 6 latest news." Follow-up: "two column news, so
- * we can fit double the news in the viewing area" -- first tried CSS
- * multi-column (column 1 top-to-bottom, then column 2), but that overflows
- * *horizontally* past 2 columns' worth of rows. Follow-up: "add vertical
- * scroll bar instead of horizontal scroll bar" -- switched to a 2-col CSS
- * grid (grid-auto-flow: row, so items fill left-col/right-col/left-col/...
- * row by row) with a fixed height + overflow-y: auto -- extra rows just
- * add grid rows below, scrolling vertically, both columns together.
- * ========================================================================= */
-.dash-news-list-body {
-  display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 20px;
-  column-gap: 14px; overflow-y: auto; overflow-x: hidden;
-  /* Explicit always-on thin scrollbar -- Windows/Chrome overlay scrollbars
-     auto-hide until hover by default, which read as "no scrollbar at all"
-     on a short fixed-height panel like this one. */
-  scrollbar-width: thin; scrollbar-color: var(--text-3, #a8a29e) transparent;
-}
-.dash-news-list-body::-webkit-scrollbar { width: 7px; }
-.dash-news-list-body::-webkit-scrollbar-track { background: transparent; }
-.dash-news-list-body::-webkit-scrollbar-thumb {
-  background: var(--text-3, #a8a29e); border-radius: 4px;
-}
-.dash-news-list-row {
-  display: block; height: 20px; line-height: 20px;
-  font-size: 11px; color: var(--text-1, #1c1917); text-decoration: none;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border-bottom: 1px solid var(--border, #eee);
-}
-a.dash-news-list-row:hover { text-decoration: underline; }
-/* 2026-09-23 -- "Market News" header row now uses .msr-section-hdr (same
-   fixed height as every other collapsible bar in this column) instead of
-   its own one-off style; its collapse arrow reuses .msr-sort-btn too. See
-   web/dashboard_news_list.js. */
-/* 2026-08-14 -- Yahoo/CNBC link chips beside "Market News" -- small pill
+/* 2026-08-14 -- Yahoo/CNBC link chips (now in the Hedgeye panel header, 2026-09-30) -- small pill
    look (not just a bare "↗" icon) so each one reads as its own distinct,
    labeled link at a glance, not just a generic external-link glyph.
    User: "add some indicators/text for the links." */
-.dash-news-ext-link {
+.he-ext-link {
   display: inline-flex; align-items: center; gap: 2px;
   font-size: 8px; font-weight: 600; text-transform: none; letter-spacing: normal;
   color: var(--text-2, #78716c); text-decoration: none;
   background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0);
   border-radius: 999px; padding: 1px 6px;
 }
-.dash-news-ext-link:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
+.he-ext-link:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
 
 /* ===========================================================================
  * Market Tape — slim horizontal ribbon below the topbar (market_bar.js)
@@ -3704,3 +3664,23 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 #marketReadSectorStyle.dash-macro-rail { max-height: none; overflow-y: visible; }
 /* Accounts cards: account + held amount beside the symbol. */
 .mr-mem-hold { font-size: 8px; color: #888; }
+
+/* 2026-09-30 -- Quads panel: smallest possible Quarterly/Global/Monthly
+   header rows (inline padding/size overridden); panel height/scroll is set by
+   web/app.js::_renderQuadOutlookPanel. */
+.qo-compact .qo-hdr { padding: 0 6px !important; font-size: 7px !important; line-height: 8px !important;
+  height: 8px; letter-spacing: .3px !important; }
+/* Explicit visible thin scrollbar (same fix as .dash-news-list-body: a bare
+   ::-webkit-scrollbar rule with no thumb styling renders invisible, and
+   Windows overlay scrollbars auto-hide). */
+#quadOutlookBody { scrollbar-width: thin; scrollbar-color: var(--text-3, #a8a29e) transparent; }
+#quadOutlookBody::-webkit-scrollbar { width: 7px; }
+#quadOutlookBody::-webkit-scrollbar-track { background: transparent; }
+#quadOutlookBody::-webkit-scrollbar-thumb { background: var(--text-3, #a8a29e); border-radius: 4px; }
+
+/* 2026-09-30, user-directed: smaller fonts for the Economic Indicator (E.IND)
+   and Earnings (Symbol/Days/Date) panels below the Quads panel. Scoped by id so
+   other .mini-grid tables keep their size. */
+#indicatorBand .mini-grid, #nearEarningsBand .mini-grid { font-size: 9px; }
+#indicatorBand .mini-grid th, #nearEarningsBand .mini-grid th { font-size: 8px; padding: 1px 4px; line-height: 1.1; }
+#indicatorBand .mini-grid td, #nearEarningsBand .mini-grid td { font-size: 9px; padding: 1px 4px; line-height: 1.15; }

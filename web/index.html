@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260930m">
+  <link rel="stylesheet" href="/static/styles.css?v=20260930w">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -255,6 +255,45 @@
         </div>
 
         <div class="cat-col">
+          <!-- 2026-09-30, user-directed: Hedgeye panel (Early Look/etc.) and the
+               Market News panel moved to the TOP of this column (above Market
+               Read). Collapse/expand state is per panel and remembered in
+               localStorage (hedgeye_collapse.js). -->
+          <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
+               moved here from the Actionable screen's hedgeye_panel.js
+               panel -- user: "move HE earylook, macro commentory, hedgeye
+               top 3 things ... from actionable screen to Dashboard screen."
+               Mkt Situation and INFL split into their own panels elsewhere
+               on this page (below Risk Dial / above the Indicator grid,
+               follow-up: "move the mkt situation panel to just below risk
+               dial panel and INFL to 3rd column above Indicator grid").
+               Same shared script (loaded below) renders into this
+               container; the Accounts filter + Sector/Asset class/Style
+               grids that used to sit at the top of this column now render
+               below it instead. Populated + wired by hedgeye_panel.js
+               (unchanged module, just a second render target). -->
+          <!-- 2026-08-10 -- data-presence display (hasDashAny) stays on
+               this outer div, unchanged in hedgeye_panel.js; the new inner
+               #hedgeyeDashPanelBody is what that script now writes its
+               innerHTML into, and what the shared collapse toggle below
+               shows/hides -- keeps the two concerns (has data vs. user
+               collapsed it) from fighting over the same style.display. -->
+          <!-- 2026-09-23 -- own header restyled to the same .msr-section-hdr/
+               .msr-sort-btn chrome (small font, arrow at the end, same fixed
+               height) as every other collapsible bar in this column --
+               replaces the old .he-collapse-hdr look + the separate 📊
+               toggle button that used to live on the filter bar (see
+               hedgeye_collapse.js, now a single self-contained toggle for
+               just this one panel instead of a 3-panel broadcast). -->
+          <div id="hedgeyeDashPanel" style="display:none;">
+            <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
+            <div id="hedgeyeDashPanelBody"></div>
+          </div>
+
+          <!-- 2026-09-30, user-directed: Yahoo market-news feed/panel removed
+               entirely (its RSS feed was a week stale). The Yahoo + CNBC links now
+               live in the Hedgeye panel header (hedgeye_collapse.js). -->
+
           <!-- Market Read panel (TASK_145, 2026-09-21) -- retired the Quad
                Rotation tiles (2026-08-31) in this same slot; their two
                computations (quad stance, price breadth) survive as grid
@@ -678,50 +717,6 @@
             </div>
           </div>
 
-          <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
-               moved here from the Actionable screen's hedgeye_panel.js
-               panel -- user: "move HE earylook, macro commentory, hedgeye
-               top 3 things ... from actionable screen to Dashboard screen."
-               Mkt Situation and INFL split into their own panels elsewhere
-               on this page (below Risk Dial / above the Indicator grid,
-               follow-up: "move the mkt situation panel to just below risk
-               dial panel and INFL to 3rd column above Indicator grid").
-               Same shared script (loaded below) renders into this
-               container; the Accounts filter + Sector/Asset class/Style
-               grids that used to sit at the top of this column now render
-               below it instead. Populated + wired by hedgeye_panel.js
-               (unchanged module, just a second render target). -->
-          <!-- 2026-08-10 -- data-presence display (hasDashAny) stays on
-               this outer div, unchanged in hedgeye_panel.js; the new inner
-               #hedgeyeDashPanelBody is what that script now writes its
-               innerHTML into, and what the shared collapse toggle below
-               shows/hides -- keeps the two concerns (has data vs. user
-               collapsed it) from fighting over the same style.display. -->
-          <!-- 2026-09-23 -- own header restyled to the same .msr-section-hdr/
-               .msr-sort-btn chrome (small font, arrow at the end, same fixed
-               height) as every other collapsible bar in this column --
-               replaces the old .he-collapse-hdr look + the separate 📊
-               toggle button that used to live on the filter bar (see
-               hedgeye_collapse.js, now a single self-contained toggle for
-               just this one panel instead of a 3-panel broadcast). -->
-          <div id="hedgeyeDashPanel" style="display:none;">
-            <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
-            <div id="hedgeyeDashPanelBody"></div>
-          </div>
-
-          <!-- 2026-08-10 -- Market news list, fixed-height/scrollable, one
-               headline per line -- replaces the old bottom-fixed scrolling
-               marquee (dashboard_news_feed.js). User: "instead of scrolling,
-               add a panel below Hedgeye's TOP 3 things panel that will have
-               single line news and a scroll bar -- fixed height to fit
-               maybe 5 or 6 latest news." Populated + wired by
-               web/dashboard_news_list.js (GET /api/market-news). -->
-          <!-- 2026-08-10 -- collapse toggle (bare arrow, own independent
-               state, not tied to the Hedgeye panels' shared one) added by
-               web/dashboard_news_list.js itself -- user previously asked
-               for no "Market News" header text; the toggle is the one
-               addition on top of that, not a reversal of it. -->
-          <div id="dashNewsListPanel" class="cockpit-band dash-news-list-panel" style="margin-top:6px;"></div>
 
           <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
                Composition popup: each axis's pie/bar renders directly
@@ -1017,7 +1012,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20260923a"></script>
+  <script src="/static/app.js?v=20260930q"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -1043,7 +1038,7 @@
        hedgeye panels (together) ... collapable and expandable." Loaded
        after hedgeye_panel.js (not that hooks into it -- purely reads/
        writes the .he-collapse-body elements' display + localStorage). -->
-  <script src="/static/hedgeye_collapse.js?v=20260923a" defer></script>
+  <script src="/static/hedgeye_collapse.js?v=20260930w" defer></script>
   <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
@@ -1073,14 +1068,6 @@
        gives macro_areas.js's candles a working window.mtTip.candleSvg on
        this page, which was silently missing before. -->
   <script src="/static/market_bar.js?v=20260924b" defer></script>
-  <!-- Dashboard-only: fixed-height scrollable market news list, GET
-       /api/market-news (Yahoo Finance RSS via the server). Renders into
-       #dashNewsListPanel, cat-col, below the Hedgeye Top 3 Things card.
-       Replaces the old bottom-fixed scrolling marquee (dashboard_news_feed.js,
-       removed 2026-08-10) -- user: "instead of scrolling, add a panel below
-       Hedgeye's TOP 3 things panel ... fixed height to fit 5 or 6 latest
-       news." See web/dashboard_news_list.js. -->
-  <script src="/static/dashboard_news_list.js?v=20260923a" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->

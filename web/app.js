@@ -666,7 +666,7 @@ function _renderQuadOutlookPanel(data) {
   let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
 
   // ── Quarterly ────────────────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Quarterly</td></tr>`;
+  h += `<tr><td colspan="2" class="qo-hdr" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Quarterly</td></tr>`;
   for (const qp of [cq, nq].filter(Boolean)) {
     const quad = qp.quad || '';
     const qcol = _quadColor(quad);
@@ -691,7 +691,7 @@ function _renderQuadOutlookPanel(data) {
   // for anyone who hasn't added ref_quad_periods period_type='global' rows.
   const globalPeriods = [gq, gnq].filter(Boolean);
   if (globalPeriods.length) {
-    h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Global</td></tr>`;
+    h += `<tr><td colspan="2" class="qo-hdr" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Global</td></tr>`;
     for (const qp of globalPeriods) {
       const quad = qp.quad || '';
       const qcol = _quadColor(quad);
@@ -711,7 +711,7 @@ function _renderQuadOutlookPanel(data) {
   }
 
   // ── Monthly distributions ────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Monthly</td></tr>`;
+  h += `<tr><td colspan="2" class="qo-hdr" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Monthly</td></tr>`;
   for (const m of months) {
     const lbl = m.label || '—';
     const quad = _effectiveQuad(m) || '';
@@ -727,6 +727,20 @@ function _renderQuadOutlookPanel(data) {
 
   h += '</table>';
   el.innerHTML = h;
+
+  // 2026-09-30, user-directed: smallest possible Quarterly/Global/Monthly
+  // header rows (.qo-compact, styles.css), and the panel at HALF its previous
+  // height with a scrollbar. Previous height = natural height with the old
+  // header padding, measured just before the compact class is applied.
+  el.classList.remove('qo-compact');
+  el.style.maxHeight = '';
+  el.style.overflowY = '';
+  const fullH = el.scrollHeight;
+  el.classList.add('qo-compact');
+  if (fullH > 0) {
+    el.style.maxHeight = Math.round(fullH / 2) + 'px';
+    el.style.overflowY = 'auto';
+  }
 }
 
 // 2026-08-08 -- per-quad bull/bear factor lists, filtered from band-factors'
