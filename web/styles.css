@@ -2240,7 +2240,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    at the "-76px" step specifically so further tuning like this can only
    ever ADD/remove blank space below the content, never crop a row --
    that guarantee holds regardless of the exact number from here on. */
-.dash-macro-rail-5col { column-count: 5; column-gap: 8px; min-height: 266px; overflow-y: visible; }
+.dash-macro-rail-5col { column-count: 5; column-gap: 8px; overflow-y: visible; }   /* 2026-09-30: min-height 266px removed -- height follows the content */
 .dash-macro-rail-5col .msr-row { break-inside: avoid; }
 /* 2026-09-24, user-directed: "display a separator row as a header for
    account symbols start" -- one of these before each account's block of
@@ -3742,3 +3742,10 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    font under the CLEAR/CAUTION pill (web/app.js risk-dial render). */
 .rd-label-col { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
 .rd-size-note { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: .2px; color: var(--text-3); white-space: nowrap; }
+
+/* 2026-09-30, user-directed: Accounts (and the Signal Strength rows view, same 5-column
+   layout) no longer have a fixed height -- they grow/shrink with their content. The
+   generic .dash-macro-rail { max-height: 150px } is overridden here (id selector). */
+#macroRailAccounts.dash-macro-rail-5col, #marketReadSectorRows.dash-macro-rail-5col {
+  min-height: 0; max-height: none; height: auto; overflow: visible;
+}
