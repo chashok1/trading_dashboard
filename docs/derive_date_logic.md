@@ -159,3 +159,12 @@ via carry-forward).
 **Run Missing Derives** enumerates derive dates from TOSD market-close dates
 (`DISTINCT export_date FROM hist_td`), not a mix of `snapshot_date`s — these are
 the only valid anchor dates. See `api/routers/monitor.py::_find_missing_derive_dates`.
+
+
+## Position file dating (CS / F) -- 2026-10-01
+
+A Schwab (CS) or Fidelity (F) positions file downloaded before 9:30 AM ET on a trading day, or any time on a weekend/holiday, holds the PREVIOUS market day's close even though its Date column shows the download day. `etl/market_date.py::resolve_snapshot_date` re-dates such a file to the previous trading day. Guards: only fresh downloads (< 24 h old), only when the inside date equals the download day, and only if no later snapshot is already stored (latest market day only -- old/backfill files are never shifted).
+
+Replace rule (latest market day only): a newer file for the same date deletes and replaces that date's rows for the accounts it contains (previously Schwab CS skipped existing symbols via the PK conflict). Older dates stay append-only.
+
+Warning: if the file NAME date differs from the date INSIDE the file, or the loader had to shift the date, `meta_warning` (screen `ingest`, code `file_date_CS` / `file_date_F`) raises a status-bar warning; the next clean load of that feed clears it.

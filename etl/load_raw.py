@@ -286,6 +286,18 @@ def load_one_tab(session: Session, wb: Workbook, mapping: dict,
 
     print(f"\n{table_name}: started. tab rows - {rows_read}")
 
+    # 2026-10-01: same file-date policy as the Schwab positions loader (see
+    # etl/market_date.py) for the Fidelity positions snapshot.
+    if records and table_name == "hist_f":
+        from etl.market_date import apply_position_date_policy
+        _info = apply_position_date_policy(session, "hist_f", "F", records, source_file)
+        if _info["replace"]:
+            _accts = sorted({r["account_number"] for r in records if r.get("account_number")})
+            if _accts:
+                session.execute(text(
+                    "DELETE FROM hist_f WHERE snapshot_date = :d AND account_number = ANY(:a)"
+                ), {"d": _info["resolved"], "a": _accts})
+
     if not records:
         n_skipped = rows_read
         if skip_reasons:
@@ -1470,6 +1482,22 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
 # Schwab Transaction CSV Loader
 # =============================================================================
 
+def _number_identical_rows(records: list, key_cols: tuple) -> None:
+    """Give each row an occurrence number (`dup_seq`, 1-based) among rows in
+    THIS file with identical natural-key values.
+
+    2026-10-01: two real fills identical on date/account/action/symbol/qty/price
+    (e.g. DT sold 100 @ 58.62 twice) used to collapse into one row via the
+    natural-key dedup. The same trade in two overlapping downloads still gets
+    the same number each time, so overlapping files do not double count.
+    """
+    seen: dict = {}
+    for r in records:
+        k = tuple(r.get(c) for c in key_cols)
+        seen[k] = seen.get(k, 0) + 1
+        r["dup_seq"] = seen[k]
+
+
 def load_cs_transactions(session: Session, csv_path: str, source_file: str) -> tuple[int, int, int]:
     """
     Schwab transaction CSV -> hist_cst.
@@ -1538,10 +1566,12 @@ def load_cs_transactions(session: Session, csv_path: str, source_file: str) -> t
                 'source_file': source_file,
             })
 
+    _number_identical_rows(records, ('account', 'trade_date', 'action',
+                                     'symbol', 'quantity', 'price'))
     n_attempted, n_inserted = insert_upsert(
         session, 'hist_cst', records,
         conflict_columns=['account', 'trade_date', 'action',
-                          'symbol', 'quantity', 'price'],
+                          'symbol', 'quantity', 'price', 'dup_seq'],
     )
     return rows_read, n_inserted, n_attempted - n_inserted
 
@@ -1834,10 +1864,12 @@ def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tu
     # landed. Went unnoticed for weeks since no new FT file was dropped in
     # that window; hist_ft's data was stuck at 2026-05-01 until this fix.
     # User: "check and see if CST and FT files are processed properly".
+    _number_identical_rows(records, ("account_number", "trade_date", "action",
+                                     "symbol", "quantity", "price"))
     n_attempted, n_inserted = insert_upsert(
         session, "hist_ft", records,
         conflict_columns=["account_number", "trade_date", "action",
-                          "symbol", "quantity", "price"],
+                          "symbol", "quantity", "price", "dup_seq"],
     )
     return rows_read, n_inserted, n_attempted - n_inserted
 
@@ -1949,6 +1981,19 @@ def load_cs_positions_csv(session: Session, csv_path: str, source_file: str) -> 
                 'source_file':        source_file,
             })
 
+    # 2026-10-01: file-date policy (etl/market_date.py) -- re-date an after-hours/
+    # pre-open download to its market day, warn on name/inside/market-date
+    # mismatch, and (latest market day only) let a newer file replace that day's
+    # earlier rows instead of being skipped by the PK conflict.
+    if records:
+        from etl.market_date import apply_position_date_policy
+        _info = apply_position_date_policy(session, 'hist_cs', 'CS', records, csv_path)
+        if _info['replace']:
+            _accts = sorted({r['account'] for r in records if r.get('account')})
+            if _accts:
+                session.execute(text(
+                    "DELETE FROM hist_cs WHERE snapshot_date = :d AND account = ANY(:a)"
+                ), {"d": _info['resolved'], "a": _accts})
     n_attempted, n_inserted = insert_skip_duplicates(session, 'hist_cs', records, update_on_conflict_cols=['source_file'])
     return rows_read, n_inserted, (n_attempted - n_inserted)
 

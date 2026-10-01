@@ -250,6 +250,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Category performance (factor scorecard: sector/asset_class/style TWR vs benchmark vs quad stance) | `etl/derive_category_perf.py` → `drv_category_perf`; `GET /api/cockpit/factor-scorecard` |
 | Market events ("what changed": range breaks, trend flips, z-scores, patterns, calendar/surprise) | `etl/derive_market_event.py` → `drv_market_event`; `GET /api/cockpit/events` |
 | ToS market internals feed ($ADVN/$DECN/$UVOL/$DVOL/$TRIN) | `hist_internals`; `HIST_MAPS['INT']`; feeds `drv_market_stat.vol_breadth`/`trin` |
+| Position-file date policy (CS/F downloaded pre-open/weekend → previous market day; newer file replaces latest day's rows; file-date mismatch warning on status bar) | `docs/derive_date_logic.md` § Position file dating; `etl/market_date.py`; hooks in `etl/load_raw.py` |
 | Derive date / anchor logic (export_date, TOSD, per-source rules) | `docs/derive_date_logic.md`; `etl/derive.py::get_anchor_date` / `ANCHOR_LOCKED_SOURCES` |
 | Default screen date = anchor (capped dates list) | `db/baseline.sql` `v_available_dates`; `api/_helpers.py::_resolve_date`; `/api/actionable/dates` |
 | "Data behind market close" warning + date highlight | `/api/anchor-status`; `api/_helpers.py::expected_market_close_date`; `web/warning_badge.js` (`.date-stale`) |

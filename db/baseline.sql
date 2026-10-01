@@ -1703,8 +1703,26 @@ CREATE INDEX IF NOT EXISTS ix_hist_ft_kind ON hist_ft(action_kind, trade_date);
 -- BIGSERIAL with this as a plain UNIQUE constraint; DROP/CREATE here is
 -- idempotent regardless of what the constraint was named.)
 ALTER TABLE IF EXISTS hist_ft DROP CONSTRAINT IF EXISTS uq_hist_f_transactions_natural;
-CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_ft_natural_key
-    ON hist_ft (account_number, trade_date, action, symbol, quantity, price);
+-- 2026-10-01: identical fills on one day (same date/action/symbol/qty/price,
+-- e.g. two 100-share DT sells @ 58.62) were collapsed into one row by the key
+-- above. dup_seq = occurrence number within a file (1 for every pre-existing
+-- row) is added to the key so both fills load; the same trade in overlapping
+-- files still dedups because it gets the same number each time. Same change
+-- on hist_cst below.
+ALTER TABLE IF EXISTS hist_ft  ADD COLUMN IF NOT EXISTS dup_seq SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE IF EXISTS hist_cst ADD COLUMN IF NOT EXISTS dup_seq SMALLINT NOT NULL DEFAULT 1;
+DROP INDEX IF EXISTS ux_hist_ft_natural_key;
+ALTER TABLE IF EXISTS hist_ft DROP CONSTRAINT IF EXISTS hist_ft_pkey;
+-- NULLS NOT DISTINCT (v3): rows with no price/quantity (401(k) lines, zero-qty
+-- dividends) were treated as always-different, so every reload of a file added
+-- another copy (16 duplicate groups removed 2026-10-01). hist_cst already did this.
+DROP INDEX IF EXISTS ux_hist_ft_natural_key_v2;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_ft_natural_key_v3
+    ON hist_ft (account_number, trade_date, action, symbol, quantity, price, dup_seq) NULLS NOT DISTINCT;
+ALTER TABLE IF EXISTS hist_cst DROP CONSTRAINT IF EXISTS uq_hist_cs_transactions_natural;
+ALTER TABLE IF EXISTS hist_cst DROP CONSTRAINT IF EXISTS hist_cst_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_cst_natural_key
+    ON hist_cst (account, trade_date, action, symbol, quantity, price, dup_seq) NULLS NOT DISTINCT;
 
 -- -----------------------------------------------------
 -- hist_401k_contrib  <- 401(k) "Contribution History" export (file_type F401K)
