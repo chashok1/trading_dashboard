@@ -3579,7 +3579,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 }
 .mr-scroll { overflow-x: auto; }
 .mr-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 10px; }
-.mr-table th { text-align: left; color: var(--text-3); font-weight: 500; font-size: 8.5px; text-transform: uppercase;
+.mr-table th { text-align: center; color: var(--text-3); font-weight: 500; font-size: 8.5px; text-transform: uppercase;
   letter-spacing: .03em; padding: 2px 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .mr-table td { padding: 2px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .mr-group td { background: var(--bg); color: var(--text-3); font-size: 7px; text-transform: uppercase;
@@ -3594,6 +3594,10 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mr-c.mr-s { background: var(--mr-bear-bg); color: var(--mr-bear); }
 .mr-c.mr-n { background: var(--mr-neu-bg); color: var(--mr-neu); }
 .mr-c.mr-m { background: var(--mr-warn-bg); color: var(--mr-warn); }
+/* 2026-09-30, user-directed: the split cell ("up + down") must be exactly as wide as
+   an up or down cell -- two small triangles in a fixed 20px pill, no slash. */
+.mr-c.mr-m { width: 20px; min-width: 20px; padding: 0; box-sizing: border-box; overflow: hidden; }
+.mr-split { font-size: 6px; letter-spacing: 0; line-height: 1; white-space: nowrap; }
 .mr-c.mr-x { color: var(--text-3); font-weight: 400; background: none; }
 .mr-c.mr-qconf { box-shadow: 0 0 0 1.5px var(--mr-bear) inset; }
 .mr-st { font-weight: 600; font-size: 9px; }
@@ -3749,3 +3753,31 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 #macroRailAccounts.dash-macro-rail-5col, #marketReadSectorRows.dash-macro-rail-5col {
   min-height: 0; max-height: none; height: auto; overflow: visible;
 }
+
+/* 2026-09-30, user-directed: Themes grid headers centred, except the first (Theme). */
+.mr-table th:first-child { text-align: left; }
+
+/* 2026-09-30: the >Td&>Tn|Td header keeps its mixed case (the grid's headers are
+   otherwise forced to uppercase). */
+.mr-table th[data-mr-hdr="src"] { text-transform: none; }
+
+/* 2026-09-30: the number beside the 1W/4W arrow (change in net bullish lists, or the
+   price-confirmation move in points), same colour as its arrow. */
+.mr-tr-n { font-size: 8.5px; font-weight: 600; margin-left: 1px; font-variant-numeric: tabular-nums; }
+
+/* 2026-09-30, user-directed: the Lists-column split glyph takes the same width as the
+   single up/down triangle of BULL/BEAR (two tiny triangles, fixed width, no slash). */
+.mr-split-g { display: inline-block; width: 9px; font-size: 4.5px; letter-spacing: 0; line-height: 1;
+  white-space: nowrap; overflow: hidden; text-align: center; vertical-align: middle; }
+
+/* 2026-09-30, user-directed: no tinted background behind the QUAD value (the colour and the
+   triangle already say bull/bear, same as the Lists column). The red outline for a
+   disagreement with the lists stays -- it is the only extra meaning. */
+.mr-c.mr-q { background: none; padding: 0 3px; }
+.mr-c.mr-q.mr-qconf { padding: 0 5px; }
+
+/* 2026-09-30: green box around BULL in the Lists column when QUAD is also BULL (no conflict). */
+.mr-st.mr-st-agree { box-shadow: 0 0 0 1.5px var(--mr-bull) inset; border-radius: 4px; padding: 1px 5px; display: inline-block; }
+
+/* 2026-09-30: green background on a 1W/4W cell whose change is positive. */
+.mr-tr.mr-tr-pos { background: var(--mr-bull-bg); color: var(--mr-bull); border-radius: 4px; padding: 1px 5px; display: inline-block; }

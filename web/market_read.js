@@ -85,29 +85,46 @@
     if (v === 'B') return '<span class="mr-c mr-b"' + t + '>&#9650;</span>';
     if (v === 'S') return '<span class="mr-c mr-s"' + t + '>&#9660;</span>';
     if (v === 'N') return '<span class="mr-c mr-n"' + t + '>&ndash;</span>';
-    if (v === 'M') return '<span class="mr-c mr-m"' + t + '>&#9650;/&#9660;</span>';
+    if (v === 'M') return '<span class="mr-c mr-m"' + t + '><span class="mr-split">&#9650;&#9660;</span></span>';
     return '<span class="mr-c mr-x"' + t + '>&mdash;</span>';
   }
 
-  function stanceCell(v) {
-    if (v === 'B') return '<span class="mr-st mr-st-b">&#9650; BULL</span>';
+  // 2026-09-30, user-directed: green box around BULL in the Lists column when the quad model
+  // agrees (QUAD also BULLISH) and there is no conflict.
+  function stanceCell(v, quadAgrees) {
+    if (v === 'B') return '<span class="mr-st mr-st-b' + (quadAgrees ? ' mr-st-agree' : '') + '">&#9650; BULL</span>';
     if (v === 'S') return '<span class="mr-st mr-st-s">&#9660; BEAR</span>';
-    if (v === 'M') return '<span class="mr-st mr-st-m">&#9650;/&#9660; SPLIT</span>';
+    if (v === 'M') return '<span class="mr-st mr-st-m"><span class="mr-split-g">&#9650;&#9660;</span> SPLIT</span>';
     return '<span class="mr-st mr-st-n">&ndash; NEUTRAL</span>';
   }
 
-  function trendGlyph(v) {
-    if (v === 'up') return '<span class="mr-tr mr-tr-up">&#8593;</span>';
-    if (v === 'down') return '<span class="mr-tr mr-tr-dn">&#8595;</span>';
-    if (v === 'flat') return '<span class="mr-tr">&rarr;</span>';
+  // detail (2026-09-30): the numbers behind the arrow, as a native hover tooltip --
+  // net bullish lists and price-confirmation % now vs the compared date.
+  function trendGlyph(v, detail, label) {
+    // 2026-09-30, user-directed: the number is the change, in points, of the share of the
+    // theme's symbols above BOTH Trade and Trend (the first number in the >Td>Tn|Td column).
+    var tip = '', num = '', pos = '';
+    if (detail && detail.price_now != null && detail.price_prior != null) {
+      var dp = detail.price_now - detail.price_prior;
+      if (dp > 0) pos = ' mr-tr-pos';   // 2026-09-30: green background when the change is positive
+      var fmt = function (n) { return (n > 0 ? '+' : n < 0 ? '&minus;' : '') + Math.abs(n); };
+      num = '<span class="mr-tr-n">' + fmt(dp) + '%</span>';
+      tip = ' title="' + esc(label + ' vs ' + detail.prior_date +
+        '\n• Symbols above Trade and Trend: ' + detail.price_prior + '% → ' + detail.price_now + '% (' + (dp > 0 ? '+' : '') + dp + ' pts)') + '"';
+    }
+    if (v === 'up') return '<span class="mr-tr mr-tr-up' + pos + '"' + tip + '>&#8593;' + num + '</span>';
+    if (v === 'down') return '<span class="mr-tr mr-tr-dn' + pos + '"' + tip + '>&#8595;' + num + '</span>';
+    if (v === 'flat') return '<span class="mr-tr' + pos + '"' + tip + '>&rarr;' + num + '</span>';
     return '<span class="mr-tr">&mdash;</span>';
   }
 
   function quadCell(v, conflict) {
-    var cls = 'mr-c ' + (v === 'BULLISH' ? 'mr-b' : v === 'BEARISH' ? 'mr-s' : 'mr-n') + (conflict ? ' mr-qconf' : '');
+    var cls = 'mr-c mr-q ' + (v === 'BULLISH' ? 'mr-b' : v === 'BEARISH' ? 'mr-s' : 'mr-n') + (conflict ? ' mr-qconf' : '');
     var glyph = v === 'BULLISH' ? '&#9650;' : v === 'BEARISH' ? '&#9660;' : v == null ? '&mdash;' : '&ndash;';
     var label = v || 'n/a';
-    return '<span class="' + cls + '" title="' + esc(label) + '">' + glyph + ' ' + esc(label) + '</span>';
+    // 2026-09-30, user-directed: short labels BULL / BEAR / NTRL (full word stays in the hover).
+    var shortLbl = v === 'BULLISH' ? 'BULL' : v === 'BEARISH' ? 'BEAR' : v === 'NEUTRAL' ? 'NTRL' : label;
+    return '<span class="' + cls + '">' + glyph + ' ' + esc(shortLbl) + '</span>';   // hover text comes from the cell (_quadTitle)
   }
 
   function fitCell(fit) {
@@ -343,27 +360,53 @@
   }
 
   /* ---- Band ③ theme grid ---- */
+  // 2026-09-30, user-directed: value hovers only on the calculated columns -- >Td>Tn|Td, 1W, 4W
+  // and Fit (native tooltip, one bullet per line). Headers keep their own descriptions.
+  function _tt(lines) { return ' title="' + esc(lines.join('\n')) + '"'; }
+  function _srcTitle(t) {
+    if (!t.price_n_tracked) return ['No symbols tracked for this theme, so no price confirmation.'];
+    var pct = function (n) { return Math.round(n / t.price_n_tracked * 100) + '%'; };
+    var l = ['Price confirmation: how many of the theme’s symbols are above their lines',
+      '• Symbols tracked: ' + t.price_n_tracked,
+      '• Above Trade and Trend: ' + t.price_n_above + ' (' + pct(t.price_n_above) + ')'];
+    if (t.price_n_trade != null) l.push('• Above Trade: ' + t.price_n_trade + ' (' + pct(t.price_n_trade) + ')');
+    return l;
+  }
+  function _fitTitle(t) {
+    var why = {
+      ok: 'Your position and the lists line up.',
+      exposed: 'You hold this theme while the lists are bearish on it.',
+      conflict: 'The lists and the quad model disagree on this theme.',
+      none: 'The lists are bullish but you hold none of it.',
+      split: 'The lists are split and you hold some of it.'
+    }[t.fit];
+    return why ? ['Fit: ' + t.fit, '• ' + why,
+      '• You hold ' + fmtMoney(t.you_dollar) + ' (' + (t.you_pct != null ? t.you_pct + '%' : '—') + ' of your portfolio)'] : ['No fit read for this theme.'];
+  }
+
   function themeRowHtml(t) {
     var band = THEME_TO_BAND[t.theme];
     var members = t.members || {};
-    var priceTxt = t.price_pct != null ? (t.price_pct + '% (' + t.price_n_above + '/' + t.price_n_tracked + ')') : '—';
+    // 2026-09-30, user-directed (SRC column): stocks above Trade AND Trend | stocks above
+    // Trade | (total tracked).
+    var priceTxt = t.price_n_tracked ? (t.price_n_above + ' | ' + (t.price_n_trade != null ? t.price_n_trade : '—') +
+      ' (' + t.price_n_tracked + ')') : '—';
     var rowCls = t.quad_conflict ? 'mr-row-conflict' : '';
     return '<tr class="' + rowCls + '" data-mr-theme="' + esc(t.theme) + '"' +
       (band ? ' data-mr-band="' + band + '" tabindex="0" role="button"' : '') + '>' +
       '<td class="mr-theme-cell">' + esc(t.theme) + '</td>' +
-      '<td>' + voteCell(t.rr, memberTitle(members.rr)) + '</td>' +
-      '<td>' + voteCell(t.etf, memberTitle(members.etf)) + '</td>' +
-      '<td>' + voteCell(t.ps, memberTitle(members.ps)) + '</td>' +
-      '<td>' + voteCell(t.sss, '') + '</td>' +
-      '<td class="mr-num">' + esc(priceTxt) + '</td>' +
-      '<td>' + stanceCell(t.stance) + '</td>' +
-      '<td class="mr-num">' + (t.agree_n || 0) + '</td>' +
-      '<td>' + trendGlyph(t.trend_1w) + '</td>' +
-      '<td>' + trendGlyph(t.trend_4w) + '</td>' +
+      '<td>' + stanceCell(t.stance, !t.quad_conflict && t.stance === 'B' && t.quad_says === 'BULLISH') + '</td>' +
       '<td>' + quadCell(t.quad_says, t.quad_conflict) + '</td>' +
+      '<td>' + trendGlyph(t.trend_1w, t.trend_1w_detail, '1W') + '</td>' +
+      '<td>' + trendGlyph(t.trend_4w, t.trend_4w_detail, '4W') + '</td>' +
+      '<td>' + voteCell(t.rr, '') + '</td>' +
+      '<td>' + voteCell(t.etf, '') + '</td>' +
+      '<td>' + voteCell(t.ps, '') + '</td>' +
+      '<td>' + voteCell(t.sss, '') + '</td>' +
+      '<td class="mr-num"' + _tt(_srcTitle(t)) + '>' + esc(priceTxt) + '</td>' +
       '<td class="mr-num">' + fmtMoney(t.you_dollar) + '</td>' +
       '<td class="mr-num">' + (t.you_pct != null ? t.you_pct + '%' : '—') + '</td>' +
-      '<td>' + fitCell(t.fit) + '</td>' +
+      '<td' + _tt(_fitTitle(t)) + '>' + fitCell(t.fit) + '</td>' +
       '</tr>';
   }
 
@@ -374,14 +417,54 @@
   // silently land in the right column via the else-branch below).
   var _MR_LEFT_COL_GROUPS = ['Macro', 'Commodities & real assets'];
 
+  // 2026-09-30, user-directed: header labels (SRC / QUAD; the Agree column was removed) and a hover
+  // description on every header (bulleted popover, same box as the other dashboard
+  // popovers). Columns after the first are centred (styles.css).
+  var _MR_HDRS = [
+    ['theme', 'Theme'], ['lists', 'Lists'], ['quad', 'QUAD'], ['w1', '1w'], ['w4', '4w'],
+    ['rr', 'RR'], ['etf', 'ETF'], ['ps', 'PS'], ['sss', 'SSS'], ['src', '&gt;Td&gt;Tn|Td'],
+    ['you_d', 'You $'], ['you_p', 'You %'], ['fit', 'Fit']
+  ];
+  var _MR_VOTE = '&#9650; bullish &middot; &#9660; bearish &middot; &ndash; neutral &middot; two small triangles = split &middot; &mdash; no read';
+  var _MR_CELL = 'Hover a cell to see the symbols behind it.';
+  var _MR_HDR_HELP = {
+    theme: ['Theme', ['A market idea: macro (rates, USD, credit), equity factors, commodities or international.', 'Click a row to open its panel in the Macro Rail below.']],
+    rr:    ['RR', ['Hedgeye Risk Range outlook for the symbols in this theme.', _MR_VOTE, _MR_CELL]],
+    etf:   ['ETF', ['Hedgeye ETF Pro list read for this theme.', _MR_VOTE, _MR_CELL]],
+    ps:    ['PS', ['Hedgeye PS ranked-names list read for this theme.', _MR_VOTE, _MR_CELL]],
+    sss:   ['SSS', ['Hedgeye Signal Strength (analyst best-ideas) list read for this theme.', _MR_VOTE]],
+    src:   ['&gt;Td&gt;Tn | Td', ['Price confirmation, three numbers: <b>A | B (C)</b>.', 'A (&gt;Td&gt;Tn) = symbols above BOTH their Trade and Trend lines.', 'B (Td) = symbols above their Trade line.', 'C = total symbols tracked in the theme.', 'Hover a cell for the percentages.']],
+    lists: ['Lists', ['The combined call from RR, ETF, PS and SSS: BULL, BEAR, SPLIT or NEUTRAL.', 'Hover a cell to see each list’s vote and how many agree.']],
+    w1:    ['1W', ['Change vs 1 week ago in the share of symbols above BOTH their Trade and Trend lines (the A number of the &gt;Td&gt;Tn|Td column).', 'The number is the change in percentage points, e.g. &minus;11% = 11 points fewer symbols above both lines.', '&#8593; +3% or more &middot; &#8595; &minus;3% or less &middot; &rarr; in between &middot; &mdash; no symbols tracked.']],
+    w4:    ['4W', ['Change vs 4 weeks ago in the share of symbols above BOTH their Trade and Trend lines (the A number of the &gt;Td&gt;Tn|Td column).', 'The number is the change in percentage points, e.g. &minus;44% = 44 points fewer symbols above both lines.', '&#8593; +3% or more &middot; &#8595; &minus;3% or less &middot; &rarr; in between &middot; &mdash; no symbols tracked.']],
+    quad:  ['QUAD', ['What the quad regime model says for this theme: BULL, BEAR or NTRL (neutral); n/a = no read.', 'A red outline means it disagrees with the Lists column.', 'Hover a cell for the detail.']],
+    you_d: ['You $', ['Dollars you hold in this theme (your positions mapped to it).']],
+    you_p: ['You %', ['Share of your portfolio held in this theme.']],
+    fit:   ['Fit', ['Your position vs the signals. Hover a cell for the reason.', '<b>&#10003;</b> in line &middot; <b>exposed</b> you hold it and the lists are bearish &middot; <b>conflict</b> lists and quad model disagree &middot; <b>split</b> lists are mixed and you hold some &middot; <b>none</b> lists are bullish, you hold none.']]
+  };
+  function _wireThemeHeaderPops(root) {
+    root.querySelectorAll('th[data-mr-hdr]').forEach(function (th) {
+      var h = _MR_HDR_HELP[th.getAttribute('data-mr-hdr')];
+      if (!h) return;
+      th.style.cursor = 'help';
+      th.addEventListener('mouseover', function () {
+        if (typeof window._showDataPop !== 'function') return;
+        window._showDataPop(th, '<div class="sp-title">' + h[0] + '</div><table>' +
+          h[1].map(function (line) { return '<tr><td class="k" colspan="2">&bull; ' + line + '</td></tr>'; }).join('') + '</table>');
+      });
+      th.addEventListener('mouseout', function () {
+        if (typeof window.hideSourcePop === 'function') window.hideSourcePop();
+      });
+    });
+  }
+
   function _themeGridColHtml(groups, byTheme) {
     var rows = groups.map(function (g) {
       var body = g.themes.map(function (th) { return byTheme[th] ? themeRowHtml(byTheme[th]) : ''; }).join('');
-      return '<tr class="mr-group"><td colspan="14">' + esc(g.label) + '</td></tr>' + body;
+      return '<tr class="mr-group"><td colspan="13">' + esc(g.label) + '</td></tr>' + body;
     }).join('');
     return '<div class="mr-scroll"><table class="mr-table"><thead><tr>' +
-      '<th>Theme</th><th>RR</th><th>ETF</th><th>PS</th><th>SSS</th><th>Price</th>' +
-      '<th>Lists</th><th>Ag</th><th>1w</th><th>4w</th><th>Quad says</th><th>You $</th><th>You %</th><th>Fit</th>' +
+      _MR_HDRS.map(function (h) { return '<th data-mr-hdr="' + h[0] + '">' + h[1] + '</th>'; }).join('') +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -463,6 +546,7 @@
       _sectionHeaderHtml('Themes', '', 'mrThemesToggle', themesCollapsed) +
       '<div id="qrThemesBody" style="display:' + (themesCollapsed ? 'none' : 'block') + ';">' + themeGridHtml(data) + '</div>';
     panel.style.display = 'block';
+    _wireThemeHeaderPops(body);
     _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth', true);
     _wireSectionToggle('mrThemesToggle', 'qrThemesBody', 'mrThemes_collapsed', 'Themes');
 

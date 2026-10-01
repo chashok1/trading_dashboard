@@ -368,18 +368,22 @@ def _vote(stances: list) -> str:
     return "M"
 
 
-def _theme_price_breadth(session: Session, as_of_date: date, axis_categories: list) -> tuple:
+def _theme_price_breadth(session: Session, as_of_date: date, axis_categories: list, trade_only: bool = False) -> tuple:
     """(pct, n_above, n_tracked) -- reuses the exact breadth query behind
     GET /api/actionable/quad-rotation (api/routers/dash.py::
     get_quad_rotation), summed across every (axis, category) the theme maps
-    to. Returns (None, 0, 0) when the theme has no mapped category."""
+    to. Returns (None, 0, 0) when the theme has no mapped category.
+
+    trade_only=True (2026-09-30, for the Themes grid's SRC column): n_above counts
+    symbols above the Trade line only, instead of above BOTH Trade and Trend."""
+    both = "AND t.last_price > t.a_trend_value" if not trade_only else ""
     n_above = n_tracked = 0
     for axis, category in axis_categories:
         if axis == "style":
-            row = session.execute(text("""
+            row = session.execute(text(f"""
                 SELECT COUNT(*) AS n_tracked,
                        COUNT(*) FILTER (WHERE t.last_price > t.a_trade_value
-                                          AND t.last_price > t.a_trend_value) AS n_above
+                                          {both}) AS n_above
                 FROM drv_macro_score ms
                 JOIN drv_technicals t ON t.tos_symbol = ms.tos_symbol AND t.as_of_date = ms.as_of_date
                 CROSS JOIN LATERAL jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) elem
@@ -390,7 +394,7 @@ def _theme_price_breadth(session: Session, as_of_date: date, axis_categories: li
             row = session.execute(text(f"""
                 SELECT COUNT(*) AS n_tracked,
                        COUNT(*) FILTER (WHERE t.last_price > t.a_trade_value
-                                          AND t.last_price > t.a_trend_value) AS n_above
+                                          {both}) AS n_above
                 FROM drv_ma m
                 JOIN drv_technicals t ON t.tos_symbol = m.tos_symbol AND t.as_of_date = m.as_of_date
                 WHERE m.as_of_date = :d AND m.{col} = :cat
@@ -460,6 +464,13 @@ def _sss_theme_votes(session: Session, d: Optional[date]) -> dict:
     return votes
 
 
+def _list_score(votes) -> int:
+    """Net bullish lists: +1 per list voting B, -1 per list voting S (split/neutral/
+    no read = 0), summed over RR/ETF/PS/SSS. Used for the Themes grid's 1w/4w
+    trend arrows (finer than the 4-way stance label)."""
+    return sum(1 if v == "B" else -1 if v == "S" else 0 for v in votes)
+
+
 def _derive_theme_stance_impl(session: Session, as_of_date: date, run_id) -> int:
     themes = session.execute(text(
         "SELECT DISTINCT theme FROM ref_symbol_theme ORDER BY theme"
@@ -499,10 +510,14 @@ def _derive_theme_stance_impl(session: Session, as_of_date: date, run_id) -> int
         ), {"d": as_of_date, "off": back - 1}).scalar()
         prior_stances[label] = {}
         if prior_date:
+            # 2026-09-30, user-directed ("why most of 1W/4W are ->"): the trend is
+            # now the change in a FINER score -- bullish lists minus bearish lists
+            # across RR/ETF/PS/SSS (see _list_score) -- instead of only a change of
+            # the 4-way stance label, which almost never moves.
             rows = session.execute(text(
-                "SELECT theme, stance FROM drv_theme_stance WHERE as_of_date = :d"
+                "SELECT theme, rr, etf, ps, sss, price_pct FROM drv_theme_stance WHERE as_of_date = :d"
             ), {"d": prior_date}).fetchall()
-            prior_stances[label] = {t: s for t, s in rows}
+            prior_stances[label] = {r[0]: r[5] for r in rows}   # theme -> price_pct then
 
     rows_out = []
     for theme in themes:
@@ -546,11 +561,15 @@ def _derive_theme_stance_impl(session: Session, as_of_date: date, run_id) -> int
                                    or (stance == "S" and quad_says == "BULLISH")))
 
         def _trend(label):
-            prior = prior_stances[label].get(theme)
-            if prior is None or prior == stance:
-                return "flat" if prior == stance else None
-            order = {"S": -1, "N": 0, "M": 0, "B": 1}
-            return "up" if order.get(stance, 0) > order.get(prior, 0) else "down"
+            # 2026-09-30, user-directed ("HE list change doesn't make sense -- use the Td/Tn
+            # numbers"): the 1W/4W arrow follows the change in the share of the theme's
+            # symbols above BOTH their Trade and Trend lines (the first number of the
+            # ">Td>Tn|Td" column), +/-3 points or more = up/down, otherwise flat.
+            prior_price = prior_stances[label].get(theme)
+            if price_pct is None or prior_price is None:
+                return None
+            delta = price_pct - prior_price
+            return "up" if delta >= 3 else "down" if delta <= -3 else "flat"
 
         rows_out.append({
             "as_of_date": as_of_date, "theme": theme,

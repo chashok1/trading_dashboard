@@ -1658,11 +1658,41 @@ def get_market_read(date: Optional[str] = Query(None)):
         ), {"d": d}).scalar()
         total_value = float(total_value) if total_value else None
 
+        # 2026-09-30: numbers behind the 1W/4W arrows, shown on hover -- net bullish
+        # lists (RR/ETF/PS/SSS: +1 bullish, -1 bearish) and the price-confirmation %
+        # now vs 5 / 20 trading days earlier (same dates the derive compares).
+        _prior_dates = [x[0] for x in s.execute(text(
+            "SELECT DISTINCT as_of_date FROM drv_theme_stance WHERE as_of_date < :d "
+            "ORDER BY as_of_date DESC LIMIT 20"), {"d": d}).fetchall()]
+        _vsc = lambda v: 1 if v == "B" else -1 if v == "S" else 0
+        _prior_rows = {}
+        for _lab, _back in (("1w", 5), ("4w", 20)):
+            _pd = _prior_dates[_back - 1] if len(_prior_dates) >= _back else None
+            _prior_rows[_lab] = (_pd, {} if not _pd else {
+                x["theme"]: x for x in s.execute(text(
+                    "SELECT theme, rr, etf, ps, sss, price_pct FROM drv_theme_stance "
+                    "WHERE as_of_date = :d"), {"d": _pd}).mappings().all()})
+
         themes = []
         for r in theme_rows:
             you = _mr_theme_you(s, d, r["theme"], total_value)
             fit = _mr_fit(r["stance"], bool(r["quad_conflict"]), you["you_dollar"], you["has_category"])
             row = dict(r)
+            _now_l = sum(_vsc(r[k]) for k in ("rr", "etf", "ps", "sss"))
+            for _lab in ("1w", "4w"):
+                _pd, _rows = _prior_rows[_lab]
+                _p = _rows.get(r["theme"])
+                row["trend_%s_detail" % _lab] = None if not _p else {
+                    "prior_date": _pd.isoformat(),
+                    "lists_now": _now_l,
+                    "lists_prior": sum(_vsc(_p[k]) for k in ("rr", "etf", "ps", "sss")),
+                    "price_now": r["price_pct"], "price_prior": _p["price_pct"],
+                }
+            # 2026-09-30: stocks above the Trade line only (price_n_above = above BOTH
+            # Trade and Trend, price_n_tracked = total) for the Themes grid's SRC column.
+            from etl.derive_market_read import THEME_CATEGORY_MAP, _theme_price_breadth
+            row["price_n_trade"] = _theme_price_breadth(
+                s, d, THEME_CATEGORY_MAP.get(r["theme"], []), trade_only=True)[1]
             row["you_dollar"] = you["you_dollar"]
             row["you_pct"] = you["you_pct"]
             row["fit"] = fit

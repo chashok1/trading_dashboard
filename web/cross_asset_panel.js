@@ -107,7 +107,7 @@
       var color = _legColor(l);
       var pct = l.rr_pct != null ? l.rr_pct.toFixed(1) + '%' : '—';
       return '<span style="color:' + color + '; font-weight:' + (l.passed ? '700' : '400') + '; white-space:nowrap;">' +
-        esc(_legShort(l.symbol)) + ' ' + pct + (l.passed ? ' &#10003;' : '') + '</span>';
+        esc(_legShort(l.symbol)) + ' ' + pct + '</span>';   // no check mark (user, 2026-09-30); met conditions stay bold green
     }).join('<span style="color:#d6d3d1;"> &middot; </span>');
     var status = fired
       ? '<span style="color:#15803d; font-weight:700; white-space:nowrap;">&#9679; Buy</span>'
