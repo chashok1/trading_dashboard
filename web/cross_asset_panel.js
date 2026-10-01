@@ -77,7 +77,7 @@
 
   // 2026-09-30, user-directed: ONE compact line per rule instead of the long
   // description + chips + status badge. Shape:
-  //   GLD · ⛔ Blocked · Bonds 88.6% ✓ · USD 81.7% · Gold 42.8%   (status right after the symbol: Buy / Blocked / Watching)
+  //   GLD · Watching · Bonds 88.6% ✓ · USD 81.7% · Gold 42.8%   (status right after the symbol: Buy / Don't Buy / Watching)
   // Green ✓ = condition met, grey/yellow = not met (yellow = within 10 pts),
   // status at the end (FIRED / blocked / watching). The full description,
   // each leg's target and the veto outlooks live in a bulleted hover popover.
@@ -88,10 +88,20 @@
     return sym || '';
   }
 
+  // 2026-09-30, user-directed: "Don't Buy" (was "Blocked") only when the setup
+  // is fully formed -- every normal check passes -- and only the outlook veto
+  // (bonds/dollar still BULLISH) stops it. If any normal check still fails
+  // the card just says Watching, even while the veto flag is on.
+  function _dontBuy(r) {
+    if (r.fired === true || r.veto_active !== true) return false;
+    var normal = (r.detail || []).filter(function (l) { return l.check_type !== 'outlook'; });
+    return normal.length > 0 && normal.every(function (l) { return l.passed; });
+  }
+
   function ruleCard(r) {
     _rulesByCode[r.rule_code] = r;
     var fired = r.fired === true;
-    var vetoActive = !fired && r.veto_active === true;
+    var vetoActive = _dontBuy(r);
     var border = fired ? '#15803d' : vetoActive ? '#b91c1c' : 'var(--border,#e5e5e2)';
     var legs = (r.detail || []).filter(function (l) { return l.check_type !== 'outlook'; }).map(function (l) {
       var color = _legColor(l);
@@ -102,11 +112,11 @@
     var status = fired
       ? '<span style="color:#15803d; font-weight:700; white-space:nowrap;">&#9679; Buy</span>'
       : vetoActive
-      ? '<span style="color:#b91c1c; font-weight:700; white-space:nowrap;">&#9940; Blocked</span>'
+      ? '<span style="color:#b91c1c; font-weight:700; white-space:nowrap;">&#9940; Don’t Buy</span>'
       : '<span style="color:var(--text-3,#78716c); font-weight:600; white-space:nowrap;">Watching</span>';
     var link = '/actionable?symbol=' + encodeURIComponent(r.target_symbol);
     return '<div class="ca-rule" data-ca-rule="' + esc(r.rule_code) + '" style="display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; ' +
-      'padding:5px 10px; font-size:10px; line-height:1.4; background:#fff; border:1px solid var(--border,#e5e5e2); ' +
+      'padding:2px 6px; font-size:10px; line-height:1.4; background:#fff; border:1px solid var(--border,#e5e5e2); ' +
       'border-left:3px solid ' + border + '; border-radius:6px; cursor:help;">' +
       '<a href="' + esc(link) + '" style="font-weight:700; color:var(--text-1,#1c1917); text-decoration:none; white-space:nowrap;">' +
         esc(r.target_symbol) + '</a>' +
@@ -123,7 +133,7 @@
           ? l.members.map(function (m) { return m.symbol + ' ' + (m.outlook || '—'); }).join(', ')
           : (l.outlook || '—');
         rows += '<tr><td class="k" colspan="2">&bull; ' + esc(l.symbol) + ' outlook: <b>' + esc(out) + '</b> (veto if ' +
-          esc(l.outlook_value) + ')' + (l.passed && l.is_veto ? ' &mdash; <b style="color:#b91c1c;">blocking</b>' : '') + '</td></tr>';
+          esc(l.outlook_value) + ')' + (l.passed && l.is_veto ? (_dontBuy(r) ? ' &mdash; <b style="color:#b91c1c;">blocking the buy</b>' : ' &mdash; would block if the conditions were met') : '') + '</td></tr>';
       } else {
         var pct = l.rr_pct != null ? l.rr_pct.toFixed(1) + '%' : '—';
         var blend = l.members && l.members.length ? ' (' + l.members.map(function (m) {
@@ -226,7 +236,7 @@
         'border-radius:100px; white-space:nowrap;">' + esc(q.label) +
         (q.conflicts ? ' &middot; ' + q.conflicts + ' conflicts &#9888;' : '') + '</span>'
       : '';
-    return '<div style="display:flex; flex-direction:column; gap:5px; padding:8px 10px; ' +
+    return '<div style="display:flex; flex-direction:column; gap:2px; padding:3px 6px; ' +
       'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' +
       (q.conflicts ? '#b91c1c' : 'var(--border,#e5e5e2)') + '; border-radius:6px;">' +
       '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">' +
@@ -243,10 +253,13 @@
     if (!panel || !body) return;
     var rows = (data && data.rows) || [];
     var mrCard = quadConflictCard(mr);
-    if (!rows.length && !mrCard) { panel.style.display = 'none'; return; }
+    // The panel itself stays visible (it also holds the Regime/quad line above
+    // the cards); only the cards area hides when there is nothing to show.
+    if (!rows.length && !mrCard) { body.style.display = 'none'; return; }
+    body.style.display = '';
 
     body.innerHTML =
-      '<div style="display:flex; flex-direction:column; gap:6px; padding:2px 0 6px;">' +
+      '<div style="display:flex; flex-direction:column; gap:2px; padding:0 0 2px;">' +
       mrCard + rows.map(ruleCard).join('') +
       '</div>';
     panel.style.display = 'block';

@@ -518,10 +518,20 @@ async function loadRiskDial() {
     // row instead of sharing it -- rdQuietList is still toggled by id (not
     // this.nextElementSibling) since staleWarning can sit between the
     // toggle and the list.
+    // 2026-09-30, user-directed: the headline line ("Full size. HYG 13% of range;
+    // ...", a repeat of the gauge list below) is gone; just its size phrase
+    // shows, tiny, under the CLEAR/CAUTION pill ("Full Size").
+    const sizeMatch = /^\s*([^.]+)\./.exec(r.headline || '');
+    const sizeNoteHtml = sizeMatch
+      ? `<span class="rd-size-note">${escapeHtml(sizeMatch[1].trim().replace(/\b([a-z])/g, c => c.toUpperCase()))}</span>`
+      : '';
     body.innerHTML = `
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
-        <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}${r.stale_as_of ? ` <span class="rd-stale-suffix">&middot; CAUTION &middot; edge data as of ${escapeHtml(r.stale_as_of)}</span>` : ''}</span>
+        <span class="rd-label-col">
+          <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}${r.stale_as_of ? ` <span class="rd-stale-suffix">&middot; CAUTION &middot; edge data as of ${escapeHtml(r.stale_as_of)}</span>` : ''}</span>
+          ${sizeNoteHtml}
+        </span>
         <div class="rd-meter-pctwrap">
           ${meterLabelTop}
           <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
@@ -529,7 +539,6 @@ async function loadRiskDial() {
         </div>
         ${spxVbarHtml}
       </div>
-      <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
       <div class="rd-gauge-list">${firedHtml}</div>
       <div class="rd-bottom-row">
         <span class="rd-quiet-toggle" onclick="document.getElementById('rdQuietList').classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>

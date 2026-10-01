@@ -2434,6 +2434,10 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 #riskDialBand[hidden] { display: none; }
 .rd-top-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 2px 0 0; }
 .rd-budget { font-size: 48px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text-1); }
+/* 2026-09-30, user-directed: centre the number vertically on the bar. The row is
+   already align-items:center (box centres match), but digits sit ~0.06em below the
+   middle of a line-height:1 box in Segoe UI, so nudge the glyphs up 3px. */
+.rd-top-row .rd-budget { transform: translateY(-3px); }
 .rd-budget.b-clear      { color: var(--ok); }
 .rd-budget.b-caution    { color: var(--warn); }
 .rd-budget.b-defensive  { color: var(--act-sell); }
@@ -2505,13 +2509,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-spx-vbar-fill.tier-good     { background: var(--ok); }
 .rd-spx-vbar-fill.tier-caution  { background: #eab308; }
 .rd-spx-vbar-fill.tier-bad      { background: var(--bear); }
-.rd-headline { font-size: 11px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
-.rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.rd-headline { font-size: 11px; font-weight: 400; color: var(--text-2); margin: 5px 0 6px; }   /* 2026-09-30: was 8px 0 10px */
+.rd-gauge-list { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }   /* 2026-09-30: gap 4px -> 2px */
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
    (never colour alone) instead of one flat pink wash for every fired gauge. */
 .rd-gauge-row {
-  display: grid; grid-template-columns: 3px 28px 1fr auto auto; gap: 8px;
-  align-items: baseline; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border);
+  display: grid; grid-template-columns: 3px 28px 1fr auto auto; gap: 7px;
+  align-items: baseline; padding: 3px 5px 3px 0;   /* 2026-09-30: tighter (was gap 8px, padding 5px 8px 5px 0) */ border-bottom: 1px solid var(--border);
   background: none; cursor: pointer; border-radius: 4px;
 }
 .rd-gauge-row:hover, .rd-gauge-row:focus-visible { background: var(--act-sell-bg); outline: none; }
@@ -2519,16 +2523,19 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-gauge-row:hover .rd-chev, .rd-gauge-row:focus-visible .rd-chev { color: var(--accent); }
 .rd-gauge-row .rd-rail { align-self: stretch; border-radius: 2px; }
 .rd-gauge-row .rd-wt {
-  font-size: 10px; font-weight: 700; text-align: center;
-  padding: 1px 0; border-radius: 3px; font-variant-numeric: tabular-nums;
+  /* 2026-09-30, user-directed: 3/2/1 weight pills more obvious -- solid fill,
+     white bold numerals, bigger, fully rounded (was a faint tinted chip). */
+  font-size: 12px; font-weight: 800; text-align: center; line-height: 1.2;
+  padding: 1px 0; border-radius: 10px; font-variant-numeric: tabular-nums; color: #fff;
+  align-self: center;   /* 2026-09-30: vertically centred in the row (was top/baseline) */
 }
 .rd-gauge-row.sev-3 .rd-rail { background: var(--bear); }
-.rd-gauge-row.sev-3 .rd-wt   { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+.rd-gauge-row.sev-3 .rd-wt   { background: var(--bear); color: #fff; }
 .rd-gauge-row.sev-3 .rd-gauge-text strong { color: var(--act-sell-strong); }
-.rd-gauge-row.sev-2 .rd-rail { background: var(--act-sell); }
-.rd-gauge-row.sev-2 .rd-wt   { background: var(--act-sell-bg); color: var(--act-sell); }
-.rd-gauge-row.sev-1 .rd-rail { background: var(--act-sell-weak); }
-.rd-gauge-row.sev-1 .rd-wt   { background: var(--act-sell-weak-bg); color: var(--act-sell-weak); }
+.rd-gauge-row.sev-2 .rd-rail { background: #e8833a; }
+.rd-gauge-row.sev-2 .rd-wt   { background: #e8833a; color: #fff; }   /* 2026-09-30: lighter orange */
+.rd-gauge-row.sev-1 .rd-rail { background: #f2cf5b; }
+.rd-gauge-row.sev-1 .rd-wt   { background: #f2cf5b; color: #5a4300; }   /* 2026-09-30: light amber, dark numeral for contrast */
 .rd-gauge-row .rd-exp { color: var(--text-1); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 /* TASK_140 follow-up 5 -- housekeeping stale-data warning moved from the
    top of the card to here, beside the Quiet-gauges toggle, per user
@@ -3075,8 +3082,13 @@ tr.indicator-soon, tr.indicator-soon td { background: #eab308; color: #1e293b; f
    a flex container, so it'd be a no-op, this card's own width already
    fills naturally). */
 #regimeLineBody .regime-line {
-  font-size: 12px; cursor: help; border-bottom: 1px dotted var(--border);
+  font-size: 10px; cursor: help;
   display: flex; align-items: baseline; gap: 10px;
+  /* 2026-09-30, user-directed: boxed like the GLD/"Lists vs Quad model" cards
+     (white, 1px border + 3px left edge, 6px radius, same 5px 10px padding), no
+     dotted line below. */
+  background: #fff; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--border, #e5e5e2);
+  border-radius: 6px; padding: 2px 6px;
 }
 .regime-line .regime-win-label { flex: 0 0 auto; white-space: nowrap; text-align: left; }
 /* 2026-08-14 -- white-space:nowrap + text-overflow:ellipsis added -- the
@@ -3715,3 +3727,18 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .msr-rb-dot.r { left: 100%; }
 .msr-rb-dot.up { background: #16a34a; }
 .msr-rb-dot.dn { background: #dc2626; }
+
+/* 2026-09-30, user-directed: the OPEX/events and Earnings lines are now boxes
+   inside the Cross-Asset panel, styled like the quad line / GLD cards (white,
+   1px border + 3px left edge, 6px radius, 5px 10px padding), 2px apart. A box
+   with no content hides. */
+#crossAssetPanel #regimeOpexBody, #crossAssetPanel #regimeEarningsBody {
+  background: #fff; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--border, #e5e5e2);
+  border-radius: 6px; padding: 2px 6px; margin-bottom: 2px;
+}
+#crossAssetPanel #regimeOpexBody:empty, #crossAssetPanel #regimeEarningsBody:empty { display: none; }
+
+/* 2026-09-30, user-directed: the risk-size phrase ("Full Size") in a very small
+   font under the CLEAR/CAUTION pill (web/app.js risk-dial render). */
+.rd-label-col { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+.rd-size-note { font-size: 9px; line-height: 1; font-weight: 600; letter-spacing: .2px; color: var(--text-3); white-space: nowrap; }

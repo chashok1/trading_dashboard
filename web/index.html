@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260930jj">
+  <link rel="stylesheet" href="/static/styles.css?v=20260930ah">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -131,13 +131,6 @@
             <div id="heMktSituationBody">Loading…</div>
           </section>
 
-          <!-- 2026-09-30, user-directed: the Regime (quad) line panel ("60d (Q2) ...
-               Qtr (Q4) N (Q2)") moved to sit right next to (above) the Cross-Asset
-               "Lists vs Quad model" card. Still populated by web/app.js::loadRegimeBand(). -->
-          <section class="cockpit-band" id="regimeLineBand">
-            <div id="regimeLineBody">Loading…</div>
-          </section>
-
           <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
                rules (e.g. "Bonds and USD at TRR, Gold at LRR -> buy Gold")
                the ordinary rules engine can't express -- see
@@ -149,35 +142,19 @@
                web/cross_asset_panel.js, reads GET /api/cockpit/
                cross-asset-signals. Plain .cockpit-band chrome, matches
                Risk Dial/Mkt Situation siblings. -->
-          <section class="cockpit-band" id="crossAssetPanel" style="display:none;">
-            <div id="crossAssetBody">Loading…</div>
-          </section>
-
-          <!-- 2026-08-27 -- Opex/CPI-Events/Earnings/Regime split out of
-               the single #regimeStrip container into 4 independent panels
-               -- user: "Separate Opex, CPI, earnings, Regime into their own
-               panels." Each still populated by web/app.js::loadRegimeBand()
-               (rewritten to target these 4 containers instead of one
-               combined innerHTML=), same data/logic, just no longer one
-               atomic block -- this also satisfies the earlier "Mkt Situation
-               above Opex" ask, with no risk to #riskDialBand's own height
-               budget this time (Opex isn't inside it). Panel spacing in this
-               whole column tightened to ~1px -- user: "Don't leave too much
-               space between the panels. Leave thin hair space" -> "same
-               spacing between all panels on the left side use even tight
-               ~1px" -- see .dial-changed-col's own gap. -->
-          <section class="cockpit-band" id="regimeOpexBand">
+          <!-- 2026-09-30, user-directed: the Regime (quad) line ("60d (Q2) ... Qtr (Q4)
+               N (Q2)", #regimeLineBody, still populated by web/app.js::
+               loadRegimeBand()) now lives INSIDE this box, above the "Lists vs Quad
+               model" and rule cards -- so the panel is always shown; only the cards
+               area (#crossAssetBody) hides when it has nothing to show. -->
+          <section class="cockpit-band" id="crossAssetPanel">
+            <div id="regimeLineBody" style="margin-bottom:2px;">Loading…</div>
+            <!-- 2026-09-30, user-directed: OPEX/events and Earnings boxes moved in here
+                 too (still filled by web/app.js::loadRegimeBand(); boxed via
+                 #crossAssetPanel rules in styles.css). -->
             <div id="regimeOpexBody">Loading…</div>
-          </section>
-
-          <!-- 2026-08-27 -- CPI/Events panel removed -- user: "Remove econ
-               panel as we have on the right side" (the Indicator panel, now
-               driven by the same shared calendar-types selection + <=5d
-               highlight -- see #indicatorBand's own comment). The picker
-               itself (#calTypesPop/_toggleCalTypesPop) stays -- Indicator's
-               own gear icon still opens it. -->
-          <section class="cockpit-band" id="regimeEarningsBand">
             <div id="regimeEarningsBody">Loading…</div>
+            <div id="crossAssetBody"></div>
           </section>
 
           <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
@@ -1015,7 +992,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20260930gg"></script>
+  <script src="/static/app.js?v=20260930ae"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -1030,7 +1007,7 @@
   <script src="/static/market_read.js?v=20260930kk" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
-  <script src="/static/cross_asset_panel.js?v=20260930oo" defer></script>
+  <script src="/static/cross_asset_panel.js?v=20260930vv" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
