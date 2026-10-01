@@ -58,54 +58,6 @@
     return '#78716c';                    // far, neutral gray
   }
 
-  function _outlookLegChip(leg) {
-    var color = _legColor(leg);
-    var vetoTag = leg.is_veto ? (leg.passed ? ' (blocking)' : ' (veto, not active)') : '';
-    var valTxt, titleTxt;
-    if (leg.members && leg.members.length) {
-      // Blended categorical-AND check (e.g. "TNX:CGI + TYX:CGI") -- no
-      // single combined outlook to show, list each member's own reading.
-      valTxt = leg.members.map(function (m) { return m.outlook || '—'; }).join('/');
-      titleTxt = leg.symbol + ' need ' + leg.outlook_value + vetoTag + ' — ' +
-        leg.members.map(function (m) { return m.symbol + ' ' + (m.outlook || '—'); }).join(', ');
-    } else {
-      valTxt = leg.outlook || '—';
-      titleTxt = leg.symbol + ' outlook ' + valTxt + ' (need ' + leg.outlook_value + ')' + vetoTag;
-    }
-    return '<span style="display:inline-flex; align-items:center; gap:3px; ' +
-      'font-size:9px; padding:2px 6px; border-radius:100px; white-space:nowrap; ' +
-      'background:' + (leg.passed && leg.is_veto ? '#fde2e2' : leg.passed ? '#dceadd' : '#f5f5f4') +
-      '; color:' + color + '; font-weight:' + (leg.passed ? '700' : '400') + ';" ' +
-      'title="' + esc(titleTxt) + '">' +
-      (leg.passed && leg.is_veto ? '&#9940; ' : leg.passed ? '&#10003; ' : '') +
-      esc(leg.symbol) + ' ' + esc(valTxt) +
-      '</span>';
-  }
-
-  function legChip(leg) {
-    if (leg.check_type === 'outlook') return _outlookLegChip(leg);
-    var color = _legColor(leg);
-    var pctTxt = leg.rr_pct != null ? leg.rr_pct.toFixed(1) + '%' : '—';
-    var condTxt = leg.comparison + ' ' + leg.threshold_pct + '%';
-    // Blended checks (leg.members present, e.g. "10Y+30Y weighted 70/30")
-    // spell out each member's own RR%/weight in the tooltip -- the chip
-    // itself only shows the combined value, same as any other check.
-    var titleTxt = leg.symbol + ' RR ' + pctTxt + ' (need ' + condTxt + ')';
-    if (leg.members && leg.members.length) {
-      titleTxt += ' — blend of ' + leg.members.map(function (m) {
-        var mPct = m.rr_pct != null ? m.rr_pct.toFixed(1) + '%' : '—';
-        return m.symbol + ' ' + mPct + ' (weight ' + m.weight + ')';
-      }).join(', ');
-    }
-    return '<span style="display:inline-flex; align-items:center; gap:3px; ' +
-      'font-size:9px; padding:2px 6px; border-radius:100px; white-space:nowrap; ' +
-      'background:' + (leg.passed ? '#dceadd' : '#f5f5f4') + '; color:' + color + '; ' +
-      'font-weight:' + (leg.passed ? '700' : '400') + ';" ' +
-      'title="' + esc(titleTxt) + '">' +
-      (leg.passed ? '&#10003; ' : '') + esc(leg.symbol) + ' ' + pctTxt +
-      '</span>';
-  }
-
   // 2026-09-24, user-directed: "why confusing '...buy gold'. can we display
   // some thing else may be without buy??" -- ref_cross_asset_rule.description
   // (e.g. "...Gold (/GC) is at LRR -- buy Gold") always rendered as this
@@ -123,38 +75,77 @@
     return desc.replace(/\s*[-–—]+\s*(buy|sell)\s+\S+\s*$/i, '');
   }
 
+  // 2026-09-30, user-directed: ONE compact line per rule instead of the long
+  // description + chips + status badge. Shape:
+  //   GLD · ⛔ Blocked · Bonds 88.6% ✓ · USD 81.7% · Gold 42.8%   (status right after the symbol: Buy / Blocked / Watching)
+  // Green ✓ = condition met, grey/yellow = not met (yellow = within 10 pts),
+  // status at the end (FIRED / blocked / watching). The full description,
+  // each leg's target and the veto outlooks live in a bulleted hover popover.
+  var _rulesByCode = {};
+  var LEG_SHORT = [[/TNX|TYX/, 'Bonds'], [/DXY/, 'USD'], [/\/GC/, 'Gold']];
+  function _legShort(sym) {
+    for (var i = 0; i < LEG_SHORT.length; i++) if (LEG_SHORT[i][0].test(sym || '')) return LEG_SHORT[i][1];
+    return sym || '';
+  }
+
   function ruleCard(r) {
+    _rulesByCode[r.rule_code] = r;
     var fired = r.fired === true;
-    // 2026-09-24 -- veto_active (etl/derive_cross_asset_rules.py) means the
-    // normal legs all passed but an outlook veto blocked it -- a plain
-    // gray "watching" would misleadingly suggest the setup just isn't
-    // there yet, when it's actually fully formed except for the veto.
     var vetoActive = !fired && r.veto_active === true;
     var border = fired ? '#15803d' : vetoActive ? '#b91c1c' : 'var(--border,#e5e5e2)';
-    var badge = fired
-      ? '<span style="font-size:8.5px; font-weight:700; color:#15803d; background:#dceadd; ' +
-        'padding:2px 8px; border-radius:100px; white-space:nowrap;">&#9679; FIRED &mdash; ' +
-        esc(r.target_action) + ' ' + esc(r.target_symbol) + '</span>'
+    var legs = (r.detail || []).filter(function (l) { return l.check_type !== 'outlook'; }).map(function (l) {
+      var color = _legColor(l);
+      var pct = l.rr_pct != null ? l.rr_pct.toFixed(1) + '%' : '—';
+      return '<span style="color:' + color + '; font-weight:' + (l.passed ? '700' : '400') + '; white-space:nowrap;">' +
+        esc(_legShort(l.symbol)) + ' ' + pct + (l.passed ? ' &#10003;' : '') + '</span>';
+    }).join('<span style="color:#d6d3d1;"> &middot; </span>');
+    var status = fired
+      ? '<span style="color:#15803d; font-weight:700; white-space:nowrap;">&#9679; Buy</span>'
       : vetoActive
-      ? '<span style="font-size:8.5px; font-weight:700; color:#b91c1c; background:#fde2e2; ' +
-        'padding:2px 8px; border-radius:100px; white-space:nowrap;">&#9940; BLOCKED &mdash; trend still bullish</span>'
-      : '<span style="font-size:8.5px; color:var(--text-3,#a8a29e);">watching</span>';
-    var legsHtml = (r.detail || []).map(legChip).join(' ');
+      ? '<span style="color:#b91c1c; font-weight:700; white-space:nowrap;">&#9940; Blocked</span>'
+      : '<span style="color:var(--text-3,#78716c); font-weight:600; white-space:nowrap;">Watching</span>';
     var link = '/actionable?symbol=' + encodeURIComponent(r.target_symbol);
-    var setupTxt = _setupTitle(r.description) || r.rule_code;
-    return '<div style="display:flex; flex-direction:column; gap:5px; padding:8px 10px; ' +
-      'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' + border +
-      '; border-radius:6px;">' +
-      '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">' +
-        '<a href="' + esc(link) + '" style="font-size:10.5px; font-weight:700; color:' +
-        (fired ? 'var(--text-1,#1c1917)' : 'var(--text-3,#78716c)') + '; ' +
-        'text-decoration:none;" title="' + esc(r.description || r.rule_code) +
-        ' — open ' + esc(r.target_symbol) + ' on Actionable">' +
-        esc(setupTxt) + '</a>' +
-        badge +
-      '</div>' +
-      '<div style="display:flex; flex-wrap:wrap; gap:4px;">' + legsHtml + '</div>' +
+    return '<div class="ca-rule" data-ca-rule="' + esc(r.rule_code) + '" style="display:flex; flex-wrap:wrap; align-items:center; gap:2px 6px; ' +
+      'padding:5px 10px; font-size:10px; line-height:1.4; background:#fff; border:1px solid var(--border,#e5e5e2); ' +
+      'border-left:3px solid ' + border + '; border-radius:6px; cursor:help;">' +
+      '<a href="' + esc(link) + '" style="font-weight:700; color:var(--text-1,#1c1917); text-decoration:none; white-space:nowrap;">' +
+        esc(r.target_symbol) + '</a>' +
+      '<span style="color:#d6d3d1;">&middot;</span>' + status +
+      '<span style="color:#d6d3d1;">&middot;</span>' + legs +
     '</div>';
+  }
+
+  function _rulePopHtml(r) {
+    var rows = '';
+    (r.detail || []).forEach(function (l) {
+      if (l.check_type === 'outlook') {
+        var out = l.members && l.members.length
+          ? l.members.map(function (m) { return m.symbol + ' ' + (m.outlook || '—'); }).join(', ')
+          : (l.outlook || '—');
+        rows += '<tr><td class="k" colspan="2">&bull; ' + esc(l.symbol) + ' outlook: <b>' + esc(out) + '</b> (veto if ' +
+          esc(l.outlook_value) + ')' + (l.passed && l.is_veto ? ' &mdash; <b style="color:#b91c1c;">blocking</b>' : '') + '</td></tr>';
+      } else {
+        var pct = l.rr_pct != null ? l.rr_pct.toFixed(1) + '%' : '—';
+        var blend = l.members && l.members.length ? ' (' + l.members.map(function (m) {
+          return m.symbol + ' ' + (m.rr_pct != null ? m.rr_pct.toFixed(1) + '%' : '—') + ' x' + m.weight;
+        }).join(', ') + ')' : '';
+        rows += '<tr><td class="k" colspan="2">&bull; ' + esc(_legShort(l.symbol)) + ' ' + pct + ' &mdash; need ' +
+          esc(l.comparison) + ' ' + l.threshold_pct + '% ' + (l.passed ? '&#10003;' : '&#10007;') + esc(blend) + '</td></tr>';
+      }
+    });
+    return '<div class="sp-title">' + esc(r.target_symbol) + ' setup</div><table>' +
+      '<tr><td class="k" colspan="2">' + esc(_setupTitle(r.description) || r.rule_code) + '</td></tr>' + rows + '</table>';
+  }
+  function _wireRulePops(root) {
+    root.querySelectorAll('.ca-rule').forEach(function (el) {
+      el.addEventListener('mouseover', function () {
+        var r = _rulesByCode[el.getAttribute('data-ca-rule')];
+        if (r && typeof window._showDataPop === 'function') window._showDataPop(el, _rulePopHtml(r));
+      });
+      el.addEventListener('mouseout', function () {
+        if (typeof window.hideSourcePop === 'function') window.hideSourcePop();
+      });
+    });
   }
 
   // 2026-09-24, user-directed: "display that along with gold message in
@@ -260,6 +251,7 @@
       '</div>';
     panel.style.display = 'block';
     _wireWarnPops(body);
+    _wireRulePops(body);
   }
 
   function currentDate() {
