@@ -553,37 +553,7 @@ async function loadRiskDial() {
   }
 }
 
-// ---------- Band 2: What changed ----------
-
-async function loadEventsBand() {
-  const body = $('eventsBody');
-  if (!body) return;
-  try {
-    const r = await fetchJson(`/api/cockpit/events${_dateQS()}`);
-    if (r.quiet) {
-      body.innerHTML = `<div class="ev-quiet">No material market events today`
-        + (r.max_z_symbol ? ` (largest move: ${escapeHtml(r.max_z_symbol)}, z=${r.max_abs_z ?? '—'})` : '')
-        + `.</div>`;
-      return;
-    }
-    // TASK_140 follow-up 9 -- warn severity sorts before info (severe stays
-    // first -- it's the most urgent tier, the user's ask only distinguished
-    // warn vs info). Stable sort: same-severity events keep the API's own
-    // order (event_seq).
-    const _sevRank = { severe: 0, warn: 1, info: 2 };
-    const events = (r.events || []).slice().sort((a, b) =>
-      (_sevRank[a.severity || 'info'] ?? 2) - (_sevRank[b.severity || 'info'] ?? 2));
-    body.innerHTML = events.map(ev => `
-      <div class="ev-row ev-row-${escapeHtml(ev.severity || 'info')}">
-        <span class="ev-rail"></span>
-        <span class="ev-sev ${escapeHtml(ev.severity || 'info')}">${escapeHtml(ev.severity || '')}</span>
-        <span>${escapeHtml(ev.title || '')}${ev.read_text ? ` <span class="ev-read">— ${escapeHtml(ev.read_text)}</span>` : ''}</span>
-      </div>`).join('') || '<div class="ev-quiet">No events.</div>';
-  } catch (e) {
-    console.error('events band failed:', e);
-    body.innerHTML = '<div class="ev-fail">&#9888; Events unavailable.</div>';
-  }
-}
+// ---------- Band 2: What changed ---------- (removed 2026-09-30, user-directed)
 
 // ---------- Band 3: Regime ----------
 // No new computation (spec 7.2 Band 3) -- reads the same /api/quad-window +
@@ -2881,7 +2851,6 @@ async function refreshAll() {
   // needs to read that settled value, not race it.
   await loadCatAccountFilter();
   await Promise.all([
-    loadEventsBand(),
     loadRegimeBand(),
     reloadFactorScorecards(),
     loadCumPnlSnapshot(),

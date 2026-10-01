@@ -622,6 +622,14 @@ def get_events(date: Optional[str] = Query(None)):
         if rd["event_type"] == "quiet":
             quiet_payload = rd["exposure"] or {}
             continue
+        # 2026-09-30, user-directed: hide (display only -- drv_market_event is
+        # unchanged) the "<release> due <date>" calendar rows (already shown by the
+        # OPEX/events line and the Economic Indicator panel) and trend flips with
+        # no symbol ("None Trend flipped ...").
+        if rd["event_type"] == "calendar":
+            continue
+        if rd["event_type"] == "trend_flip" and not rd.get("tos_symbol"):
+            continue
         events.append(rd)
 
     if not events:
