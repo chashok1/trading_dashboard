@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260930bi">
+  <link rel="stylesheet" href="/static/styles.css?v=20261001a">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -1034,7 +1034,7 @@
        its renderRail() populates by container ID regardless of page. Its
        own init() gate widened to also accept this page, same reasoning as
        macro_areas.js above (see that file's own comment there too). -->
-  <script src="/static/macro_usd_corr.js?v=20260814a" defer></script>
+  <script src="/static/macro_usd_corr.js?v=20261001a" defer></script>
   <!-- Dashboard-only: TradingView live mini-chart tape replaces the shared
        market_bar.js text-tile tape (still used as-is on /actionable and
        /portfolio). See web/dashboard_tv_chart_tape.js?v=20260930m. -->
@@ -1045,7 +1045,7 @@
        econ-toggle mounting all stay no-ops here, same as before). Also
        gives macro_areas.js's candles a working window.mtTip.candleSvg on
        this page, which was silently missing before. -->
-  <script src="/static/market_bar.js?v=20260924b" defer></script>
+  <script src="/static/market_bar.js?v=20261001b" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->

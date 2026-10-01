@@ -4361,15 +4361,21 @@
     const sources = _sourcesOf(row);
     const winning = (row.winning_source || '').toString();
     const winEntry = sources.find(s => (s.source || s.source_code || '') === winning);
+    // 2026-10-01: when the winning source points the opposite way from the
+    // Final Call and Technical is what matches it, Technical drove the
+    // result -- the source conflicts. (BNO: PS BUY TO MIN, Final SELL SOME.)
+    const winSide = winEntry ? actionDisplay((winEntry.action || '').toUpperCase()).side : null;
+    const techSideFc = actionDisplay((row.rr_action || '').toUpperCase()).side;
+    const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSideFc === side);
     if (winEntry) {
       const code = winEntry.source || winEntry.source_code || winning;
-      rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it',
+      rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), techOverrides ? 'conflicts' : 'drove it',
         winEntry.pct_since_drop, winEntry.drop_conflict, winEntry.up_streak_3d));
     }
     const rraUpper = (row.rr_action || '').toUpperCase();
     if (rraUpper) {
       const techSide = actionDisplay(rraUpper).side;
-      const tag = winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
+      const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                             : 'drove it';
       const desc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
       rows.push(bulletFor('Technical', rraUpper, desc, null, tag));

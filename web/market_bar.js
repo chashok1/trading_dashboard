@@ -676,10 +676,13 @@
 
   function _mostRecentYahooFetch(status) {
     if (!status) return null;
-    const isos = [status.last_fetched, status.last_detail_fetched].filter(Boolean);
+    // last_tosl_loaded (2026-10-01): a TOSL load has the same prices, so it counts
+    // as a fresh quote. It is a naive local ISO string; compare as real times.
+    const isos = [status.last_fetched, status.last_detail_fetched, status.last_tosl_loaded].filter(Boolean);
     if (!isos.length) return null;
-    isos.sort();
-    return isos[isos.length - 1]; // ISO strings sort lexicographically = chronologically
+    const t = s => new Date(s).getTime();
+    isos.sort((a, b) => t(a) - t(b));
+    return isos[isos.length - 1];
   }
 
   function _renderAll() {
@@ -811,11 +814,13 @@
         // 2026-09-21, user-directed: "display time below the icon on all
         // screens" -- pages without the tape still need the toolbar label.
         // No /api/marketbar fetch needed here anymore now that the label
-        // reads /api/yahoo-fetch/status directly. Auto-refresh-when-stale
-        // stays Actionable/Portfolio only (not extended here, only the
-        // label was).
+        // reads /api/yahoo-fetch/status directly. 2026-10-01, user: "i need
+        // it to be refreshed [on] any screen" -- the stale check now runs on
+        // every page (the toolbar button exists everywhere); same 30-min /
+        // market-hours / visible-tab guards apply.
         _lastYahooStatus = await yahooStatusPromise;
         _renderAll();
+        _checkAutoRefresh();
       }
     } catch (err) {
       if (tapeEl) {

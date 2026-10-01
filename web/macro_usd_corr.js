@@ -53,6 +53,7 @@
     if (v >= CORR_GREEN)   return 'ucr-pos';
     if (v <= CORR_RED_STR) return 'ucr-neg-s';
     if (v <= CORR_RED_MOD) return 'ucr-neg-m';
+    if (v > 0)             return 'ucr-weak-pos';   // positive but below +0.50
     return '';
   }
 

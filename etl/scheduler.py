@@ -971,6 +971,26 @@ def maybe_run_hourly_quote_refresh() -> None:
     if not overdue:
         return
 
+    # 2026-10-01, user: this should only run if the UI didn't already refresh.
+    # Fallback only: skip when the newest quote (Yahoo pull from any source,
+    # or a TOSL load -- same prices) is under 30 min old, same threshold the
+    # dashboard's own stale check uses. Slots are still marked done.
+    try:
+        with session_scope() as s:
+            age_s = s.execute(text(
+                "SELECT EXTRACT(EPOCH FROM (now() - GREATEST("
+                " (SELECT MAX(fetched_at) FROM cache_yahoo_quote),"
+                " (SELECT MAX(processed_at) FROM meta_file_processed"
+                "   WHERE file_type = 'TOSL'))))"
+            )).scalar()
+        if age_s is not None and float(age_s) < 30 * 60:
+            log.info("scheduler: intraday Yahoo price refresh skipped -- quotes already fresh (%.0f min old)",
+                     float(age_s) / 60)
+            _hourly_quote_done_today.update((today, t) for t in overdue)
+            return
+    except Exception:
+        log.exception("scheduler: freshness check failed; refreshing anyway")
+
     from etl.yahoo_fetch import fetch_hourly_quotes
     log.info("scheduler: triggering intraday Yahoo price refresh (catching up %s, now %s ET)",
               ",".join("%02d:%02d" % t for t in overdue), now_et.strftime("%H:%M"))

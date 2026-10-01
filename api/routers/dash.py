@@ -1165,6 +1165,8 @@ def get_actionable(
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
                ms.monthly_scores_json, ms.detail AS macro_window,
                ms.sector_stance, ms.asset_class_stance, ms.style_stances,
+               si.sp500 AS idx_sp500, si.nasdaq AS idx_nasdaq,
+               si.dow AS idx_dow, si.russell AS idx_russell,
                pv.decision AS pvv_decision, pv.detail AS pvv_detail,
                bg.drift_flag AS bb_rr_drift_flag,
                bg.ape_top_med20 AS bb_rr_ape_top_med20,
@@ -2429,8 +2431,14 @@ def get_data_status():
     processed file — RR, CALL, positions, etc. — triggers the refresh, and
     other screens can share the same signal."""
     with session_scope() as s:
+        # 2026-10-01: also the latest finished derive run, so a Yahoo price
+        # pull (scheduler, tab auto-refresh, button) reloads the screens too.
+        # A pull writes cache_yahoo_quote and THEN re-derives, so watching the
+        # derive finish (not the pull time) avoids reloading on stale numbers.
         last_at = s.execute(text("""
-            SELECT MAX(processed_at) FROM meta_file_processed
+            SELECT GREATEST(
+                (SELECT MAX(processed_at) FROM meta_file_processed),
+                (SELECT MAX(finished_at) FROM meta_derived_run WHERE status = 'success'))
         """)).scalar()
     return {"last_at": last_at.isoformat() if last_at else None}
 
@@ -6210,7 +6218,14 @@ def yahoo_fetch_status():
                    MAX(detail_fetched_at) as last_detail
             FROM cache_yahoo_quote
         """)).fetchone()
+        # 2026-10-01: a TOSL (TL) load carries the same intraday prices as a
+        # Yahoo pull, so the Dashboard's "last quotes" time counts it too.
+        # processed_at is a naive local timestamp; the browser parses it as local.
+        tosl = s.execute(text(
+            "SELECT MAX(processed_at) FROM meta_file_processed WHERE file_type = 'TOSL'"
+        )).scalar()
     return {
+        "last_tosl_loaded": tosl.isoformat() if tosl else None,
         "count": row.cnt,
         "last_fetched": row.last_fetched.isoformat() if row.last_fetched else None,
         "last_detail_fetched": row.last_detail.isoformat() if row.last_detail else None,

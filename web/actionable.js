@@ -2008,6 +2008,15 @@ async function loadActionable(opts) {
     ]);
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
+    // 2026-10-01: volatility gauge zones (VIX/VXN/VXD/RVX/GVZ/OVX/MOVE) for
+    // the Action-icon warnings in _signalReasons. Keyed by gauge label.
+    state.volZones = {};
+    for (const ar of ((macroAreas && macroAreas.areas) || [])) {
+      if (ar.area_key !== 'volatility') continue;
+      for (const m of (ar.members || [])) {
+        if (m.zone) state.volZones[m.label] = { zone: m.zone, last: m.last };
+      }
+    }
     state.betaMap = (betaMap && typeof betaMap === 'object') ? betaMap : {};
     // 2026-08-14 -- Portfolio Mix now sources its HELD POSITIONS from the raw
     // /api/portfolio feed (hist_cs/hist_f, same as the Sector/Asset class
@@ -3128,7 +3137,13 @@ function _srcReasonsHtml(r) {
     // actually determined the row's action instead of just sorting the
     // winner first with no visual distinction from the others. Shortened
     // to just "D" to save space in the compact grid column.
-    const droveIt = srcCode === winning
+    // 2026-10-01: no "D" when Technical overrode the winning source (the
+    // source points the opposite way from the Final Call) -- the popup
+    // gives "drove it" to Technical in that case.
+    const _wSide = actionDisplay((s.action || '').toUpperCase()).side;
+    const _overridden = !!(r.final_side && _wSide && _wSide !== r.final_side
+      && actionDisplay((r.rr_action || '').toUpperCase()).side === r.final_side);
+    const droveIt = (srcCode === winning && !_overridden)
       ? `<span class="dv-tag drove-it-pill" style="margin-left:3px;" title="Drove the action">D</span>` : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
@@ -3621,6 +3636,37 @@ function _signalReasons(row, side) {
   // loadSources(). User: "I think financials are most affected."
   if (!isSell && state.curveInvertedWarn && row.sector === 'Financials') {
     warn.push('Yield curve inverting/flattening — bank margins under pressure (Risk Dial)');
+  }
+
+  // 2026-10-01: Bear sector + non-investable volatility warnings (buy-side
+  // only; swapped to the confirm list on sell rows by the return below).
+  // User: "if the corresponding sector is Bear, warn me" and "if Nasdaq
+  // volatility is not investable, warn me" -> extended to all vol gauges,
+  // Chop or Elevated (option B). Index gauges use ref_sector's sp500/
+  // nasdaq/dow/russell flags; Gold/Oil/Bond have no flag, so mapped by
+  // asset class / sector.
+  if (!isSell) {
+    if (row.sector_stance != null && Number(row.sector_stance) < 0 && row.sector && row.sector !== 'N/A') {
+      warn.push('Sector ' + row.sector + ' is Bear (stance ' + Number(row.sector_stance).toFixed(2) + ')');
+    }
+    const vz = state.volZones || {};
+    const isFlag = v => String(v || '').trim().toUpperCase() === 'Y';
+    const ac = String(row.real_asset_class || '').toLowerCase();
+    const sec = String(row.sector || '').toLowerCase();
+    const gauges = [];
+    if (isFlag(row.idx_sp500))   gauges.push('S&P Vol');
+    if (isFlag(row.idx_nasdaq))  gauges.push('Nasdaq Vol');
+    if (isFlag(row.idx_dow))     gauges.push('Dow Vol');
+    if (isFlag(row.idx_russell)) gauges.push('Russell Vol');
+    if (/gold|silver|precious/.test(ac) || /gold|silver|precious/.test(sec)) gauges.push('Gold Vol');
+    if (sec === 'energy') gauges.push('Oil Vol');
+    if (/fixed income|bond/.test(ac) || sec === 'financials') gauges.push('Bond Vol');
+    for (const g of gauges) {
+      const z = vz[g];
+      if (z && (z.zone === 'chop' || z.zone === 'elevated')) {
+        warn.push(g + ' not investable (' + z.zone + (z.last != null ? ', ' + Number(z.last).toFixed(1) : '') + ')');
+      }
+    }
   }
 
   // MACD/MACDH momentum (2026-08-20): used to push a 'MACD momentum
@@ -5748,15 +5794,21 @@ function _actpopDriverBullets(row, side) {
   const sources = _sourcesOf(row);
   const winning = (row.winning_source || '').toString();
   const winEntry = sources.find(s => (s.source || s.source_code || '') === winning);
+  // 2026-10-01: when the winning source points the opposite way from the
+  // Final Call and Technical is what matches it, Technical drove the
+  // result -- the source conflicts. (BNO: PS BUY TO MIN, Final SELL SOME.)
+  const winSide = winEntry ? actionDisplay((winEntry.action || '').toUpperCase()).side : null;
+  const techSideFc = actionDisplay((row.rr_action || '').toUpperCase()).side;
+  const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSideFc === side);
   if (winEntry) {
     const code = winEntry.source || winEntry.source_code || winning;
-    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it',
+    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), techOverrides ? 'conflicts' : 'drove it',
       winEntry.pct_since_drop, winEntry.drop_conflict, winEntry.up_streak_3d));
   }
   const rraUpper = (row.rr_action || '').toUpperCase();
   if (rraUpper) {
     const techSide = actionDisplay(rraUpper).side;
-    const tag = winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
+    const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
     const desc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
