@@ -466,16 +466,11 @@
     _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth', true);
     _wireSectionToggle('mrThemesToggle', 'qrThemesBody', 'mrThemes_collapsed', 'Themes');
 
-    var headlineBand = document.getElementById('regimeLineBand');
-    if (headlineBand) {
-      var h = document.getElementById('mrHeadlineLine');
-      if (!h) {
-        h = document.createElement('div');
-        h.id = 'mrHeadlineLine';
-        headlineBand.appendChild(h);
-      }
-      h.innerHTML = headlineHtml(data);
-    }
+    // 2026-09-30, user-directed: the Market Read headline line under the Regime
+    // (quad) line was removed -- the same information is shown in the
+    // "Lists vs Quad model" card of the Cross-Asset panel (web/cross_asset_panel.js).
+    var oldHeadline = document.getElementById('mrHeadlineLine');
+    if (oldHeadline) oldHeadline.remove();
 
     body.querySelectorAll('[data-mr-band]').forEach(function (row) {
       row.addEventListener('click', function () { _mrExpandRail(row.getAttribute('data-mr-band')); });

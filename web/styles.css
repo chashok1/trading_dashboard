@@ -2954,7 +2954,22 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   color: var(--text-3);
   display: flex; align-items: center; gap: 6px;
 }
-.opex-line { font-size: 10px; }
+/* 2026-09-30, user-directed: smaller text for the OPEX/events line (was 10px). */
+.opex-line { font-size: 7px; gap: 3px; flex-wrap: wrap; }
+.opex-item { white-space: nowrap; display: inline-flex; align-items: center; height: 16px; }
+/* 2026-09-30, user-directed: a thin horizontal line between wrapped rows of
+   pills. Every row is exactly 16px tall (row-gap 0), so a repeating gradient
+   draws a 1px line at the bottom of each 16px band; clip-path then trims the
+   very last 1px so there is no line under the final row. */
+.opex-line { row-gap: 0; align-content: flex-start;
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent 15px, var(--border, #d4d4d8) 15px, var(--border, #d4d4d8) 16px);
+  clip-path: inset(0 0 1px 0); }
+.opex-lbl { font-size: 9.5px; font-weight: 600; }
+.opex-dt { font-size: 7px; }
+/* 2026-09-30, user-directed: tight spacing between the items -- a thin 1px
+   line instead of the old " · " plus wide gaps. */
+.opex-sep { display: inline-block; width: 1px; height: 8px; background: var(--border, #d4d4d8); flex: 0 0 auto; }
+.opex-line .opex-soon { margin: 0; padding: 1px 4px; }   /* snug pills (2026-09-30) */
 .events-line { justify-content: space-between; }
 /* 2026-08-27 -- earnings-line overrides: was nowrap like its siblings (fine
    when it only listed a handful of opted-IN watched symbols), but now it

@@ -166,9 +166,69 @@
   // wording web/market_read.js's headlineHtml() renders on the Market Read
   // band -- this is a second display of that data, not a second source of
   // truth for it.
+  // 2026-09-30, user-directed: ONE combined read instead of the old headline
+  // sentence + "Disagree:" line -- a Bullish row and a Bearish row (the
+  // Hedgeye lists' call per theme), each theme once, with an amber warning
+  // icon on the ones where the Quad model disagrees. Hover the icon for a
+  // bulleted explanation. Themes shown = the six macro themes (with a
+  // Bullish/Bearish list stance) plus any other theme that is in conflict.
+  var MACRO_THEMES = ['Cash/short FI', 'Rates up', 'USD', 'Credit', 'Duration', 'Volatility'];
+  var _confByTheme = {};
+  var _quadLabel = '';
+
+  function _word(code) {
+    var c = String(code || '').toUpperCase();
+    return c === 'B' || c === 'BULLISH' ? 'Bullish' : c === 'S' || c === 'BEARISH' ? 'Bearish'
+      : c === 'N' || c === 'NEUTRAL' ? 'Neutral' : 'No read';
+  }
+  function _themeChip(t) {
+    var warn = t.quad_conflict
+      ? ' <span class="ca-warn" data-ca-theme="' + esc(t.theme) + '" style="color:#d97706; font-weight:700; cursor:help;">&#9888;&#xFE0E;</span>'
+      : '';
+    return '<span style="white-space:nowrap;">' + esc(t.theme) + warn + '</span>';
+  }
+  function _readRows(themes) {
+    _confByTheme = {};
+    var bull = [], bear = [];
+    themes.forEach(function (t) {
+      var st = String(t.stance || '').toUpperCase();
+      if (st !== 'B' && st !== 'S') return;
+      if (MACRO_THEMES.indexOf(t.theme) === -1 && !t.quad_conflict) return;
+      if (t.quad_conflict) _confByTheme[t.theme] = t;
+      (st === 'B' ? bull : bear).push(t);
+    });
+    var row = function (label, color, list) {
+      return '<div style="display:flex; gap:6px; font-size:10px; line-height:1.5;">' +
+        '<span style="font-weight:700; color:' + color + '; min-width:44px;">' + label + '</span>' +
+        '<span style="color:var(--text-1,#1c1917); display:flex; flex-wrap:wrap; gap:2px 8px;">' +
+        (list.length ? list.map(_themeChip).join('') : '<span style="color:#a8a29e;">none</span>') + '</span></div>';
+    };
+    return row('Bullish', '#15803d', bull) + row('Bearish', '#b91c1c', bear);
+  }
+  function _wireWarnPops(root) {
+    root.querySelectorAll('.ca-warn').forEach(function (el) {
+      el.addEventListener('mouseover', function () {
+        var t = _confByTheme[el.getAttribute('data-ca-theme')];
+        if (!t || typeof window._showDataPop !== 'function') return;
+        var listsSay = _word(t.stance), quadSays = _word(t.quad_says);
+        var col = function (w) { return w === 'Bullish' ? '#1c6c30' : w === 'Bearish' ? '#8c1d1d' : '#78716c'; };
+        window._showDataPop(el,
+          '<div class="sp-title">' + esc(t.theme) + ' &mdash; lists vs quad model</div><table>' +
+          '<tr><td class="k">&bull; Lists say</td><td class="v" style="color:' + col(listsSay) + '; font-weight:600;">' + listsSay + '</td></tr>' +
+          '<tr><td class="k">&bull; ' + esc(_quadLabel || 'Quad') + ' model says</td><td class="v" style="color:' + col(quadSays) + '; font-weight:600;">' + quadSays + '</td></tr>' +
+          '<tr><td class="k" colspan="2">&bull; The two views disagree, so confidence in this theme is lower.</td></tr>' +
+          '<tr><td class="k" colspan="2">&bull; A caution flag, not a buy or sell signal.</td></tr></table>');
+      });
+      el.addEventListener('mouseout', function () {
+        if (typeof window.hideSourcePop === 'function') window.hideSourcePop();
+      });
+    });
+  }
+
   function quadConflictCard(mr) {
-    if (!mr || !mr.headline) return '';
+    if (!mr || !(mr.themes || []).length) return '';
     var q = mr.quad || {};
+    _quadLabel = q.label || '';
     var badge = q.label
       ? '<span style="font-size:8.5px; font-weight:700; color:' + (q.conflicts ? '#b91c1c' : '#78716c') +
         '; background:' + (q.conflicts ? '#fde2e2' : '#f5f5f4') + '; padding:2px 8px; ' +
@@ -182,7 +242,7 @@
         '<span style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917);">Lists vs Quad model</span>' +
         badge +
       '</div>' +
-      '<div style="font-size:10px; color:var(--text-2,#57534e); line-height:1.4;">' + esc(mr.headline) + '</div>' +
+      _readRows(mr.themes) +
     '</div>';
   }
 
@@ -199,6 +259,7 @@
       mrCard + rows.map(ruleCard).join('') +
       '</div>';
     panel.style.display = 'block';
+    _wireWarnPops(body);
   }
 
   function currentDate() {

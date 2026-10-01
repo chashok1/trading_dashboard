@@ -826,10 +826,14 @@ function _nextQuadWitching(calRows) {
 // 2026-08-14 -- yellow highlight when an expiration is <=5 days out, per
 // user: "Options expirations (OPEX and qtr) if less than or equal to 5d.
 // highligh with yellow color."
+// 2026-09-30, user-directed: event name larger, its date and days left small.
+function _opexItemInner(label, date, days) {
+  return `<span class="opex-lbl">${label}</span> <span class="opex-dt">${fmtDate(date)} (${days}d)</span>`;
+}
 function _opexLineHtml(calRows, calTypes) {
   const part = (label, row) => {
     if (!row) return '';
-    const text = `${label} ${fmtDate(row.indicator_date)} (${row.days}d)`;
+    const text = _opexItemInner(label, row.indicator_date, row.days);
     return row.days <= 5 ? `<span class="opex-soon">${text}</span>` : text;
   };
   const bits = [part('OPEX', _calRow(calRows, 'Monthly Exp')), part('Qtly Exp', _nextQuadWitching(calRows))];
@@ -842,10 +846,15 @@ function _opexLineHtml(calRows, calTypes) {
   (calRows || []).forEach(r => {
     if (r.indicator === 'Monthly Exp') return;
     if (!selected.has(r.indicator) || r.days == null || r.days > 5) return;
-    bits.push(`<span class="opex-soon">${escapeHtml(r.indicator)} ${fmtDate(r.indicator_date)} (${r.days}d)</span>`);
+    bits.push(`<span class="opex-soon">${_opexItemInner(escapeHtml(r.indicator), r.indicator_date, r.days)}</span>`);
   });
   const filtered = bits.filter(Boolean);
-  return filtered.length ? `<div class="opex-line">${filtered.join(' &middot; ')}</div>` : '';
+  // Each item is one non-wrapping unit ("JOLTS 09/29 (0d)" stays on a single
+  // line); the line itself wraps between items. User: "display date and days
+  // in single line".
+  return filtered.length
+    ? `<div class="opex-line">${filtered.map(b => `<span class="opex-item">${b}</span>`).join('<span class="opex-sep"></span>')}</div>`
+    : '';
 }
 
 // 2026-08-14 -- configurable Events line, between the OPEX line and the
