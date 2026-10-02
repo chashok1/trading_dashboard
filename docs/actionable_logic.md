@@ -716,6 +716,9 @@ computation instead of the lookup table. Either way this only overrides the
 RR-position sub-read (`QO`) — the Trend/Trade bearish override (`QE<0`) and
 BB-range bearish override (`QJ<0`) still take priority over it, unchanged.
 
+**2026-10-01 — the broken-support check uses the latest price, not the day's low.**
+User: "change it to use closing price or the current price." `lrr_idx` (low-based; also feeds the rules engine, unchanged) still says whether today's LOW broke LRR, but the STM override now needs the latest price (`drv_quote.last_price`: live intraday, the close after hours) to also be more than the `lrr_idx` rule's tolerance (0.25 SD) below LRR. If the low broke but price recovered, support held and the symbol is treated as "touched LRR" (`lrr_idx_eff = 0`), so the normal range-position rules apply. Stored in `drv_tn_td_bb_rr.lrr_idx_eff`; computed in `_derive_trend_trade_rules_impl` Pass 1. `drv_tn_td_bb_rr.rr_why` holds the plain-English reason shown in the Action popup / Technical hover (`etl/technical_why.py`).
+
 ---
 
 ## Stop signal (`drv_actionable.stop_signal`)

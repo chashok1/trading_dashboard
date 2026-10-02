@@ -5744,6 +5744,11 @@ CREATE TABLE IF NOT EXISTS drv_tn_td_bb_rr (
     PRIMARY KEY (as_of_date, tos_symbol)
 );
 
+-- 2026-10-01: plain-English reason for the Technical signal (etl/technical_why.py)
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS rr_why TEXT;
+-- 2026-10-01: effective LRR-support-break index (latest price, not the day's low)
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS lrr_idx_eff NUMERIC;
+
 -- Drop the same columns from drv_cat_atomic_input (they now live in drv_tn_td_bb_rr)
 ALTER TABLE IF EXISTS drv_cat_atomic_input
     DROP COLUMN IF EXISTS bb_rng_strk_rule,

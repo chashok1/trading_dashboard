@@ -1147,6 +1147,7 @@ def get_actionable(
                rr.tn_td_rule_desc AS tn_td_desc,
                rr.bb_rng_strk_desc AS bb_desc,
                rr.rr_desc,
+               rr.rr_why,
                rr.rr_bull_bear,
                _ha.held_accounts,
                hy.company_name,

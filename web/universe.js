@@ -4377,7 +4377,7 @@
       const techSide = actionDisplay(rraUpper).side;
       const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                             : 'drove it';
-      const desc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
+      const desc = row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '';
       rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
     }
     const others = sources.filter(s => (s.source || s.source_code || '') !== winning);

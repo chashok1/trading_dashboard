@@ -3152,6 +3152,17 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         _win_days = 30
     win_interval = f"{_win_days} days"
 
+    # LRR-break tolerance (SD), same threshold the lrr_idx atomic rule uses.
+    lrr_tol = 0.25
+    try:
+        _lt = session.execute(text(
+            "SELECT brkeout_from FROM ref_trig_atomic_rule WHERE rule_name = 'lrr_idx' LIMIT 1"
+        )).first()
+        if _lt and _lt[0] is not None:
+            lrr_tol = abs(float(_lt[0]))
+    except Exception:
+        pass
+
     # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
     result = session.execute(text("""
         WITH inputs AS (
@@ -3171,8 +3182,11 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 a.perf1d_sd_rule,
                 a.trr_idx,
                 a.mrr_idx,
-                a.lrr_idx
+                a.lrr_idx,
+                drr.lrr AS lrr
             FROM drv_quote q
+            LEFT JOIN drv_rr drr
+              ON drr.as_of_date = q.as_of_date AND drr.tos_symbol = q.tos_symbol
             LEFT JOIN LATERAL (
                 SELECT a_trend_value, a_trade_value, a_bb_top_slope, a_bb_bot_slope
                 FROM hist_td
@@ -3203,6 +3217,17 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             SELECT
                 i.*,
                 LEAST(i.sd, i.median_sd) AS sd_or_median,
+                -- 2026-10-01, user: "change it to use closing price or the current
+                -- price" -- a broken LRR support (lrr_idx = -1, from today's LOW)
+                -- only counts if the latest price (live intraday, the close after
+                -- hours) is also more than :lrrtol SD below LRR. If the low broke
+                -- but price recovered, support held: treat as "touched LRR" (0)
+                -- so the normal range-position rules apply. lrr_idx itself
+                -- (low-based, also used by the rules engine) is unchanged.
+                CASE WHEN i.lrr_idx = -1 AND i.lrr IS NOT NULL
+                          AND LEAST(i.sd, i.median_sd) > 0
+                          AND (i.close - i.lrr) / LEAST(i.sd, i.median_sd) >= -:lrrtol
+                     THEN 0 ELSE i.lrr_idx END AS lrr_eff,
                 CASE WHEN i.close = i.a_trend_value THEN 0.1
                      WHEN LEAST(i.sd, i.median_sd) IS NULL
                           OR LEAST(i.sd, i.median_sd) = 0 THEN NULL
@@ -3225,7 +3250,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             (as_of_date, tos_symbol,
              a_bb_top_slope, a_bb_bot_slope,
              trend_trade_rule, bb_rng_strk_rule,
-             bull_rr_action, not_bull_rr_action)
+             bull_rr_action, not_bull_rr_action, lrr_idx_eff)
         SELECT
             c.as_of_date, c.tos_symbol,
             c.a_bb_top_slope, c.a_bb_bot_slope,
@@ -3272,35 +3297,36 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 -- wins regardless of mrr_idx/perf1d_sd_rule/macdh -- reuses
                 -- the existing code -1 (STM, "bearish in bull zone"), same
                 -- action as the narrower already-above-LRR bearish case below.
-                WHEN c.lrr_idx = -1 THEN -1
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                WHEN c.lrr_eff = -1 THEN -1
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
                      AND c.mrr_idx = -1 AND c.macdh_direction > 0 THEN 6
                 WHEN c.perf1d_sd_rule = -1 AND c.mrr_idx = 1 THEN 5
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 0 THEN 4
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 0 THEN 4
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
                      AND c.mrr_idx = -1 AND c.macdh_direction < 0 THEN 3
-                WHEN c.perf1d_sd_rule <  0 AND c.lrr_idx = 0
+                WHEN c.perf1d_sd_rule <  0 AND c.lrr_eff = 0
                      AND c.trade_rule > 0 THEN 2
                 WHEN c.perf1d_sd_rule >= 0 AND c.mrr_idx = 0 THEN 1
                 WHEN c.perf1d_sd_rule <= -1 AND c.mrr_idx = -1
-                     AND c.lrr_idx = 1 THEN -1
+                     AND c.lrr_eff = 1 THEN -1
                 ELSE NULL
             END,
             CASE
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
                      AND c.mrr_idx <= 0 AND c.macdh_direction > 0 THEN 5
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 0 THEN 4
-                WHEN c.perf1d_sd_rule <  0 AND c.lrr_idx = 0
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 0 THEN 4
+                WHEN c.perf1d_sd_rule <  0 AND c.lrr_eff = 0
                      AND c.trade_rule > 0 AND c.trend_rule > 0 THEN 3
-                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
                      AND c.mrr_idx <= 0 AND c.macdh_direction < 0 THEN 2
                 WHEN c.trr_idx >= 0 THEN -1
                 ELSE NULL
-            END
+            END,
+            c.lrr_eff
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
-           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol})
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol})
 
     rows_pass1 = result.rowcount or 0
 
@@ -3328,7 +3354,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 r.bb_rng_strk_rule    AS qj,
                 r.bull_rr_action      AS qm_val,
                 r.not_bull_rr_action  AS qn_val,
-                a.lrr_idx             AS lrr_idx
+                COALESCE(r.lrr_idx_eff, a.lrr_idx) AS lrr_idx  -- effective (latest-price) support break
             FROM drv_tn_td_bb_rr r
             LEFT JOIN drv_cat_atomic_input a
               ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
@@ -3379,6 +3405,28 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         FROM looked_up l
         WHERE dst.as_of_date = l.as_of_date AND dst.tos_symbol = l.tos_symbol
     """), {"d": as_of_date})
+
+    # 2026-10-01: plain-English reason for each Technical signal (popup/hover on
+    # Actionable) -- see etl/technical_why.py. Same decision order as Pass 2.
+    from etl.technical_why import explain_technical
+    why_rows = session.execute(text("""
+        SELECT r.tos_symbol, r.trend_trade_rule, r.bb_rng_strk_rule, r.bb_rng_strk_desc AS bb_desc,
+               r.bull_rr_action, r.not_bull_rr_action, r.td_tn_bb_rr_action,
+               a.lrr_idx AS lrr_idx_raw, r.lrr_idx_eff, q.last_price AS last, q.low_price AS low,
+               rr.lrr, t.a_trade_value AS trade_line, t.a_trend_value AS trend_line
+        FROM drv_tn_td_bb_rr r
+        LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
+        LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
+        LEFT JOIN drv_rr rr ON rr.as_of_date = r.as_of_date AND rr.tos_symbol = r.tos_symbol
+        LEFT JOIN drv_technicals t ON t.as_of_date = r.as_of_date AND t.tos_symbol = r.tos_symbol
+        WHERE r.as_of_date = :d
+    """), {"d": as_of_date}).mappings().all()
+    upd = [{"d": as_of_date, "s": w["tos_symbol"], "why": explain_technical(dict(w))}
+           for w in why_rows]
+    if upd:
+        session.execute(text(
+            "UPDATE drv_tn_td_bb_rr SET rr_why = :why WHERE as_of_date = :d AND tos_symbol = :s"
+        ), upd)
 
     return rows_pass1
 

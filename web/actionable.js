@@ -5375,7 +5375,7 @@ function _buildActionPopHtml(row) {
   const rraUpper = (row.rr_action || '').toUpperCase();
   const techSide = _TECH_BUY.has(rraUpper) ? 'buy' : _TECH_SELL.has(rraUpper) ? 'sell' : null;
   const techColor = techSide === side ? color : techSide ? '#b45309' : '#94a3b8';
-  const techDesc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
+  const techDesc = row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '';  // rr_why: plain-English reason (etl/technical_why.py)
   h += `<div>Technical : <b style="color:${techColor};">${rra}</b></div>`
      + `<div style="margin:2px 0 4px 4px;color:#64748b;">${techDesc ? escapeHtml(techDesc) : 'no descriptor'}</div></div>`;
 
@@ -5810,7 +5810,7 @@ function _actpopDriverBullets(row, side) {
     const techSide = actionDisplay(rraUpper).side;
     const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
-    const desc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
+    const desc = row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '';  // 2026-10-01: rr_why = plain-English reason
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
   }
   const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
@@ -9189,6 +9189,7 @@ function setupRRActionCol() {
         ${_rrHDesc ? `<span style="font-size:10px;font-weight:400;color:#475569;">${escapeHtml(_rrHDesc)}</span>` : ''}
         ${priceHtml}
       </div>
+      ${rowData?.rr_why ? `${sec('Why this signal')}<div style="font-size:11px;color:#0f172a;line-height:1.4;margin-bottom:4px;max-width:280px;">${escapeHtml(rowData.rr_why)}</div>` : ''}
       ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(null, rowData?.tn_td_desc || d.tn_td_desc))}
       ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(null, rowData?.bb_desc   || d.bb_desc))}
       ${(()=>{ const _z=rowData?.rr_bull_bear?(rowData.rr_bull_bear==='B'?'Bull Up':'Bull Side Ways'):''; const _zc=rowData?.rr_bull_bear==='B'?'#16a34a':'#f59e0b'; return rowScore(`RR${_z?` <span style="font-size:8px;font-weight:400;text-transform:none;color:${_zc};">${_z}</span>`:''}`,d.rr_action,shortDesc(null,d.rr_desc)); })()}
