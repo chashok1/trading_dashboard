@@ -1149,7 +1149,7 @@ def get_actionable(
                rr.rr_desc,
                rr.rr_why,
                rr.rr_bull_bear,
-               _ha.held_accounts,
+               _ha.held_accounts, _ha.held_qty, _ha.held_cost,
                hy.company_name,
                si.industry,
                tw.rvol, tw.rvol_prior, tw.w_volume,
@@ -1252,16 +1252,24 @@ def get_actionable(
         ) w ON TRUE
         LEFT JOIN (
             SELECT tos_symbol,
-                   STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
+                   STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts,
+                   -- 2026-10-01: total shares + total cost across accounts, for the
+                   -- "your cost vs Trade line" note on the Technical explanation.
+                   -- held_cost is NULL if any lot has no cost basis (avoids a
+                   -- misleadingly low average).
+                   SUM(q) AS held_qty,
+                   CASE WHEN COUNT(*) = COUNT(cost) THEN SUM(cost) END AS held_cost
             FROM (
                 SELECT f.tos_symbol,
-                       f.account_number AS acct
+                       f.account_number AS acct,
+                       f.qty AS q, f.cost_basis_total AS cost
                 FROM hist_f f
                 WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
                   AND f.tos_symbol IS NOT NULL
                   AND f.account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 UNION ALL
-                SELECT c.tos_symbol, c.account AS acct
+                SELECT c.tos_symbol, c.account AS acct,
+                       c.qty AS q, c.cost_basis AS cost
                 FROM hist_cs c
                 WHERE c.snapshot_date = :max_cs_snap AND c.qty > 0
                   AND c.tos_symbol IS NOT NULL
@@ -1328,9 +1336,29 @@ def get_actionable(
 
     _compute_macro, _quad_m_label, _quad_q_label = _build_macro_engine(d)
 
+    # 2026-10-01: last buy / last sell per symbol ("Bought 10/1" tags, and parking
+    # of rows you traded today) -- display-only, see api/_recent_buys.py.
+    from api._recent_buys import trade_dates, is_today, today_flows, classify_today
+    try:
+        with session_scope() as _rs:
+            _trades = trade_dates(_rs, d)
+            _flows = today_flows(_rs, d)
+    except Exception:
+        _trades, _flows = {}, {}
+
     out = []
     for r in rows:
         d_ = dict(r)
+        _t = _trades.get(d_.get("tos_symbol")) or {}
+        _lb, _ls = _t.get("bought"), _t.get("sold")
+        d_["last_bought_date"] = _lb.isoformat() if _lb else None
+        d_["last_sold_date"] = _ls.isoformat() if _ls else None
+        d_["actioned_today"] = is_today(_lb, d) or is_today(_ls, d)
+        _f = _flows.get(d_.get("tos_symbol"))
+        d_["trade_kind_today"] = (
+            classify_today(_f["pre"], _f["bought"], _f["sold"], _f["snap_post"]) if _f else None)
+        d_["bought_qty_today"] = _f["bought"] if _f and _f["bought"] else None
+        d_["sold_qty_today"] = _f["sold"] if _f and _f["sold"] else None
         if not show_acted and d_.get("last_user_action") in ("DONE", "SKIPPED", "OVERRIDDEN"):
             continue
         snooze = d_.get("snooze_until")
@@ -3136,7 +3164,8 @@ def post_actionable_bulk_action(payload: dict):
 def clear_actionable_action(symbol: str, date: str = Query(...)):
     """Un-suppress: remove SKIPPED/SNOOZED user_action_log rows for (date, symbol)
     so the action reappears on the Actionable screen. Backs the grid's
-    Suppress/Un-suppress and un-snooze toggles."""
+    Suppress/Un-suppress and un-snooze toggles, and (2026-10-01) the click-to-undo
+    on a 'Done <date>' tag -- DONE rows are cleared too."""
     sym = symbol.upper().strip()
     try:
         as_of = datetime.strptime(date, "%Y-%m-%d").date()
@@ -3145,7 +3174,7 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
     with session_scope() as s:
         res = s.execute(text("""
             DELETE FROM user_action_log
-            WHERE as_of_date = :d AND tos_symbol = :sym AND user_action IN ('SKIPPED', 'SNOOZED')
+            WHERE as_of_date = :d AND tos_symbol = :sym AND user_action IN ('SKIPPED', 'SNOOZED', 'DONE')
         """), {"d": as_of, "sym": sym})
     return {"cleared": res.rowcount or 0}
 

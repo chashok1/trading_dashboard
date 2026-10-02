@@ -87,6 +87,7 @@ const state = {
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
   // flag) whenever an active filter/search matches a row inside the band.
   watchlistExpanded: false,
+  recentBuyExpanded: false,   // 2026-10-01: "Actioned today (n)" band in Trade view
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   mySymbols: new Set(), // 2026-09-13: upper-cased tos_symbol set from ref_my_stocks
@@ -5755,6 +5756,25 @@ function _actpopRrBarHtml(row) {
   </div>`;
 }
 
+// 2026-10-01: "your cost vs the Trade line" context for the Technical
+// explanation (informational only -- never changes the signal). User bought
+// XLE below its Trade line and asked why Technical still says SELL TO MIN;
+// the signal is a trend read, not a P&L read, so this just shows both.
+function _techCostNote(row) {
+  const q = Number(row.held_qty), c = Number(row.held_cost);
+  if (!row.held_today || !(q > 0) || !(c > 0)) return '';
+  const avg = c / q;
+  const last = Number(row.last_price);
+  const trade = Number(row.a_trade_value);
+  let s = `You hold ${Math.round(q).toLocaleString()} sh at avg cost ${fmtUsd(avg)}`;
+  if (last > 0) {
+    const pl = (last / avg - 1) * 100;
+    s += ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}% vs last ${fmtUsd(last)})`;
+  }
+  if (trade > 0) s += `; Trade line ${fmtUsd(trade)} is ${trade >= avg ? 'above' : 'below'} your cost`;
+  return s + '.';
+}
+
 // Tier 1 — "Driven by": one bullet per source_actions entry + Technical,
 // winning source first ("drove it"), Technical tagged agrees/conflicts vs
 // the row's own side, each with a real historical hit-rate pill from
@@ -5810,7 +5830,7 @@ function _actpopDriverBullets(row, side) {
     const techSide = actionDisplay(rraUpper).side;
     const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
-    const desc = row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '';  // 2026-10-01: rr_why = plain-English reason
+    const desc = ((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
   }
   const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
@@ -6445,6 +6465,65 @@ function _emptyStateHtml() {
   return 'No actionable rows match these filters.';
 }
 
+// 2026-10-01, user: "have actioned today -- for both Buy or Sell -- and they move to
+// the bottom" + "display Bought 10/1 for all SELL actions". Display only; never
+// changes the Final Call.
+//  * Actioned today = you bought or sold the symbol on the screen's date (Schwab/
+//    Fidelity files or a share-count change; server-side api/_recent_buys.py) OR
+//    you marked the row Done. Such a row is tagged ("Bought 10/1" / "Sold 10/1" /
+//    "Traded 10/1" / "Done 10/1"), dimmed outside Trade view, and in Trade view parked
+//    in a collapsed "Actioned today (n)" band at the bottom. Over-max rows keep an
+//    "over max $X" note. Never applies to SELL ALL or a breached stop.
+//  * Every sell-signal row also shows a quiet gray "Bought <date>" tag when you
+//    bought the symbol in the last 60 days (context only; no parking).
+function _actionedInfo(r) {
+  const code = (r.final_code || '').toUpperCase();
+  if (r.stop_breached || code === 'SA') return null;
+  const day = r.as_of_date || state.date;
+  const b = !!day && r.last_bought_date === day;
+  const sd = !!day && r.last_sold_date === day;
+  const done = (r.last_user_action || '').toUpperCase() === 'DONE';
+  if (!b && !sd && !done) return null;
+  const mx = Number(r.target_max_dollar), cur = Number(r.current_position_dollar);
+  const over = (r.held_today && mx > 0 && cur > mx) ? cur - mx : 0;
+  // Exact wording from the server (api/_recent_buys.py::classify_today): new position vs
+  // adding, sold some vs sold all. Falls back to the plain buy/sell/done wording.
+  const KIND = { bought_new: 'Bought', bought_more: 'Bought more', sold_some: 'Sold some',
+                 sold_all: 'Sold all', traded: 'Traded' };
+  const label = KIND[r.trade_kind_today] || ((b && sd) ? 'Traded' : b ? 'Bought' : sd ? 'Sold' : 'Done');
+  return { label, date: day, over, doneOnly: !b && !sd, bq: r.bought_qty_today, sq: r.sold_qty_today };
+}
+
+function _actionTagHtml(r) {
+  const ai = r._actionInfo;
+  const nl = String.fromCharCode(10);
+  if (ai) {
+    const tip = [
+      `• You ${ai.doneOnly ? 'marked this Done' : ai.label.toLowerCase()} on ${ai.date}`,
+      ...((ai.bq || ai.sq) ? [`• Today: ${ai.bq ? 'bought ' + Math.round(ai.bq).toLocaleString() + ' sh' : ''}${ai.bq && ai.sq ? ', ' : ''}${ai.sq ? 'sold ' + Math.round(ai.sq).toLocaleString() + ' sh' : ''}`] : []),
+      state.filters.trade_mode ? '• It is parked in "Actioned today" below' : '• The row is dimmed',
+      '• The signal itself is unchanged',
+      ...(ai.over > 0 ? [`• Position is over its max by ${fmtUsd(ai.over)} (sizing still says trim)`] : []),
+      ...(ai.doneOnly ? ['• Click this tag to undo Done'] : []),
+    ].join(nl);
+    return `<div class="action-tag" ${ai.doneOnly ? `data-done-undo="${escapeHtml(r.tos_symbol)}"` : ''} `
+      + `style="margin-top:1px;font-size:9px;font-weight:700;color:#7c3aed;white-space:nowrap;${ai.doneOnly ? 'cursor:pointer;' : ''}" title="${escapeHtml(tip)}">`
+      + `${escapeHtml(ai.label)} ${escapeHtml(fmtMD(ai.date) || '')}${ai.doneOnly ? ' ✎' : ''}`
+      + (ai.over > 0 ? `<br><span style="color:#b45309;">over max ${escapeHtml(fmtUsd(ai.over))}</span>` : '')
+      + `</div>`;
+  }
+  const code = (r.final_code || '').toUpperCase();
+  if ((code === 'SA' || code === 'SS' || code === 'STM') && r.last_bought_date) {
+    const day = r.as_of_date || state.date;
+    const ago = Math.round((new Date(day) - new Date(r.last_bought_date)) / 86400000);
+    const tip = [`• Last bought ${r.last_bought_date}` + (ago > 0 ? ` (${ago} day${ago === 1 ? '' : 's'} ago)` : ''),
+                 '• Context only: the signal is unchanged'].join(nl);
+    return `<div class="action-tag action-tag-ctx" style="margin-top:1px;font-size:9px;font-weight:600;color:#94a3b8;white-space:nowrap;" title="${escapeHtml(tip)}">`
+      + `Bought ${escapeHtml(fmtMD(r.last_bought_date) || '')}</div>`;
+  }
+  return '';
+}
+
 function renderGrid() {
   for (const r of state.rows) {
     r._snapshot = _winningSnapshot(r);
@@ -6457,6 +6536,8 @@ function renderGrid() {
     // TASK_124: Trade Mode's own criteria already narrows to entry-ripe
     // qualifying buys — never band these into the collapsed Watchlist.
     r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
+    r._actionInfo = _actionedInfo(r);
+    r._parkedActioned = !!(state.filters.trade_mode && r._actionInfo);
     r._priority = _computePriority(r);
     r._pvv_rank = _pvvRank(r.pvv_decision);
   }
@@ -6480,7 +6561,8 @@ function renderGrid() {
   // hide. Within the band, always ordered by dollar-weighted edge desc (same
   // scoring used across the ranked tiers) so the best-of-the-rest rises to
   // the band's top.
-  const mainRows  = state.rows.filter(r => !r._watchlisted);
+  const mainRows  = state.rows.filter(r => !r._watchlisted && !r._parkedActioned);
+  const parkedRows = state.rows.filter(r => r._parkedActioned);
   // TASK_122: within a group of equal/near-equal score (|diff| < _NEW_TIEBREAK_EPS),
   // a NEW-pilled row (winning source's snapshot just landed for this anchor —
   // see _isNewSnapshot()) sorts first so fresh list arrivals surface near the
@@ -6511,7 +6593,9 @@ function renderGrid() {
   // Must match DOM append order below (mainRows, then watchRows when the
   // band is expanded) -- state.rows alone is sorted by the active column
   // sort, which is a different order once the watchlist band is expanded.
-  const visibleRows = bandExpanded ? mainRows.concat(watchRows) : mainRows;
+  const parkExpanded = state.recentBuyExpanded || (filtersActive && parkedRows.length > 0);
+  let visibleRows = bandExpanded ? mainRows.concat(watchRows) : mainRows;
+  if (parkExpanded) visibleRows = visibleRows.concat(parkedRows);
   state.visibleRows = visibleRows;
 
   for (const r of mainRows) {
@@ -6528,6 +6612,17 @@ function renderGrid() {
         // change, actionable.js only) — mute inline, matching the low_confidence
         // row treatment used elsewhere in this file.
         tr.style.opacity = '0.75';
+        tb.appendChild(tr);
+      }
+    }
+  }
+
+  if (parkedRows.length > 0) {
+    tb.appendChild(_actionedBandRowEl(parkedRows.length, parkExpanded));
+    if (parkExpanded) {
+      for (const r of parkedRows) {
+        const tr = _buildRowEl(r);
+        tr.classList.remove('row-acted'); tr.style.opacity = '';   // band already separates them
         tb.appendChild(tr);
       }
     }
@@ -6562,6 +6657,32 @@ function _watchlistBandRowEl(count, expanded) {
     + `<span style="font-weight:400;color:#94a3b8;">— unheld buys, entry not yet ripe (Technical not BS/BM)</span>`;
   btn.addEventListener('click', () => {
     state.watchlistExpanded = !state.watchlistExpanded;
+    renderGrid();
+  });
+  td.appendChild(btn);
+  tr.appendChild(td);
+  return tr;
+}
+
+// Collapsed/expand toggle row for the "Actioned today (n)" band (Trade view).
+// Same shape as the Watchlist band above.
+function _actionedBandRowEl(count, expanded) {
+  const tr = document.createElement('tr');
+  tr.className = 'watchlist-band-row';
+  const td = document.createElement('td');
+  td.colSpan = 23;
+  td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;'
+    + 'font-size:11px;font-weight:600;color:#7c3aed;padding:2px 0;width:100%;text-align:left;';
+  btn.title = 'Symbols you bought, sold or marked Done today — parked here instead of the main list. '
+    + 'The signal is unchanged. SELL ALL and breached stops are never parked. Click to expand/collapse.';
+  btn.innerHTML = `<span style="display:inline-block;width:10px;">${expanded ? '&#9660;' : '&#9654;'}</span>`
+    + `<span>Actioned today (${count})</span>`
+    + `<span style="font-weight:400;color:#94a3b8;">— bought, sold or marked Done today</span>`;
+  btn.addEventListener('click', () => {
+    state.recentBuyExpanded = !state.recentBuyExpanded;
     renderGrid();
   });
   td.appendChild(btn);
@@ -6608,6 +6729,9 @@ function _buildRowEl(r) {
     const _ua = (r.last_user_action || '').toUpperCase();
     const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
+    // Dim only where the row stays in the main list (non-Trade views); in Trade view the
+    // parked row already sits in its own band, so no dim there (user, 2026-10-01).
+    if (r._actionInfo) { tr.classList.add('row-actioned-today'); if (!r._parkedActioned) tr.style.opacity = '0.6'; }
     if (r.stop_breached) tr.classList.add('row-stop-breach');
     if (r.conviction_hold && r.conviction_direction === 'AVOID' && r._fc_side === 'buy') {
       tr.classList.add('row-lt-avoid-conflict');
@@ -6751,6 +6875,7 @@ function _buildRowEl(r) {
             : ''}
           ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
           ${tradabilityBadge ? '<div style="margin-top:1px;">' + tradabilityBadge + '</div>' : ''}
+          ${_actionTagHtml(r)}
         </div>
       </td>
       <td data-col="action" style="padding:6px 4px;"><div class="hdr-anchor-box">${fcHtml}</div></td>
@@ -6846,6 +6971,7 @@ async function inlineAction(sym, action) {
     });
     // Mark row visually acted; keep in grid until next reload.
     if (row) row._rowActed = true;
+    if (row && userAction === 'DONE') row.last_user_action = 'DONE';
     const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(sym)}"]`);
     if (tr) tr.classList.add('row-acted');
     showStatus(`${action}: ${sym}`, 'success', 2500);
@@ -6876,7 +7002,7 @@ async function bulkAction(action) {
       if (r.error) continue;
       okCount++;
       const row = state.allRows.find(rr => rr.tos_symbol === r.symbol);
-      if (row) row._rowActed = true;
+      if (row) { row._rowActed = true; if (userAction === 'DONE') row.last_user_action = 'DONE'; }
       const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(r.symbol)}"]`);
       if (tr) tr.classList.add('row-acted');
     }
@@ -8877,6 +9003,20 @@ const _closeModal = () => {
   });
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
+  // Click a "Done <date> ✎" tag in the grid to undo that Done.
+  document.addEventListener('click', async (e) => {
+    const t = e.target.closest && e.target.closest('[data-done-undo]');
+    if (!t) return;
+    e.stopPropagation();
+    const sym = t.getAttribute('data-done-undo');
+    try {
+      await fetchJson(`/api/actionable/${encodeURIComponent(sym)}/action?date=${encodeURIComponent(state.date)}`, { method: 'DELETE' });
+      showStatus(`Undid Done: ${sym}`, 'success', 2500);
+    } catch (err) {
+      showStatus(`Undo failed: ${err.message}`, 'error');
+    }
+    await loadActionable({ preserveState: true });
+  }, true);
   $('convictionAddBtn').addEventListener('click', addConvictionHold);
   $('convictionCloseBtn').addEventListener('click', closeConvictionHold);
   $('convictionDeleteBtn').addEventListener('click', deleteConvictionHold);
@@ -9189,7 +9329,7 @@ function setupRRActionCol() {
         ${_rrHDesc ? `<span style="font-size:10px;font-weight:400;color:#475569;">${escapeHtml(_rrHDesc)}</span>` : ''}
         ${priceHtml}
       </div>
-      ${rowData?.rr_why ? `${sec('Why this signal')}<div style="font-size:11px;color:#0f172a;line-height:1.4;margin-bottom:4px;max-width:280px;">${escapeHtml(rowData.rr_why)}</div>` : ''}
+      ${rowData?.rr_why ? `${sec('Why this signal')}<div style="font-size:11px;color:#0f172a;line-height:1.4;margin-bottom:4px;max-width:280px;">${escapeHtml(rowData.rr_why)}${_techCostNote(rowData) ? `<div style="margin-top:3px;color:#475569;">${escapeHtml(_techCostNote(rowData))}</div>` : ''}</div>` : ''}
       ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(null, rowData?.tn_td_desc || d.tn_td_desc))}
       ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(null, rowData?.bb_desc   || d.bb_desc))}
       ${(()=>{ const _z=rowData?.rr_bull_bear?(rowData.rr_bull_bear==='B'?'Bull Up':'Bull Side Ways'):''; const _zc=rowData?.rr_bull_bear==='B'?'#16a34a':'#f59e0b'; return rowScore(`RR${_z?` <span style="font-size:8px;font-weight:400;text-transform:none;color:${_zc};">${_z}</span>`:''}`,d.rr_action,shortDesc(null,d.rr_desc)); })()}
