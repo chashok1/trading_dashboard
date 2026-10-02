@@ -6479,10 +6479,13 @@ function _emptyStateHtml() {
 function _actionedInfo(r) {
   const code = (r.final_code || '').toUpperCase();
   if (r.stop_breached || code === 'SA') return null;
-  const day = r.as_of_date || state.date;
-  const b = !!day && r.last_bought_date === day;
-  const sd = !!day && r.last_sold_date === day;
-  const done = (r.last_user_action || '').toUpperCase() === 'DONE';
+  // "Today" = the current market session (server: r.session_day), not the screen/anchor
+  // date, which lags during the day. Null on older dates picked in the date picker.
+  const day = r.session_day;
+  if (!day) return null;
+  const b = r.last_bought_date === day;
+  const sd = r.last_sold_date === day;
+  const done = !!r.done_today;
   if (!b && !sd && !done) return null;
   const mx = Number(r.target_max_dollar), cur = Number(r.current_position_dollar);
   const over = (r.held_today && mx > 0 && cur > mx) ? cur - mx : 0;
@@ -6971,7 +6974,7 @@ async function inlineAction(sym, action) {
     });
     // Mark row visually acted; keep in grid until next reload.
     if (row) row._rowActed = true;
-    if (row && userAction === 'DONE') row.last_user_action = 'DONE';
+    if (row && userAction === 'DONE') { row.last_user_action = 'DONE'; row.done_today = true; }
     const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(sym)}"]`);
     if (tr) tr.classList.add('row-acted');
     showStatus(`${action}: ${sym}`, 'success', 2500);
@@ -7002,7 +7005,7 @@ async function bulkAction(action) {
       if (r.error) continue;
       okCount++;
       const row = state.allRows.find(rr => rr.tos_symbol === r.symbol);
-      if (row) { row._rowActed = true; if (userAction === 'DONE') row.last_user_action = 'DONE'; }
+      if (row) { row._rowActed = true; if (userAction === 'DONE') { row.last_user_action = 'DONE'; row.done_today = true; } }
       const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(r.symbol)}"]`);
       if (tr) tr.classList.add('row-acted');
     }

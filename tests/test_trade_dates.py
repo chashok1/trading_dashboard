@@ -48,3 +48,20 @@ def test_classify_falls_back_to_snapshot_when_no_transactions():
     assert classify_today(0, 0, 0, snap_post=25) == "bought_new"
     assert classify_today(100, 0, 0, snap_post=100) is None
     assert classify_today(100, 0, 0) is None
+
+
+from api._recent_buys import flags_apply, prev_trading_day
+
+FRI, MON = date(2026, 10, 2), date(2026, 10, 5)
+
+
+def test_prev_trading_day_skips_weekends_and_holidays():
+    assert prev_trading_day(MON) == FRI
+    assert prev_trading_day(THU) == date(2026, 9, 30)
+    assert prev_trading_day(THU, holidays={date(2026, 9, 30)}) == date(2026, 9, 29)
+
+
+def test_flags_apply_on_live_screen_only():
+    assert flags_apply(THU, THU)                        # anchor caught up (after 8 PM TOSD)
+    assert flags_apply(date(2026, 9, 30), THU)          # anchor lagging during the session
+    assert not flags_apply(date(2026, 9, 29), THU)      # older date from the picker

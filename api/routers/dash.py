@@ -1338,11 +1338,20 @@ def get_actionable(
 
     # 2026-10-01: last buy / last sell per symbol ("Bought 10/1" tags, and parking
     # of rows you traded today) -- display-only, see api/_recent_buys.py.
-    from api._recent_buys import trade_dates, is_today, today_flows, classify_today
+    # "Today" = the current market session (not the screen/anchor date, which lags during
+    # the day) -- see api/_recent_buys.py.
+    from api._recent_buys import (trade_dates, is_today, today_flows, classify_today,
+                                  current_session_day, flags_apply, done_symbols_for_session)
+    _sess, _flows, _done_today = None, {}, set()
     try:
         with session_scope() as _rs:
-            _trades = trade_dates(_rs, d)
-            _flows = today_flows(_rs, d)
+            _sd, _hol = current_session_day(_rs)
+            if flags_apply(d, _sd, _hol):
+                _sess = _sd
+            _trades = trade_dates(_rs, _sess or d)
+            if _sess:
+                _flows = today_flows(_rs, _sess)
+                _done_today = done_symbols_for_session(_rs, _sess, _hol)
     except Exception:
         _trades, _flows = {}, {}
 
@@ -1353,7 +1362,9 @@ def get_actionable(
         _lb, _ls = _t.get("bought"), _t.get("sold")
         d_["last_bought_date"] = _lb.isoformat() if _lb else None
         d_["last_sold_date"] = _ls.isoformat() if _ls else None
-        d_["actioned_today"] = is_today(_lb, d) or is_today(_ls, d)
+        d_["session_day"] = _sess.isoformat() if _sess else None
+        d_["done_today"] = bool(_sess) and d_.get("tos_symbol") in _done_today
+        d_["actioned_today"] = bool(_sess) and (is_today(_lb, _sess) or is_today(_ls, _sess))
         _f = _flows.get(d_.get("tos_symbol"))
         d_["trade_kind_today"] = (
             classify_today(_f["pre"], _f["bought"], _f["sold"], _f["snap_post"]) if _f else None)
@@ -3165,7 +3176,8 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
     """Un-suppress: remove SKIPPED/SNOOZED user_action_log rows for (date, symbol)
     so the action reappears on the Actionable screen. Backs the grid's
     Suppress/Un-suppress and un-snooze toggles, and (2026-10-01) the click-to-undo
-    on a 'Done <date>' tag -- DONE rows are cleared too."""
+    on a 'Done <date>' tag -- DONE rows are cleared too, including ones clicked during
+    the current market session but stored under the (lagging) screen date."""
     sym = symbol.upper().strip()
     try:
         as_of = datetime.strptime(date, "%Y-%m-%d").date()
@@ -3176,7 +3188,23 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
             DELETE FROM user_action_log
             WHERE as_of_date = :d AND tos_symbol = :sym AND user_action IN ('SKIPPED', 'SNOOZED', 'DONE')
         """), {"d": as_of, "sym": sym})
-    return {"cleared": res.rowcount or 0}
+        cleared = res.rowcount or 0
+        # DONE clicked this market session but stored under an earlier screen date.
+        try:
+            from api._recent_buys import current_session_day
+            from etl.market_date import market_date_for
+            _sd, _hol = current_session_day(s)
+            ids = [r_[0] for r_ in s.execute(text(
+                "SELECT id, acted_at FROM user_action_log WHERE tos_symbol = :sym "
+                "AND user_action = 'DONE' AND acted_at >= :lo"),
+                {"sym": sym, "lo": _sd - timedelta(days=4)}).all()
+                if market_date_for(r_[1], _hol) == _sd]
+            if ids:
+                cleared += s.execute(text(
+                    "DELETE FROM user_action_log WHERE id = ANY(:ids)"), {"ids": ids}).rowcount or 0
+        except Exception:
+            pass
+    return {"cleared": cleared}
 
 
 @router.get("/api/actionable/rr-analysis")

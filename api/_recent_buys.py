@@ -37,6 +37,46 @@ def is_today(then: Optional[date], as_of: date) -> bool:
     return then is not None and then == as_of
 
 
+# --- "today" = the current market SESSION, not the screen (anchor) date -----------
+# The screen date is the last TOSD load, so during 10/1 trading it is still 9/30 and
+# same-day trades/Done marks would never line up (user, 2026-10-01). The session date
+# is the calendar date once the market has opened on a trading day (before 9:30 AM ET,
+# weekends and holidays: the previous trading day) -- the same rule as the position-file
+# date policy (etl/market_date.py). Everything "today" clears when the next session opens.
+
+def prev_trading_day(d: date, holidays=()) -> date:
+    hol = set(holidays or ())
+    d -= timedelta(days=1)
+    while d.weekday() >= 5 or d in hol:
+        d -= timedelta(days=1)
+    return d
+
+
+def flags_apply(screen_date: date, session_day: date, holidays=()) -> bool:
+    """Show "actioned today" flags only on the live screen: the session date itself or
+    the trading day before it (the lagging anchor during the session). Older dates picked
+    from the date picker don't get today's flags."""
+    return screen_date >= prev_trading_day(session_day, holidays)
+
+
+def current_session_day(session):
+    """(session_day, holidays) as of now, ET."""
+    from etl.market_date import market_date_for, _holidays, _now_et
+    hol = _holidays(session)
+    return market_date_for(_now_et(), hol), hol
+
+
+def done_symbols_for_session(session, session_day: date, holidays=()) -> set:
+    """Symbols marked DONE during the given session (by when it was clicked, not by the
+    screen date it was stored under)."""
+    from etl.market_date import market_date_for
+    rows = session.execute(text("""
+        SELECT tos_symbol, acted_at FROM user_action_log
+        WHERE user_action = 'DONE' AND acted_at >= :lo
+    """), {"lo": session_day - timedelta(days=4)}).all()
+    return {sym for sym, at in rows if market_date_for(at, holidays) == session_day}
+
+
 def trade_dates(session, as_of: date) -> Dict[str, dict]:
     """{tos_symbol: {'bought': date|None, 'sold': date|None}}."""
     tx_lo = as_of - timedelta(days=TX_LOOKBACK_DAYS)
