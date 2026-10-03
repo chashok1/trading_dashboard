@@ -7601,6 +7601,21 @@ function _loadDrilldownChart(sym) {
 }
 
 // ---- drilldown ----
+// Drilldown "Winning source" line: the source's measured buy-family 20d edge and rank
+// (drv_actionable.winning_source_edge / winning_source_rank). Blank when neither is set.
+// Restored 2026-10-03: the call in openDrilldown was committed (TASK_140) without this
+// function, so opening a row's drilldown threw a ReferenceError.
+function _winningSourceEdgeHtml(row) {
+  const edge = row.winning_source_edge != null ? Number(row.winning_source_edge) : null;
+  const rank = row.winning_source_rank != null ? Number(row.winning_source_rank) : null;
+  const parts = [];
+  if (edge != null && !isNaN(edge)) parts.push('20d edge ' + (edge >= 0 ? '+' : '') + edge.toFixed(2) + '%');
+  if (rank != null && !isNaN(rank)) parts.push('rank ' + rank);
+  if (!parts.length) return '';
+  const color = edge == null ? '#64748b' : edge >= 0 ? '#15803d' : '#b91c1c';
+  return ' <span style="font-size:10px;color:' + color + ';">(' + parts.join(', ') + ')</span>';
+}
+
 async function openDrilldown(row) {
   hideSourcePop();
   state.current = row;
