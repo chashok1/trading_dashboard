@@ -63,13 +63,8 @@ const state = {
                          // trade_mode_diff (Trade2) and watchlist_only (WL) are its sibling
                          // toggles, same seg-ctrl group; not in this literal, set near
                          // page init alongside trade_mode (search "always starts ON").
-    my_only: false,      // 2026-09-13: "My" toggle -- EXCLUSIVE of trade_mode/trade_mode_diff/
-                         // watchlist_only (clicking it forces those off), not OR'd like those
-                         // three are with each other. Shows only ref_my_stocks symbols that
-                         // ALSO clear the Trade (strict) or Trade2 (non-strict) qualifying bar
-                         // -- see matchesBaseFilters. User: "My symbols should not be included
-                         // in regular action recommendations unless they are part of the other
-                         // sources."
+    my_only: false,      // 2026-10-03: "My" toggle -- narrows to ref_my_stocks symbols on top of whatever
+                         // the other buttons show (no longer overrides Trade/Trade2/WL). See matchesBaseFilters.
     asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
@@ -1983,9 +1978,7 @@ async function loadActionable(opts) {
   // trade_mode_diff (2026-08-28) doesn't itself surface suppressed rows
   // (it's buys-only by construction, see _isTradeModeDiffBuy), but fetching
   // them anyway keeps this consistent/harmless if that ever changes.
-  // my_only reuses Trade/Trade2's qualifying logic (_matchesTradeMode/Diff),
-  // so it needs the same suppressed-row fetch those two need.
-  if ((state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.my_only) && !state.filters.show_hidden) {
+  if ((state.filters.trade_mode || state.filters.trade_mode_diff) && !state.filters.show_hidden) {
     params.append('show_suppressed', 'true');
   }
   try {
@@ -2335,10 +2328,10 @@ function matchesBaseFilters(r) {
   // or Trade2 (non-strict) already require -- My just narrows that result
   // down to your tracked list, so it never "leaks" untracked/unactionable
   // rows into the regular recommendations. See _isMySymbol below.
-  if (state.filters.my_only) {
-    if (!_isMySymbol(r)) return false;
-    if (!_matchesTradeMode(r) && !_matchesTradeModeDiff(r)) return false;
-  } else if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
+  // 2026-10-03: My is no longer exclusive/overriding -- it is a plain narrowing filter
+  // (applied below, next to Held/watch) on top of whichever list is on. Today's old "My" =
+  // My + Trade + Trade2.
+  if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
     const tmOk = state.filters.trade_mode && _matchesTradeMode(r);
     const tmdOk = state.filters.trade_mode_diff && _matchesTradeModeDiff(r);
     const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
@@ -2361,6 +2354,7 @@ function matchesBaseFilters(r) {
   if (state.filters.held_only) {
     if (!r.held_today) return false;
   }
+  if (state.filters.my_only && !_isMySymbol(r)) return false;
   if (state.filters.watch_only) {
     if (!r.watch_id) return false;
   }
@@ -2467,7 +2461,10 @@ function applyClientFilter(opts) {
       const grp = _ACTION_GROUPS[state.filters.action];
       return grp ? grp.indexOf(_chipAction(r)) !== -1 : _chipAction(r) === state.filters.action;
     }
-    if (state.filters.actionable_only) {
+    // 2026-10-03 (user): Trade / Trade2 / My already pick their own rows, so the Actionable
+    // toggle no longer applies on top of them (it hid stop-breached positions whose call was HOLD).
+    const _ownList = state.filters.trade_mode || state.filters.trade_mode_diff;
+    if (state.filters.actionable_only && !_ownList) {
       const a = _chipAction(r);
       return a !== 'HOLD' && a !== 'NONE';
     }
@@ -2837,6 +2834,39 @@ function renderAccountFilter() {
 // only ever flips its own boolean; matchesBaseFilters ORs whichever are
 // active. Shared by syncFilterUi() (init/restore) and all 3 click handlers
 // so the pills never fall out of sync with state.filters.
+// Toolbar tooltips for the two filter groups: a name line, bullet lines, then the live
+// state (ON/OFF, or why the button is being ignored). Rendered by the [data-tip].tip-rich CSS.
+const _BTN_TIPS = {
+  showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Not used while Trade, Trade2 or WL is on']],
+  actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Not used while Trade or Trade2 is on']],
+  tradeModeBtn: ['Trade', ['The strict list: buys worth making now', 'Plus sells on positions you hold, and stop breaches', 'Combine with Trade2 / WL to add their rows']],
+  tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They fail a strict check: timing, tradability, PVV or Trade line', 'Buys only: no sells or stop breaches']],
+  watchlistOnlyBtn: ['WL (waiting list)', ['Unheld buy ideas waiting for better entry timing', 'Technical not yet ready (not BS/BM)', 'Never includes positions you hold']],
+  heldOnly: ['Held', ['Only symbols you own', 'Narrows whatever view is on']],
+  myOnlyBtn: ['My', ['Only symbols on your tracked list', 'Narrows whatever view is on', 'Use the + button to edit the list']],
+  watchOnlyBtn: ['Watching', ['Only symbols you set an alert on (bell)', 'Narrows whatever view is on']],
+};
+function _refreshToolbarTips() {
+  const f = state.filters;
+  const on = { showHidden: f.show_hidden, actionableOnlyBtn: f.actionable_only, tradeModeBtn: f.trade_mode,
+    tradeModeDiffBtn: f.trade_mode_diff, watchlistOnlyBtn: f.watchlist_only, heldOnly: f.held_only,
+    myOnlyBtn: f.my_only, watchOnlyBtn: f.watch_only };
+  const tradeOn = f.trade_mode || f.trade_mode_diff;
+  const ignored = {
+    showHidden: (tradeOn || f.watchlist_only) ? 'Trade / Trade2 / WL is on' : '',
+    actionableOnlyBtn: tradeOn ? 'Trade / Trade2 is on' : '',
+  };
+  for (const id in _BTN_TIPS) {
+    const b = $(id); if (!b) continue;
+    const [name, lines] = _BTN_TIPS[id];
+    const ig = ignored[id] || '';
+    b.classList.toggle('filter-ignored', !!ig);
+    const status = ig ? 'Not used right now: ' + ig : (on[id] ? 'ON - click to turn off' : 'OFF - click to turn on');
+    b.setAttribute('data-tip', name + String.fromCharCode(10) + lines.map(l => '• ' + l).join(String.fromCharCode(10))
+      + String.fromCharCode(10) + status);
+  }
+}
+
 function _syncTradeModeButtons() {
   const f = state.filters;
   const tradeModeBtn = $('tradeModeBtn');
@@ -2847,6 +2877,7 @@ function _syncTradeModeButtons() {
   if (watchlistOnlyBtn) watchlistOnlyBtn.classList.toggle('active', !!f.watchlist_only);
   const myOnlyBtn = $('myOnlyBtn');
   if (myOnlyBtn) myOnlyBtn.classList.toggle('active', !!f.my_only);
+  _refreshToolbarTips();
 }
 
 function syncFilterUi() {
@@ -2855,18 +2886,18 @@ function syncFilterUi() {
   const heldOnly = $('heldOnly');
   if (heldOnly) {
     heldOnly.classList.toggle('active', !!f.held_only);
-    heldOnly.setAttribute('data-tip', f.held_only ? 'Positions Only  →  Show All' : 'All Symbols  →  Positions Only');
+    _refreshToolbarTips();
   }
   const watchOnly = $('watchOnlyBtn');
   if (watchOnly) {
     watchOnly.classList.toggle('active', !!f.watch_only);
-    watchOnly.setAttribute('data-tip', f.watch_only ? 'Watch List Only  →  All Symbols' : 'All Symbols  →  Watch List Only');
+    _refreshToolbarTips();
   }
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');
   if (showHidden) {
     showHidden.classList.toggle('active', !!f.show_hidden);
-    showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
+    _refreshToolbarTips();
   }
   _syncTradeModeButtons();
   const multiSymBtn = $('multiSymBtn');
@@ -2890,7 +2921,7 @@ function syncFilterUi() {
   const aoBtn = $('actionableOnlyBtn');
   if (aoBtn) {
     aoBtn.classList.toggle('active', !!f.actionable_only);
-    aoBtn.setAttribute('data-tip', f.actionable_only ? 'Actionable Only  →  Show All' : 'Show All  →  Actionable Only');
+    _refreshToolbarTips();
   }
 }
 
@@ -6795,7 +6826,7 @@ function renderGrid() {
   }
 
   if (parkedRows.length > 0) {
-    tb.appendChild(_actionedBandRowEl(parkedRows.length, parkExpanded));
+    tb.appendChild(_actionedBandRowEl(parkedRows.length, parkExpanded, parkedRows));
     if (parkExpanded) {
       for (const r of parkedRows) {
         const tr = _buildRowEl(r);
@@ -6843,7 +6874,7 @@ function _watchlistBandRowEl(count, expanded) {
 
 // Collapsed/expand toggle row for the "Actioned today (n)" band (Trade view).
 // Same shape as the Watchlist band above.
-function _actionedBandRowEl(count, expanded) {
+function _actionedBandRowEl(count, expanded, rows) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
@@ -6862,9 +6893,36 @@ function _actionedBandRowEl(count, expanded) {
     state.recentBuyExpanded = !state.recentBuyExpanded;
     renderGrid();
   });
-  td.appendChild(btn);
+  // "Move all to main list": undoes Done on every Done-only row in the band. Rows parked
+  // because you actually bought/sold today stay (those come from trade files).
+  const doneRows = (rows || []).filter(r => r._actionInfo && r._actionInfo.doneOnly);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:12px;';
+  btn.style.width = 'auto'; btn.style.flex = '1';
+  wrap.appendChild(btn);
+  if (doneRows.length > 0) {
+    const mv = document.createElement('button');
+    mv.type = 'button';
+    mv.textContent = `Move all to main list (${doneRows.length})`;
+    mv.title = 'Undo Done on every row marked Done today. Rows you bought or sold today stay here.';
+    mv.style.cssText = 'background:none;border:none;cursor:pointer;font-size:11px;font-weight:600;'
+      + 'color:#2563eb;text-decoration:underline;padding:2px 0;white-space:nowrap;';
+    mv.addEventListener('click', () => moveAllDoneToMain(doneRows, (rows || []).length - doneRows.length));
+    wrap.appendChild(mv);
+  }
+  td.appendChild(wrap);
   tr.appendChild(td);
   return tr;
+}
+
+async function moveAllDoneToMain(doneRows, staying) {
+  const res = await Promise.allSettled(doneRows.map(r =>
+    fetchJson(`/api/actionable/${encodeURIComponent(r.tos_symbol)}/action?date=${encodeURIComponent(state.date)}`, { method: 'DELETE' })));
+  const ok = res.filter(x => x.status === 'fulfilled').length;
+  const failed = res.length - ok;
+  showStatus(`Moved ${ok} to main list` + (staying ? ` (${staying} bought/sold stay)` : '')
+    + (failed ? `; ${failed} failed` : ''), failed ? 'error' : 'success', 3500);
+  await loadActionable({ preserveState: true });
 }
 
 // Td/Tn diagonal-arrow chip — same convention as the macro rail at the
@@ -7149,8 +7207,8 @@ async function inlineAction(sym, action) {
     // Mark row visually acted; keep in grid until next reload.
     if (row) row._rowActed = true;
     if (row && userAction === 'DONE') { row.last_user_action = 'DONE'; row.done_today = true; }
-    const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(sym)}"]`);
-    if (tr) tr.classList.add('row-acted');
+    // Redraw so a Done row moves into the "Actioned today" band instead of just dimming.
+    renderGrid();
     showStatus(`${action}: ${sym}`, 'success', 2500);
   } catch (e) {
     showStatus(`${action} failed: ${e.message}`, 'error');
@@ -8934,13 +8992,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('heldOnly').addEventListener('click', () => {
     state.filters.held_only = !state.filters.held_only;
     $('heldOnly').classList.toggle('active', state.filters.held_only);
-    $('heldOnly').setAttribute('data-tip', state.filters.held_only ? 'Positions Only  →  Show All' : 'All Symbols  →  Positions Only');
+    _refreshToolbarTips();
     applyClientFilter();
   });
   $('showHidden').addEventListener('click', () => {
     state.filters.show_hidden = !state.filters.show_hidden;
     $('showHidden').classList.toggle('active', state.filters.show_hidden);
-    $('showHidden').setAttribute('data-tip', state.filters.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
+    _refreshToolbarTips();
     // H column (U4) only renders when show_hidden is on.
     applyColumnVisibility();
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
@@ -8949,7 +9007,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('watchOnlyBtn').addEventListener('click', () => {
     state.filters.watch_only = !state.filters.watch_only;
     $('watchOnlyBtn').classList.toggle('active', state.filters.watch_only);
-    $('watchOnlyBtn').setAttribute('data-tip', state.filters.watch_only ? 'Watch List Only  →  All Symbols' : 'All Symbols  →  Watch List Only');
+    _refreshToolbarTips();
     applyClientFilter();
   });
   // Quad filter -- multi-select toggle group (unlike heldOnly/showHidden
@@ -9024,23 +9082,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyClientFilter();
     });
   }
-  // 2026-09-13: "My" button -- same seg-ctrl group, but EXCLUSIVE (see
-  // matchesBaseFilters' own comment): turning it on forces Trade/Trade2/WL
-  // off instead of combining with them, same "replace, don't add" behavior
-  // the Source dropdown already has (_resetToggleFiltersForLookup). Needs
-  // the same full reload Trade/Trade2 do (show_suppressed fetch-param
-  // dependency, since it reuses their qualifying logic).
+  // "My" button -- since 2026-10-03 a plain narrowing filter (like Held / watch): keeps only
+  // ref_my_stocks symbols from whatever the other buttons show. Client-side only.
   const myOnlyBtn = $('myOnlyBtn');
   if (myOnlyBtn) {
     myOnlyBtn.addEventListener('click', () => {
       state.filters.my_only = !state.filters.my_only;
-      if (state.filters.my_only) {
-        state.filters.trade_mode = false;
-        state.filters.trade_mode_diff = false;
-        state.filters.watchlist_only = false;
-      }
       _syncTradeModeButtons();
-      loadActionable();
+      applyClientFilter();
     });
   }
   const myManageBtn = $('myManageBtn');

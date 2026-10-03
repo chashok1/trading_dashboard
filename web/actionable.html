@@ -1207,6 +1207,7 @@
       transition: opacity 0.15s 0.4s;
       z-index: 500;
     }
+    .tip-rich[data-tip]::after { white-space: pre; text-align: left; line-height: 1.45; padding: 6px 10px; font-size: 11px; }
     [data-tip] { position: relative; }
     [data-tip]:hover::after { opacity: 1; }
 
@@ -1243,6 +1244,7 @@
     .btn-skip  { background: #F1EFE8; color: #444441; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
     .btn-snz   { background: #FAEEDA; color: #633806; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
     .btn-done:hover { filter: brightness(0.95); } .btn-skip:hover { filter: brightness(0.95); } .btn-snz:hover { filter: brightness(0.95); }
+    .seg-ctrl button.filter-ignored { opacity:.45; text-decoration:line-through; }
     tr.row-acted { opacity: 0.45; }
 
     /* ── Pass 3: Bulk bar ────────────────────────────────────────────────── */
@@ -1402,17 +1404,15 @@
                web/styles.css) toggles per-button regardless of siblings,
                same state.filters.*/click-handler wiring as before (IDs
                unchanged), just restyled. -->
-          <div class="seg-ctrl" title="Row visibility">
-            <button id="showHidden" data-tip="Active Only  →  Show Hidden">Hidden</button>
-            <button id="heldOnly" data-tip="All Symbols  →  Positions Only">Held</button>
-            <button id="actionableOnlyBtn" data-tip="Actionable Only  →  Show All">Actionable</button>
+          <div class="seg-ctrl" title="Default view: show hidden rows / actionable only">
+            <button id="showHidden" class="tip-rich" data-tip="Active Only  →  Show Hidden">👁 Hidden</button>
+            <button id="actionableOnlyBtn" class="tip-rich" data-tip="Actionable Only  →  Show All">⚡ Actionable</button>
             <!-- 2026-09-14, user: "add a small filter button to see watch list
                  stocks, which enter them through using bell icon" -- filters
                  to rows carrying an active ref_watch entry (r.watch_id truthy,
                  same condition that renders the 🔔 badge in the grid's own
                  watch column). Pure client-side filter, no API change --
                  see matchesBaseFilters in web/actionable.js. -->
-            <button id="watchOnlyBtn" data-tip="All Symbols  →  Watch List Only">🔔</button>
           </div>
           <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
                held sells (SA full exit or SS/STM partial sell-some/trim, 2026-09-15
@@ -1443,10 +1443,14 @@
                have to leave this screen to manage the list. User: "actionable
                screen -> add a radio button My next to Trade|Trade2|WL". -->
           <div class="seg-ctrl" title="Trade Mode view">
-            <button id="tradeModeBtn" data-tip="Trade (Strict): only qualifying buys, held sells (full or partial), stop breaches">Trade</button>
-            <button id="tradeModeDiffBtn" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">Trade2</button>
-            <button id="watchlistOnlyBtn" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">WL</button>
-            <button id="myOnlyBtn" data-tip="My: your tracked list (ref_my_stocks), shown only once actionable — matches Trade or Trade2">My</button>
+            <button id="tradeModeBtn" class="tip-rich" data-tip="Trade (Strict): only qualifying buys, held sells (full or partial), stop breaches">💱 Trade</button>
+            <button id="tradeModeDiffBtn" class="tip-rich" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">🥈 Trade2</button>
+            <button id="watchlistOnlyBtn" class="tip-rich" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">⏳ WL</button>
+          </div>
+          <div class="seg-ctrl" title="Narrow to your symbols (works with any view)">
+            <button id="heldOnly" class="tip-rich" data-tip="All Symbols  →  Positions Only">💼 Held</button>
+            <button id="myOnlyBtn" class="tip-rich" data-tip="My: narrow to your tracked list (ref_my_stocks) within whatever view is on">⭐ My</button>
+            <button id="watchOnlyBtn" class="tip-rich" data-tip="All Symbols  →  Watch List Only">🔔</button>
           </div>
           <button id="myManageBtn" class="lt-scope-btn" title="Add/remove symbols from your My list" style="margin-left:4px;">+</button>
           <!-- Source filter -- placeholder option itself reads "Source" (no
@@ -1948,7 +1952,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20261003s"></script>
+  <script src="/static/actionable.js?v=20261003za"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261001b" defer></script>
 <script src="/static/warning_badge.js"></script>
