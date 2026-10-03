@@ -1035,9 +1035,7 @@ function _symOutlookColor(row) {
     const c = window.outlookColor(row.rr_outlook);
     if (c && c !== 'inherit') return c;
   }
-  const pct = row.pct_change != null ? Number(row.pct_change) : null;
-  if (pct != null && pct > 0.001)  return '#1d9e75';
-  if (pct != null && pct < -0.001) return '#d4537e';
+  // 2026-10-03 (user): outlook only -- no fallback to the day's %change color.
   return 'inherit';
 }
 // "2026-07" -> "Jul" -- short label for month-keyed values in the MACRO
