@@ -479,11 +479,15 @@ def run_nightly_outcomes() -> None:
     log.info("nightly: derive_rr for today starting")
     try:
         from etl.db import session_scope
-        from etl.derive import derive_rr
+        from etl.derive import derive_rr, _derive_rr_outlook_from_qe
         today = date.today()
         with session_scope() as s:
             n = derive_rr(s, today)
-        log.info("nightly: derive_rr done: %d rows for %s", n, today)
+            # derive_rr leaves outlook NULL on BB-fallback rows; derive_all fills it from QE
+            # in a second pass. Without this, the nightly rebuild wiped ~950 outlooks a night
+            # (grey symbols, PVV reading NULL) until the next full derive.
+            filled = _derive_rr_outlook_from_qe(s, today, 0)
+        log.info("nightly: derive_rr done: %d rows for %s (%d outlooks refilled)", n, today, filled)
     except Exception:
         log.exception("nightly: derive_rr crashed")
 

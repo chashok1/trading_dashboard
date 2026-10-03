@@ -1028,15 +1028,15 @@ function _msGlyph(score) {
   if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
   return '';
 }
-// Symbol-name color: rr_outlook (BULLISH/BEARISH/NEUTRAL) when available,
-// else falls back to today's pct_change direction.
+// Symbol-name color (grid Symbol column + Action popover): green / red / grey from rr_outlook.
 function _symOutlookColor(row) {
-  if (row.rr_outlook && window.outlookColor) {
-    const c = window.outlookColor(row.rr_outlook);
-    if (c && c !== 'inherit') return c;
-  }
-  // 2026-10-03 (user): outlook only -- no fallback to the day's %change color.
-  return 'inherit';
+  // 2026-10-03 (user): three colors only, from the outlook (never the day's %change):
+  // any bullish shade = green, any bearish shade = red, neutral / no outlook = grey.
+  // Green and red are the same two the symbol column already used (BM / SA palette).
+  const o = ((row && row.rr_outlook) || '').toString().toLowerCase();
+  if (o.indexOf('bull') !== -1) return '#1d9e75';
+  if (o.indexOf('bear') !== -1) return '#d4537e';
+  return '#9ca3af';
 }
 // "2026-07" -> "Jul" -- short label for month-keyed values in the MACRO
 // popup (Window table, Category Drivers header, Tracking checklist).
