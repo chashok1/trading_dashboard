@@ -200,6 +200,13 @@
       cursor: help;
     }
 
+    /* Sell-supportive signal icon -- red mirror of .buy-signal-pill, shown on SELL rows (2026-10-03). */
+    .sell-signal-pill {
+      display: inline-block; margin-left: 4px; padding: 0 3px; border-radius: 5px;
+      background: #fee2e2; color: #b91c1c; border: 1px solid #b91c1c;
+      font-size: 9px; line-height: 1.1; font-weight: 700; vertical-align: middle; cursor: help;
+    }
+
     /* 2026-09-03: OVER MAX pill — informational flag when a held position
        exceeds its category Max. Previously OVER_MAX replaced the ACTION
        badge outright (synthetic "SO"/SELL OVERAGE final_code); per user
@@ -1952,7 +1959,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20261003za"></script>
+  <script src="/static/actionable.js?v=20261003ze"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261001b" defer></script>
 <script src="/static/warning_badge.js"></script>

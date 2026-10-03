@@ -2453,6 +2453,12 @@ function applyClientFilter(opts) {
     if (!state.filters.asset_class && r._assetClass === 'Fixed Income' && !r.held_today
         && !state.filters.symbol_search
         && !(state.filters.symbols_multi && state.filters.symbols_multi.length)) return false;
+    // 2026-10-03 (user): in Trade / Trade2, Fixed Income is hidden in every case, even held or
+    // stop-breached (BUXX/CLOX/CLOZ were crowding the list). A picked Fixed Income Asset Class
+    // filter or a symbol search still shows them.
+    if ((state.filters.trade_mode || state.filters.trade_mode_diff) && !state.filters.asset_class
+        && r._assetClass === 'Fixed Income' && !state.filters.symbol_search
+        && !(state.filters.symbols_multi && state.filters.symbols_multi.length)) return false;
     if (state.filters.sector && (r.sector || 'Unclassified') !== state.filters.sector) return false;
     if (state.filters.industry && r.industry !== state.filters.industry) return false;
     if (state.filters.style && !_rowStyleLabels(r).includes(state.filters.style)) return false;
@@ -3934,7 +3940,11 @@ function _finalCallHtml(row) {
   if (sig.warn.length) {
     signalPill = ' <span class="dontbuy-warn-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="1">⚠</span>';
   } else if (sig.buy.length) {
-    signalPill = ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲</span>';
+    // 2026-10-03: on a SELL row the supporting signals back the sell, so show a red ▼ (was a
+    // green ▲, which read as a buy signal).
+    signalPill = fc.side === 'sell'
+      ? ' <span class="sell-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▼<span style="font-size:7px;margin-left:1px;">✓</span></span>'
+      : ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲<span style="font-size:7px;margin-left:1px;">✓</span></span>';
   }
   var subIcon = '<div style="font-size:9px;line-height:1.4;text-align:center;margin-top:3px;">' + badgeHtml + '</div>' + lowConfSub;
   // 2026-08-15: user asked for the action badge on its own centered line,
@@ -5014,11 +5024,14 @@ function _buildIvPopHtml(r) {
 // _signalReasons(row, fc.side); isWarn picks which list/style to render
 // (a row only ever shows one pill — warn wins over buy on conflict, see
 // _signalReasons' own comment — so the caller already knows which).
-function _buildSignalPopHtml(sym, sig, isWarn) {
+function _buildSignalPopHtml(sym, sig, isWarn, side) {
   const items = isWarn ? sig.warn : sig.buy;
-  const color = isWarn ? '#b45309' : '#15803d';
-  const icon  = isWarn ? '⚠' : '▲';
-  const title = isWarn ? 'Caution signals' : 'Supporting signals';
+  // 2026-10-03: titles/icons say which call the list backs or argues against.
+  const isSell = side === 'sell', isBuy = side === 'buy';
+  const color = isWarn ? '#b45309' : (isSell ? '#b91c1c' : '#15803d');
+  const icon  = isWarn ? '⚠' : (isSell ? '▼' : '▲') + '<span style="font-size:7px;margin-left:1px;">✓</span>';
+  const title = isWarn ? (isSell ? 'Against selling' : isBuy ? 'Against buying' : 'Caution signals')
+                       : (isSell ? 'Supporting this SELL' : isBuy ? 'Supporting this BUY' : 'Supporting signals');
   let html = `<div class="sp-title">${escapeHtml(sym)} &mdash; ${title}</div>`;
   html += '<table>';
   items.forEach(reason => {
@@ -5106,7 +5119,7 @@ function initSourcePopover() {
       if (r) {
         const isWarn = signalEl.dataset.signalpopWarn === '1';
         const sig = _signalReasons(r, finalCall(r).side);
-        _showDataPop(signalEl, _buildSignalPopHtml(r.tos_symbol, sig, isWarn));
+        _showDataPop(signalEl, _buildSignalPopHtml(r.tos_symbol, sig, isWarn, finalCall(r).side));
       }
       return;
     }
@@ -6036,7 +6049,9 @@ function _actpopTugHtml(row, side) {
   const rulePills = neutral ? { support: '', oppose: '', supportCount: 0, opposeCount: 0 } : _actpopRulePillsHtml(row, side);
 
   const oppItems = opposeSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
-  const supItems = supportSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
+  // 2026-10-03: a red ▼ (sell) / green ▲ (buy) before each supporting line shows which call it backs.
+  const _supIc = neutral ? '' : `<span style="color:${side === 'sell' ? '#b91c1c' : '#15803d'};font-weight:700;margin-right:4px;">${side === 'sell' ? '▼' : '▲'}<span style="font-size:7px;margin-left:1px;">✓</span></span>`;
+  const supItems = supportSignals.map(s => `<div class="actpop-tug-item">${_supIc}${escapeHtml(s)}</div>`).join('');
   if (!oppItems && !supItems && !rulePills.oppose && !rulePills.support) return { conviction: '', html: '' };
 
   const oppBody = (oppItems || rulePills.oppose)
@@ -6081,7 +6096,7 @@ function _actpopTugHtml(row, side) {
 
   const html = `<div class="actpop-tug">
     <div class="actpop-tug-col oppose"><div class="actpop-tug-h">${neutral ? 'Caution' : 'Opposing'}</div>${oppBody}</div>
-    <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting</div>${supBody}</div>
+    <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting${neutral ? '' : (side === 'sell' ? ' the sell' : ' the buy')}</div>${supBody}</div>
   </div>`;
   return { conviction, html };
 }
