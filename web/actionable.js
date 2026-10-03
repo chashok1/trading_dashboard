@@ -2454,6 +2454,11 @@ function applyClientFilter(opts) {
     // by this specific filter, same reasoning as action/stopOnly below: you
     // can see every category's total while one is selected, not just the one.
     if (state.filters.asset_class && r._assetClass !== state.filters.asset_class) return false;
+    // 2026-10-03 (user): Fixed Income is hidden by default. It shows when the Asset Class filter
+    // (or its chip) is set to Fixed Income, when you search a symbol, or when you hold it.
+    if (!state.filters.asset_class && r._assetClass === 'Fixed Income' && !r.held_today
+        && !state.filters.symbol_search
+        && !(state.filters.symbols_multi && state.filters.symbols_multi.length)) return false;
     if (state.filters.sector && (r.sector || 'Unclassified') !== state.filters.sector) return false;
     if (state.filters.industry && r.industry !== state.filters.industry) return false;
     if (state.filters.style && !_rowStyleLabels(r).includes(state.filters.style)) return false;
@@ -4474,6 +4479,7 @@ function _isNewSnapshot(row) {
 // typical $10k-$50k position, per _fallbackEdge/_dollarWeightedScore's scale.
 const _NEW_TIEBREAK_EPS = 0.15;
 
+const _TIER_SELLALL   = 1e11;  // Tier -1 (2026-10-03, user): SELL ALL on a held position, always first, by $ at stake
 const _TIER_STOP      = 1e10;  // Tier 0: stop_breached held rows, by position $
 const _TIER_SELL      = 1e8;   // Tier 1: credible SELLs on held positions, by $ at stake
 const _TIER_BUY       = 1e6;   // Tier 2: buys past the gate, sub-ranked by agreement (2a/2b/2c)
@@ -4502,6 +4508,13 @@ const _TIER_SELL_CONFIRMED = 1e7;
 const _TREND_TRADE_BEARISH = ['SA', 'STM', 'SS'];
 
 function _computePriority(row) {
+  // Tier -1: SELL ALL on a held position goes above everything, including stop breaches.
+  // (A low-confidence sell is still not "credible", so it keeps sinking to the bottom.)
+  var _fcTop = finalCall(row);
+  if (row.held_today && _fcTop.feasible && String(_fcTop.code || '').toUpperCase() === 'SA'
+      && !(row.low_confidence && _fcTop.side === 'sell') && !row.suppressed_reason) {
+    return _TIER_SELLALL + _dollarsAtStake(row);
+  }
   // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
   // above every other tier regardless of edge/dollars.
   if (row.stop_breached && row.held_today) {
@@ -4566,11 +4579,19 @@ function _computePriority(row) {
     // Buys." -> "NO ACTION ones are coming in the middle." -> "EX: XLRE &
     // FWONK should be below ETSY."
     let pvvBonus = 0;
+    const pvv = (row.pvv_decision || '').toUpperCase();
     if (state.filters.trade_mode) {
-      const pvv = (row.pvv_decision || '').toUpperCase();
       pvvBonus = pvv === 'BUY_DIP' ? 2000 : (_PVV_BUY_SIDE.indexOf(pvv) !== -1 ? 1000 : 0);
+    } else if (pvv === 'BUY_DIP') {
+      // 2026-10-03 (user): BUY_DIP is always first among the buys, not only in Trade Mode.
+      pvvBonus = 2000;
     }
-    return _TIER_BUY + pvvBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
+    // 2026-10-03 (user): BUY MORE above BUY SOME above BUY TO MIN. Bigger than tradability's
+    // whole range (~[-30,+210]) so it always wins, smaller than the Trade Mode PVV bonus so
+    // that grouping still comes first there.
+    const _bc = String(fc.code || '').toUpperCase();
+    const codeBonus = _bc === 'BM' ? 500 : (_bc === 'BS' ? 250 : 0);
+    return _TIER_BUY + pvvBonus + codeBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
   }
 
   // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.
