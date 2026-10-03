@@ -3130,7 +3130,10 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     # 0.25 tolerance chosen for the related fix in derive_actionable.py's
     # _compute_stop_signal (kept as a separate, already-applied fix; this
     # is the second location, per user request).
-    sd_tol = 0.25
+    # 2026-10-02, user: widened to 1/2 SD for this Technical bucket only
+    # ("above Trend, more than 1/2 SD below Trade" -> STM); the stop-signal
+    # tolerance in derive_actionable.py is deliberately left at 0.25.
+    sd_tol = 0.5
     try:
         _tol_row = session.execute(text(
             "SELECT setting_value FROM ref_settings WHERE setting_name='trend_trade_sd_tolerance'"
@@ -3152,11 +3155,13 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         _win_days = 30
     win_interval = f"{_win_days} days"
 
-    # LRR-break tolerance (SD), same threshold the lrr_idx atomic rule uses.
-    lrr_tol = 0.25
+    # LRR-break tolerance (SD) for the Technical signal. 2026-10-02, user:
+    # 1/2 SD (was 1/4, read from the lrr_idx atomic rule's brkeout_from).
+    # Now its own setting so the rules engine's lrr_idx rule is untouched.
+    lrr_tol = 0.5
     try:
         _lt = session.execute(text(
-            "SELECT brkeout_from FROM ref_trig_atomic_rule WHERE rule_name = 'lrr_idx' LIMIT 1"
+            "SELECT setting_value FROM ref_settings WHERE setting_name='lrr_break_sd_tolerance'"
         )).first()
         if _lt and _lt[0] is not None:
             lrr_tol = abs(float(_lt[0]))

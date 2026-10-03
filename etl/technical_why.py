@@ -71,7 +71,7 @@ def explain_technical(d: dict) -> Optional[str]:
                 f"{_usd(last)} is less than 1 SD above it: a bearish Trend/Trade read overrides "
                 f"every other check.")
     if qe == 1:
-        return (f"Price {_usd(last)} is above the Trend line {_usd(trend)} but more than 1/4 SD "
+        return (f"Price {_usd(last)} is above the Trend line {_usd(trend)} but more than 1/2 SD "
                 f"below the Trade line {_usd(trade)}: a bearish Trend/Trade read overrides the "
                 f"range-position signal.")
     if qe == 2:
@@ -96,7 +96,7 @@ def explain_technical(d: dict) -> Optional[str]:
     if raw is None:
         raw = _n(d.get("lrr_idx"))
     if eff is not None and int(eff) == -1:
-        return (f"Support broke: price {_usd(last)} is more than 1/4 SD below LRR "
+        return (f"Support broke: price {_usd(last)} is more than 1/2 SD below LRR "
                 f"{_usd(d.get('lrr'))}. A broken support forces SELL TO MIN even when "
                 f"Trend, Trade and the band are bullish.")
     held = ""
