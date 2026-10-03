@@ -87,7 +87,7 @@ const state = {
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
   // flag) whenever an active filter/search matches a row inside the band.
   watchlistExpanded: false,
-  recentBuyExpanded: false,   // 2026-10-01: "Actioned today (n)" band in Trade view
+  recentBuyExpanded: true,    // 2026-10-01: "Actioned today (n)" band in Trade view; 2026-10-02: expanded by default (user)
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   mySymbols: new Set(), // 2026-09-13: upper-cased tos_symbol set from ref_my_stocks
@@ -252,9 +252,9 @@ function _hiLoRangeHtml(high, low) {
 // tuned independently. Grid: 9 -> 4.5 -> 3 -> 0.125 -> 0. Popover: 9 ->
 // 4.5 -> 2.25 -> 1.125 -> 0. Both landed at 0 together (user: "make it
 // to 0px here and also in the popover window").
-function _chgCandleControlsHtml(row, gap) {
+function _chgCandleControlsHtml(row, gap, showPrice) {
   const pctChipHtml = _pctChgChipHtml(row.pct_change);
-  const priceStr = row.last_price != null ? fmtUsd(row.last_price) : '';
+  const priceStr = (showPrice !== false && row.last_price != null) ? _fmtUsd2(row.last_price) : '';   // popover passes false: its header already shows the big price;   // 2026-10-03: two decimals (also the grid %CHG cell)
   const hiLo = _hiLoParts(row.high_price, row.low_price, row.last_price);
   const candleHtml = window.mtTip?.candleSvg(row.open_price, row.high_price, row.low_price, row.last_price, 28) || '';
   return `<div class="chg-candle-row" style="display:flex;align-items:center;justify-content:center;gap:${gap != null ? gap : 9}px;">
@@ -5766,12 +5766,12 @@ function _techCostNote(row) {
   const avg = c / q;
   const last = Number(row.last_price);
   const trade = Number(row.a_trade_value);
-  let s = `You hold ${Math.round(q).toLocaleString()} sh at avg cost ${fmtUsd(avg)}`;
+  let s = `You hold ${Math.round(q).toLocaleString()} sh at avg cost ${_fmtUsd2(avg)}`;
   if (last > 0) {
     const pl = (last / avg - 1) * 100;
-    s += ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}% vs last ${fmtUsd(last)})`;
+    s += ` (${pl >= 0 ? '+' : ''}${pl.toFixed(1)}% vs last ${_fmtUsd2(last)})`;
   }
-  if (trade > 0) s += `; Trade line ${fmtUsd(trade)} is ${trade >= avg ? 'above' : 'below'} your cost`;
+  if (trade > 0) s += `; Trade line ${_fmtUsd2(trade)} is ${trade >= avg ? 'above' : 'below'} your cost`;
   return s + '.';
 }
 
@@ -5785,7 +5785,7 @@ function _actpopDriverBullets(row, side) {
   // reason/dt are escaped separately and joined with a literal HTML entity
   // AFTER escaping -- escaping the already-built "reason &middot; snapshot
   // X" string as one unit would double-escape that entity into &amp;middot;.
-  const bulletFor = (label, actUpper, reason, dt, tag, pctSinceDrop, dropConflict, upStreak3d) => {
+  const bulletFor = (label, actUpper, reason, dt, tag, pctSinceDrop, dropConflict, upStreak3d, tw) => {
     const d = actionDisplay(actUpper);
     const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
     // 2026-08-20: side-matched to THIS bullet's own action (was hardcoded
@@ -5799,6 +5799,13 @@ function _actpopDriverBullets(row, side) {
     }
     const actionLabel = d.label || actUpper || '—'; // literal em dash, not an entity -- see note above
     let noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
+    // 2026-10-02: Technical shows two label:value pieces -- Why <situation> /
+    // Call <action>: <verdict> -- from rr_why's two lines (etl/technical_why.py).
+    if (tw) {
+      noteHtml = `<div class="actpop-tw"><span class="tw-k">Why</span>${escapeHtml(tw.why)}</div>`
+        + `<div class="actpop-tw"><span class="tw-k">Call</span><b>${escapeHtml(actionLabel)}</b>: ${escapeHtml(tw.verdict)}</div>`
+        + (tw.cost ? `<div class="actpop-tw tw-cost">${escapeHtml(tw.cost)}</div>` : '');
+    }
     // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header
     // comment; _srcReasonsHtml's grid-column twin of this same treatment.
     noteHtml += _dropPctPillHtml({ action: actUpper, pct_since_drop: pctSinceDrop, drop_conflict: dropConflict, up_streak_3d: upStreak3d });
@@ -5831,7 +5838,10 @@ function _actpopDriverBullets(row, side) {
     const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
     const desc = ((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
-    rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
+    // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
+    const _twLines = String(row.rr_why || '').split('\n');
+    const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
+    rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw));
   }
   const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
@@ -6067,22 +6077,83 @@ function _actpopTdTnHtml(row) {
   return `<div class="actpop-tdtn">${top}${bottom}</div>`;
 }
 
+// 2026-10-02: vertical Trade/Trend/price bar for the popover header. Fixed
+// size; three parts (above both lines / between / below both) sized by price
+// distance inside it. LRR/TRR lines are drawn only when the Technical reason
+// text refers to them. Colors are literal (popover is light-only, like the
+// rest of .actpop).
+function _actpopLevelBarHtml(row) {
+  const num = v => (v == null || v === '') ? null : Number(v);
+  const price = num(row.last_price), trade = num(row.trade_line_value), trend = num(row.trend_line_value);
+  if (price == null || trade == null || trend == null || !isFinite(price + trade + trend)) return '';
+  const why = String(row.rr_why || '');
+  const lrr = /LRR/.test(why) ? num(row.lrr) : null;
+  const trr = /TRR/.test(why) ? num(row.trr) : null;
+  const H = 110, PT = 8, W = 151, bx = 58, bw = 3;
+  const hi = Math.max(trade, trend), lo = Math.min(trade, trend);
+  const vals = [price, trade, trend].concat(lrr != null ? [lrr] : [], trr != null ? [trr] : []);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const span = (mx - mn) || 1, pad = span * 0.08;
+  const top = mx + pad, bot = mn - pad;
+  const y = p => PT + (top - p) / (top - bot) * H;
+  const yHi = y(hi), yLo = y(lo), yP = y(price);
+  const usd = v => '$' + v.toFixed(2);
+  const lines = [
+    { n: 'Trade', p: trade, c: '#1d6fd6' }, { n: 'Trend', p: trend, c: '#b4640a' },
+    ...(trr != null ? [{ n: 'TRR', p: trr, c: '#7a4fc2', dash: 1 }] : []),
+    ...(lrr != null ? [{ n: 'LRR', p: lrr, c: '#7a4fc2', dash: 1 }] : []),
+  ].map(l => ({ ...l, y: y(l.p) })).sort((a, b) => a.y - b.y);
+  lines.forEach((l, i) => { l.ty = i ? Math.max(l.y, lines[i - 1].ty + 12) : l.y; });
+  let g = `<svg viewBox="0 0 ${W} ${H + PT * 2 + 6}" width="${W}" height="${H + PT * 2 + 6}" role="img" aria-label="Price vs Trade and Trend lines">`;
+  g += `<rect x="${bx}" y="${PT}" width="${bw}" height="${yHi - PT}" fill="#dff1e4"/>`;
+  g += `<rect x="${bx}" y="${yHi}" width="${bw}" height="${Math.max(yLo - yHi, 0)}" fill="#eceef2"/>`;
+  g += `<rect x="${bx}" y="${yLo}" width="${bw}" height="${PT + H - yLo}" fill="#f8e0e0"/>`;
+  g += `<rect x="${bx}" y="${PT}" width="${bw}" height="${H}" fill="none" stroke="#cbd5e1"/>`;
+  for (const l of lines) {
+    g += `<line x1="${bx - 3}" x2="${bx + bw + 3}" y1="${l.y}" y2="${l.y}" stroke="${l.c}" stroke-width="${l.dash ? 1.3 : 2.2}"${l.dash ? ' stroke-dasharray="4 3"' : ''}/>`;
+    g += `<line x1="${bx + bw + 3}" x2="${bx + bw + 8}" y1="${l.y}" y2="${l.ty}" stroke="${l.c}" stroke-width="1"/>`;
+    g += `<text x="${bx + bw + 10}" y="${l.ty + 3.5}" font-size="9.5" font-weight="700" fill="${l.c}">${l.n} ${usd(l.p)}</text>`;
+  }
+  g += `<polygon points="${bx - 2},${yP} ${bx - 9},${yP - 4.5} ${bx - 9},${yP + 4.5}" fill="#0f172a"/>`;
+  g += `<text x="${bx - 12}" y="${yP + 4}" font-size="11" font-weight="800" text-anchor="end" fill="#0f172a">${usd(price)}</text>`;
+  g += `</svg>`;
+  return `<div class="actpop-lvlbar">${g}</div>`;
+}
+
+// Two-decimal dollars for the popover header (the file's fmtUsd rounds to whole dollars).
+function _fmtUsd2(v) {
+  const n = Number(v);
+  if (v == null || v === '' || !isFinite(n)) return '';
+  return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Wraps a header control group so it centers on the price/shares/earnings lines (see .actpop-ctrl-c).
+function _ctrlC(html, extra) { return html ? `<div class="actpop-ctrl-c${extra ? ' ' + extra : ''}">${html}</div>` : ''; }
+
 function _buildActionPopHtmlV2(row) {
   const fc = finalCall(row);
   const sym = row.tos_symbol || '—';
   const side = fc.side;
   const callCls = side === 'buy' ? 'buy' : side === 'sell' ? 'sell' : 'neutral';
-  const amtTxt = row.held_today && row.current_position_dollar != null
-    ? _actpopFmtAmt(row.current_position_dollar) : 'not held (yet)';
   const ed = row.earnings_days;
   const hasEd = ed != null && Number(ed) >= 0 && Number(ed) < 900;
   const edDays = hasEd ? Math.round(Number(ed)) : null;
-  // 2026-08-29: dropped the "e " label prefix; highlight reuses the same
-  // <=3d yellow .opex-soon treatment the dashboard's own earnings lines use
-  // (web/app.js::_earningsLineHtml/_opexLineHtml) instead of inventing a
-  // separate threshold/color here.
-  const edTxt = hasEd
-    ? ` &middot; ${edDays <= 3 ? `<span class="opex-soon">${edDays}d</span>` : `${edDays}d`}`
+  // Earnings highlight reuses the same <=3d yellow .opex-soon treatment the
+  // dashboard's own earnings lines use (web/app.js::_earningsLineHtml).
+  // 2026-10-02 (user): company name on top, full-decimal price (bold/larger),
+  // then shares/avg-cost/amount and earnings lines under the action pill.
+  // (The old "$9k . 10d" line, .actpop-co, was removed 2026-10-02.)
+  const nameTxt = row.company_name ? `<span class="actpop-name" title="${escapeHtml(row.company_name)}">${escapeHtml(row.company_name)}</span>` : '';
+  const pxTxt = row.last_price != null ? `<div class="actpop-px">${_fmtUsd2(row.last_price)}</div>` : '';
+  const hq = Number(row.held_qty), hc = Number(row.held_cost);
+  const ownTxt = row.held_today && hq > 0
+    ? `${Math.round(hq).toLocaleString()} shares`
+      + (hc > 0 ? ` &middot; Avg ${_fmtUsd2(hc / hq)}` : '')
+      + (row.current_position_dollar != null ? ` &middot; ${_actpopFmtAmt(row.current_position_dollar).replace('k', 'K')}` : '')
+    : 'Not held';
+  const ownLine = `<div class="actpop-own">${ownTxt}</div>`;
+  const earnLine = hasEd
+    ? `<div class="actpop-earn">Earnings in ${edDays <= 3 ? `<span class="opex-soon">${edDays}d</span>` : `${edDays}d`}</div>`
     : '';
   // Computed here (not at its original later call site) so its conviction
   // piece is ready in time for the header below -- see _actpopTugHtml's own
@@ -6112,16 +6183,29 @@ function _buildActionPopHtmlV2(row) {
   // RR form one tight cluster flush against the popup's right edge, all 3
   // sharing that same fixed gap; Supp/Opp is left behind on the far side
   // of the auto margin, next to the symbol block instead.
+  // margin-left:auto goes on whichever right-hand group renders first (once).
+  let _anchored = false;
+  const _anch = html => { if (!html || _anchored) return ''; _anchored = true; return 'actpop-ctrl-anchor-rr'; };
+  const _tdtnHtml = _actpopTdTnHtml(row), _rrHtml = _actpopRrBarHtml(row);
   h += `<div class="actpop-head">
-    <div class="actpop-sym">${escapeHtml(sym)}`
+    <div class="actpop-sym"><div class="actpop-symline">${escapeHtml(sym)}`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
-    + `<div class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</div>`
+    + nameTxt   // 2026-10-02: company name next to the action pill
+    + `</div>`
+    // price / shares / earnings share one fixed band with the right-hand control groups
+    // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
+    + `<div class="actpop-px-group">${pxTxt}${ownLine}${earnLine}</div>`
     + `</div>`
     + `<div class="actpop-ctrl-row">`
-    + tug.conviction
-    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row, 0)}</div>`
-    + _actpopTdTnHtml(row)
-    + _actpopRrBarHtml(row)
+    // 2026-10-02 (user): every control group except the vertical bar is centered on the
+    // price / shares / earnings lines (.actpop-ctrl-c), not the whole header.
+    // %CHG and Supp/Opp stay at the left, next to the symbol block; the rest are pushed to the
+    // right edge by margin-left:auto on the first one present (2026-10-02, user).
+    + `<div class="actpop-ctrl-c">${_chgCandleControlsHtml(row, 0, false)}</div>`
+    + _ctrlC(tug.conviction)
+    + _ctrlC(_tdtnHtml, _anch(_tdtnHtml))
+    + _actpopLevelBarHtml(row)
+    + _ctrlC(_rrHtml, _anch(_rrHtml))
     + `</div>`
     + `</div>`;
 
@@ -6192,7 +6276,7 @@ function _buildActionPopHtmlV2(row) {
 
   // RVOL moved 2026-08-21 to the VLM line (.actpop-rr-info) -- not
   // duplicated here anymore. Earnings dropped the same day -- already
-  // shown in the header (.actpop-co, next to the amount, edTxt above).
+  // shown in the header (the "Earnings in Nd" line under the action pill).
   const details = [];
   if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
   if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
@@ -6478,7 +6562,9 @@ function _emptyStateHtml() {
 //    bought the symbol in the last 60 days (context only; no parking).
 function _actionedInfo(r) {
   const code = (r.final_code || '').toUpperCase();
-  if (r.stop_breached || code === 'SA') return null;
+  // 2026-10-02: an explicit Done click still counts on SELL ALL / breached-stop rows
+  // (the exclusion is only for auto-detected trades, not the user's own decision).
+  if ((r.stop_breached || code === 'SA') && !r.done_today) return null;
   // "Today" = the current market session (server: r.session_day), not the screen/anchor
   // date, which lags during the day. Null on older dates picked in the date picker.
   const day = r.session_day;
@@ -6504,7 +6590,7 @@ function _actionTagHtml(r) {
     const tip = [
       `• You ${ai.doneOnly ? 'marked this Done' : ai.label.toLowerCase()} on ${ai.date}`,
       ...((ai.bq || ai.sq) ? [`• Today: ${ai.bq ? 'bought ' + Math.round(ai.bq).toLocaleString() + ' sh' : ''}${ai.bq && ai.sq ? ', ' : ''}${ai.sq ? 'sold ' + Math.round(ai.sq).toLocaleString() + ' sh' : ''}`] : []),
-      state.filters.trade_mode ? '• It is parked in "Actioned today" below' : '• The row is dimmed',
+      '• It is parked in "Actioned today" below',
       '• The signal itself is unchanged',
       ...(ai.over > 0 ? [`• Position is over its max by ${fmtUsd(ai.over)} (sizing still says trim)`] : []),
       ...(ai.doneOnly ? ['• Click this tag to undo Done'] : []),
@@ -6540,7 +6626,7 @@ function renderGrid() {
     // qualifying buys — never band these into the collapsed Watchlist.
     r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
     r._actionInfo = _actionedInfo(r);
-    r._parkedActioned = !!(state.filters.trade_mode && r._actionInfo);
+    r._parkedActioned = !!r._actionInfo;   // 2026-10-02: parked in every view (was Trade view only; else just dimmed)
     r._priority = _computePriority(r);
     r._pvv_rank = _pvvRank(r.pvv_decision);
   }
