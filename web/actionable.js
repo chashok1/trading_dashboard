@@ -3052,29 +3052,33 @@ function _isAtOrOverMax(row) {
 // Max still doesn't get ESTABLISHED/NEAR MAX though — the more specific
 // OVER MAX pill (_isOverMaxOverlay, _finalCallHtml) takes over instead.
 const _NEAR_MAX_PCT = 0.75;
-function _sizingStagePill(row) {
-  if (!row) return '';
+function _sizingStageInfo(row) {
+  if (!row) return null;
   const ca = (row.consolidated_action || '').toUpperCase();
-  if (ca !== 'ADD' && ca !== 'INCREASE') return '';
-  if (!row.held_today) return '';
-  if (_isAtOrOverMax(row)) return '';  // OVER MAX pill covers this instead
+  if (ca !== 'ADD' && ca !== 'INCREASE') return null;
+  if (!row.held_today) return null;
+  if (_isAtOrOverMax(row)) return null;  // OVER MAX pill covers this instead
   const pos = Number(row.current_position_dollar);
   const min = Number(row.target_min_dollar);
   const max = Number(row.target_max_dollar);
-  if (!isFinite(pos)) return '';
+  if (!isFinite(pos)) return null;
   if (isFinite(max) && max > (isFinite(min) ? min : 0)) {
     const floor = isFinite(min) ? min : 0;
     const pct = (pos - floor) / (max - floor);
     if (pct >= _NEAR_MAX_PCT) {
-      return ' <span class="sizing-pill" title="' + escapeHtml(fmtUsd(pos)) + ' of ' + escapeHtml(fmtUsd(max))
-        + ' Max (' + Math.round(pct * 100) + '% of the way there) — informational only, does not change the action above">NEAR MAX</span>';
+      return { label: 'NEAR MAX', detail: fmtUsd(pos) + ' of ' + fmtUsd(max) + ' Max (' + Math.round(pct * 100) + '% of the way there)' };
     }
   }
   if (isFinite(min) && min > 0 && pos >= min) {
-    return ' <span class="sizing-pill" title="Held ' + escapeHtml(fmtUsd(pos)) + ' already ≥ floor ' + escapeHtml(fmtUsd(min))
-      + ' — informational only, does not change the action above">ESTABLISHED</span>';
+    return { label: 'ESTABLISHED', detail: 'Held ' + fmtUsd(pos) + ' already \u2265 floor ' + fmtUsd(min) };
   }
-  return '';
+  return null;
+}
+function _sizingStagePill(row) {
+  const i = _sizingStageInfo(row);
+  if (!i) return '';
+  return ' <span class="sizing-pill" title="' + escapeHtml(i.detail)
+    + ' \u2014 informational only, does not change the action above">' + i.label + '</span>';
 }
 
 // Parsed source_actions array for a row (winning + every "other" source).
@@ -4751,6 +4755,33 @@ async function showNotesPop(el, sym, desc) {
   _showDataPop(el, _buildNotesPopHtml(sym, notes, desc));
 }
 
+// Action popover "Notes" block: the same /api/notes feed the SYMBOL-cell hover shows,
+// top 3 inline. Filled after the popover is shown (async) and only if it is still open.
+function _actpopNotesHtml(notes) {
+  if (!notes || !notes.length) return '';
+  let h = '<span class="actpop-notes-h">Notes</span>';
+  for (const n of notes.slice(0, 3)) {
+    const dt = fmtMD(n.note_date) || '';
+    const src = (n.source_type || '').replace(/_/g, ' ');
+    const sk = n.signal_kind ? ' ' + String(n.signal_kind).toUpperCase() : '';
+    let txt = (n.note_text || '').trim();
+    if (txt.length > 160) txt = txt.slice(0, 160).replace(/\s+\S*$/, '') + '\u2026';
+    h += `<div class="actpop-note"><b>${escapeHtml(dt)}</b> ${escapeHtml(src)}${escapeHtml(sk)} &mdash; ${escapeHtml(txt)}</div>`;
+  }
+  return h;
+}
+async function _actpopLoadNotes(sym) {
+  const box = () => document.querySelector('#sourcePop .actpop-notes[data-sym="' + CSS.escape(sym) + '"]');
+  let notes;
+  if (_notesCache.has(sym)) notes = _notesCache.get(sym);
+  else {
+    try { notes = await fetchJson('/api/notes?ticker=' + encodeURIComponent(sym) + '&limit=15'); } catch (_) { notes = []; }
+    _notesCache.set(sym, notes);
+  }
+  const el = box();
+  if (el) el.innerHTML = _actpopNotesHtml(notes);
+}
+
 function hideSourcePop() {
   _srcPopEl = null;
   const pop = $('sourcePop');
@@ -5013,7 +5044,10 @@ function initSourcePopover() {
       // the default. Rollback escape hatch: `localStorage.setItem('actionPopV2','0')`
       // in the browser console. Drop this branch + _buildActionPopHtml once
       // V2 is validated in the field.
-      if (r) _showDataPop(actionEl, _actionPopV2Enabled() ? _buildActionPopHtmlV2(r) : _buildActionPopHtml(r));
+      if (r) {
+        _showDataPop(actionEl, _actionPopV2Enabled() ? _buildActionPopHtmlV2(r) : _buildActionPopHtml(r));
+        if (_actionPopV2Enabled()) _actpopLoadNotes(r.tos_symbol);
+      }
       return;
     }
     const signalEl = e.target.closest('[data-signalpop]');
@@ -5924,9 +5958,11 @@ function _actpopRulePillsHtml(row, side) {
 // (the Opposing/Supporting columns, tally line removed) still renders at
 // its original later position.
 function _actpopTugHtml(row, side) {
-  if (side !== 'buy' && side !== 'sell') return { conviction: '', html: '' };
+  // 2026-10-03: HOLD / no-call rows now get the same Caution / Supporting list the grid's
+  // warning pill shows (buy-style wording, rules kept as sentences) instead of nothing.
+  const neutral = side !== 'buy' && side !== 'sell';
   const sig = _signalReasons(row, side);
-  const isRuleText = s => /^Rule \S+ fired|^Sell rule \S+/.test(s);
+  const isRuleText = neutral ? (() => false) : (s => /^Rule \S+ fired|^Sell rule \S+/.test(s));
   const supportSignals = sig.buy.filter(s => !isRuleText(s));
   let opposeSignals = sig.warn.filter(s => !isRuleText(s));
 
@@ -5947,7 +5983,7 @@ function _actpopTugHtml(row, side) {
     opposeSignals = opposeSignals.concat(dropOpp);
   }
 
-  const rulePills = _actpopRulePillsHtml(row, side);
+  const rulePills = neutral ? { support: '', oppose: '', supportCount: 0, opposeCount: 0 } : _actpopRulePillsHtml(row, side);
 
   const oppItems = opposeSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
   const supItems = supportSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
@@ -5994,7 +6030,7 @@ function _actpopTugHtml(row, side) {
     : '';
 
   const html = `<div class="actpop-tug">
-    <div class="actpop-tug-col oppose"><div class="actpop-tug-h">Opposing</div>${oppBody}</div>
+    <div class="actpop-tug-col oppose"><div class="actpop-tug-h">${neutral ? 'Caution' : 'Opposing'}</div>${oppBody}</div>
     <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting</div>${supBody}</div>
   </div>`;
   return { conviction, html };
@@ -6144,6 +6180,10 @@ function _buildActionPopHtmlV2(row) {
   // then shares/avg-cost/amount and earnings lines under the action pill.
   // (The old "$9k . 10d" line, .actpop-co, was removed 2026-10-02.)
   const nameTxt = row.company_name ? `<span class="actpop-name" title="${escapeHtml(row.company_name)}">${escapeHtml(row.company_name)}</span>` : '';
+  // Suggested trade size next to the pill (same _amt the grid's AMT column shows), only for a
+  // real buy/sell call -- for HOLD _amt is just the current holding, not a trade.
+  const tradeAmtTxt = ((side === 'buy' || side === 'sell') && Number(row._amt) > 0)
+    ? `<span class="actpop-amt" title="Suggested trade size">${side === 'sell' ? 'sell' : 'buy'} ${escapeHtml(_actpopFmtAmt(row._amt).replace('k', 'K'))}</span>` : '';
   const pxTxt = row.last_price != null ? `<div class="actpop-px">${_fmtUsd2(row.last_price)}</div>` : '';
   const hq = Number(row.held_qty), hc = Number(row.held_cost);
   const ownTxt = row.held_today && hq > 0
@@ -6183,18 +6223,41 @@ function _buildActionPopHtmlV2(row) {
   // RR form one tight cluster flush against the popup's right edge, all 3
   // sharing that same fixed gap; Supp/Opp is left behind on the far side
   // of the auto margin, next to the symbol block instead.
+  // 2026-10-03: the rest of what the SYMBOL / ACTION cells show, as short lines under the
+  // earnings line (symExtras): actioned tag (not "Done" -- user), over max, sizing stage,
+  // low confidence, hit rate. Over max is shown once (the tag's own over-max note is skipped).
+  let symExtras = '';
+  const _ai = row._actionInfo;
+  const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
+  if (_at) symExtras += `<div class="actpop-xl">${_at}</div>`;
+  if (_isOverMaxOverlay(row)) {
+    symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">OVER MAX by `
+       + `${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}</div>`;
+  }
+  const _sz = _sizingStageInfo(row);
+  if (_sz) {
+    symExtras += `<div class="actpop-xl"><b>${_sz.label}</b> ${escapeHtml(_sz.detail)}</div>`;
+  }
+  if (row.low_confidence && side === 'sell') {
+    symExtras += `<div class="actpop-xl" style="color:#b45309;"><b>LOW CONF</b> weak sell evidence, cross-check</div>`;
+  }
+  const _hr = _sourceHitRateBadge(row);
+  if (_hr) symExtras += `<div class="actpop-xl">Source hit rate ${_hr}</div>`;
+
   // margin-left:auto goes on whichever right-hand group renders first (once).
   let _anchored = false;
   const _anch = html => { if (!html || _anchored) return ''; _anchored = true; return 'actpop-ctrl-anchor-rr'; };
   const _tdtnHtml = _actpopTdTnHtml(row), _rrHtml = _actpopRrBarHtml(row);
-  h += `<div class="actpop-head">
-    <div class="actpop-sym"><div class="actpop-symline">${escapeHtml(sym)}`
+  h += `<div class="actpop-top"><div class="actpop-head">
+    <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(row.rr_name || sym)}</span>`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
+    + tradeAmtTxt
     + nameTxt   // 2026-10-02: company name next to the action pill
     + `</div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
     + `<div class="actpop-px-group">${pxTxt}${ownLine}${earnLine}</div>`
+    + (symExtras ? `<div class="actpop-sym-extra">${symExtras}</div>` : '')
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     // 2026-10-02 (user): every control group except the vertical bar is centered on the
@@ -6206,6 +6269,7 @@ function _buildActionPopHtmlV2(row) {
     + _ctrlC(_tdtnHtml, _anch(_tdtnHtml))
     + _actpopLevelBarHtml(row)
     + _ctrlC(_rrHtml, _anch(_rrHtml))
+    + `</div>`
     + `</div>`
     + `</div>`;
 
@@ -6285,6 +6349,11 @@ function _buildActionPopHtmlV2(row) {
   // driver bullets and Tug; user wanted the score breakdown last, after
   // everything else.
   h += _actpopTradabilityHtml(row);
+
+  // Analyst notes (same feed as the SYMBOL-cell hover); filled async by _actpopLoadNotes.
+  const _nc = _notesCache.get(row.tos_symbol);
+  h += `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span class="actpop-notes-h">Notes</span> loading&hellip;'}</div>`;
+
 
   h += `</div>`;
   return h;
@@ -6583,7 +6652,7 @@ function _actionedInfo(r) {
   return { label, date: day, over, doneOnly: !b && !sd, bq: r.bought_qty_today, sq: r.sold_qty_today };
 }
 
-function _actionTagHtml(r) {
+function _actionTagHtml(r, noOver) {
   const ai = r._actionInfo;
   const nl = String.fromCharCode(10);
   if (ai) {
@@ -6598,7 +6667,7 @@ function _actionTagHtml(r) {
     return `<div class="action-tag" ${ai.doneOnly ? `data-done-undo="${escapeHtml(r.tos_symbol)}"` : ''} `
       + `style="margin-top:1px;font-size:9px;font-weight:700;color:#7c3aed;white-space:nowrap;${ai.doneOnly ? 'cursor:pointer;' : ''}" title="${escapeHtml(tip)}">`
       + `${escapeHtml(ai.label)} ${escapeHtml(fmtMD(ai.date) || '')}${ai.doneOnly ? ' ✎' : ''}`
-      + (ai.over > 0 ? `<br><span style="color:#b45309;">over max ${escapeHtml(fmtUsd(ai.over))}</span>` : '')
+      + (ai.over > 0 && !noOver ? `<br><span style="color:#b45309;">over max ${escapeHtml(fmtUsd(ai.over))}</span>` : '')
       + `</div>`;
   }
   const code = (r.final_code || '').toUpperCase();

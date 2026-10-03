@@ -3376,8 +3376,9 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .uv-actpop-shell td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 
 .actpop { width: 828px; padding: 6px; }  /* 2026-10-02: was 662px -- header gained company/price/own/earnings + the Trade/Trend bar */
-.actpop-head { display: flex; align-items: center; column-gap: 14px;
-  margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
+.actpop-head { display: flex; align-items: center; column-gap: 14px; }
+/* 2026-10-03: the divider moved from .actpop-head to .actpop-top so the warning/notes lines sit above it */
+.actpop-top { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
 .actpop-ctrl-row { display: flex; align-items: center; gap: 18px; flex: 1 1 auto; min-width: 0; }  /* gap 20 -> 12 -> 18 (2026-10-02) */
 .actpop-ctrl-anchor-rr { margin-left: auto; }
 /* 2026-10-02: control groups (all but the vertical bar) sit in a band that matches the price + shares + earnings lines: starts below the symbol/pill line (~22px) and is as tall as those 3 lines (~61px); contents centered in it. Estimated from the CSS, not measured. */
@@ -3386,6 +3387,13 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .actpop-sym .actpop-co { display:block; font-weight:400; color:#94a3b8; font-size:10px; margin:2px 0 0; }
 .actpop-name { display:inline-block; vertical-align:middle; width:0; overflow:visible; margin-left:8px; font-size:11px; font-weight:400; color:#64748b; white-space:nowrap; }  /* zero layout width: the name runs out into the free space instead of widening the left block and squeezing the right-hand controls */
 .actpop-px { font-size:19px; font-weight:800; color:#0f172a; line-height:1.15; margin-top:0; font-variant-numeric:tabular-nums; }
+.actpop-amt { margin-left:8px; font-size:11px; font-weight:700; color:#475569; }
+.actpop-sym-extra { max-width:215px; margin-top:2px; white-space:normal; }
+.actpop-xl { font-size:10px; font-weight:500; color:#475569; line-height:1.35; margin-top:1px; }
+.actpop-notes { margin-top:6px; padding-top:5px; border-top:1px dashed #e2e8f0; font-size:10px; color:#334155; }
+.actpop-notes:empty { display:none; }
+.actpop-notes-h { font-weight:700; color:#64748b; }
+.actpop-note { margin-top:2px; line-height:1.35; }
 .actpop-symline { height:22px; line-height:22px; white-space:nowrap; }
 /* 2026-10-03: price/shares/earnings band = same top (22px symbol line + 16px gap) and height as .actpop-ctrl-c, contents centered, so all those group centers line up */
 .actpop-px-group { margin-top:16px; height:61px; display:flex; flex-direction:column; justify-content:center; }

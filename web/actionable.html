@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20261003e">
+  <link rel="stylesheet" href="/static/styles.css?v=20261003h">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
        with the rest of the side panel ("remove the side panel from
@@ -519,8 +519,9 @@
        those controls in the header)". flex:1 1 auto so the row still
        grows to fill .actpop-head's remaining width -- margin-left:auto
        has no free space to consume otherwise. */
-    .actpop-head { display: flex; align-items: center; column-gap: 14px;
-      margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
+    .actpop-head { display: flex; align-items: center; column-gap: 14px; }
+    /* 2026-10-03: the divider moved from .actpop-head to .actpop-top so the warning/notes lines sit above it */
+    .actpop-top { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
     /* gap 10px -> 20px, 2026-09-02, user: "2) double it" (the %CHG<->Trade/
        Trend group spacing) -- also the base component of the Trade/
        Trend<->RR spacing (.actpop-rr's own extra margin-left below adds
@@ -1947,7 +1948,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20261003g"></script>
+  <script src="/static/actionable.js?v=20261003l"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261001b" defer></script>
 <script src="/static/warning_badge.js"></script>
