@@ -50,6 +50,7 @@ MSG_BACKED = [
     "hist_call_top5",
     "hist_hedgeye_stance",
     "hist_sss_change",
+    "hist_goany",
     "note_repo",
     "hist_media",
     "llm_analysis",

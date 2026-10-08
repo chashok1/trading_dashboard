@@ -8,8 +8,9 @@
 | 2 | Real-Time Alerts | DATA `hist_rta` + RULES | Parse action/price/durations; coaching notes → `note_repo`. Corrections **auto-reverse** the prior alert |
 | 3 | Investing Ideas Add/Remove | DATA `hist_ii`/`hist_iichg` | action+side+ticker. Treated **independent** of RTAs |
 | 4 | ETF Pro changes | DATA `hist_etfchg` | add/remove only — **no price ranges** |
-| 5 | Signal Strength Stocks | DATA `hist_sss` | **Deltas only** from email (full list = image → export) |
+| 5 | Signal Strength Stocks | DATA `hist_sss`/`hist_sss_change` | Deltas (Added/Adding, Removed/Removing) → `hist_sss_change`. **Since 2026-09-29, full daily table also arrives as plaintext** (was a chart image before) → parsed into `hist_sss` via the SSS file lane, same as PS |
 | 6 | Portfolio Solutions re-rank | DATA `hist_ps` | **Full table** parsed from email HTML (it's a real `<table>`, not image) |
+| 6b | 10 ETF Go-Anywhere Portfolio (added 2026-10-07) | DATA `hist_goany` (email-only, direct insert) | Two real HTML `<table>`s: Current Open Positions (slot/ticker/name/asset class/entry price/total return/date added) + Recently Closed (last 90 days). The "WE ARE ADDING/REMOVING" banner is redundant with the tables, so it is stored as a note only. Two emails on one day = whole-state snapshots: **latest email of the day replaces earlier ones** (`dispatch._goany_latest_wins`). Source `GOANY` behaves like PS: new on open list → ADD, dropped → REMOVE (even if not held), still listed → HOLD if held else ADD. Slot number is add-order, not a rank. |
 | 7 | Macro Show — Summary Notes | DATA `hist_hedgeye_stance` + ANALYSIS | TL;DR positions parsed (name→symbol lookup for non-tickers); prose → `note_repo` |
 | 8 | Macro Show — Access / Top 3 | — | Analysis-only → `note_repo` |
 | 9 | KM's Top 3 Things | — | Analysis-only → `note_repo` |
@@ -57,8 +58,9 @@ currently fed by hand from the `Tickers YYYY-MM-DD.xlsx` tabs:
 | Risk Range™ Signals | `hist_rr` (`RR`) | **Full** — 38 rows, all fields in plaintext |
 | ETF Pro Plus changes | `hist_etfchg` (`load_etfchg`) | **Full** — add/remove + ranges in text |
 | Investing Ideas "Add/Remove … LONG/SHORT" | `hist_ii` / `hist_iichg` (`II`, `load_iichg`) | **Full** — action + side + ticker |
-| Signal Strength Stocks | `hist_sss` (`SSS`/`ssH`) | **Delta only** from email (full 80-name list is a chart image → export) |
+| Signal Strength Stocks | `hist_sss` (`SSS`/`ssH`) | **Full** since 2026-09-29 — plaintext table parsed like PS (previously delta-only; full list was a chart image) |
 | Portfolio Solutions weekly re-rank | `hist_ps` (`ps`) | **Full table** — parsed from the email's real HTML `<table>` |
+| 10 ETF Go-Anywhere Portfolio | `hist_goany` (email-only) | **Full** — open + closed tables parsed from HTML; source `GOANY` (PS-style membership) |
 | The Call | `hist_call` + new `hist_call_top5` | `hist_call` ← HEDGEYE POSITIONS list; Top 5 Actionable → new table |
 
 So the automation is mostly **"email → the same tab shape → your existing loader"**, not
@@ -81,7 +83,7 @@ Observed 24–26 Jun 2026. Two senders matter:
 | 2 | **Real-Time Alert** | Many/day | Action + price + TRADE/TREND/TAIL + coaching notes | DATA (new `hist_rta`) + RULES (coaching) |
 | 3 | **Add/Remove … LONG/SHORT** (Investing Ideas) | Intraday, as needed | Action, side, ticker | DATA `hist_ii`/`hist_iichg` |
 | 4 | **ETF Pro Plus changes** | Intraday, as needed | Add/Remove Long/Short | DATA `hist_etfchg` (add/remove only, no ranges) |
-| 5 | **Signal Strength Stocks** | 1–2/day | Added/Removed tickers (+ image of full list) | DATA delta `hist_sss` (full list via export) |
+| 5 | **Signal Strength Stocks** | Daily (since 2026-09-29; was 1–2/day) | Added/Removed tickers + full ranked table as plaintext | DATA `hist_sss_change` (deltas) + `hist_sss` (full table, parsed like PS) |
 | 6 | **Portfolio Solutions** weekly re-rank | Weekly (Fri) | Full HTML rank table | DATA full `hist_ps` (parsed from email) |
 | 7 | **The Macro Show — Summary Notes** | Daily ~late AM | `TL;DR POSITIONS` Bullish/Bearish list + prose | DATA `hist_hedgeye_stance` + ANALYSIS |
 | 8 | **The Macro Show — Access / Top 3** | Daily AM | Prose + slide link | ANALYSIS → `note_repo` |
@@ -246,11 +248,13 @@ hot path.
 
 ## 6. What email *cannot* give you (honest caveats)
 
-- **Signal Strength Stocks** email = only *Added/Removed* tickers; the full 80-name table
-  (Days On, Signal Date, prior/last close, % delta) is a **chart image** + the app. Email
-  gives you reliable change-events; the full `hist_sss` snapshot still needs the workbook/
-  app export. Recommendation: store the deltas as events, reconcile against the periodic
-  full export you already load.
+- **Signal Strength Stocks**: **resolved 2026-09-29** — the full ranked table (Ticker, Name,
+  Sector, Analyst, Entry Date, Entry Price, Recent Price, Total Return, Best Idea Rank,
+  Holding Period) now arrives as plaintext instead of a chart image, so the email alone
+  fully populates `hist_sss` (parsed like Portfolio Solutions, routed via the `SSS` file
+  lane). Added/Removed (or Adding/Removing) deltas still go to `hist_sss_change`
+  separately. The periodic workbook/app export remains a valid independent source for
+  `hist_sss` — both loads are idempotent and `ON CONFLICT DO NOTHING` on the same PK.
 - **Portfolio Solutions** weekly re-rank: *not* image-gated — the full rank table is real
   HTML and is parsed straight from the email into `hist_ps`. (Corrected during walkthrough.)
 - **Market Situation Report**: the email is commentary + charts; the full quantitative

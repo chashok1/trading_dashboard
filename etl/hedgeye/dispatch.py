@@ -53,6 +53,9 @@ def _prev_business_day(session, d: date) -> date:
 # RR emails use received date as file name; data inside is for the previous business day.
 _NEXT_DAY_FEEDS: frozenset = frozenset()
 
+# Email types that always carry a data table; 0 parsed rows is a failure.
+_ROWS_REQUIRED: frozenset = frozenset({"risk_range", "investing_ideas", "go_anywhere"})
+
 
 def already_processed(session, message_id: str) -> bool:
     """True only for messages that fully succeeded. A prior status='error' row
@@ -122,6 +125,27 @@ def _save_hefiles_image(url: str, hefiles_dir: str, filename: str) -> None:
         log.warning("_save_hefiles_image failed %s: %s", filename, e)
 
 
+def _goany_latest_wins(session, email, rows: list[dict]) -> bool:
+    """Go-Anywhere is a whole-portfolio STATE email and Hedgeye sometimes sends
+    two a minute apart on a change day (the later one is the final state).
+    Keep only the latest email's rows per snapshot_date: skip this email if a
+    later one is already stored, else drop earlier same-day rows first.
+    Returns True when the caller should insert `rows`."""
+    if not rows:
+        return False
+    d = rows[0]["snapshot_date"]
+    newer = session.execute(text(
+        "SELECT 1 FROM hist_goany g JOIN meta_hedgeye_msg m ON m.message_id = g.message_id "
+        "WHERE g.snapshot_date = :d AND g.message_id <> :m AND m.received_at > :r LIMIT 1"
+    ), {"d": d, "m": email.message_id, "r": email.received}).first()
+    if newer:
+        return False
+    session.execute(text(
+        "DELETE FROM hist_goany WHERE snapshot_date = :d AND message_id <> :m"
+    ), {"d": d, "m": email.message_id})
+    return True
+
+
 def _adapt_rows(table: str, rows: list[dict]) -> list[dict]:
     """Map parser-emitted columns to live DB columns where names differ.
 
@@ -162,6 +186,12 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                "notes": 0, "images": 0,
                "flags": parsed.flags, "warnings": parsed.warnings}
 
+    # A data feed that parses to zero rows means the layout changed (or the body
+    # was unreadable) — fail loudly so the ledger records 'error' and it retries,
+    # instead of logging 'ok' with nothing loaded.
+    if email_type in _ROWS_REQUIRED and not any(parsed.tables.values()):
+        raise ValueError(f"{email_type}: parsed 0 rows — email layout not recognised")
+
     feed_date = email.edt_date or email.received.date()
     if email_type in _NEXT_DAY_FEEDS:
         feed_date = _next_business_day(feed_date)
@@ -187,6 +217,9 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 result = write_feed(session, email_type, feed_date, rows)
                 summary["files"][table] = result or "skipped"
             else:
+                if table == "hist_goany" and not _goany_latest_wins(session, email, rows):
+                    summary["tables"][table] = 0
+                    continue
                 adapted = _adapt_rows(table, rows)
                 attempted, inserted = insert_skip_duplicates(
                     session, table, adapted

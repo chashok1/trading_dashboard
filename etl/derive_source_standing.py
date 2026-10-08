@@ -10,6 +10,7 @@ Sources and rules:
   ETF  — latest hist_etf snapshot <= D + etfchg patches; NEUTRAL excluded
   II   — latest hist_ii  snapshot <= D + iichg patches;  NEUTRAL excluded
   PS   — latest hist_ps  snapshot_date <= D; whole load; rank stored
+  GOANY— latest hist_goany snapshot <= D; OPEN rows only (PS-style membership)
   RR   — drv_rr WHERE as_of_date=D (already built); weight/outlook from hist_rr
   CALL — 30-day per-symbol window (the ONE exception to whole-load rule)
 
@@ -267,6 +268,37 @@ def _build_ps(session: Session, as_of_date: date, run_id: int,
 
 
 # ---------------------------------------------------------------------------
+# GOANY builder (PS-style membership; Hedgeye 10 ETF Go-Anywhere Portfolio)
+# ---------------------------------------------------------------------------
+
+def _build_goany(session: Session, as_of_date: date, run_id: int,
+                 ceiling: Optional[date] = None) -> list[dict]:
+    """GOANY: OPEN positions on the latest hist_goany snapshot <= D.
+
+    Same shape as _build_ps: the latest whole snapshot, on_list rows only,
+    absence = dropped (the action path then emits REMOVE). The slot number is
+    just add-order, not a ranking, so rank is left NULL.
+    """
+    ceiling = ceiling or as_of_date
+    snap = session.execute(text(
+        "SELECT MAX(snapshot_date) FROM hist_goany "
+        "WHERE snapshot_date <= :d AND status = 'open'"
+    ), {"d": ceiling}).scalar()
+    if not snap:
+        return []
+    rows = session.execute(text(
+        "SELECT DISTINCT COALESCE(NULLIF(tos_symbol,''), symbol) FROM hist_goany "
+        "WHERE snapshot_date = :snap AND status = 'open'"
+    ), {"snap": snap}).fetchall()
+    return [{
+        "as_of_date": as_of_date, "source_code": "GOANY", "tos_symbol": r[0],
+        "snapshot_date": snap, "on_list": True, "weight": None, "rank": None,
+        "raw_value": None, "signal_sign": None, "rank_hl": None,
+        "outlook": None, "modifier": None, "source_run_id": run_id,
+    } for r in rows if r[0]]
+
+
+# ---------------------------------------------------------------------------
 # RR builder (Increment 4)
 # ---------------------------------------------------------------------------
 
@@ -415,6 +447,12 @@ def _derive_source_standing_impl(session: Session,
         all_rows.extend(_build_ps(session, as_of_date, run_id))
     except Exception as e:
         log.warning("derive_source_standing PS failed: %s", e)
+
+    # GOANY — PS-style membership
+    try:
+        all_rows.extend(_build_goany(session, as_of_date, run_id))
+    except Exception as e:
+        log.warning("derive_source_standing GOANY failed: %s", e)
 
     # Increment 4 — RR
     try:

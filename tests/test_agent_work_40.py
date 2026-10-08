@@ -605,7 +605,7 @@ class TestDBSourceStandingData:
         """)).fetchall()
         if not rows:
             pytest.skip("drv_source_standing is empty — no data to check")
-        valid_codes = {"SSS", "ETF", "II", "PS", "RR", "CALL"}
+        valid_codes = {"SSS", "ETF", "II", "PS", "RR", "CALL", "GOANY"}
         actual_codes = {r[0] for r in rows}
         invalid = actual_codes - valid_codes
         assert not invalid, f"Invalid source_code values found: {invalid}"

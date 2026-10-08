@@ -43,6 +43,7 @@ one failure doesn't abort the rest.
 | II | outlook_modifier | Monthly bundle, latest snapshot ≤ D + intra-month `iichg` patches | `_action_standing` | NEUTRAL outlook = removed from list |
 | CALL | outlook_modifier | Standing model — 30-day sparse window | `_action_call_standing` | see below |
 | PS | rank | Weekly, FRI anchor; lower rank number = better | `_action_rank` | |
+| GOANY | rank (membership only) | Hedgeye 10 ETF Go-Anywhere Portfolio, email-fed (2026-10-07). PS-style: open-list membership; slot number ignored | `_action_membership` (new → ADD, dropped → REMOVE even if not held, still listed → HOLD if held else ADD) | sizing falls back to the `PS` allocation row; lowest `SOURCE_ORDER` (12) |
 | SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | |
 | RTA | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='long') | Real-time trigger; see below |
 | RTAINFO | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='short') | Informational only; see below |
@@ -659,10 +660,10 @@ QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be posit
 | -1 | D>L<M | -9 | **STM** | Sell To Min — bearish in bull zone |
 | 1 | U=M | 8 | **BMN** | Buy Min — at MRR midpoint |
 | 2 | D=L>Td | 8 | **BMN** | Buy Min — at LRR, above Trade |
-| 3 | U>L<M<cd | 8 | **BMN** | Buy Min — above LRR, below MRR, MACDH falling |
+| 3 | U>L<M<cd | 8 | **BMN** | Buy Min — above LRR, below MRR, MACD rising but MACDH not rising (day-over-day) |
 | 4 | U=L | 9 | **BS** | Buy Some — at LRR level |
 | 5 | D>M | 9 | **BS** | Buy Some — pulled back below MRR |
-| 6 | U>L<M>cd | 10 | **BM** | Buy More — above LRR, below MRR, MACDH rising |
+| 6 | U>L<M>cd | 10 | **BM** | Buy More — above LRR, below MRR, MACD rising AND MACDH rising (day-over-day) |
 
 ### Table 3 — Not-Bull path QN → Final Action
 
@@ -672,10 +673,17 @@ QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be posit
 |---|---|---|---|---|
 | -1 | >=T | -8 | **SS** | Sell Some — price at/above TRR in not-bull zone |
 | 1 | U>M<T | 0 | **N** | Neutral — above MRR but below Trade line |
-| 2 | U>L<=M<cd | 8 | **BMN** | Buy Min — above LRR, at/below MRR, MACDH falling |
+| 2 | U>L<=M<cd | 8 | **BMN** | Buy Min — above LRR, at/below MRR, MACD rising but MACDH not rising (day-over-day) |
 | 3 | D=L>Td>Tn | 8 | **BMN** | Buy Min — at LRR, above both Trade and Trend |
 | 4 | U=L | 10 | **BM** | Buy More — at LRR level |
-| 5 | U>L<=M>cd | 10 | **BM** | Buy More — above LRR, at/below MRR, MACDH rising |
+| 5 | U>L<=M>cd | 10 | **BM** | Buy More — above LRR, at/below MRR, MACD rising AND MACDH rising (day-over-day) |
+
+> **2026-10-05 change (QM 3/6, QN 2/5):** `a_macd_brr` / `a_macdh_d_brr` are custom TOS studies
+> (value = position in the 120-day range, 0-1; **sign = direction vs the prior bar**, + = up).
+> So "rising" = `macd_direction` / `macdh_direction` (sign, 0 → -1) — never compare the values
+> day-over-day. MACD up + MACDH up → BM; MACD up, MACDH down → BMN; MACD down → no buy
+> (QM/QN NULL). Previously keyed off MACDH's sign alone. Both direction columns are existing
+> `drv_cat_atomic_input` fields read in `derive.py::_derive_trend_trade_rules_impl`.
 
 ### Action code reference
 

@@ -65,6 +65,8 @@ EMAIL_TYPES: list[EmailType] = [
               parser="signal_strength"),
     EmailType("portfolio_solutions", "DATA", "weekly",
               subject_re=r"^PORTFOLIO SOLUTIONS.*Re-Rank", parser="portfolio_solutions"),
+    EmailType("go_anywhere", "DATA", "intraday",
+              subject_re=r"10 ETF Go-Anywhere Portfolio", parser="go_anywhere"),
     EmailType("the_call", "DATA", "daily",
               subject_re=r"^The Call @ Hedgeye \| Replay", parser="the_call"),
     EmailType("macro_show_summary", "DATA", "daily",

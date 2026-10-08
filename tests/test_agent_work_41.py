@@ -264,7 +264,7 @@ class TestDBSourceStanding6Sources:
         if not rows:
             pytest.skip("drv_source_standing is empty")
         actual = {r[0] for r in rows}
-        unexpected = actual - self.EXPECTED_SOURCES
+        unexpected = actual - self.EXPECTED_SOURCES - {"GOANY"}  # email-fed, optional
         assert not unexpected, \
             f"Unexpected source codes in drv_source_standing: {unexpected}"
 

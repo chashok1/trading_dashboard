@@ -822,6 +822,10 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-10-07
+
+- **GOANY source** (Hedgeye 10 ETF Go-Anywhere Portfolio): new `hist_goany` table, `ref_outlook_source` row (PS-style), `ref_source_precedence` rank 12, retention + data-filter rows, `go_anywhere` email type (`etl/hedgeye/classify.py`, `parse_go_anywhere`), `_build_goany` in `derive_source_standing.py`, GOANY branch in `derive_outlook_action.py`, `v_outlook_changes` effective-date branch. Apply with `python -m db.init_db`.
+
 ## 2026-05-29
 
 - **tos_symbol**: All `drv_*` use `tos_symbol` exclusively. `symbol` kept in `hist_*` only.

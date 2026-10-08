@@ -36,13 +36,14 @@ EMIT_MAP: dict[str, tuple[str, str]] = {
     "etf_weekly":          ("ETF",        "xlsx"),
     "ii_weekly":           ("II",         "xlsx"),
     "portfolio_solutions": ("PS",         "xlsx"),
+    "signal_strength":     ("SSS",        "xlsx"),
     "the_call":            ("call",       "csv"),
 }
 
-# Tables written via the file/loader path for these 5 feeds.
-# hist_call_top5 is email-only and stays on direct insert.
+# Tables written via the file/loader path for these feeds.
+# hist_call_top5 / hist_sss_change are email-only and stay on direct insert.
 EMIT_TABLES: frozenset[str] = frozenset({
-    "hist_rr", "hist_iichg", "hist_etfchg", "hist_ps", "hist_call",
+    "hist_rr", "hist_iichg", "hist_etfchg", "hist_ps", "hist_sss", "hist_call",
 })
 
 # (email_type, table) pairs that go via the file/loader path
@@ -53,6 +54,7 @@ FILE_LANES: frozenset[tuple[str, str]] = frozenset({
     ("etf_weekly",          "hist_etf"),
     ("ii_weekly",           "hist_ii"),
     ("portfolio_solutions", "hist_ps"),
+    ("signal_strength",     "hist_sss"),
     ("the_call",            "hist_call"),
 })
 
@@ -238,6 +240,43 @@ def render_portfolio_solutions(rows: list[dict], path: Path) -> None:
     wb.save(str(path))
 
 
+def render_signal_strength(rows: list[dict], path: Path) -> None:
+    """Write Signal Strength Stocks full-table rows as xlsx matching the
+    real SSS file format (etl/mappings.py HIST_MAPS['SSS']).
+
+    Sheet: Data Sheet (single-sheet; load_one_tab's single-sheet fallback
+    matches it to the 'SSS' tab mapping regardless of title).
+    Headers: Date, Days On, Ticker, Signal Date, Prior Close of Signal Price,
+             Last Close Price, Siganl Strength [sic, typo retained in source],
+             Sector, Analyst, Analyst Rank.
+    Parser provides: snapshot_date, ticker, days_on, signal_date, prior_close,
+    last_close, pct_delta, sector, analyst, anlst_best_idea_rank.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Sheet"
+    ws.append([
+        "Date", "Days On", "Ticker", "Signal Date",
+        "Prior Close of Signal Price", "Last Close Price", "Siganl Strength",
+        "Sector", "Analyst", "Analyst Rank",
+    ])
+    for r in rows:
+        ws.append([
+            r.get("snapshot_date"),
+            r.get("days_on"),
+            r.get("ticker") or r.get("tos_symbol") or "",
+            r.get("signal_date"),
+            r.get("prior_close"),
+            r.get("last_close"),
+            r.get("pct_delta"),
+            r.get("sector") or "",
+            r.get("analyst") or "",
+            r.get("anlst_best_idea_rank") or "",
+        ])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(path))
+
+
 def render_the_call(rows: list[dict], path: Path) -> None:
     """Write hist_call rows as CSV matching the real call file format.
 
@@ -319,6 +358,7 @@ _RENDERERS = {
     "etf_weekly":          render_etf_weekly,
     "ii_weekly":           render_ii_weekly,
     "portfolio_solutions": render_portfolio_solutions,
+    "signal_strength":     render_signal_strength,
     "the_call":            render_the_call,
 }
 

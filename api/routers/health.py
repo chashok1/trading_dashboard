@@ -1305,6 +1305,7 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
                 ("hist_ii", "II"),
                 ("hist_sss", "SSS"),
                 ("hist_ps", "PS"),
+                ("hist_goany", "GOANY"),
                 ("hist_etfchg", "ETFCHG"),
                 ("hist_iichg", "IICHG"),
                 ("hist_f", "FIDELITY"),

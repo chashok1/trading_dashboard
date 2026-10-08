@@ -25,7 +25,8 @@ from etl._derive_common import (
     _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
     etf_ii_patch_outlook_sql,               # D3: ETFCHG/IICHG add/remove-aware patch resolver
 )
-from etl.derive_source_standing import _build_sss, _build_etf_ii, _build_ps, _build_call
+from etl.derive_source_standing import (_build_sss, _build_etf_ii, _build_ps,
+                                        _build_call, _build_goany)
 
 log = logging.getLogger("etl.derive_outlook_action")
 
@@ -601,6 +602,22 @@ def _action_rank(curr, prev, held: bool) -> tuple[Optional[str], str]:
     return "ADD", f"on list at rank {curr}, not held"
 
 
+def _action_membership(on_now: bool, on_prev: bool, held: bool
+                       ) -> tuple[str, str]:
+    """GOANY action from plain membership of the open-positions list (PS-style).
+
+    dropped -> REMOVE (held or not, like PS); new -> ADD;
+    on the list both snapshots -> HOLD if held, else ADD (PS: "on list, not held").
+    """
+    if on_prev and not on_now:
+        return "REMOVE", "dropped from Go-Anywhere portfolio"
+    if on_now and not on_prev:
+        return "ADD", "new in Go-Anywhere portfolio"
+    if held:
+        return "HOLD", "still in Go-Anywhere portfolio"
+    return "ADD", "in Go-Anywhere portfolio, not held"
+
+
 def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
                           present_now: bool, present_prev: bool
                           ) -> tuple[Optional[str], str]:
@@ -1080,6 +1097,52 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     # wipe above misses them. Clear this source's rows for the
                     # date it is about to write before re-inserting, so a
                     # re-derive of any date in the period stays idempotent.
+                    session.execute(text(
+                        "DELETE FROM drv_outlook_action "
+                        "WHERE source_code = :sc AND as_of_date = :d"
+                    ), {"sc": sc, "d": batch[0]["d"]})
+                    for row in batch:
+                        session.execute(insert_sql, row)
+                    total_rows += len(batch)
+
+            elif sc == "GOANY":
+                # GOANY (Hedgeye Go-Anywhere ETF portfolio) behaves like PS but
+                # on plain membership of the OPEN list: new -> ADD, dropped ->
+                # REMOVE (even when not held), still on the list -> HOLD if held
+                # else ADD. The slot number is add-order, not a rank, so it is
+                # not used. Same live-anchor ceiling as PS.
+                ceil = position_ceiling(session, as_of_date)
+                curr_built = _build_goany(session, as_of_date, run_id, ceiling=ceil)
+                if not curr_built:
+                    log.warning("source GOANY: no current-state rows at %s "
+                                "— skipping", as_of_date)
+                    session.execute(text("RELEASE SAVEPOINT sp_source"))
+                    continue
+                curr_snap = curr_built[0]["snapshot_date"]
+                today_set = {r["tos_symbol"] for r in curr_built}
+                prev_date = session.execute(text(
+                    "SELECT MAX(snapshot_date) FROM hist_goany "
+                    "WHERE snapshot_date < :snap AND status = 'open'"
+                ), {"snap": curr_snap}).scalar()
+                prev_set: set = set()
+                if prev_date:
+                    prev_set = {r[0] for r in session.execute(text(
+                        "SELECT DISTINCT COALESCE(NULLIF(tos_symbol,''), symbol) "
+                        "FROM hist_goany WHERE snapshot_date = :pd AND status = 'open'"
+                    ), {"pd": prev_date}).fetchall() if r[0]}
+                batch = []
+                for sym in today_set | prev_set:
+                    held = sym in holdings
+                    act, reason = _action_membership(
+                        sym in today_set, sym in prev_set, held)
+                    batch.append({
+                        "d": curr_snap, "sym": sym, "sc": sc,
+                        "base": None, "prev": None, "prev_d": prev_date,
+                        "delta": None, "held": held, "act": act,
+                        "reason": reason, "cat": category, "rid": run_id,
+                        "analyst_rank": None, "source_snap": curr_snap,
+                    })
+                if batch:
                     session.execute(text(
                         "DELETE FROM drv_outlook_action "
                         "WHERE source_code = :sc AND as_of_date = :d"

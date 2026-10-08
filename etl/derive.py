@@ -3182,6 +3182,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 tw.standard_dev                    AS sd,
                 med.median_sd,
                 a.macdh_direction,
+                a.macd_direction,
                 a.trade_rule,
                 a.trend_rule,
                 a.perf1d_sd_rule,
@@ -3303,12 +3304,19 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 -- the existing code -1 (STM, "bearish in bull zone"), same
                 -- action as the narrower already-above-LRR bearish case below.
                 WHEN c.lrr_eff = -1 THEN -1
+                -- 2026-10-05: a_macd_brr / a_macdh_d_brr are custom TOS studies whose
+                -- SIGN is already the day-over-day direction (+ = up vs prior bar), so
+                -- macd_direction / macdh_direction (sign, 0 -> -1) are used as-is.
+                -- MACD up AND MACDH up = 6 (BM); MACD up, MACDH down = 3 (BMN);
+                -- MACD down = no buy.
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
-                     AND c.mrr_idx = -1 AND c.macdh_direction > 0 THEN 6
+                     AND c.mrr_idx = -1 AND c.macd_direction > 0
+                     AND c.macdh_direction > 0 THEN 6
                 WHEN c.perf1d_sd_rule = -1 AND c.mrr_idx = 1 THEN 5
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 0 THEN 4
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
-                     AND c.mrr_idx = -1 AND c.macdh_direction < 0 THEN 3
+                     AND c.mrr_idx = -1 AND c.macd_direction > 0
+                     AND c.macdh_direction < 0 THEN 3
                 WHEN c.perf1d_sd_rule <  0 AND c.lrr_eff = 0
                      AND c.trade_rule > 0 THEN 2
                 WHEN c.perf1d_sd_rule >= 0 AND c.mrr_idx = 0 THEN 1
@@ -3318,12 +3326,14 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             END,
             CASE
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
-                     AND c.mrr_idx <= 0 AND c.macdh_direction > 0 THEN 5
+                     AND c.mrr_idx <= 0 AND c.macd_direction > 0
+                     AND c.macdh_direction > 0 THEN 5
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 0 THEN 4
                 WHEN c.perf1d_sd_rule <  0 AND c.lrr_eff = 0
                      AND c.trade_rule > 0 AND c.trend_rule > 0 THEN 3
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 1
-                     AND c.mrr_idx <= 0 AND c.macdh_direction < 0 THEN 2
+                     AND c.mrr_idx <= 0 AND c.macd_direction > 0
+                     AND c.macdh_direction < 0 THEN 2
                 WHEN c.trr_idx >= 0 THEN -1
                 ELSE NULL
             END,
@@ -3488,6 +3498,7 @@ def derive_all(session: Session, as_of_date: date,
     counts["hist_etf_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_etf", as_of_date)
     counts["hist_ii_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_ii", as_of_date)
     counts["hist_sss_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_sss", as_of_date)
+    counts["hist_goany_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_goany", as_of_date)
     counts["hist_cs_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_cs", as_of_date)
     counts["hist_cst_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_cst", as_of_date)
     counts["hist_f_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_f", as_of_date)

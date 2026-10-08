@@ -93,6 +93,21 @@ def _num(tok: str) -> Optional[float]:
         return None
 
 
+def _short_date(tok: str) -> Optional[date]:
+    """'05/19/26' -> date(2026, 5, 19)."""
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2})$", tok.strip())
+    if not m:
+        return None
+    mm, dd, yy = (int(g) for g in m.groups())
+    return date(2000 + yy, mm, dd)
+
+
+def _days_on(tok: str) -> Optional[int]:
+    """'133 days' -> 133."""
+    m = re.match(r"^(\d+)", tok.strip())
+    return int(m.group(1)) if m else None
+
+
 def _body_lines(text: str) -> list[str]:
     """Plaintext lines with the boilerplate header/footer trimmed."""
     out = []
@@ -170,6 +185,46 @@ class _TableExtractor(HTMLParser):
     def handle_data(self, data):
         if self._cell is not None:
             self._cell.append(data)
+
+
+class _TextExtractor(HTMLParser):
+    """HTML -> plaintext shaped like Hedgeye's text/plain part: blocks and
+    <br> break lines, table cells on one row join with a space."""
+    _BREAK = {"br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("style", "script", "head"):
+            self._skip += 1
+        elif tag in self._BREAK:
+            self.out.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in ("style", "script", "head"):
+            self._skip = max(0, self._skip - 1)
+        elif tag in ("td", "th"):
+            self.out.append(" ")
+        elif tag in self._BREAK:
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.out.append(re.sub(r"\s+", " ", data))
+
+
+def html_to_text(html: str) -> str:
+    """Plaintext fallback for emails that have no text/plain part."""
+    p = _TextExtractor()
+    try:
+        p.feed(html or "")
+    except Exception:
+        return ""
+    lines = (re.sub(r"[ \t\xa0]+", " ", ln).strip() for ln in "".join(p.out).splitlines())
+    return "\n".join(ln for ln in lines if ln)
 
 
 def _html_tables(html: str) -> list[list[list[str]]]:
@@ -680,28 +735,97 @@ def parse_ii_weekly(email: Email) -> Parsed:
 
 
 # ---------------------------------------------------------------------------
-# 5) Signal Strength Stocks -> hist_sss  (delta events only)
+# 5) Signal Strength Stocks -> hist_sss_change (deltas) + hist_sss (full table)
 # ---------------------------------------------------------------------------
+#
+# Before 2026-09-29 the full ranked list only ever arrived as a chart image,
+# so only the Added:/Removed: delta lines were parseable and the full table
+# had to come from the separate workbook/app export (SSS/ssH tabs -> hist_sss,
+# see etl/mappings.py). Hedgeye now also sends the full list as a real HTML
+# <table> (columns: Ticker, Name, Sector, Analyst, Entry Date, Entry Price,
+# Recent Price, Total Return, Best Idea Rank, Holding Period) -- the plaintext
+# body only has the *same* fields single-space-joined with no reliable column
+# boundary (company names/sectors/analysts are all free text), so the HTML
+# table is the only safe source, parsed the same way Portfolio Solutions
+# ("PS") is and routed via the same reuse-the-loader file lane as hist_sss
+# (see emit.py render_signal_strength / FILE_LANES).
+
+_SSS_EXTRA_COL_MAP: dict[str, str] = {
+    "sector": "sector",
+    "analyst": "analyst",
+    "entry date": "signal_date",
+    "entry price": "prior_close",
+    "recent price": "last_close",
+    "total return": "pct_delta",
+    "best idea rank": "anlst_best_idea_rank",
+    "holding period": "days_on",
+}
 
 
 def parse_signal_strength(email: Email) -> Parsed:
     p = Parsed("signal_strength")
-    rows = []
+    d = email.edt_date
+    change_rows = []
     for ln in _body_lines(email.plaintext):
-        m = re.match(r"^(Added|Removed):\s*(.+)$", ln, re.I)
+        m = re.match(r"^(Added|Adding|Removed|Removing):\s*(.+)$", ln, re.I)
         if m:
-            action = "add" if m.group(1).lower() == "added" else "remove"
+            action = "add" if m.group(1).lower() in ("added", "adding") else "remove"
             for sym in re.split(r"[,\s]+", m.group(2).strip()):
                 sym = sym.strip().upper()
                 # "Added: None" / "Removed: None" (zero changes that day) is
                 # not a ticker -- would otherwise insert a bogus NONE row.
                 if sym and sym != "NONE":
-                    rows.append({
-                        "snapshot_date": email.edt_date, "message_id": email.message_id,
+                    change_rows.append({
+                        "snapshot_date": d, "message_id": email.message_id,
                         "action": action, "symbol": sym, "tos_symbol": sym,
                     })
-    p.add_rows("hist_sss_change", rows)
-    p.flags.append("delta_only")
+    p.add_rows("hist_sss_change", change_rows)
+
+    sss_rows = []
+    for tbl in _html_tables(email.html):
+        if not tbl:
+            continue
+        header = [c.lower().strip() for c in tbl[0]]
+        if "ticker" not in header or "name" not in header:
+            continue
+        t_i = header.index("ticker")
+        extra_idx: dict[str, int] = {}
+        for hi, h in enumerate(header):
+            dest = _SSS_EXTRA_COL_MAP.get(h)
+            if dest:
+                extra_idx.setdefault(dest, hi)
+        for cells in tbl[1:]:
+            # Trailing footer rows (copyright/unsubscribe text) are collapsed
+            # single-cell <tr>s inside the same <table> -- a real data row
+            # has one <td> per header, and a real ticker is short/alnum.
+            if len(cells) < len(header):
+                continue
+            tick = cells[t_i].strip().upper()
+            if not tick or not re.match(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$", tick):
+                continue
+            row: dict = {"snapshot_date": d, "ticker": tick, "tos_symbol": tick}
+            for dest_key, col_idx in extra_idx.items():
+                val = cells[col_idx].strip() if col_idx < len(cells) else ""
+                if dest_key == "signal_date":
+                    row[dest_key] = _short_date(val)
+                elif dest_key in ("prior_close", "last_close"):
+                    row[dest_key] = _num(val.replace("$", ""))
+                elif dest_key == "pct_delta":
+                    # hist_sss.pct_delta is a ratio (2.53 == +253%), matching
+                    # the periodic SSS/ssH file export -- the email's "Total
+                    # Return" is a percent number ("+305.71%"), so /100.
+                    pct = _num(val.replace("%", ""))
+                    row[dest_key] = pct / 100 if pct is not None else None
+                elif dest_key == "days_on":
+                    row[dest_key] = _days_on(val)
+                else:
+                    row[dest_key] = val or None
+            sss_rows.append(row)
+        break
+    p.add_rows("hist_sss", sss_rows)
+    if not sss_rows:
+        p.warnings.append("signal_strength: no HTML rank table found")
+
     p.images = _chart_image_urls(email.html)
     if not p.images:
         p.images = re.findall(r'<img[^>]+src="(https?://[^"]+)"', email.html)[:1]
@@ -774,6 +898,90 @@ def parse_portfolio_solutions(email: Email) -> Parsed:
     p.add_rows("hist_ps", rows)
     if not rows:
         p.warnings.append("PS: no HTML rank table found")
+    return p
+
+
+# ---------------------------------------------------------------------------
+# 6b) 10 ETF Go-Anywhere Portfolio -> hist_goany (open + closed positions)
+# ---------------------------------------------------------------------------
+
+def _goany_date(val: str) -> Optional[date]:
+    """'07/16/26' or '02/28/25*' (asterisk = footnote) -> date."""
+    v = (val or "").replace("*", "").strip()
+    for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(v, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _goany_pct(val: str) -> Optional[float]:
+    try:
+        return float(re.sub(r"[%+,\s]", "", val or ""))
+    except ValueError:
+        return None
+
+
+def parse_go_anywhere(email: Email) -> Parsed:
+    """Hedgeye '10 ETF Go-Anywhere Portfolio' -> hist_goany.
+
+    Two HTML tables: 'Current Open Positions' (# / Ticker / Name / Asset Class /
+    Entry Price / Total Return / Date Added) and 'Recently Closed Positions'
+    (last 90 days; Ticker / Name / Asset Class / Date Added / Date Removed /
+    Total Return). The 'WE ARE ADDING X / REMOVING Y' banner is redundant with
+    the tables (adds = date_added today, removes = closed), so it is kept as a
+    note only.
+    """
+    p = Parsed("go_anywhere")
+    rows: list[dict] = []
+    for tbl in _html_tables(email.html):
+        if len(tbl) < 2:
+            continue
+        header = [c.lower().strip() for c in tbl[0]]
+        if "ticker" not in header:
+            continue
+        if "entry price" in header:
+            status = "open"
+        elif "date removed" in header:
+            status = "closed"
+        else:
+            continue
+
+        def col(prefix: str) -> Optional[int]:
+            return next((i for i, h in enumerate(header) if h.startswith(prefix)), None)
+
+        ix = {k: col(k) for k in ("#", "ticker", "name", "asset class", "entry price",
+                                  "total return", "date added", "date removed")}
+        for cells in tbl[1:]:
+            def g(k):
+                i = ix[k]
+                return cells[i].strip() if i is not None and i < len(cells) else ""
+            tick = g("ticker").upper()
+            if not tick:
+                continue
+            slot = g("#")
+            price = re.sub(r"[$,]", "", g("entry price"))
+            rows.append({
+                "snapshot_date": email.edt_date, "message_id": email.message_id,
+                "symbol": tick, "tos_symbol": tick, "status": status,
+                "slot_no": int(slot) if slot.isdigit() else None,
+                "name": g("name") or None,
+                "asset_class": g("asset class") or None,
+                "entry_price": float(price) if re.fullmatch(r"-?\d+(\.\d+)?", price) else None,
+                "total_return": _goany_pct(g("total return")),
+                "date_added": _goany_date(g("date added")),
+                "date_removed": _goany_date(g("date removed")),
+            })
+    p.add_rows("hist_goany", rows)
+    if not any(r["status"] == "open" for r in rows):
+        p.warnings.append("go_anywhere: no open-positions table found")
+
+    banner = [ln for ln in _body_lines(email.plaintext)
+              if re.search(r"WE ARE (ADDING|REMOVING)", ln)]
+    if banner:
+        p.notes.append(_note(email, "go_anywhere", " ".join(banner),
+                             signal_kind="portfolio change"))
     return p
 
 
@@ -1176,6 +1384,7 @@ PARSERS: dict[str, Callable[[Email], Parsed]] = {
     "ii_weekly": parse_ii_weekly,
     "signal_strength": parse_signal_strength,
     "portfolio_solutions": parse_portfolio_solutions,
+    "go_anywhere": parse_go_anywhere,
     "macro_show_summary": parse_macro_show_summary,
     "the_call": parse_the_call,
     "early_look": parse_early_look,

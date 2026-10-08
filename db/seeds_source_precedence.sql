@@ -12,6 +12,7 @@ INSERT INTO ref_source_precedence (source_code, static_rank) VALUES
     ('TOP5',    2),
     ('SSSCHG',  3),
     ('PS',      4),
+    ('GOANY',   12),
     ('ETF',     5),
     ('RR',      6),
     ('SSS',     7),

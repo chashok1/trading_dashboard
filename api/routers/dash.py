@@ -1355,6 +1355,27 @@ def get_actionable(
     except Exception:
         _trades, _flows = {}, {}
 
+    # 2026-10-03: shares held per account (short_name from ref_accounts) for the Action popup's
+    # "F-A: 10K (700 sh)" line. Same snapshot + active-account filter as the held_qty join above.
+    _by_acct = {}
+    try:
+        with session_scope() as _as:
+            for _sym, _nm, _q in _as.execute(text("""
+                SELECT p.tos_symbol, COALESCE(ra.short_name, p.acct) AS nm, SUM(p.q) AS q
+                FROM (
+                    SELECT f.tos_symbol, f.account_number AS acct, f.qty AS q FROM hist_f f
+                     WHERE f.snapshot_date = :f_snap AND f.qty > 0 AND f.tos_symbol IS NOT NULL
+                    UNION ALL
+                    SELECT c.tos_symbol, c.account, c.qty FROM hist_cs c
+                     WHERE c.snapshot_date = :cs_snap AND c.qty > 0 AND c.tos_symbol IS NOT NULL
+                ) p LEFT JOIN ref_accounts ra ON ra.account_number = p.acct
+                WHERE COALESCE(ra.is_active, TRUE)
+                GROUP BY 1, 2 ORDER BY 2
+            """), {"f_snap": max_f_snap, "cs_snap": max_cs_snap}):
+                _by_acct.setdefault(_sym, []).append({"name": _nm, "qty": float(_q)})
+    except Exception:
+        _by_acct = {}
+
     out = []
     for r in rows:
         d_ = dict(r)
@@ -1363,6 +1384,7 @@ def get_actionable(
         d_["last_bought_date"] = _lb.isoformat() if _lb else None
         d_["last_sold_date"] = _ls.isoformat() if _ls else None
         d_["session_day"] = _sess.isoformat() if _sess else None
+        d_["held_by_account"] = _by_acct.get(d_.get("tos_symbol"), [])
         d_["done_today"] = bool(_sess) and d_.get("tos_symbol") in _done_today
         d_["actioned_today"] = bool(_sess) and (is_today(_lb, _sess) or is_today(_ls, _sess))
         _f = _flows.get(d_.get("tos_symbol"))
@@ -1907,7 +1929,7 @@ _QUAD_OUTLOOK_AXIS_MAP = {
 }
 
 
-_SOURCE_CODES = ("RR", "CALL", "ETF", "II", "SSS", "PS")
+_SOURCE_CODES = ("RR", "CALL", "ETF", "II", "SSS", "PS", "GOANY")
 
 
 def _quad_factor_stance_by_source(s, axis: str, source: str, d):
@@ -2313,6 +2335,7 @@ _SOURCE_DETAIL_COLS = {
     "II":   ("hist_ii",   ["outlook"]),
     "SSS":  ("hist_sss",  ["pct_delta", "anlst_best_idea_rank", "days_on"]),
     "PS":   ("hist_ps",   ["rank", "wk_ago", "mn_ago", "position_sizing"]),
+    "GOANY": ("hist_goany", ["status", "entry_price", "total_return", "date_added"]),
 }
 
 
@@ -2320,7 +2343,7 @@ _SOURCE_DETAIL_COLS = {
 def get_quad_factor_stance_source_detail(
     axis: str = Query(..., description="sector | asset_class | style"),
     category: str = Query(...),
-    source: str = Query(..., description="RR|CALL|ETF|II|SSS|PS"),
+    source: str = Query(..., description="RR|CALL|ETF|II|SSS|PS|GOANY"),
     date: Optional[str] = Query(None),
 ):
     """Per-symbol raw detail for ONE category from ONE source's own list --
@@ -2417,6 +2440,18 @@ def get_actionable_source_data(
         if ps:
             out["PS"] = {"rank": _f(ps[0]),
                          "snapshot_date": ps[1].isoformat() if ps[1] else None}
+
+        goany = s.execute(text("""
+            SELECT status, entry_price, total_return, date_added, snapshot_date
+            FROM hist_goany
+            WHERE tos_symbol = :sym AND snapshot_date <= :d
+            ORDER BY snapshot_date DESC, (status = 'open') DESC LIMIT 1
+        """), {"sym": sym, "d": d}).first()
+        if goany:
+            out["GOANY"] = {"status": goany[0], "entry_price": _f(goany[1]),
+                            "total_return": _f(goany[2]),
+                            "date_added": goany[3].isoformat() if goany[3] else None,
+                            "snapshot_date": goany[4].isoformat() if goany[4] else None}
 
         sss = s.execute(text("""
             SELECT pct_delta, anlst_best_idea_rank, snapshot_date FROM hist_sss
@@ -2612,7 +2647,7 @@ def get_actionable_comparison(
             WITH eff AS (
                 SELECT ros.source_code AS sc, ros.source_table AS tbl,
                        ros.base_weight_method AS bwm,
-                       CASE WHEN ros.source_code IN ('ETF','II','SSS','PS','RR')
+                       CASE WHEN ros.source_code IN ('ETF','II','SSS','PS','RR','GOANY')
                             THEN (SELECT MAX(as_of_date)
                                   FROM drv_outlook_action o
                                   WHERE o.source_code = ros.source_code

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from email.header import decode_header, make_header
 from typing import Iterator, Optional
 
-from .parsers import Email
+from .parsers import Email, html_to_text
 
 
 def _decode(s) -> str:
@@ -58,6 +58,8 @@ def _bodies(msg) -> tuple[str, str]:
 
 def _to_email(msg, message_id: str) -> Email:
     plain, html = _bodies(msg)
+    if not plain.strip() and html:
+        plain = html_to_text(html)
     dt = None
     try:
         dt = _email.utils.parsedate_to_datetime(msg.get("Date"))

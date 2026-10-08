@@ -39,6 +39,7 @@ _TRUNCATE_ORDER = [
     "hist_cs",
     "hist_f",
     "hist_ps",
+    "hist_goany",
     "hist_iichg",
     "hist_etfchg",
     "hist_ii",

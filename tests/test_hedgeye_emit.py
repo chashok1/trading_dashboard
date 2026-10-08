@@ -19,6 +19,7 @@ from etl.hedgeye.emit import (
     render_investing_ideas,
     render_portfolio_solutions,
     render_risk_range,
+    render_signal_strength,
     render_the_call,
 )
 
@@ -78,6 +79,25 @@ def _ps_rows(n: int = 3) -> list[dict]:
             "rank": i + 1,
             "ticker": f"PS{i}",
             "tos_symbol": f"PS{i}",
+        }
+        for i in range(n)
+    ]
+
+
+def _sss_rows(n: int = 3) -> list[dict]:
+    return [
+        {
+            "snapshot_date": date(2026, 9, 29),
+            "ticker": f"SSS{i}",
+            "tos_symbol": f"SSS{i}",
+            "days_on": 10 + i,
+            "signal_date": date(2026, 9, 1),
+            "prior_close": 20.0 + i,
+            "last_close": 25.0 + i,
+            "pct_delta": 5.0 + i,
+            "sector": "Software",
+            "analyst": "Andrew Freedman",
+            "anlst_best_idea_rank": "1/6",
         }
         for i in range(n)
     ]
@@ -313,6 +333,49 @@ class TestRenderPortfolioSolutions:
         assert ws.cell(2, 3).value == "PS0"
 
 
+# ── render_signal_strength ──────────────────────────────────────────────────────
+
+class TestRenderSignalStrength:
+    def test_creates_file(self, tmp_path):
+        p = tmp_path / "SSS 2026-09-29.xlsx"
+        render_signal_strength(_sss_rows(), p)
+        assert p.exists()
+
+    def test_sheet_name(self, tmp_path):
+        p = tmp_path / "SSS 2026-09-29.xlsx"
+        render_signal_strength(_sss_rows(), p)
+        wb = openpyxl.load_workbook(str(p), data_only=True)
+        assert "Data Sheet" in wb.sheetnames
+
+    def test_headers(self, tmp_path):
+        p = tmp_path / "SSS 2026-09-29.xlsx"
+        render_signal_strength(_sss_rows(), p)
+        wb = openpyxl.load_workbook(str(p), data_only=True)
+        ws = wb["Data Sheet"]
+        headers = [ws.cell(1, c).value for c in range(1, 11)]
+        assert headers == [
+            "Date", "Days On", "Ticker", "Signal Date",
+            "Prior Close of Signal Price", "Last Close Price", "Siganl Strength",
+            "Sector", "Analyst", "Analyst Rank",
+        ]
+
+    def test_row_count(self, tmp_path):
+        p = tmp_path / "SSS 2026-09-29.xlsx"
+        render_signal_strength(_sss_rows(4), p)
+        wb = openpyxl.load_workbook(str(p), data_only=True)
+        ws = wb["Data Sheet"]
+        assert ws.max_row == 5  # header + 4 rows
+
+    def test_values(self, tmp_path):
+        p = tmp_path / "SSS 2026-09-29.xlsx"
+        render_signal_strength(_sss_rows(1), p)
+        wb = openpyxl.load_workbook(str(p), data_only=True)
+        ws = wb["Data Sheet"]
+        assert ws.cell(2, 3).value == "SSS0"
+        assert ws.cell(2, 2).value == 10
+        assert ws.cell(2, 7).value == 5.0
+
+
 # ── render_the_call ───────────────────────────────────────────────────────────
 
 class TestRenderTheCall:
@@ -394,7 +457,10 @@ def test_file_lanes_contains_all_5():
     feeds, distinct from the existing etf_changes/investing_ideas *change*
     tables) — growing FILE_LANES from 5 to 7 entries. Legitimate feed-set
     growth, not drift; updated the expected set rather than re-pinning the
-    stale count."""
+    stale count.
+
+    2026-09-29: added `signal_strength` -> hist_sss now that the full ranked
+    table arrives as plaintext instead of a chart image (8 entries)."""
     from etl.hedgeye.emit import FILE_LANES
     expected = {
         ("risk_range", "hist_rr"),
@@ -403,6 +469,7 @@ def test_file_lanes_contains_all_5():
         ("etf_weekly", "hist_etf"),
         ("ii_weekly", "hist_ii"),
         ("portfolio_solutions", "hist_ps"),
+        ("signal_strength", "hist_sss"),
         ("the_call", "hist_call"),
     }
     assert FILE_LANES == expected

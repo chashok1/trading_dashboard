@@ -36,7 +36,8 @@ ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 # it's the broadest, least symbol-specific call, so it shouldn't override
 # any dedicated per-symbol source.
 SOURCE_ORDER = {"RTA": 1, "TOP5": 2, "SSSCHG": 3, "PS": 4, "ETF": 5, "RR": 6,
-                "SSS": 7, "II": 8, "CALL": 9, "RTAINFO": 10, "MACROSHOW": 11}
+                "SSS": 7, "II": 8, "CALL": 9, "RTAINFO": 10, "MACROSHOW": 11,
+                "GOANY": 12}
 
 # Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
 _FC_SCALE: dict[str, int] = {
@@ -792,6 +793,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                        WHEN source_code = 'RR' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa5
                             WHERE doa5.source_code = 'RR'
+                              AND as_of_date <= :d)
+                       WHEN source_code = 'GOANY' THEN
+                           (SELECT MAX(as_of_date) FROM drv_outlook_action doa6
+                            WHERE doa6.source_code = 'GOANY'
                               AND as_of_date <= :d)
                        ELSE :d
                    END AS effective_date

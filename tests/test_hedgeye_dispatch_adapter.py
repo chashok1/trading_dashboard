@@ -146,3 +146,14 @@ def test_original_row_not_mutated_macro():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# ── zero-row guard ────────────────────────────────────────────────────────────
+
+def test_risk_range_zero_rows_raises():
+    from datetime import datetime, timezone
+    from etl.hedgeye.dispatch import dispatch
+    from etl.hedgeye.parsers import Email, Parsed
+    em = Email("<x@h>", "RISK RANGE SIGNALS", "h", datetime(2026, 10, 5, tzinfo=timezone.utc), "")
+    with pytest.raises(ValueError, match="parsed 0 rows"):
+        dispatch(None, em, "risk_range", Parsed("risk_range"), None)

@@ -4,7 +4,7 @@ Fixtures are trimmed from the real 26-Jun-2026 Hedgeye emails.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -13,7 +13,7 @@ from etl.hedgeye.parsers import (
     parse_etf_changes, parse_signal_strength, parse_portfolio_solutions,
     parse_macro_show_summary, parse_the_call, parse_early_look,
     parse_market_situation, parse_inflation_nowcast, parse_quarterly_outlook,
-    parse_macro_show_top3,
+    parse_macro_show_top3, html_to_text,
 )
 
 TS = datetime(2026, 6, 26, 15, 0, tzinfo=timezone.utc)
@@ -41,6 +41,23 @@ def test_risk_range():
     assert spx["outlook"] == "BULLISH"
     assert spx["buy_trade"] == 7286 and spx["sell_trade"] == 7568 and spx["last_price"] == 7357
     assert any("trend_change_printed" in w for w in p.warnings)
+
+
+def test_risk_range_html_only_matches_plaintext():
+    """Email with no text/plain part: html_to_text feeds the same parser."""
+    cell = '<td>{}</td>'
+    def row(sym, name, *vals):
+        cells = "\n".join(cell.format(v) for v in vals)
+        return ("<tr><td><strong>" + sym + "</strong><br /><em>" + name
+                + "</em></td>\n" + cells + "</tr>\n")
+    html = ("<html><head><style>td{color:red}</style></head><body><table>"
+            + row("SPX (BULLISH)", "S&amp;P 500", "7,286", "7,568", "7,357")
+            + row("AAPL (BEARISH)", "Apple Inc.", "270", "293", "275")
+            + "</table></body></html>")
+    p = parse_risk_range(_email("RISK RANGE SIGNALS", html_to_text(html), html))
+    rr = {r["symbol"]: r for r in p.tables["hist_rr"]}
+    assert rr["SPX"]["outlook"] == "BULLISH" and rr["SPX"]["sell_trade"] == 7568
+    assert rr["AAPL"]["buy_trade"] == 270 and rr["AAPL"]["last_price"] == 275
 
 
 def test_rta_action():
@@ -117,6 +134,77 @@ def test_signal_strength():
     rows = p.tables["hist_sss_change"]
     assert len(rows) == 4
     assert {(r["action"], r["symbol"]) for r in rows} >= {("add", "RKT"), ("remove", "ATZAF")}
+
+
+def test_signal_strength_adding_removing_same_as_added_removed():
+    """2026-09-29: Hedgeye switched delta wording to ADDING:/REMOVING: -- must
+    be treated identically to the older Added:/Removed:."""
+    p = parse_signal_strength(_email(
+        "Signal Strength Stocks: 54 Stocks (2 added, 1 removed)",
+        "10:54 AM EDT\n\nADDING: ROKU, WRBY\n\nREMOVING: WGS\n"))
+    rows = p.tables["hist_sss_change"]
+    assert {(r["action"], r["symbol"]) for r in rows} == {
+        ("add", "ROKU"), ("add", "WRBY"), ("remove", "WGS"),
+    }
+
+
+def test_signal_strength_full_table():
+    """2026-09-29: full ranked list now arrives as a real HTML <table> (was a
+    chart image before) -- parse it into hist_sss like Portfolio Solutions.
+    The plaintext body has the same fields but single-space-joined with no
+    reliable column boundary (names/sectors/analysts are all free text), so
+    only the HTML table is a safe parse source -- confirmed against a live
+    2026-09-29 fetch where the plaintext-heuristic version of this parser
+    produced 0 hist_sss rows despite matching a hand-pasted sample."""
+    pt = (
+        "09/29/2026 10:54 AM EDT\n"
+        "Signal Strength Stocks: 54 Stocks (2 added, 1 removed)\n\n"
+        "How to Use Signal Strength Stocks\n\n"
+        "View the full dashboard\n\n"
+        "ADDING: ROKU, WRBY\n\n"
+        "REMOVING: WGS\n\n"
+        "Ticker Name Sector Analyst Entry Date Entry Price Recent Price "
+        "Total Return Best Idea Rank Holding Period\n"
+        "TXG 10x Genomics Inc. Healthcare Tom Tobin 05/19/26 $21.70 $87.86 "
+        "+305.71% 3/6 133 days\n"
+        "AAPL Apple Inc. Global Technology Felix Wang 09/11/26 $332.90 "
+        "$332.23 -0.18% KM Signal 18 days\n"
+    )
+    html = (
+        "<table><tr>"
+        "<th>Ticker</th><th>Name</th><th>Sector</th><th>Analyst</th>"
+        "<th>Entry Date</th><th>Entry Price</th><th>Recent Price</th>"
+        "<th>Total Return</th><th>Best Idea Rank</th><th>Holding Period</th>"
+        "</tr><tr>"
+        "<td>TXG</td><td>10x Genomics Inc.</td><td>Healthcare</td>"
+        "<td>Tom Tobin</td><td>05/19/26</td><td>$21.70</td><td>$87.86</td>"
+        "<td>+305.71%</td><td>3/6</td><td>133 days</td>"
+        "</tr><tr>"
+        "<td>AAPL</td><td>Apple Inc.</td><td>Global Technology</td>"
+        "<td>Felix Wang</td><td>09/11/26</td><td>$332.90</td><td>$332.23</td>"
+        "<td>-0.18%</td><td>KM Signal</td><td>18 days</td>"
+        "</tr></table>"
+    )
+    p = parse_signal_strength(_email(
+        "Signal Strength Stocks: 54 Stocks (2 added, 1 removed)", pt, html))
+    rows = p.tables["hist_sss"]
+    assert len(rows) == 2
+    txg = next(r for r in rows if r["ticker"] == "TXG")
+    assert txg["sector"] == "Healthcare"
+    assert txg["analyst"] == "Tom Tobin"
+    assert txg["signal_date"] == date(2026, 5, 19)
+    assert txg["prior_close"] == 21.70
+    assert txg["last_close"] == 87.86
+    assert txg["pct_delta"] == pytest.approx(3.0571)  # ratio, not raw percent
+    assert txg["anlst_best_idea_rank"] == "3/6"
+    assert txg["days_on"] == 133
+    aapl = next(r for r in rows if r["ticker"] == "AAPL")
+    assert aapl["pct_delta"] == pytest.approx(-0.0018)
+    assert aapl["anlst_best_idea_rank"] == "KM Signal"
+    # deltas still captured alongside the full table
+    assert {(r["action"], r["symbol"]) for r in p.tables["hist_sss_change"]} == {
+        ("add", "ROKU"), ("add", "WRBY"), ("remove", "WGS"),
+    }
 
 
 def test_portfolio_solutions_html_table():

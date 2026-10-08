@@ -2297,6 +2297,20 @@ function _sourceHitRateBadge(r) {
   const side = _isTradeModeQualifyingBuy(r) ? 'buy' : _isTradeModeHeldSell(r) ? 'sell' : null;
   if (!side) return '';
   const src = (r.winning_source || '').toString().toUpperCase();
+  // 2026-10-03: the winning source may itself point the OTHER way from the final call (e.g. CALL
+  // says ADD while Technical drives a SELL SOME). Its record on the call's side would then be
+  // about a call it didn't make, so flag the disagreement with the source's own side instead.
+  const _own = _sourcesOf(r).find(x => String(x.source || x.source_code || '').toUpperCase() === src);
+  const _act = _own ? String(_own.action || '').toUpperCase() : '';
+  const _ownSide = (_act === 'ADD' || _act === 'INCREASE') ? 'buy' : (_act === 'REDUCE' || _act === 'REMOVE') ? 'sell' : null;
+  if (_ownSide && _ownSide !== side) {
+    const osc = ((state.sourceScorecard || {})[src] || {})[_ownSide];
+    const opct = osc && osc.win_rate_20d != null && osc.n >= 5 ? Math.round(osc.win_rate_20d * 100) : null;
+    const otitle = `${src} says ${_act}, but the final call is ${side === 'sell' ? 'a SELL' : 'a BUY'} (driven by Technical / other sources). `
+      + (opct != null ? `${src}'s own record on ${_ownSide}s: ${opct}% hit rate over ${osc.n} signals.` : `No ${_ownSide} track record for ${src}.`);
+    return `<span class="hit-rate-pill" style="background:#fef3c7;color:#b45309;border:1px solid #b45309;" title="${escapeHtml(otitle)}">`
+      + `⚠ ${escapeHtml(src)} ${escapeHtml(_act)}${opct != null ? ' ' + opct + '%' : ''}</span>`;
+  }
   const sc = ((state.sourceScorecard || {})[src] || {})[side];
   if (!sc || sc.win_rate_20d == null || sc.n < 5) return '';
   const pct = Math.round(sc.win_rate_20d * 100);
@@ -2989,7 +3003,7 @@ let _srcPopEl = null;
 // F2: lazy MACRO detail cache, keyed "sym@date" (macro_detail/macro_howto are
 // no longer shipped with every /api/actionable row — see showMacroPop below).
 const _macroDetailCache = new Map();
-const _FEED_SRC = ['RR', 'ETF', 'PS', 'SSS'];
+const _FEED_SRC = ['RR', 'ETF', 'PS', 'SSS', 'GOANY'];
 
 function _saFor(row, src) {
   let sa = row && row.source_actions;
@@ -3145,7 +3159,7 @@ function _srcChangeEventDate(row, srcCode) {
 // a few need an explicit override because the blind slice reads as
 // something else entirely -- TOP5 -> "TO" looked like nothing. 2026-08-19
 // (user decision "change TO to T5 everywhere"): only overrides listed here.
-const _SRC_ABBR = { TOP5: 'T5', MACROSHOW: 'MS' };
+const _SRC_ABBR = { TOP5: 'T5', MACROSHOW: 'MS', GOANY: 'GA' };
 function _srcAbbr(srcCode) {
   const up = (srcCode || '').toString().toUpperCase();
   return _SRC_ABBR[up] || (srcCode || '').toString().slice(0, 2);
@@ -4676,6 +4690,11 @@ function _renderSourcePop(el, sym, src, feed, loading) {
     feedKv.push(['BRR', formatNum(f.brr)], ['TRR', formatNum(f.trr)]);
   } else if (src === 'PS' && f) {
     feedKv.push(['Rank', formatNum(f.rank)]);
+  } else if (src === 'GOANY' && f) {
+    feedKv.push(['Status', f.status || ''],
+                ['Entry price', formatNum(f.entry_price)],
+                ['Total return', f.total_return == null ? '' : formatNum(f.total_return) + '%'],
+                ['Date added', f.date_added || '']);
   } else if (src === 'SSS' && f) {
     feedKv.push(['Pct Delta', fmtPct(f.pct_delta)],
                 ['Analyst Rank', (f.anlst_best_idea_rank == null ? '' : f.anlst_best_idea_rank)]);
@@ -6251,12 +6270,23 @@ function _buildActionPopHtmlV2(row) {
     ? `<span class="actpop-amt" title="Suggested trade size">${side === 'sell' ? 'sell' : 'buy'} ${escapeHtml(_actpopFmtAmt(row._amt).replace('k', 'K'))}</span>` : '';
   const pxTxt = row.last_price != null ? `<div class="actpop-px">${_fmtUsd2(row.last_price)}</div>` : '';
   const hq = Number(row.held_qty), hc = Number(row.held_cost);
+  // 2026-10-03 (user): "$17K · Avg $14.20" (avg green below the current price, red above), then
+  // one line per account: "F-A: 10K (700 sh) · A: 7K (500 sh)" = shares x current price.
+  const _px = Number(row.last_price);
+  const _avg = hq > 0 && hc > 0 ? hc / hq : null;
+  const _avgColor = (_avg != null && _px > 0) ? (_avg < _px ? '#15803d' : _avg > _px ? '#b91c1c' : '') : '';
+  const _acctAmt = v => v >= 1000 ? Math.round(v / 1000) + 'K' : String(Math.round(v));
+  const _accts = (Array.isArray(row.held_by_account) ? row.held_by_account : []).filter(a => Number(a.qty) > 0);
+  const acctTxt = (_px > 0 && _accts.length)
+    ? _accts.map(a => `${escapeHtml(a.name)}: ${_acctAmt(Number(a.qty) * _px)} (${Math.round(Number(a.qty)).toLocaleString()} sh)`).join(' &middot; ')
+    : '';
   const ownTxt = row.held_today && hq > 0
-    ? `${Math.round(hq).toLocaleString()} shares`
-      + (hc > 0 ? ` &middot; Avg ${_fmtUsd2(hc / hq)}` : '')
-      + (row.current_position_dollar != null ? ` &middot; ${_actpopFmtAmt(row.current_position_dollar).replace('k', 'K')}` : '')
+    ? [row.current_position_dollar != null ? _actpopFmtAmt(row.current_position_dollar).replace('k', 'K') : '',
+       _avg != null ? `Avg <span${_avgColor ? ` style="color:${_avgColor};font-weight:700;"` : ''}>${_fmtUsd2(_avg)}</span>` : '']
+      .filter(Boolean).join(' &middot; ')
     : 'Not held';
-  const ownLine = `<div class="actpop-own">${ownTxt}</div>`;
+  const ownLine = `<div class="actpop-own">${ownTxt}</div>`
+    + (row.held_today && acctTxt ? `<div class="actpop-own" style="font-size:10px;">${acctTxt}</div>` : '');
   const earnLine = hasEd
     ? `<div class="actpop-earn">Earnings in ${edDays <= 3 ? `<span class="opex-soon">${edDays}d</span>` : `${edDays}d`}</div>`
     : '';
@@ -6290,7 +6320,7 @@ function _buildActionPopHtmlV2(row) {
   // of the auto margin, next to the symbol block instead.
   // 2026-10-03: the rest of what the SYMBOL / ACTION cells show, as short lines under the
   // earnings line (symExtras): actioned tag (not "Done" -- user), over max, sizing stage,
-  // low confidence, hit rate. Over max is shown once (the tag's own over-max note is skipped).
+  // low confidence. (Hit rate is no longer here -- the sources section shows each source's own.) Over max is shown once (the tag's own over-max note is skipped).
   let symExtras = '';
   const _ai = row._actionInfo;
   const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
@@ -6306,8 +6336,6 @@ function _buildActionPopHtmlV2(row) {
   if (row.low_confidence && side === 'sell') {
     symExtras += `<div class="actpop-xl" style="color:#b45309;"><b>LOW CONF</b> weak sell evidence, cross-check</div>`;
   }
-  const _hr = _sourceHitRateBadge(row);
-  if (_hr) symExtras += `<div class="actpop-xl">Source hit rate ${_hr}</div>`;
 
   // margin-left:auto goes on whichever right-hand group renders first (once).
   let _anchored = false;

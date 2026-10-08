@@ -48,6 +48,7 @@ INSERT INTO ref_hedgeye_email_type
   ('investing_ideas',     'DATA',     'intraday',  '^(Add|Remove)\b.*\b(LONG|SHORT) Side', 'investing_ideas_800px.png', 'investing_ideas'),
   ('signal_strength',     'DATA',     'intraday',  '^Signal Strength Stocks', 'signal_strength_stocks_800px.png', 'signal_strength'),
   ('portfolio_solutions', 'DATA',     'weekly',    '^PORTFOLIO SOLUTIONS.*Re-Rank', NULL, 'portfolio_solutions'),
+  ('go_anywhere',         'DATA',     'intraday',  '10 ETF Go-Anywhere Portfolio', NULL, 'go_anywhere'),
   ('the_call',            'DATA',     'daily',     '^The Call @ Hedgeye \| Replay', NULL, 'the_call'),
   ('macro_show_summary',  'DATA',     'daily',     '^THE MACRO SHOW:.*Summary Notes', NULL, 'macro_show_summary'),
   ('inflation_nowcast',   'DATA',     'monthly',   'Monthly Inflation Nowcast', 'macro_select_800px.png', 'inflation_nowcast'),

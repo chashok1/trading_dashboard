@@ -2005,6 +2005,29 @@ CREATE TABLE IF NOT EXISTS hist_ps (
 
 ALTER TABLE hist_ps ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
+-- hist_goany  <- Hedgeye "10 ETF Go-Anywhere Portfolio" email (email-only feed).
+-- One row per ETF per email-date; status 'open' (current positions) or 'closed'
+-- (last-90-days). Behaves like PS: membership of the open list drives the
+-- source action (new -> ADD, dropped -> REMOVE). slot_no is display only.
+CREATE TABLE IF NOT EXISTS hist_goany (
+    snapshot_date    DATE NOT NULL,
+    symbol           TEXT NOT NULL,
+    status           TEXT NOT NULL,          -- 'open' | 'closed'
+    tos_symbol       TEXT,
+    slot_no          INTEGER,
+    name             TEXT,
+    asset_class      TEXT,
+    entry_price      NUMERIC,
+    total_return     NUMERIC,                -- percent, e.g. 7.78
+    date_added       DATE,
+    date_removed     DATE,
+    message_id       TEXT,
+    loaded_at        TIMESTAMP NOT NULL DEFAULT now(),
+    source_file      TEXT,
+    PRIMARY KEY (snapshot_date, symbol, status)
+);
+CREATE INDEX IF NOT EXISTS ix_hist_goany_tos_symbol ON hist_goany(tos_symbol, snapshot_date);
+
 
 
 
@@ -5099,6 +5122,16 @@ RETURNS TABLE (
 
                           AND as_of_date <= p_as_of_date)
 
+                   -- GOANY: email-fed, PS-style; same newest-period rule.
+
+                   WHEN source_code = 'GOANY' THEN
+
+                       (SELECT MAX(as_of_date) FROM drv_outlook_action doa6
+
+                        WHERE doa6.source_code = 'GOANY'
+
+                          AND as_of_date <= p_as_of_date)
+
                    -- Others (RR, CALL, etc.): use queried date as-is
 
                    ELSE p_as_of_date
@@ -5521,6 +5554,8 @@ INSERT INTO meta_cleanup_policy (table_name, date_column, retention_days, enable
 
     ('hist_ps',       'snapshot_date', 730,  TRUE,  'Price strength rank'),
 
+    ('hist_goany',    'snapshot_date', 730,  TRUE,  'Hedgeye Go-Anywhere ETF portfolio'),
+
     ('hist_f',        'snapshot_date', 1825, TRUE,  'Fidelity holdings (5 years)'),
 
     ('hist_cs',       'snapshot_date', 1825, TRUE,  'Schwab holdings (5 years)'),
@@ -5598,7 +5633,9 @@ VALUES
 
     ('SSS',    'hist_sss',    2, 'rank_pct_delta',     2, 'Sig',  FALSE, 'Signal Strength Summary'),
 
-    ('PS',     'hist_ps',     1, 'rank',               3, 'PS',   FALSE, 'Price Strength Rank')
+    ('PS',     'hist_ps',     1, 'rank',               3, 'PS',   FALSE, 'Price Strength Rank'),
+
+    ('GOANY',  'hist_goany',  1, 'rank',            NULL, 'PS',   FALSE, 'Hedgeye 10 ETF Go-Anywhere Portfolio (PS-style membership)')
 
 ON CONFLICT (source_code) DO NOTHING;
 
@@ -5641,6 +5678,8 @@ INSERT INTO ref_data_filter_logic (table_name, filter_type, date_column, window_
     ('hist_ii',            'EXACT_MATCH',         'snapshot_date', NULL, 'Investment Ideas'),
 
     ('hist_ps',            'EXACT_MATCH',         'snapshot_date', NULL, 'Price Strength Rank'),
+
+    ('hist_goany',         'EXACT_MATCH',         'snapshot_date', NULL, 'Hedgeye Go-Anywhere ETF portfolio'),
 
     ('hist_sss',           'EXACT_MATCH',         'snapshot_date', NULL, 'Signal Strength Summary'),
 

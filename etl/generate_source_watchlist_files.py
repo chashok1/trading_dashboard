@@ -69,6 +69,9 @@ _OUTLOOK_BULLISH_FILTER = {
 _RAW_MEMBERSHIP_TABLE = {
     "PS":  {"table": "hist_ps",  "symbol_col": "COALESCE(NULLIF(tos_symbol, ''), ticker)"},
     "SSS": {"table": "hist_sss", "symbol_col": "COALESCE(NULLIF(tos_symbol, ''), symbol)"},
+    # GOANY: only the OPEN positions of the latest open snapshot are members.
+    "GOANY": {"table": "hist_goany", "symbol_col": "COALESCE(NULLIF(tos_symbol, ''), symbol)",
+              "where": "status = 'open'"},
 }
 
 SOURCES = list(_OUTLOOK_BULLISH_FILTER) + list(_RAW_MEMBERSHIP_TABLE)
@@ -86,13 +89,14 @@ def _outlook_symbols(session: Session, source_code: str, anchor) -> set:
 def _raw_membership_symbols(session: Session, source_code: str, anchor) -> set:
     cfg = _RAW_MEMBERSHIP_TABLE[source_code]
     table, symbol_col = cfg["table"], cfg["symbol_col"]
+    extra = f" AND {cfg['where']}" if cfg.get("where") else ""
     latest = session.execute(text(
-        f"SELECT MAX(snapshot_date) FROM {table} WHERE snapshot_date <= :anchor"
+        f"SELECT MAX(snapshot_date) FROM {table} WHERE snapshot_date <= :anchor{extra}"
     ), {"anchor": anchor}).scalar()
     if latest is None:
         return set()
     rows = session.execute(text(
-        f"SELECT DISTINCT {symbol_col} AS sym FROM {table} WHERE snapshot_date = :d"
+        f"SELECT DISTINCT {symbol_col} AS sym FROM {table} WHERE snapshot_date = :d{extra}"
     ), {"d": latest}).fetchall()
     return {r[0] for r in rows if r[0]}
 
