@@ -3169,6 +3169,20 @@ function _srcAbbr(srcCode) {
 // Returns compact HTML like: RR·<colored>BS</colored>  II·<colored>BM</colored>
 // Winning source first, then others sorted by severity.  Empty → ''.
 // Per-source reason lines for the Sources column: "SRC <icon> reason".
+// True when the stop-breach gate (not a source) turned a buy into HOLD.
+function _stopGated(r) {
+  return !!(r && r.stop_breached && /STOP/i.test(r.suppressed_reason || ''));
+}
+
+// One-line plain-English text for the popup's Stop driver line: the signal,
+// the actual line price, and what it did to the action.
+function _stopDriverNote(r) {
+  const lineVal = r.stop_signal === 'TN SA' ? r.trend_line_value : r.trade_line_value;
+  const lineLabel = r.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
+  const px = lineVal != null ? ', ' + lineLabel + ' line ' + fmtUsd(Number(lineVal)) : '';
+  return 'Price broke its stop (' + (r.stop_signal || 'stop') + px + ') — buy blocked, HOLD';
+}
+
 function _srcReasonsHtml(r) {
   const sources = _sourcesOf(r);
   if (!sources.length) return '';
@@ -3202,7 +3216,9 @@ function _srcReasonsHtml(r) {
     const _wSide = actionDisplay((s.action || '').toUpperCase()).side;
     const _overridden = !!(r.final_side && _wSide && _wSide !== r.final_side
       && actionDisplay((r.rr_action || '').toUpperCase()).side === r.final_side);
-    const droveIt = (srcCode === winning && !_overridden)
+    // 2026-10-09: no "D" when the stop-breach gate downgraded the buy to
+    // HOLD -- the stop drove it (popup shows a Stop line), not the source.
+    const droveIt = (srcCode === winning && !_overridden && !_stopGated(r))
       ? `<span class="dv-tag drove-it-pill" style="margin-left:3px;" title="Drove the action">D</span>` : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
@@ -5943,15 +5959,28 @@ function _actpopDriverBullets(row, side) {
   const winSide = winEntry ? actionDisplay((winEntry.action || '').toUpperCase()).side : null;
   const techSideFc = actionDisplay((row.rr_action || '').toUpperCase()).side;
   const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSideFc === side);
+  // 2026-10-09: a breached stop turned the buy into HOLD -- the stop drove
+  // the result; every source/Technical is tagged agrees/conflicts vs the stop; Technical is
+  // judged against the stop (sell side), not against HOLD.
+  const stopGate = _stopGated(row);
+  if (stopGate) {
+    rows.push(`<div class="actpop-driver sell">
+      <span class="dv-name">Stop</span>
+      <span class="dv-action sell">Breached</span>
+      <span class="dv-note">${escapeHtml(_stopDriverNote(row))}</span>
+      <span class="dv-tag">drove it</span>
+    </div>`);
+  }
   if (winEntry) {
     const code = winEntry.source || winEntry.source_code || winning;
-    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), techOverrides ? 'conflicts' : 'drove it',
+    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), stopGate ? 'conflicts' : techOverrides ? 'conflicts' : 'drove it',
       winEntry.pct_since_drop, winEntry.drop_conflict, winEntry.up_streak_3d));
   }
   const rraUpper = (row.rr_action || '').toUpperCase();
   if (rraUpper) {
     const techSide = actionDisplay(rraUpper).side;
-    const tag = techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
+    const tag = stopGate ? (techSide === 'sell' ? 'agrees' : techSide === 'buy' ? 'conflicts' : '')
+                : techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
     const desc = ((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
     // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
@@ -5963,7 +5992,7 @@ function _actpopDriverBullets(row, side) {
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   for (const s of others) {
     const code = s.source || s.source_code || '?';
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), null, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), stopGate ? (actionDisplay((s.action || '').toUpperCase()).side === 'buy' ? 'conflicts' : actionDisplay((s.action || '').toUpperCase()).side === 'sell' ? 'agrees' : null) : null, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
   }
   // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
   // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
@@ -6392,7 +6421,9 @@ function _buildActionPopHtmlV2(row) {
     + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}</div>`
     + `</div>`;
 
-  if (row.stop_breached) {
+  // 2026-10-09: skipped when the stop gated the buy -- the "Stop" driver line
+  // (with "drove it") already says this, with the same line price.
+  if (row.stop_breached && !_stopGated(row)) {
     // 2026-08-20: shows the actual line price now (trade_line_value/
     // trend_line_value, today's Trade/Trend line -- same fields the Td/Tn
     // header boxes show), not just the crossover code with no number to
