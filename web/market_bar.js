@@ -539,22 +539,6 @@
     return groups.map(g => `<div class="mt-group">${g.join('')}</div>`).join('');
   }
 
-  // ---- right-aligned as-of timestamp --------------------------------------
-  function _tapeAsOfHtml(mktData) {
-    const asOfDate = mktData && mktData.as_of;
-    if (!asOfDate) return '';
-    const items    = (mktData && mktData.items) || [];
-    const withTime = items.find(it => it.quote_time);
-    const timeStr  = withTime ? String(withTime.quote_time).slice(0, 5) : '';
-    // mm/dd (2026-07-04) instead of the raw YYYY-MM-DD -- same date-shortening
-    // convention already used for the econ-panel rows below.
-    const dateStr  = /^\d{4}-\d{2}-\d{2}$/.test(asOfDate)
-      ? asOfDate.slice(5, 7) + '/' + asOfDate.slice(8, 10)
-      : asOfDate;
-    const label    = timeStr ? `${dateStr} ${timeStr}` : dateStr;
-    return `<span class="mt-asof">${escHtml(label)}</span>`;
-  }
-
   // ---- build econ expander panel ----------------------------------------
   function buildEconHtml(macro) {
     const groups = macro.groups || {};
@@ -687,7 +671,7 @@
 
   function _renderAll() {
     if (_lastMktData && tapeEl)
-      tapeEl.innerHTML = buildMiniTapeHtml(_lastMktData, _lastRrData || {}) + _tapeAsOfHtml(_lastMktData);
+      tapeEl.innerHTML = buildMiniTapeHtml(_lastMktData, _lastRrData || {});  // 2026-10-09: as-of label removed (showed the anchor date beside today's prices); the toolbar time is the freshness readout
     const timeLabel = document.getElementById('mtQuotesTimeLabel');
     if (timeLabel) timeLabel.textContent = _fmtFetchDateTime(_mostRecentYahooFetch(_lastYahooStatus)) || '';
   }
@@ -898,6 +882,9 @@
     if (health) controls.insertBefore(wrap, health);
     else controls.appendChild(wrap);
   }
+
+  // 2026-10-09: lets a screen's own Refresh button reload the bar too.
+  window._reloadMarketBar = loadTape;
 
   // ---- entry ------------------------------------------------------------
   function init() {

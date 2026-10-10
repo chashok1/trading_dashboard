@@ -8990,6 +8990,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('refreshBtn').addEventListener('click', () => {
     loadActionable();
+    if (window._reloadMarketBar) window._reloadMarketBar();  // 2026-10-09: bar + time label refresh with the grid
     checkFreshness();
     checkEodFeed();
   });
