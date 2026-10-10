@@ -328,12 +328,14 @@ COLUMN_SET_ROW_SPACING = 24
 COLUMN_SET_MAX_Y = 244
 COLUMN_SET_TOGGLE_REPEAT = 3
 
-# 2026-08-21: how long do_reloadwl99()'s pre-export nudge check waits
-# between its "before" and "after" 'lo*' counts before deciding whether
-# TOS has stalled (see that function's step 4) -- long enough to give a
-# freshly-reloaded symbol a real chance to resolve on its own, short
-# enough not to waste time on every WL99 attempt.
-WL99_NUDGE_WAIT_SECONDS = 15
+# 2026-10-09, user-directed: how wait_for_loading_to_settle() decides TOS has
+# stalled before any nudge. It re-counts the on-screen 'lo*' (Loading) images
+# every POLL seconds; the stall clock RESETS each time the count drops, so a
+# list that is still resolving is never nudged. Gives up after STALL seconds
+# with no further drop, or MAX seconds in total.
+WL99_SETTLE_POLL_SECONDS = 5
+WL99_SETTLE_STALL_SECONDS = 30
+WL99_SETTLE_MAX_SECONDS = 120
 
 # 2026-08-20: TOS.lock is shared by two very different waiters --
 # (1) another TOSType's __main__ wanting to START its own download
@@ -726,6 +728,30 @@ def do_click_row(row, images_folder):
         ui_click(row['X'] + int(offset_location.left), row['Y'] + int(offset_location.top), row['Name'])
     else:
         ui_click(row['X'], row['Y'], row['Name'])
+
+def wait_for_loading_to_settle(images_folder):
+    """Pre-nudge check (2026-10-09, user-directed). Re-counts the on-screen
+    'lo*' Loading images every WL99_SETTLE_POLL_SECONDS and returns the final
+    count. Returns early at 0 (nothing left to nudge). The stall clock resets
+    whenever the count drops, so symbols still resolving on their own are
+    given time instead of being nudged (a nudge recomputes the whole
+    watchlist and can reset already-resolved symbols back to 'Loading').
+    Stops after WL99_SETTLE_STALL_SECONDS with no drop, or
+    WL99_SETTLE_MAX_SECONDS overall."""
+    count = count_images_in_folder(images_folder, "lo", timeout=1)
+    since_drop = 0
+    total = 0
+    while (count > 0 and since_drop < WL99_SETTLE_STALL_SECONDS
+           and total < WL99_SETTLE_MAX_SECONDS):
+        time.sleep(WL99_SETTLE_POLL_SECONDS)
+        since_drop += WL99_SETTLE_POLL_SECONDS
+        total += WL99_SETTLE_POLL_SECONDS
+        new = count_images_in_folder(images_folder, "lo", timeout=1)
+        if new < count:
+            print(f"    loading images still resolving on their own ({count} -> {new}) -- waiting.")
+            since_drop = 0
+        count = new
+    return count
 
 def toggle_column_set_away_and_back(df, images_folder):
     """RELOADWL99 reprocess helper (2026-08-20): switches the column-set
@@ -1366,9 +1392,11 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
          combination -- no per-type copy of the recipe, no hardcoded image
          names in Python (2026-08-17 redesign -- previously this called a
          hardcoded, WL99-only import_symbols_into_watchlist()).
-      2. Nudges TOS (column-set toggle away and back, x3 -- same helper the
-         reprocess loop uses) if a 'lo*' image (the on-screen loading
-         spinner) is still visible, THEN does a REAL export of WL99 --
+      2. Waits for the on-screen 'lo*' loading images to settle, does a REAL
+         export of WL99, and nudges TOS (column-set toggle away and back, x3
+         -- same helper the reprocess loop uses) + re-exports ONLY if
+         symbols are still stuck and none improved vs. the number just
+         loaded (2026-10-09; see step 4/5 below). The export uses --
          using this row's own Name/ref_image/X/Y/watchlist_name/watchlist_x/
          watchlist_y, the same columns a plain WL row already uses to
          navigate to it, so the coordinates only need to be correct in one
@@ -1410,6 +1438,10 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # Skip the RELOAD/IMPORT part (not the export -- see below) if there's
     # nothing currently stuck.
     has_symbols = bool(get_stuck_symbols())
+    # Baseline for the pre-nudge check below: how many symbols are being
+    # loaded into WL99 right now -- NOT the first 'Loading' count seen after
+    # the import (TOS may already have resolved most of them by then).
+    baseline_stuck = len(get_stuck_symbols())
 
     export_row = dict(row)
 
@@ -1463,75 +1495,49 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
               "export too. ---")
         return
 
-    # 4. Nudge before exporting (2026-08-21, user-directed) -- gated on a
-    # STALL (count unchanged/worse after waiting), not on the mere sight of
-    # a 'lo*' loading-spinner image. Right after the reload-import above,
-    # some symbols showing 'Loading' is completely normal (TOS hasn't
-    # fetched them yet) -- nudging on that alone forces a column-set toggle
-    # that recomputes the ENTIRE watchlist, resetting already-resolved
-    # symbols back to 'Loading' too (live bug: a board that had actually
-    # cleared showed stale 'Loading' data again because of this). Give TOS
-    # a real chance first: count now, wait, count again, and only nudge if
-    # it hasn't improved -- same stall convention
-    # toggle_column_set_away_and_back()'s own internal loop and
-    # download_watchlist()'s stabilization wait already use.
-    before_loading = count_images_in_folder(images_folder, "lo", timeout=1)
-    if before_loading:
-        time.sleep(WL99_NUDGE_WAIT_SECONDS)
-        after_loading = count_images_in_folder(images_folder, "lo", timeout=1)
-        if after_loading >= before_loading:
-            print(f"--- RELOADWL99: 'lo*' loading image(s) unchanged ({before_loading} -> "
-                  f"{after_loading}) after a {WL99_NUDGE_WAIT_SECONDS}s wait -- nudging "
-                  "column-set (x3) to force a recompute. ---")
-            toggle_column_set_away_and_back(df, images_folder)
-        else:
-            print(f"--- RELOADWL99: 'lo*' loading image(s) still resolving on their own "
-                  f"({before_loading} -> {after_loading}) -- skipping the nudge, exporting as-is. ---")
-
-    # 5. Real export of WL99 -- only reached when has_symbols was True (see
-    # the early return above for the nothing-stuck case).
-    #
-    # already_selected=True (2026-08-20): step 1's pre-select already ran
-    # (only reached this far when has_symbols was True), and nothing
-    # between here and there switches watchlists (step 2's reload sequence
-    # edits WL99's symbols without navigating away from it), so re-doing
-    # the same 3 selection clicks here would just reselect WL99 a second
-    # time for nothing.
-    #
-    # 2026-08-28 fix: force_download=False here meant a stall (loading count
-    # not improving for 30s+, common right after a big fresh reimport) made
-    # download_watchlist() return False WITHOUT exporting anything at all --
-    # leaving the WL99 fragment CSV on disk at whatever an EARLIER, staler
-    # attempt left it (or missing entirely, on a first-ever attempt).
-    # update_output_list_from_fragment() only runs on an actual export, so
-    # output_list never reconciled against this attempt's real
-    # (partial) progress either. Confirmed live: after 3 stalled attempts,
-    # the merge stage downstream read that stale/missing WL99 fragment and
-    # fell back to WL1..16's ORIGINAL per-source stuck data instead of
-    # WL99's narrowed-down result -- the "shows the original list, not the
-    # shorter one" symptom. Retry once with force_download=True (same
-    # fallback the plain WL-row path already uses at the bottom of
-    # run_recipe_rows()'s WL branch) so this attempt's actual current state
-    # -- even if some symbols are still genuinely stuck -- always lands on
-    # disk.
-    # wait_timeout=60 (2026-09-10, user-directed, down from the default
-    # 180): see download_watchlist()'s own docstring for why WL99
-    # specifically doesn't need the full 3 minutes here.
-    if not download_watchlist(export_row, save_folder, images_folder, False, False, False,
-                               already_selected=True, wait_timeout=60):
-        print("--- RELOADWL99: export stalled (no change in loading count) -- forcing export of "
-              "current WL99 state so this attempt's progress isn't lost. ---")
-        download_watchlist(export_row, save_folder, images_folder, False, True, False,
-                            already_selected=True, wait_timeout=60)
-
-    # 5b. 2026-09-16: fold THIS attempt's export into WL99_all_resolved.csv
-    # before the NEXT attempt (if any) re-imports a narrower symbol list and
-    # overwrites the live WL99 fragment -- see
-    # _merge_wl99_export_into_history()'s own docstring for why this is
-    # needed (a symbol resolved here can otherwise vanish from disk
-    # entirely once a later attempt's smaller re-import replaces it).
+    # 4/5. Export, THEN decide whether to nudge (2026-10-09, user-directed).
+    # Old flow nudged after one fixed wait, judged against the first 'Loading'
+    # count it happened to see -- so symbols TOS had already resolved after
+    # the import (e.g. 9 of 10) earned no credit and the rest got nudged,
+    # which recomputes the whole board and can reset those 9. Now:
+    #   a. wait_for_loading_to_settle(): re-count on-screen Loading images
+    #      until 0 or stalled (resets while still dropping).
+    #   b. Export WL99 for real -- this also gives the true symbol-level
+    #      count (get_stuck_symbols() after output_list reconciles).
+    #   c. Nudge + re-export ONLY if still stuck AND the stuck count did not
+    #      fall below baseline_stuck (the number just loaded). Any drop
+    #      (10 -> 1) counts as progress: no nudge; the remainder is left to
+    #      the existing retry loop.
+    # Step 1's pre-select already ran and nothing since switches watchlists,
+    # so already_selected=True. force_download=True retry on a stall is the
+    # 2026-08-28 fix (always land this attempt's real state on disk);
+    # wait_timeout=60 per 2026-09-10 (see download_watchlist()'s docstring).
+    # _merge_wl99_export_into_history() runs after EVERY export so symbols a
+    # first export resolved survive a later nudge/re-import (2026-09-16).
     wl99_export_path = os.path.join(save_folder, f"{export_row['Name']}_{export_row['watchlist_name']}.csv")
-    _merge_wl99_export_into_history(wl99_export_path, save_folder)
+
+    def _export_wl99():
+        if not download_watchlist(export_row, save_folder, images_folder, False, False, False,
+                                   already_selected=True, wait_timeout=60):
+            print("--- RELOADWL99: export stalled (no change in loading count) -- forcing export of "
+                  "current WL99 state so this attempt's progress isn't lost. ---")
+            download_watchlist(export_row, save_folder, images_folder, False, True, False,
+                                already_selected=True, wait_timeout=60)
+        _merge_wl99_export_into_history(wl99_export_path, save_folder)
+
+    screen_left = wait_for_loading_to_settle(images_folder)
+    _export_wl99()
+    stuck_now = len(get_stuck_symbols())
+    if screen_left == 0 or stuck_now == 0:
+        print(f"--- RELOADWL99: nothing left loading ({baseline_stuck} loaded -> {stuck_now} stuck) -- no nudge needed. ---")
+    elif stuck_now < baseline_stuck:
+        print(f"--- RELOADWL99: progress made ({baseline_stuck} loaded -> {stuck_now} still stuck) -- "
+              "skipping the nudge so resolved symbols aren't reset; leaving the rest to the retry loop. ---")
+    else:
+        print(f"--- RELOADWL99: no symbol improved ({baseline_stuck} loaded -> {stuck_now} stuck) -- nudging "
+              "column-set (x3) to force a recompute, then re-exporting. ---")
+        toggle_column_set_away_and_back(df, images_folder)
+        _export_wl99()
 
     # 6. Re-sync LoadingSymbols.txt to output_list's stuck state AFTER
     # this export (2026-08-21, user-directed) -- step 5's download_watchlist
@@ -1838,7 +1844,12 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                 # through to the reprocess below regardless of whether this
                 # helped; if it didn't, the reload-into-WL99 fallback after
                 # this loop still runs.
-                toggle_column_set_away_and_back(df, images_folder)
+                # 2026-10-09: don't nudge while the on-screen Loading count is
+                # still dropping on its own (or already 0).
+                if wait_for_loading_to_settle(images_folder) > 0:
+                    toggle_column_set_away_and_back(df, images_folder)
+                else:
+                    print("    nothing left visibly loading -- skipping the column-set nudge.")
                 run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
                 reprocess_attempts += 1
                 new_stuck_count = len(get_stuck_symbols())
