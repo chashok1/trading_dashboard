@@ -42,18 +42,18 @@ _BULL = {
     -1: "Down 1+ SD, below midpoint, low still above LRR: bearish in the bull zone",
     1:  "At midpoint, up/flat day",
     2:  "Down day, low at LRR, Trade line positive",
-    3:  "Up day, low above LRR, below midpoint, MACD falling",
+    3:  "Up day, low above LRR, below midpoint, MACD rising but MACDH not rising",
     4:  "Up day, low touched LRR",
     5:  "Down day, above midpoint",
-    6:  "Up day, low above LRR, below midpoint, MACD rising",
+    6:  "Up day, low above LRR, below midpoint, MACD rising and MACDH rising",
 }
 # not-bull path (QJ 0..1): nbull_rr_rule codes
 _NBULL = {
     -1: "At TRR (top of range)",
-    2:  "Up day, low above LRR, at/below midpoint, MACD falling",
+    2:  "Up day, low above LRR, at/below midpoint, MACD rising but MACDH not rising",
     3:  "Down day, low at LRR, above Trade and Trend",
     4:  "Up day, low touched LRR",
-    5:  "Up day, low above LRR, at/below midpoint, MACD rising",
+    5:  "Up day, low above LRR, at/below midpoint, MACD rising and MACDH rising",
 }
 
 

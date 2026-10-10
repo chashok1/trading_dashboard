@@ -824,7 +824,7 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-10-07
 
-- **GOANY source** (Hedgeye 10 ETF Go-Anywhere Portfolio): new `hist_goany` table, `ref_outlook_source` row (PS-style), `ref_source_precedence` rank 12, retention + data-filter rows, `go_anywhere` email type (`etl/hedgeye/classify.py`, `parse_go_anywhere`), `_build_goany` in `derive_source_standing.py`, GOANY branch in `derive_outlook_action.py`, `v_outlook_changes` effective-date branch. Apply with `python -m db.init_db`.
+- **GOANY source** (Hedgeye 10 ETF Go-Anywhere Portfolio): new `hist_goany` table, `ref_outlook_source` row (PS-style), `ref_source_precedence` rank 12, retention + data-filter rows, `go_anywhere` email type (`etl/hedgeye/classify.py`, `parse_go_anywhere`), `_build_goany` in `derive_source_standing.py`, GOANY branch in `derive_outlook_action.py`, `v_outlook_changes` effective-date branch. Email is rendered to `GOANY YYYY-MM-DD.xlsx` in `C:\Ashok\Investing\Stocks\GOANY\Archive` (new `ref_load_files` row in `db/seeds_goany.sql`, WKDAY/optional) and loaded by `etl/load_raw.py::load_goany` (`CUSTOM_HANDLERS['goany']`) so it appears in File Monitor (Schedule + ETL Runs). The loader REPLACES a snapshot date's rows (documented exception to never-delete: a later same-day email is the final state). Apply with `python -m db.init_db`.
 
 ## 2026-05-29
 

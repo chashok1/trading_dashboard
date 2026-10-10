@@ -10,7 +10,7 @@
 | 4 | ETF Pro changes | DATA `hist_etfchg` | add/remove only — **no price ranges** |
 | 5 | Signal Strength Stocks | DATA `hist_sss`/`hist_sss_change` | Deltas (Added/Adding, Removed/Removing) → `hist_sss_change`. **Since 2026-09-29, full daily table also arrives as plaintext** (was a chart image before) → parsed into `hist_sss` via the SSS file lane, same as PS |
 | 6 | Portfolio Solutions re-rank | DATA `hist_ps` | **Full table** parsed from email HTML (it's a real `<table>`, not image) |
-| 6b | 10 ETF Go-Anywhere Portfolio (added 2026-10-07) | DATA `hist_goany` (email-only, direct insert) | Two real HTML `<table>`s: Current Open Positions (slot/ticker/name/asset class/entry price/total return/date added) + Recently Closed (last 90 days). The "WE ARE ADDING/REMOVING" banner is redundant with the tables, so it is stored as a note only. Two emails on one day = whole-state snapshots: **latest email of the day replaces earlier ones** (`dispatch._goany_latest_wins`). Source `GOANY` behaves like PS: new on open list → ADD, dropped → REMOVE (even if not held), still listed → HOLD if held else ADD. Slot number is add-order, not a rank. |
+| 6b | 10 ETF Go-Anywhere Portfolio (added 2026-10-07) | DATA `hist_goany` (file lane: `GOANY YYYY-MM-DD.xlsx` → loader) | Two real HTML `<table>`s: Current Open Positions (slot/ticker/name/asset class/entry price/total return/date added) + Recently Closed (last 90 days). The "WE ARE ADDING/REMOVING" banner is redundant with the tables, so it is stored as a note only. Two emails on one day = whole-state snapshots: **latest email of the day overwrites that day's file and the loader replaces that date's rows** (`emit._OVERWRITE_FEEDS`, `load_raw.load_goany`). Source `GOANY` behaves like PS: new on open list → ADD, dropped → REMOVE (even if not held), still listed → HOLD if held else ADD. Slot number is add-order, not a rank. |
 | 7 | Macro Show — Summary Notes | DATA `hist_hedgeye_stance` + ANALYSIS | TL;DR positions parsed (name→symbol lookup for non-tickers); prose → `note_repo` |
 | 8 | Macro Show — Access / Top 3 | — | Analysis-only → `note_repo` |
 | 9 | KM's Top 3 Things | — | Analysis-only → `note_repo` |
@@ -60,7 +60,7 @@ currently fed by hand from the `Tickers YYYY-MM-DD.xlsx` tabs:
 | Investing Ideas "Add/Remove … LONG/SHORT" | `hist_ii` / `hist_iichg` (`II`, `load_iichg`) | **Full** — action + side + ticker |
 | Signal Strength Stocks | `hist_sss` (`SSS`/`ssH`) | **Full** since 2026-09-29 — plaintext table parsed like PS (previously delta-only; full list was a chart image) |
 | Portfolio Solutions weekly re-rank | `hist_ps` (`ps`) | **Full table** — parsed from the email's real HTML `<table>` |
-| 10 ETF Go-Anywhere Portfolio | `hist_goany` (email-only) | **Full** — open + closed tables parsed from HTML; source `GOANY` (PS-style membership) |
+| 10 ETF Go-Anywhere Portfolio | `hist_goany` (`GOANY`, `load_goany`) | **Full** — open + closed tables parsed from HTML, rendered to xlsx; source `GOANY` (PS-style membership) |
 | The Call | `hist_call` + new `hist_call_top5` | `hist_call` ← HEDGEYE POSITIONS list; Top 5 Actionable → new table |
 
 So the automation is mostly **"email → the same tab shape → your existing loader"**, not

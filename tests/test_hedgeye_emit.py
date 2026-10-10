@@ -460,7 +460,7 @@ def test_file_lanes_contains_all_5():
     stale count.
 
     2026-09-29: added `signal_strength` -> hist_sss now that the full ranked
-    table arrives as plaintext instead of a chart image (8 entries)."""
+    table arrives as plaintext instead of a chart image (8 entries); 2026-10-07: added `go_anywhere` -> hist_goany (9)."""
     from etl.hedgeye.emit import FILE_LANES
     expected = {
         ("risk_range", "hist_rr"),
@@ -470,6 +470,7 @@ def test_file_lanes_contains_all_5():
         ("ii_weekly", "hist_ii"),
         ("portfolio_solutions", "hist_ps"),
         ("signal_strength", "hist_sss"),
+        ("go_anywhere", "hist_goany"),
         ("the_call", "hist_call"),
     }
     assert FILE_LANES == expected

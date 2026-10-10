@@ -41,6 +41,7 @@ FILE_BACKED = [
     ("hist_iichg",  "event_date",    "source_file"),
     ("hist_etfchg", "event_date",    "source_file"),
     ("hist_ps",     "snapshot_date", "source_file"),
+    ("hist_goany",  "snapshot_date", "source_file"),
     ("hist_call",   "snapshot_date", "source_file"),
 ]
 
@@ -50,7 +51,6 @@ MSG_BACKED = [
     "hist_call_top5",
     "hist_hedgeye_stance",
     "hist_sss_change",
-    "hist_goany",
     "note_repo",
     "hist_media",
     "llm_analysis",

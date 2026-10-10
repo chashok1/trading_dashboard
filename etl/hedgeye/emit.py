@@ -37,13 +37,19 @@ EMIT_MAP: dict[str, tuple[str, str]] = {
     "ii_weekly":           ("II",         "xlsx"),
     "portfolio_solutions": ("PS",         "xlsx"),
     "signal_strength":     ("SSS",        "xlsx"),
+    "go_anywhere":         ("GOANY",      "xlsx"),
     "the_call":            ("call",       "csv"),
 }
+
+# Email types whose file is a whole-STATE snapshot: a later email on the same
+# date REPLACES the earlier file (the loader replaces that date's rows).
+_OVERWRITE_FEEDS: frozenset[str] = frozenset({"go_anywhere"})
 
 # Tables written via the file/loader path for these feeds.
 # hist_call_top5 / hist_sss_change are email-only and stay on direct insert.
 EMIT_TABLES: frozenset[str] = frozenset({
-    "hist_rr", "hist_iichg", "hist_etfchg", "hist_ps", "hist_sss", "hist_call",
+    "hist_rr", "hist_iichg", "hist_etfchg", "hist_ps", "hist_sss", "hist_goany",
+    "hist_call",
 })
 
 # (email_type, table) pairs that go via the file/loader path
@@ -55,6 +61,7 @@ FILE_LANES: frozenset[tuple[str, str]] = frozenset({
     ("ii_weekly",           "hist_ii"),
     ("portfolio_solutions", "hist_ps"),
     ("signal_strength",     "hist_sss"),
+    ("go_anywhere",         "hist_goany"),
     ("the_call",            "hist_call"),
 })
 
@@ -277,6 +284,30 @@ def render_signal_strength(rows: list[dict], path: Path) -> None:
     wb.save(str(path))
 
 
+def render_go_anywhere(rows: list[dict], path: Path) -> None:
+    """Write Go-Anywhere portfolio rows (open + closed) as one-sheet xlsx.
+
+    Headers: Date, Status, #, Ticker, Name, Asset Class, Entry Price,
+             Total Return, Date Added, Date Removed
+    Read back by etl/load_raw.py::load_goany (CUSTOM_HANDLERS['goany']).
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Sheet"
+    ws.append(["Date", "Status", "#", "Ticker", "Name", "Asset Class",
+               "Entry Price", "Total Return", "Date Added", "Date Removed"])
+    for r in rows:
+        ws.append([
+            r.get("snapshot_date"), r.get("status"), r.get("slot_no"),
+            r.get("symbol") or r.get("tos_symbol") or "",
+            r.get("name") or "", r.get("asset_class") or "",
+            r.get("entry_price"), r.get("total_return"),
+            r.get("date_added"), r.get("date_removed"),
+        ])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(path))
+
+
 def render_the_call(rows: list[dict], path: Path) -> None:
     """Write hist_call rows as CSV matching the real call file format.
 
@@ -359,6 +390,7 @@ _RENDERERS = {
     "ii_weekly":           render_ii_weekly,
     "portfolio_solutions": render_portfolio_solutions,
     "signal_strength":     render_signal_strength,
+    "go_anywhere":         render_go_anywhere,
     "the_call":            render_the_call,
 }
 
@@ -395,7 +427,8 @@ def write_feed(
         )
         return None
 
-    if _file_exists_for_date(source_dir, file_type, feed_date):
+    if (email_type not in _OVERWRITE_FEEDS
+            and _file_exists_for_date(source_dir, file_type, feed_date)):
         log.debug(
             "emit: real file exists for %s %s — precedence check: skipped",
             file_type, feed_date,

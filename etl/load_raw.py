@@ -853,6 +853,48 @@ def load_iichg(session: Session, wb: Workbook, source_file: str) -> tuple[int, i
     return rows_read, n_inserted, n_attempted - n_inserted
 
 
+def load_goany(session: Session, wb: Workbook, source_file: str) -> tuple[int, int, int]:
+    """
+    GOANY file (rendered from the Hedgeye '10 ETF Go-Anywhere Portfolio' email by
+    etl/hedgeye/emit.py) -> hist_goany.
+    One sheet; columns: Date, Status (open|closed), #, Ticker, Name, Asset Class,
+    Entry Price, Total Return, Date Added, Date Removed.
+    The file is a whole-portfolio STATE snapshot, and Hedgeye sometimes sends two
+    emails on one change day (the later is the final state), so the snapshot
+    dates in this file are REPLACED, not merged: DELETE that date, then INSERT.
+    """
+    sheet = wb[wb.sheetnames[0]]
+    records: list[dict] = []
+    rows_read = 0
+    for raw in iter_rows_as_dict(sheet, start_row=2):
+        k = {(key or "").strip().lower(): v for key, v in raw.items()}
+        d = to_date(k.get("date"))
+        sym = to_text(k.get("ticker"))
+        status = (to_text(k.get("status")) or "").lower()
+        if d is None or not sym or status not in ("open", "closed"):
+            continue
+        slot = to_numeric(k.get("#"))
+        rows_read += 1
+        records.append({
+            "snapshot_date": d, "symbol": sym.upper(), "tos_symbol": sym.upper(),
+            "status": status,
+            "slot_no": int(slot) if slot is not None else None,
+            "name": to_text(k.get("name")),
+            "asset_class": to_text(k.get("asset class")),
+            "entry_price": to_numeric(k.get("entry price")),
+            "total_return": to_numeric(k.get("total return")),
+            "date_added": to_date(k.get("date added")),
+            "date_removed": to_date(k.get("date removed")),
+            "source_file": source_file,
+        })
+    if not records:
+        return rows_read, 0, 0
+    for d in {r["snapshot_date"] for r in records}:
+        session.execute(text("DELETE FROM hist_goany WHERE snapshot_date = :d"), {"d": d})
+    n_attempted, n_inserted = insert_skip_duplicates(session, "hist_goany", records)
+    return rows_read, n_inserted, n_attempted - n_inserted
+
+
 def load_rr(session: Session, wb: Workbook, source_file: str) -> tuple[int, int, int]:
     """
     RR tab -> hist_rr (Treasury/Index recommendations).

@@ -34,8 +34,8 @@ from etl.db import session_scope
 from etl.derive import derive_all, get_anchor_date
 from etl.excel_io import open_workbook
 from etl.load_raw import (
-    close_run, file_hash, load_etf, load_etfchg, load_iichg, load_one_tab,
-    load_rr, load_tw, open_run, parse_file_date_from_name,
+    close_run, file_hash, load_etf, load_etfchg, load_goany, load_iichg,
+    load_one_tab, load_rr, load_tw, open_run, parse_file_date_from_name,
 )
 from etl.mark_sales import (mark_cs_sales, mark_f_sales,
                             estimate_cs_partial_sale, estimate_f_partial_sale,
@@ -67,6 +67,7 @@ CUSTOM_HANDLERS = {
     "etf":    load_etf,
     "etfchg": load_etfchg,
     "iichg":  load_iichg,
+    "goany":  load_goany,
     "rr":     load_rr,
     "tw":     load_tw,
     "ref_tickers": load_ref_tables,

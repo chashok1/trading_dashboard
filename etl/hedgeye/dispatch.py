@@ -125,27 +125,6 @@ def _save_hefiles_image(url: str, hefiles_dir: str, filename: str) -> None:
         log.warning("_save_hefiles_image failed %s: %s", filename, e)
 
 
-def _goany_latest_wins(session, email, rows: list[dict]) -> bool:
-    """Go-Anywhere is a whole-portfolio STATE email and Hedgeye sometimes sends
-    two a minute apart on a change day (the later one is the final state).
-    Keep only the latest email's rows per snapshot_date: skip this email if a
-    later one is already stored, else drop earlier same-day rows first.
-    Returns True when the caller should insert `rows`."""
-    if not rows:
-        return False
-    d = rows[0]["snapshot_date"]
-    newer = session.execute(text(
-        "SELECT 1 FROM hist_goany g JOIN meta_hedgeye_msg m ON m.message_id = g.message_id "
-        "WHERE g.snapshot_date = :d AND g.message_id <> :m AND m.received_at > :r LIMIT 1"
-    ), {"d": d, "m": email.message_id, "r": email.received}).first()
-    if newer:
-        return False
-    session.execute(text(
-        "DELETE FROM hist_goany WHERE snapshot_date = :d AND message_id <> :m"
-    ), {"d": d, "m": email.message_id})
-    return True
-
-
 def _adapt_rows(table: str, rows: list[dict]) -> list[dict]:
     """Map parser-emitted columns to live DB columns where names differ.
 
@@ -217,9 +196,6 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 result = write_feed(session, email_type, feed_date, rows)
                 summary["files"][table] = result or "skipped"
             else:
-                if table == "hist_goany" and not _goany_latest_wins(session, email, rows):
-                    summary["tables"][table] = 0
-                    continue
                 adapted = _adapt_rows(table, rows)
                 attempted, inserted = insert_skip_duplicates(
                     session, table, adapted

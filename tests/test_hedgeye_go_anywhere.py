@@ -91,3 +91,21 @@ def test_membership_actions_behave_like_ps():
     # still on the list
     assert _action_membership(True, True, True)[0] == "HOLD"
     assert _action_membership(True, True, False)[0] == "ADD"
+
+
+def test_render_go_anywhere_roundtrips_through_xlsx(tmp_path):
+    import openpyxl
+    from etl.hedgeye.emit import render_go_anywhere, EMIT_MAP, FILE_LANES
+
+    assert EMIT_MAP["go_anywhere"] == ("GOANY", "xlsx")
+    assert ("go_anywhere", "hist_goany") in FILE_LANES
+    rows = parse_go_anywhere(_email()).tables["hist_goany"]
+    out = tmp_path / "GOANY 2026-10-07.xlsx"
+    render_go_anywhere(rows, out)
+    ws = openpyxl.load_workbook(out).active
+    header = [c.value for c in ws[1]]
+    assert header[:4] == ["Date", "Status", "#", "Ticker"]
+    body = [[c.value for c in r] for r in ws.iter_rows(min_row=2)]
+    assert len(body) == len(rows)
+    assert {b[3] for b in body} == {"CLOZ", "ETHA", "XLV", "AAAU"}
+    assert {b[1] for b in body} == {"open", "closed"}
