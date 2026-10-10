@@ -2172,6 +2172,24 @@ let _cumPnlChart = null;
 // mini widget's last bar, so the modal can show the whole selected period
 // at full resolution instead of just the last-10-days the mini chart shows.
 let _lastDashTrendData = null;
+// Bulleted breakdown of Today's change (account value change) -- shared by the
+// Today pill, the bar hover and the expanded chart. c = summaryChg object.
+function _dashChgTipLines(c) {
+  if (!c) return null;
+  const sg = (v) => (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const L = ["Today's change = account value now − previous snapshot: " + sg(c.val),
+    '• Day gain on shares still held: ' + sg(c.held),
+    '• Gain/loss on shares sold today: ' + sg(c.sold) + (c.est !== 0 ? ' (estimate)' : ''),
+    '• Dividends / interest: ' + sg(c.div)];
+  if (c.txnLoaded) {
+    L.push('• Not explained (deposits, withdrawals, fees, price gaps): ' + sg(c.diff));
+  } else {
+    L.push('• Trades and cash flow not separated yet: ' + sg(c.diff));
+    L.push('Transactions are loaded only through ' + (c.txnThrough || '?') + '.');
+  }
+  L.push('Earlier bars show profit only (no deposits/trades).');
+  return L;
+}
 let _lastDashSummaryToday = null;     // { today, todayEst, period }
 async function loadCumPnlSnapshot() {
   const canvas = $('tsCumPnlChart');
@@ -2268,6 +2286,20 @@ async function loadCumPnlSnapshot() {
     // unfiltered split, flagged on the Today pill below rather than
     // blended in unmarked.
     let summaryTodayEst = 0;
+    // 2026-10-10, user-directed: the "Today" pill shows the account VALUE
+    // change (same as the Portfolio screen's Today's Change), with the
+    // leftover vs the profit-style figure as a small delta + tooltip
+    // breakdown. The bars/cum line below stay profit-only (summaryToday), so
+    // deposits/trades can't distort the P&L chart. Null -> fall back.
+    let summaryChg = null;
+    const _chgFrom = (rows) => {
+      if (!rows.length || rows.some(a => a.value_change_dollar == null)) return null;
+      const sum = (k) => rows.reduce((t, a) => t + Number(a[k] || 0), 0);
+      const thr = rows.map(a => a.txn_through).filter(Boolean).sort()[0] || null;
+      return { val: sum('value_change_dollar'), diff: sum('flow_diff_dollar'), held: sum('held_gain_dollar'),
+               sold: sum('sold_move_dollar'), div: sum('div_int_dollar'), est: sum('today_gain_estimate_dollar'),
+               txnLoaded: rows.every(a => a.txn_loaded), txnThrough: thr };
+    };
     if (summary) {
       if (filtered) {
         const selectedTags = new Set(state.catAccounts.map(num => state.accountTagByNumber[num]));
@@ -2276,17 +2308,26 @@ async function loadCumPnlSnapshot() {
           summaryToday = matched.reduce((sum, a) => sum + Number(a.today_gain_dollar || 0), 0);
           acctTotal = matched.reduce((sum, a) => sum + Number(a.market_value || 0) + Number(a.cash_value || 0), 0);
           summaryTodayEst = matched.reduce((sum, a) => sum + Number(a.today_gain_estimate_dollar || 0), 0);
+          summaryChg = _chgFrom(matched);
         }
       } else if (summary.today_gain_dollar != null) {
         summaryToday = Number(summary.today_gain_dollar);
         acctTotal = Number(summary.market_value || 0) + Number(summary.cash_value || 0);
         summaryTodayEst = Number(summary.today_gain_estimate_dollar || 0);
+        summaryChg = _chgFrom(summary.by_account || []);
+        // whole-portfolio totals come straight from the summary when present
+        if (summaryChg && summary.value_change_dollar != null) {
+          summaryChg.val = Number(summary.value_change_dollar);
+          summaryChg.diff = Number(summary.flow_diff_dollar || 0);
+        }
       }
     }
     let estBarIdx = -1;   // index of the rightmost bar when it's a pending CST/FT estimate
     if (summaryToday != null && dayArr.length && cumRaw.length) {
       const origLastDay = Number(dayArr[dayArr.length - 1] || 0);
-      const newLastDay = summaryToday;
+      // 2026-10-10: last bar = Today's CHANGE (account value change) when the
+      // summary carries it; earlier bars stay profit-only.
+      const newLastDay = summaryChg ? summaryChg.val : summaryToday;
       const delta = newLastDay - origLastDay;
       dayArr[dayArr.length - 1] = newLastDay;
       cum[cum.length - 1] = Math.round((cumRaw[cumRaw.length - 1] + delta) * 100) / 100;
@@ -2296,7 +2337,7 @@ async function loadCumPnlSnapshot() {
     // override figures, so the expand view can show the whole selected
     // period with the identical last-bar treatment instead of just 10 days.
     _lastDashTrendData = r;
-    _lastDashSummaryToday = { today: summaryToday, todayEst: summaryTodayEst, period };
+    _lastDashSummaryToday = { today: summaryChg ? summaryChg.val : summaryToday, todayEst: summaryTodayEst, period, chg: summaryChg };
     if (_cumPnlChart) { _cumPnlChart.destroy(); _cumPnlChart = null; }
     if (!dates.length) {
       if (totalEl) totalEl.textContent = '';
@@ -2325,11 +2366,16 @@ async function loadCumPnlSnapshot() {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false,
-            callbacks: estBarIdx >= 0 ? { label(ctx) {
+            callbacks: (estBarIdx >= 0 || summaryChg) ? { label(ctx) {
                 const y = ctx.parsed.y;
                 const v = _fsCompactUsd(y) || ('$' + Number(y).toFixed(2));
                 const isEst = ctx.dataIndex === estBarIdx && ctx.dataset.label === 'Day Change';
                 return (ctx.dataset.label || 'Cumulative P&L') + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+            },
+            afterBody(items) {
+                const i = items && items[0] ? items[0].dataIndex : -1;
+                const L = _dashChgTipLines(summaryChg);
+                return (L && i === dayArr.length - 1) ? [''].concat(L) : [];
             } } : undefined } },
         scales: {
           x:  { display: true, ticks: { font: { size: 8 }, color: '#888', maxRotation: 0, autoSkip: true, maxTicksLimit: 5 }, grid: { display: false } },
@@ -2343,7 +2389,8 @@ async function loadCumPnlSnapshot() {
     // user: "Display today's gain and cum in 10 chart." Today = the same
     // (possibly summary-overridden) figure as the chart's own last bar;
     // Cum = the last point of the recomputed 10-day running line.
-    const lastToday = dayArr.length ? Number(dayArr[dayArr.length - 1]) : null;
+    const lastProfit = dayArr.length ? Number(dayArr[dayArr.length - 1]) : null;
+    const lastToday = (summaryChg && lastProfit != null) ? summaryChg.val : lastProfit;
     if (todayEl) {
       todayEl.className = 'ts-total' + (lastToday >= 0 ? ' pos' : ' neg');
       // 2026-08-22 -- Live/EOD indicator -- user: "add some indicator to
@@ -2367,8 +2414,13 @@ async function loadCumPnlSnapshot() {
       if (summaryTodayEst !== 0) {
         title += ` (includes ${_fsCompactUsd(summaryTodayEst) || ('$' + summaryTodayEst.toFixed(2))} pending CST/FT estimate)`;
       }
+      if (summaryChg && lastProfit != null) {
+        title += '\n\n' + _dashChgTipLines(summaryChg).join('\n');
+      }
       todayEl.title = title;
-      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge + estBadge : '';
+      const dTxt = (summaryChg && lastProfit != null && Math.abs(summaryChg.diff) >= 0.5)
+        ? ' (Δ ' + (_fsCompactUsd(summaryChg.diff) || '') + ')' : '';
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + dTxt + badge + estBadge : '';
     }
     if (totalEl) {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
@@ -2445,11 +2497,16 @@ function openDashTrendModal() {
       plugins: {
         legend: { display: false },
         tooltip: { enabled: true, mode: 'index', intersect: false,
-          callbacks: estBarIdx >= 0 ? { label(ctx) {
+          callbacks: (estBarIdx >= 0 || (ov && ov.chg)) ? { label(ctx) {
             const y = ctx.parsed.y;
             const v = _fsCompactUsd(y) || ('$' + Number(y).toFixed(2));
             const isEst = ctx.dataIndex === estBarIdx && ctx.dataset.label === 'Day Change';
             return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+          },
+          afterBody(items) {
+            const i = items && items[0] ? items[0].dataIndex : -1;
+            const L = ov ? _dashChgTipLines(ov.chg) : null;
+            return (L && i === dayArr.length - 1) ? [''].concat(L) : [];
           } } : undefined },
       },
       scales: {

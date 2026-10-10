@@ -368,7 +368,7 @@
             <div id="ovCumHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
               <span style="font-weight:700; white-space:nowrap; font-size:14px;">Cumulative P&amp;L</span>
               <span style="display:flex; gap:14px; color:var(--text-1,#222); margin-left:auto; font-variant-numeric: tabular-nums;">
-                <span><span style="color:var(--text-2,#666); font-size:11px;">Today's Gain </span><strong id="ovTodayGain" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Today's Change </span><strong id="ovTodayGain" style="font-size:15px;">—</strong></span>
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Realized </span><strong id="ovRealized" style="font-size:15px;">—</strong></span>
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Cum </span><strong id="ovCum" style="font-size:15px;">—</strong></span>
               </span>
@@ -391,8 +391,8 @@
               <th style="padding:4px 8px; text-align:right;">TOT$</th>
               <th style="padding:4px 8px; text-align:right;">CASH</th>
               <th style="padding:4px 8px; text-align:right;">MKT$</th>
-              <th style="padding:4px 8px; text-align:right;">TODAY$</th>
-              <th style="padding:4px 8px; text-align:right;">TODAY%</th>
+              <th style="padding:4px 8px; text-align:right;" title="Today's change = account value now minus the previous snapshot. The small Δ under it is what the broker's day gain on held shares does not explain (sold shares, trades, deposits/withdrawals). Hover a number for the breakdown.">TODAY$</th>
+              <th style="padding:4px 8px; text-align:right;" title="Today's change as a % of the previous snapshot's account value">TODAY%</th>
               <th style="padding:4px 8px; text-align:right;" title="Lifetime gain/loss in dollars">GAIN$</th>
               <th style="padding:4px 8px; text-align:right;" title="Lifetime gain / current cost basis">GAIN%</th>
               <th style="padding:4px 8px; text-align:right;">YTD$</th>
@@ -645,7 +645,7 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/portfolio.js?v=20260909a"></script>
+  <script src="/static/portfolio.js?v=20261010a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261001b" defer></script>

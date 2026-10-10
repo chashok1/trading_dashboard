@@ -5280,7 +5280,9 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                      COUNT(DISTINCT CASE WHEN {F_IS_NOT_CASH} THEN symbol END) AS positions,
                      SUM(CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END) AS cash_value,
                      COALESCE(MAX(fest.sold_move_est), 0) AS today_gain_estimate_dollar,
-                     COALESCE(MAX(fest.realized_est), 0)  AS realized_today_estimate_dollar
+                     COALESCE(MAX(fest.realized_est), 0)  AS realized_today_estimate_dollar,
+                     0::NUMERIC AS sold_move_real_dollar,
+                     0::NUMERIC AS div_int_dollar
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               LEFT JOIN f_est_by_acct fest ON fest.account_number = hist_f.account_number
@@ -5347,7 +5349,9 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                      COUNT(DISTINCT CASE WHEN {CS_IS_NOT_CASH_C} THEN c.symbol END) AS positions,
                      SUM(CASE WHEN {CS_IS_CASH_C} THEN c.market_value ELSE 0 END) AS cash_value,
                      COALESCE(MAX(cest.sold_move_est), 0) AS today_gain_estimate_dollar,
-                     COALESCE(MAX(cest.realized_est), 0)  AS realized_today_estimate_dollar
+                     COALESCE(MAX(cest.realized_est), 0)  AS realized_today_estimate_dollar,
+                     COALESCE(MAX(sm.amt), 0) AS sold_move_real_dollar,
+                     COALESCE(MAX(di.amt), 0) AS div_int_dollar
               FROM hist_cs c
               LEFT JOIN ref_accounts ra ON ra.account_number = c.account
               LEFT JOIN drv_cs_realized_gain rg
@@ -5479,6 +5483,97 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
             """), {"s": mtd_snap_f}).mappings().all()
             for r in mtd_rows_f:
                 mtd_total_acct[r["account"]] = float(r["total_value"] or 0)
+
+        # ── 2026-10-09, user-directed: "Today's change" = account VALUE change
+        # (Stage 1) with a breakdown once that day's transactions are loaded
+        # (Stage 2). The broker's day change only covers shares still held at
+        # the close, so it misses the day's move on shares sold during the day
+        # (and anything else that changed the account's value). Deposits and
+        # withdrawals are NOT separated here (the user will reconcile them
+        # from the transaction files): whatever the pieces below don't explain
+        # is reported as flow_diff_dollar. today_gain_dollar keeps its old
+        # meaning (profit: held + sold-move + dividends) and is what the P&L
+        # trend chart still uses.
+        latest_cs_d = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d"), {"d": d}).scalar()
+        latest_f_d = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d"), {"d": d}).scalar()
+        prev_cs_d = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date < :x"), {"x": latest_cs_d}).scalar() if latest_cs_d else None
+        prev_f_d = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date < :x"), {"x": latest_f_d}).scalar() if latest_f_d else None
+        prev_total_acct = {}
+        if prev_cs_d:
+            for r_ in s.execute(text("""
+                SELECT COALESCE(ra.short_name, c.account) AS k, COALESCE(SUM(c.market_value),0) AS tv
+                  FROM hist_cs c LEFT JOIN ref_accounts ra ON ra.account_number = c.account
+                 WHERE c.snapshot_date = :s AND COALESCE(ra.is_active, TRUE) = TRUE
+                 GROUP BY COALESCE(ra.short_name, c.account)
+            """), {"s": prev_cs_d}).mappings().all():
+                prev_total_acct[r_["k"]] = float(r_["tv"] or 0)
+        f_key_by_num = {}
+        if latest_f_d:
+            for r_ in s.execute(text("""
+                SELECT DISTINCT f.account_number,
+                       COALESCE(ra.short_name,
+                         COALESCE(f.account_name, f.account_number)
+                           || COALESCE(' (' || ra.short_name || ')', ' (' || f.account_number || ')')) AS k
+                  FROM hist_f f LEFT JOIN ref_accounts ra ON ra.account_number = f.account_number
+                 WHERE f.snapshot_date = :s
+            """), {"s": latest_f_d}).mappings().all():
+                f_key_by_num[r_["account_number"]] = r_["k"]
+        if prev_f_d:
+            for r_ in s.execute(text("""
+                SELECT COALESCE(ra.short_name,
+                         COALESCE(f.account_name, f.account_number)
+                           || COALESCE(' (' || ra.short_name || ')', ' (' || f.account_number || ')')) AS k,
+                       COALESCE(SUM(f.current_value),0) AS tv
+                  FROM hist_f f LEFT JOIN ref_accounts ra ON ra.account_number = f.account_number
+                 WHERE f.snapshot_date = :s AND COALESCE(ra.is_active, TRUE) = TRUE
+                 GROUP BY f.account_number, f.account_name, ra.short_name
+            """), {"s": prev_f_d}).mappings().all():
+                prev_total_acct[r_["k"]] = float(r_["tv"] or 0)
+        txn_thru_cs = s.execute(text("SELECT MAX(trade_date) FROM hist_cst")).scalar()
+        txn_thru_f  = s.execute(text("SELECT MAX(trade_date) FROM hist_ft")).scalar()
+        txn_loaded_cs = bool(txn_thru_cs and latest_cs_d and txn_thru_cs >= latest_cs_d)
+        txn_loaded_f  = bool(txn_thru_f and latest_f_d and txn_thru_f >= latest_f_d)
+        # Fidelity real sold-move + dividends from hist_ft (the CS equivalents
+        # already exist above as cs_sold_move / cs_div_int). Only once the F
+        # transaction file covers the snapshot date.
+        f_real_sold, f_real_div = {}, {}
+        if txn_loaded_f and prev_f_d:
+            for r_ in s.execute(text("""
+                SELECT ft.account_number,
+                       SUM((ft.price - pf.lp) * ABS(COALESCE(ft.quantity, 0))) AS amt
+                  FROM hist_ft ft
+                  JOIN (SELECT account_number, tos_symbol, MAX(last_price) AS lp
+                          FROM hist_f WHERE snapshot_date = :pd GROUP BY 1, 2) pf
+                    ON pf.account_number = ft.account_number AND pf.tos_symbol = ft.tos_symbol
+                 WHERE ft.trade_date = :ld AND ft.action_kind = 'SELL'
+                   AND ft.price IS NOT NULL AND ft.quantity IS NOT NULL AND pf.lp IS NOT NULL
+                 GROUP BY ft.account_number
+            """), {"pd": prev_f_d, "ld": latest_f_d}).mappings().all():
+                k_ = f_key_by_num.get(r_["account_number"])
+                if k_: f_real_sold[k_] = float(r_["amt"] or 0)
+        if txn_loaded_f:
+            # Money-market (sweep fund, e.g. SPAXX) interest is booked in the
+            # transaction file one day BEFORE the account's cash balance rises
+            # (verified 9/30->10/1: -454.26 then +452.51 unexplained), so it is
+            # counted on the next snapshot; ordinary dividends on their own day.
+            for r_ in s.execute(text("""
+                SELECT account_number, SUM(COALESCE(amount, 0)) AS amt
+                  FROM hist_ft
+                 WHERE action_kind = 'DIV'
+                   AND ( (NOT (UPPER(COALESCE(symbol,'')) LIKE 'SPAXX%'
+                               OR UPPER(COALESCE(description,'')) LIKE '%MONEY MARKET%')
+                          AND trade_date = :ld)
+                      OR ((UPPER(COALESCE(symbol,'')) LIKE 'SPAXX%'
+                               OR UPPER(COALESCE(description,'')) LIKE '%MONEY MARKET%')
+                          AND trade_date = :pd) )
+                 GROUP BY account_number
+            """), {"ld": latest_f_d, "pd": prev_f_d}).mappings().all():
+                k_ = f_key_by_num.get(r_["account_number"])
+                if k_: f_real_div[k_] = float(r_["amt"] or 0)
 
         # Manual baseline overrides (ref_account_baseline) — fallback ONLY
         # for accounts with no real snapshot before the period start (e.g. a
@@ -5684,6 +5779,14 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
     for r in acct_rows:
         mv = float(r["market_value"] or 0)
         tgd = float(r["today_gain_dollar"] or 0)
+        _k0 = r["account_tag"] or r["account"]
+        sold_real = float(r["sold_move_real_dollar"] or 0)
+        div_int = float(r["div_int_dollar"] or 0)
+        if r["source"] == "F":
+            # Fidelity: add the real sold-move + dividends once hist_ft covers the day
+            sold_real = f_real_sold.get(_k0, 0.0)
+            div_int = f_real_div.get(_k0, 0.0)
+            tgd += sold_real + div_int
         tgp_denom = mv - tgd
         sgd = float(r["total_gain_dollar"] or 0)
         cb = float(r["cost_basis"] or 0)
@@ -5728,6 +5831,10 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
 
         dcd = float(r["day_change_dollar"] or 0)
         rtd = float(r["realized_today_dollar"] or 0)
+        prev_tot_a = prev_total_acct.get(key)
+        vchg = (tot - prev_tot_a) if prev_tot_a is not None else None
+        txn_ok = txn_loaded_f if r["source"] == "F" else txn_loaded_cs
+        txn_thru = txn_thru_f if r["source"] == "F" else txn_thru_cs
         d2["by_account"].append({
             "source":              r["source"],
             "account":             r["account"],
@@ -5754,7 +5861,40 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
             # Zero once the real CST/FT-derived number covers the gap.
             "today_gain_estimate_dollar":    float(r["today_gain_estimate_dollar"] or 0),
             "realized_today_estimate_dollar": float(r["realized_today_estimate_dollar"] or 0),
+            # Today's CHANGE (account value change) + breakdown -- see the
+            # 2026-10-09 comment where prev_total_acct is built.
+            "prev_total_value":    prev_tot_a,
+            "value_change_dollar": vchg,
+            "value_change_pct":    (vchg / prev_tot_a * 100) if (vchg is not None and prev_tot_a) else None,
+            "held_gain_dollar":    dcd,
+            "sold_move_dollar":    sold_real + float(r["today_gain_estimate_dollar"] or 0),
+            "div_int_dollar":      div_int,
+            "flow_diff_dollar":    (vchg - tgd) if vchg is not None else None,
+            "txn_loaded":          txn_ok,
+            "txn_through":         txn_thru.isoformat() if txn_thru else None,
         })
+    # Global Today's-change totals = sum of the per-account figures (accounts
+    # with no previous snapshot are skipped, like YTD/MTD below). The global
+    # today_gain_dollar from the first query lacks Fidelity's real
+    # sold-move/dividends, so add them here to stay consistent.
+    f_adj = sum((a["sold_move_dollar"] - a["today_gain_estimate_dollar"]) + a["div_int_dollar"]
+                for a in d2["by_account"] if a["source"] == "F")
+    if f_adj:
+        d2["today_gain_dollar"] = float(d2.get("today_gain_dollar") or 0) + f_adj
+        _den = float(d2.get("market_value") or 0) - d2["today_gain_dollar"]
+        d2["today_gain_pct"] = (d2["today_gain_dollar"] / _den * 100) if _den else None
+    _vc = [a for a in d2["by_account"] if a["value_change_dollar"] is not None]
+    d2["value_change_dollar"] = sum(a["value_change_dollar"] for a in _vc) if _vc else None
+    d2["prev_total_value"]    = sum(a["prev_total_value"] for a in _vc) if _vc else None
+    d2["value_change_pct"]    = (d2["value_change_dollar"] / d2["prev_total_value"] * 100) \
+        if (_vc and d2["prev_total_value"]) else None
+    d2["held_gain_dollar"]    = sum(a["held_gain_dollar"] for a in _vc) if _vc else None
+    d2["sold_move_dollar"]    = sum(a["sold_move_dollar"] for a in _vc) if _vc else None
+    d2["div_int_dollar"]      = sum(a["div_int_dollar"] for a in _vc) if _vc else None
+    d2["flow_diff_dollar"]    = sum(a["flow_diff_dollar"] for a in _vc) if _vc else None
+    d2["txn_loaded"]          = all(a["txn_loaded"] for a in d2["by_account"]) if d2["by_account"] else False
+    _thr = sorted(a["txn_through"] for a in d2["by_account"] if a["txn_through"])
+    d2["txn_through"]         = _thr[0] if _thr else None   # oldest source = the limiting one
     # Global YTD/MTD = sum of the per-account figures above (skipping accounts
     # with no baseline — None, not 0 — so a newly-tracked account doesn't
     # silently contribute nothing while also not being flagged as excluded).
@@ -5888,6 +6028,18 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                     a["today_gain_dollar"] += bucket["day"]
                     denom = a["market_value"] - a["today_gain_dollar"]
                     a["today_gain_pct"] = (a["today_gain_dollar"] / denom * 100) if denom else None
+                if d2.get("value_change_dollar") is not None:
+                    d2["value_change_dollar"] += mv_delta_total
+                    d2["held_gain_dollar"] += day_delta_total
+                    d2["flow_diff_dollar"] = d2["value_change_dollar"] - d2["today_gain_dollar"]
+                    d2["value_change_pct"] = (d2["value_change_dollar"] / d2["prev_total_value"] * 100) if d2["prev_total_value"] else None
+                for a in d2["by_account"]:
+                    bucket = deltas_by_tag.get(a["account_tag"])
+                    if bucket and a.get("value_change_dollar") is not None:
+                        a["value_change_dollar"] += bucket["mv"]
+                        a["held_gain_dollar"] += bucket["day"]
+                        a["flow_diff_dollar"] = a["value_change_dollar"] - a["today_gain_dollar"]
+                        a["value_change_pct"] = (a["value_change_dollar"] / a["prev_total_value"] * 100) if a["prev_total_value"] else None
                 d2["pricing"] = "live"
                 d2["pricing_as_of"] = as_of_ts.isoformat() if as_of_ts else None
 

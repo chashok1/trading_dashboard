@@ -64,6 +64,12 @@ function _applyTodayOverride(data) {
     const dayArr = (data.day_change || []).slice();
     const cum    = (data.cumulative_pl || []).slice();
     let estBarIdx = -1;
+    // 2026-10-10, user-directed: the rightmost bar is Today's CHANGE (account
+    // value change, same number as the header / account table), with its
+    // breakdown in the hover. Earlier bars stay profit-only (the trends
+    // endpoint has no per-day flow data), so the cum line = history of profit
+    // + today's full value change.
+    let tipLines = null;
     if (cum.length && data.dates && data.dates.length === cum.length) {
         const lastIdx = cum.length - 1;
         const lastTrendsDate = data.dates[lastIdx];
@@ -73,7 +79,9 @@ function _applyTodayOverride(data) {
         if (!userInPast) {
             const entry = getEffectiveSummaryEntry();
             if (entry && entry.today_gain_dollar != null) {
-                const newDay = Number(entry.today_gain_dollar || 0);
+                const _t = todayChange(entry);
+                const newDay = _t.val;
+                if (_t.has) tipLines = todayTip(entry).split('\n').concat(['Earlier bars show profit only (no deposits/trades).']);
                 const origDay = Number(dayArr[lastIdx] || 0);
                 dayArr[lastIdx] = newDay;
                 cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
@@ -81,6 +89,7 @@ function _applyTodayOverride(data) {
             }
             if (state.filters && state.filters.latestPrices && state.latestSummary) {
                 estBarIdx = -1;
+                tipLines = null;
                 const newDay = Number(state.latestSummary.today_gain_dollar || 0);
                 const origDay = Number(dayArr[lastIdx] || 0);
                 dayArr[lastIdx] = newDay;
@@ -88,7 +97,7 @@ function _applyTodayOverride(data) {
             }
         }
     }
-    return { dayArr, cum, estBarIdx };
+    return { dayArr, cum, estBarIdx, tipLines };
 }
 
 let _lastTrendData = null;
@@ -181,7 +190,7 @@ function renderTrendCharts(data) {
     // Combined Cumulative P&L (line) + Day Change (thin bars overlay)
     if (_trendCharts.daily) _trendCharts.daily.destroy();
     if (_trendCharts.cum)   _trendCharts.cum.destroy();
-    const { dayArr, cum, estBarIdx } = _applyTodayOverride(data);
+    const { dayArr, cum, estBarIdx, tipLines } = _applyTodayOverride(data);
     const ovCumEstFlag = estBarIdx >= 0;
     // lastCum / cumColor computed AFTER the override so the line color and
     // overlay label both reflect the new rightmost value.
@@ -198,6 +207,10 @@ function renderTrendCharts(data) {
                     const isEst = estBarIdx >= 0 && ctx.dataIndex === estBarIdx
                         && ctx.dataset.label === 'Day Change';
                     return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                },
+                afterBody(items) {
+                    const i = items && items[0] ? items[0].dataIndex : -1;
+                    return (tipLines && i === dayArr.length - 1) ? [''].concat(tipLines) : [];
                 } } },
         },
         scales: {
@@ -306,7 +319,7 @@ function openTrendModal(key, title) {
     const colorPos = '#1c6c30', colorNeg = '#b21f1f', colorAcc = '#7F77DD';
     const labels = _lastTrendData.dates || [];
 
-    let dataset, type, yPos = 'right', combined = null, modalEstBarIdx = -1;
+    let dataset, type, yPos = 'right', combined = null, modalEstBarIdx = -1, modalTip = null, modalLastIdx = -1;
     if (key === 'value') {
         dataset = { type: 'line',
                     data: _lastTrendData.account_value || [], borderColor: colorAcc,
@@ -323,6 +336,8 @@ function openTrendModal(key, title) {
         const _ov = _applyTodayOverride(_lastTrendData);
         const arr = _ov.dayArr, cum = _ov.cum;
         modalEstBarIdx = _ov.estBarIdx;
+        modalTip = _ov.tipLines;
+        modalLastIdx = arr.length - 1;
         const lastCum = cum.length ? cum[cum.length - 1] : 0;
         const cumColor = lastCum >= 0 ? colorPos : colorNeg;
         combined = [
@@ -398,10 +413,14 @@ function openTrendModal(key, title) {
             plugins: {
                 legend:  { display: false },
                 tooltip: { enabled: true, mode: combined ? 'index' : 'nearest', intersect: false,
-                    callbacks: modalEstBarIdx >= 0 ? { label(ctx) {
+                    callbacks: (modalEstBarIdx >= 0 || modalTip) ? { label(ctx) {
                         const v = fmtUsd(ctx.parsed.y);
                         const isEst = ctx.dataIndex === modalEstBarIdx && ctx.dataset.label === 'Day Change';
                         return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                    },
+                    afterBody(items) {
+                        const i = items && items[0] ? items[0].dataIndex : -1;
+                        return (modalTip && i === modalLastIdx) ? [''].concat(modalTip) : [];
                     } } : undefined },
             },
             scales: modalScales,
@@ -609,6 +628,50 @@ function effectiveSummary(base) {
   return Object.assign({}, base, state.latestSummary);
 }
 
+// ── 2026-10-09, user-directed: "Today's change" = account VALUE change
+// (value now minus the previous snapshot) -- the broker's own day change only
+// covers shares still held at the close, so it misses the move on shares sold
+// during the day. Deposits/withdrawals are not separated (reconciled later
+// from the transaction files); the leftover shows as a small "Δ" next to the
+// number and as the last bullet of its tooltip. Entries without
+// value_change_dollar (filtered category aggregates, live grid re-pricing)
+// fall back to the old today_gain_dollar. The P&L trend chart keeps using
+// today_gain_dollar (profit), not this.
+function todayChange(e) {
+  const has = e && e.value_change_dollar != null;
+  return {
+    has,
+    val:  has ? Number(e.value_change_dollar) : Number((e && e.today_gain_dollar) || 0),
+    pct:  has ? (e.value_change_pct != null ? Number(e.value_change_pct) : null)
+              : (e && e.today_gain_pct != null ? Number(e.today_gain_pct) : null),
+    diff: has && e.flow_diff_dollar != null ? Number(e.flow_diff_dollar) : null,
+  };
+}
+function _sgnUsd(v) { return (v >= 0 ? '+' : '-') + fmtUsd(Math.abs(v)); }
+function todayDiffHtml(e) {
+  const t = todayChange(e);
+  if (!t.has || t.diff == null || Math.abs(t.diff) < 0.5) return '';
+  const lbl = e.txn_loaded ? 'unexplained' : 'trades/cash, txns pending';
+  return ` <span style="font-size:10px; font-weight:400; color:#777;" title="${escapeHtml(todayTip(e))}">Δ ${_sgnUsd(t.diff)} ${lbl}</span>`;
+}
+function todayTip(e) {
+  const t = todayChange(e);
+  if (!t.has) return "Today's gain from the broker's day change (previous snapshot not available).";
+  const est = Number(e.today_gain_estimate_dollar || 0) !== 0 ? ' (estimate)' : '';
+  const L = ["Today's change = account value now − previous snapshot: " + _sgnUsd(t.val)];
+  L.push('• Day gain on shares still held: ' + _sgnUsd(Number(e.held_gain_dollar || 0)));
+  L.push('• Gain/loss on shares sold today: ' + _sgnUsd(Number(e.sold_move_dollar || 0)) + est);
+  L.push('• Dividends / interest: ' + _sgnUsd(Number(e.div_int_dollar || 0)));
+  if (e.txn_loaded) {
+    L.push('• Not explained (deposits, withdrawals, fees, price gaps): ' + _sgnUsd(Number(t.diff || 0)));
+    L.push('Transactions loaded through ' + (e.txn_through || '?') + '.');
+  } else {
+    L.push('• Trades and cash flow not separated yet: ' + _sgnUsd(Number(t.diff || 0)));
+    L.push('Transactions are loaded only through ' + (e.txn_through || '?') + ' — load the latest file to split this.');
+  }
+  return L.join('\n');
+}
+
 function renderKpiTiles(data) {
   // Render KPI tiles from a data object that may be the global summary or a by_account entry.
   // Both have the same shape: market_value, today_gain_dollar, today_gain_pct, ytd_gain_dollar, mtd_gain_dollar, cost_basis, positions.
@@ -629,7 +692,8 @@ function renderKpiTiles(data) {
   };
 
   const mv  = data.market_value      || 0;
-  const tg  = data.today_gain_dollar || 0;
+  const _tc = todayChange(data);
+  const tg  = _tc.val;
   const cb  = data.cost_basis        || 0;
   const ytd = data.ytd_gain_dollar != null ? Number(data.ytd_gain_dollar) : null;
   const mtd = data.mtd_gain_dollar != null ? Number(data.mtd_gain_dollar) : null;
@@ -663,8 +727,8 @@ function renderKpiTiles(data) {
 
   safeSetHtml('kpiToday', escapeHtml((tg >= 0 ? '+' : '') + fmtUsd(tg)) + tgEstMark);
   safeClass('kpiToday', 'kpi-value ' + gainClass(tg));
-  safeClass('kpiTodayPct', 'kpi-sub ' + gainClass(data.today_gain_pct));
-  safeSet('kpiTodayPct', data.today_gain_pct != null ? fmtPct(data.today_gain_pct) : '');
+  safeClass('kpiTodayPct', 'kpi-sub ' + gainClass(_tc.pct));
+  safeSet('kpiTodayPct', _tc.pct != null ? fmtPct(_tc.pct) : '');
 
   // Day Change: Schwab-style day change (currently held positions only,
   // excludes realized P&L from today's sales). Will equal Today's Gain
@@ -694,8 +758,9 @@ function renderKpiTiles(data) {
   }
   const ovTG = $('ovTodayGain');
   if (ovTG) {
-    ovTG.innerHTML = escapeHtml((tg >= 0 ? '+' : '') + fmtUsd(tg)) + tgEstMark;
+    ovTG.innerHTML = escapeHtml((tg >= 0 ? '+' : '') + fmtUsd(tg)) + tgEstMark + todayDiffHtml(data);
     ovTG.className   = gainClass(tg);
+    ovTG.title       = todayTip(data);
   }
   // Realized Today reuses `rt` computed above (data.realized_today_dollar).
   const ovR = $('ovRealized');
@@ -821,8 +886,26 @@ function getEffectiveSummaryEntry() {
         acc.cost_basis            += Number(a.cost_basis            || 0);
         acc.cash_value            += Number(a.cash_value            || 0);
         acc.positions             += Number(a.positions             || 0);
+        // Today's change (value change) pieces -- null if any account lacks them
+        if (a.value_change_dollar == null) acc._vcMissing = true;
+        acc.value_change_dollar   += Number(a.value_change_dollar   || 0);
+        acc.prev_total_value      += Number(a.prev_total_value      || 0);
+        acc.held_gain_dollar      += Number(a.held_gain_dollar      || 0);
+        acc.sold_move_dollar      += Number(a.sold_move_dollar      || 0);
+        acc.div_int_dollar        += Number(a.div_int_dollar        || 0);
+        acc.flow_diff_dollar      += Number(a.flow_diff_dollar      || 0);
+        if (!a.txn_loaded) acc.txn_loaded = false;
+        if (a.txn_through && (!acc.txn_through || a.txn_through < acc.txn_through)) acc.txn_through = a.txn_through;
         return acc;
       }, {
+        value_change_dollar: 0,
+        prev_total_value: 0,
+        held_gain_dollar: 0,
+        sold_move_dollar: 0,
+        div_int_dollar: 0,
+        flow_diff_dollar: 0,
+        txn_loaded: true,
+        txn_through: null,
         market_value: 0,
         today_gain_dollar: 0,
         day_change_dollar: 0,
@@ -839,6 +922,11 @@ function getEffectiveSummaryEntry() {
       // Recompute today_gain_pct from aggregated values (avoid averaging percentages incorrectly)
       const denom = agg.market_value - agg.today_gain_dollar;
       agg.today_gain_pct = denom ? (agg.today_gain_dollar / denom * 100) : null;
+      if (agg._vcMissing) {
+        agg.value_change_dollar = null;   // fall back to profit-style number
+      } else {
+        agg.value_change_pct = agg.prev_total_value ? (agg.value_change_dollar / agg.prev_total_value * 100) : null;
+      }
 
       return agg;
     }
@@ -906,8 +994,9 @@ function renderByAccountTable(s) {
         const ytdPct = a.ytd_gain_pct != null ? Number(a.ytd_gain_pct) : null;
         const mtdA = a.mtd_gain_dollar != null ? Number(a.mtd_gain_dollar) : null;
         const mtdPct = a.mtd_gain_pct != null ? Number(a.mtd_gain_pct) : null;
-        const tdA = Number(a.today_gain_dollar || 0);
-        const tdPct = Number(a.today_gain_pct || 0);
+        const _tcA = todayChange(a);
+        const tdA = _tcA.val;
+        const tdPct = _tcA.pct != null ? _tcA.pct : 0;
         const mv = Number(a.market_value || 0);
         const cash = Number(a.cash_value || 0);
         const tot = mv + cash;
@@ -921,7 +1010,7 @@ function renderByAccountTable(s) {
           <td style="padding:4px 8px; text-align:right;">${fmtUsd(tot)}${tpPct}</td>
           <td style="padding:4px 8px; text-align:right;">${fmtUsd(cash)}${cashPct}</td>
           <td style="padding:4px 8px; text-align:right;">${fmtUsd(mv)}${mvPct}</td>
-          <td style="padding:4px 8px; text-align:right;" class="${gainClass(tdA)}">${tdA >= 0 ? '+$' : '-$'}${Math.abs(tdA).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(tdA)}" title="${escapeHtml(todayTip(a))}">${tdA >= 0 ? '+$' : '-$'}${Math.abs(tdA).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${(() => { const dh = todayDiffHtml(a); return dh ? '<div style="font-size:10px; font-weight:400; color:#777;">Δ ' + _sgnUsd(_tcA.diff) + (a.txn_loaded ? ' unexplained' : ' trades/cash') + '</div>' : ''; })()}</td>
           <td style="padding:4px 8px; text-align:right;" class="${gainClass(tdPct)}">${tdPct != null ? fmtPct(tdPct) : ''}</td>
           <td style="padding:4px 8px; text-align:right;" class="${gainClass(gainA)}">${gainA >= 0 ? '+' : ''}${fmtUsd(gainA)}</td>
           <td style="padding:4px 8px; text-align:right;" class="${gainClass(gainPct)}">${gainPct != null ? fmtPct(gainPct) : ''}</td>
