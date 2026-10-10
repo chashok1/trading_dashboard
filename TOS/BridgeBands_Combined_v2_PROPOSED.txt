@@ -1,0 +1,87 @@
+####   BridgeBands_PG v2 — PROPOSED (not deployed). 2026-10-09 re-calibration.
+####   See docs/audit/tos_rr_realignment_2026-10.md for the evidence.
+####
+####   What changed vs BridgeBands_Combined.txt (the deployed Family-E build):
+####     1. Re-fit on the CORRECT day alignment: RR snapshot_date S is loaded on S+1
+####        pre-open and describes the close of S, so it pairs with the TOS close
+####        of S (the old fit paired it with the close one day EARLIER).
+####     2. Fit against the HV proxy this script really computes
+####        (hvAnn = sdev/close*Sqrt(252)). The old fit used TOS's own
+####        historical_vol column, which this script never reads -> the IV/HV
+####        coefficient was fitted on a different variable (its sign even flipped).
+####     3. VIX coupling REMOVED (c_vix ~ 0 out-of-sample; no close("VIX") dependency).
+####     4. Vol-LEVEL width law now applies to BOTH bands (was BOTTOM only).
+####     5. Same momentum EMAs (8/26) for both bands; sigma = pure realized (w=1);
+####        per-ticker k overrides (VIX/ORCL/NFLX) REMOVED (did not generalize).
+####
+#### USAGE (one plot per custom column):
+####   TOP column (a_bb_top):       keep `plot bridge_band_top`, comment out `plot bridge_band_bottom`.
+####   BOTTOM column (a_bb_bottom): keep `plot bridge_band_bottom`, comment out `plot bridge_band_top`.
+####
+####   TOP    = topMid + topK * topIvHvMult * topVolMult * topLevelMult * sigma
+####   BOTTOM = botMid - botK * botIvHvMult * botVolMult * botLevelMult * sigma
+
+# ============================ [SHARED] inputs ================================
+input length = 10;          # EMA/StDev backbone window (n)
+input volFastLen = 3;       # RelVol fast window
+input volSlowLen = 15;      # RelVol slow window
+input momFastLen = 8;       # momentum EMA fast window (both bands)
+input momSlowLen = 26;      # momentum EMA slow window (both bands)
+input volLevelLen = 20;     # vol-level rolling-average window
+
+# ============================ [TOP] inputs ===================================
+input topCTilt = 0.31;      # volume-confirmed midpoint tilt
+input topCMom = 0.24;       # trend-momentum midpoint tilt
+input topCVolWidth = -0.16; # width: RelVol multiplier
+input topCIvHvWidth = 0.51; # width: IV/HV multiplier
+input topCVolLevel = -0.27; # width: vol-LEVEL multiplier
+input topK = 1.48;          # width scale
+
+# ============================ [BOTTOM] inputs ================================
+input botCTilt = 0.28;
+input botCMom = 0.27;
+input botCVolWidth = 0.09;
+input botCIvHvWidth = 0.58;
+input botCVolLevel = -0.39;
+input botK = 1.69;
+
+# ============================ [SHARED] computation ===========================
+def sampleFix = Sqrt(length / (length - 1.0));
+def ema = ExpAverage(close, length);
+def sdev = StDev(close, length) * sampleFix;     # realized sigma (w = 1: no IV blend)
+
+# volume leg: RelVol clamped [0.5, 2.0], neutral (1) when volume missing
+def volFast = Average(volume, volFastLen);
+def volSlow = Average(volume, volSlowLen);
+def relVolRaw = if IsNaN(volSlow) or volSlow == 0 then 1 else volFast / volSlow;
+def relVol = Min(2.0, Max(0.5, relVolRaw));
+
+# volatility leg: IV/HV (HV = this script's own close-derived proxy)
+def iv = imp_volatility();
+def hvAnn = if close == 0 then 0 else sdev / close * Sqrt(252);
+def ivHvRaw = if IsNaN(iv) or hvAnn == 0 then 1 else iv / hvAnn;
+def ivHv = Min(2.0, Max(0.5, ivHvRaw));
+
+# vol-LEVEL: own IV (fallback HV proxy) vs its own rolling average
+def vLevelRaw = if IsNaN(iv) then hvAnn else iv;
+def vLevelAvg = Average(vLevelRaw, volLevelLen);
+def vLevelRatioRaw = if vLevelAvg == 0 then 1 else vLevelRaw / vLevelAvg;
+def vLevelRatio = Min(2.0, Max(0.5, vLevelRatioRaw));
+
+def momentum = ExpAverage(close, momFastLen) - ExpAverage(close, momSlowLen);
+
+# ============================ [TOP] band =====================================
+def topMid = ema + (topCTilt * relVol * (close - ema)) + (topCMom * momentum);
+def topVolMult = Min(2.0, Max(0.5, 1 + (topCVolWidth * (relVol - 1))));
+def topIvHvMult = Min(2.0, Max(0.5, 1 + (topCIvHvWidth * (ivHv - 1))));
+def topLevelMult = Min(2.0, Max(0.5, 1 + (topCVolLevel * (vLevelRatio - 1))));
+
+plot bridge_band_top = topMid + (topK * topVolMult * topIvHvMult * topLevelMult * sdev);
+
+# ============================ [BOTTOM] band ==================================
+def botMid = ema + (botCTilt * relVol * (close - ema)) + (botCMom * momentum);
+def botVolMult = Min(2.0, Max(0.5, 1 + (botCVolWidth * (relVol - 1))));
+def botIvHvMult = Min(2.0, Max(0.5, 1 + (botCIvHvWidth * (ivHv - 1))));
+def botLevelMult = Min(2.0, Max(0.5, 1 + (botCVolLevel * (vLevelRatio - 1))));
+
+plot bridge_band_bottom = botMid - (botK * botVolMult * botIvHvMult * botLevelMult * sdev);
