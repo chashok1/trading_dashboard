@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from etl._derive_common import position_ceiling
+from etl._derive_common import position_ceiling, _ps_drop_verdicts
 
 log = logging.getLogger("etl.derive_actionable")
 
@@ -817,6 +817,24 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     for r in all_actions:
         by_sym.setdefault(r["tos_symbol"], []).append(dict(r))
 
+    # 2026-10-09, user rule: a held PS drop is evaluated HERE (read time, every
+    # derive) not when the row was written, because RR/price/Trade line change
+    # daily while the stored REMOVE row is frozen at the PS snapshot date.
+    # Default HOLD (PS steps aside); stays REMOVE only if RR not Bullish, price
+    # below Trade line, or >= ps_drop_sell_pct below its close at the drop.
+    _ps_drops: dict = {}
+    for _sym, _acts in by_sym.items():
+        for _a in _acts:
+            if (_a["source_code"] == "PS" and _a["action"] == "REMOVE"
+                    and _a["held_today"]
+                    and (_a["action_reason"] or "").startswith("dropped from list")):
+                _ps_drops.setdefault(_a["as_of_date"], []).append((_sym, _a))
+    for _snap, _items in _ps_drops.items():
+        _verd = _ps_drop_verdicts(session, as_of_date, _snap, [x[0] for x in _items])
+        for _sym, _a in _items:
+            if _sym in _verd:
+                _a["action"], _a["action_reason"] = _verd[_sym]
+
     # 2026-09-21, user-directed: SSS and SSSCHG are not two independently-
     # weighted signals -- they're two extracts of the SAME near-daily SSS
     # feed (SSSCHG = daily added/removed-only categorization; SSS = the
@@ -1440,11 +1458,18 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # today's price. Always populated (not just past a threshold) -- the
     # UI shows it next to the drop message on every REMOVE entry and
     # additionally flags it (drop_conflict=true) only when the move is UP
-    # past +5%, since a down move after a drop means the source's call was
+    # past +4% (ref_settings premature_drop_up_pct), since a down move after a drop means the source's call was
     # right, not a conflict. No new column -- folded into the existing
     # source_actions JSONB per entry, read by web/actionable.js's
     # _srcReasonsHtml (grid Sources column) and _actpopDriverBullets
     # (Action popup driver bullets).
+    # 2026-10-09: up-move threshold now a setting (was hard-coded 5.0); 4 default.
+    try:
+        _v = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = 'premature_drop_up_pct'")).scalar()
+        _drop_up_pct = float(_v) if _v is not None else 4.0
+    except Exception:
+        _drop_up_pct = 4.0
     _drop_pairs = set()
     for b in batch:
         for a in json.loads(b["srca"] or "[]"):
@@ -1499,7 +1524,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                         # recently ticked up for 3 days is still net
                         # negative since the call; a small bounce inside a
                         # bigger downtrend doesn't make the sell look wrong.
-                        a["drop_conflict"] = pct > 0 and ((pct > 5.0) or streak)
+                        a["drop_conflict"] = pct > 0 and ((pct > _drop_up_pct) or streak)
                         changed = True
             if changed:
                 b["srca"] = json.dumps(srca_list)

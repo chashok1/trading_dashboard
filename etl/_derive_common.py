@@ -253,3 +253,60 @@ def _wrap(target: str, fn):
                            error_msg=str(e)[:500])
             raise
     return runner
+
+
+def _setting_num(session: Session, name: str, default: float) -> float:
+    """Numeric ref_settings value, or `default` if missing/non-numeric."""
+    try:
+        v = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = :n"),
+            {"n": name}).scalar()
+        return float(v) if v is not None else default
+    except Exception:
+        return default
+
+
+def _ps_drop_verdicts(session: Session, as_of_date: date, drop_snap: date,
+                      syms: list[str]) -> dict[str, tuple[str, str]]:
+    """Held symbols that dropped off PS -> (action, reason).
+
+    2026-10-09, user rule: a PS drop alone is NOT a sell. Default is HOLD
+    (PS steps aside; Technical and the other sources decide). It stays
+    REMOVE (SELL ALL) only if ANY of: RR is not Bullish; price is below the
+    Trade line; price is >= ps_drop_sell_pct (default 4) below its close on
+    the PS snapshot date. Missing RR or price -> keep today's REMOVE (we
+    can't confirm the trend, so don't soften the signal)."""
+    if not syms:
+        return {}
+    sell_pct = _setting_num(session, "ps_drop_sell_pct", 4.0)
+    rows = session.execute(text("""
+        SELECT t.tos_symbol, r.outlook,
+               COALESCE(q.last_price, t.last_price) AS px, t.a_trade_value,
+               (SELECT h.last_price FROM hist_td h
+                 WHERE h.tos_symbol = t.tos_symbol AND h.export_date <= :dd
+                   AND h.last_price IS NOT NULL
+                 ORDER BY h.export_date DESC, h.sequence DESC LIMIT 1) AS px_drop
+        FROM drv_technicals t
+        LEFT JOIN drv_quote q ON q.tos_symbol = t.tos_symbol AND q.as_of_date = t.as_of_date
+        LEFT JOIN drv_rr r    ON r.tos_symbol = t.tos_symbol AND r.as_of_date = t.as_of_date
+        WHERE t.as_of_date = :d AND t.tos_symbol = ANY(:syms)
+    """), {"d": as_of_date, "dd": drop_snap, "syms": list(syms)}).fetchall()
+    out: dict[str, tuple[str, str]] = {}
+    for sym, outlook, px, trade, px_drop in rows:
+        if px is None or not outlook:
+            continue                      # can't confirm trend -> keep REMOVE
+        px = float(px)
+        pct = ((px / float(px_drop) - 1) * 100) if px_drop else None
+        why = []
+        if "bull" not in str(outlook).lower():
+            why.append(f"RR is {outlook}")
+        if trade is not None and px < float(trade):
+            why.append("price below Trade line")
+        if pct is not None and pct <= -sell_pct:
+            why.append(f"price {pct:+.1f}% since drop")
+        if why:
+            out[sym] = ("REMOVE", "dropped from list; " + "; ".join(why))
+        else:
+            mv = f", price {pct:+.1f}% since drop" if pct is not None else ""
+            out[sym] = ("HOLD", f"dropped from PS list but RR Bullish{mv} — ignored")
+    return out

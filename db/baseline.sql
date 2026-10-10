@@ -9011,3 +9011,14 @@ ON CONFLICT (gauge_key) DO UPDATE SET notes = EXCLUDED.notes;
 
 DELETE FROM ref_settings WHERE setting_name IN
     ('rd_quad2_t10yie_bp', 'rd_quad2_wti_pct', 'rd_quad2_dgs10_bp');
+
+-- 2026-10-09, user-directed: PS-drop rule thresholds (percent).
+-- ps_drop_sell_pct: a held symbol dropped from PS is SELL ALL only if price is
+-- this far below its close on the PS snapshot date (or RR not Bullish, or
+-- price below Trade line); otherwise PS stays silent (HOLD). Backtest: 4 best.
+-- premature_drop_up_pct: green "premature drop" pill when price is this far UP
+-- since a source dropped the symbol (was hard-coded 5).
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('ps_drop_sell_pct',     '4', 'PS drop: SELL ALL if price is this % below its close on the PS snapshot date'),
+    ('premature_drop_up_pct', '4', 'Premature-drop pill when price is up more than this % since the source dropped the symbol')
+ON CONFLICT (setting_name) DO NOTHING;

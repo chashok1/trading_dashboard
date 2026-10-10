@@ -841,3 +841,15 @@ verified correct in isolation (direct function calls — see
 historical or live-tested date. This is a config fact, not a bug: the
 moment a REMOVE/REDUCE action-type rule group is added and fires on a
 `low_confidence` symbol, both parts activate exactly as designed.
+
+## PS drop rule (2026-10-09)
+
+A held symbol that drops off PS is no longer an automatic SELL ALL. It is evaluated at read
+time in `derive_actionable.py` (every derive) via `_derive_common._ps_drop_verdicts`:
+default **HOLD** (PS steps aside; Technical and the other sources decide). It stays
+**REMOVE** only if ANY of: RR outlook is not bullish (any label containing "bull"); price is
+below the Trade line (`drv_technicals.a_trade_value`); or price is >= `ref_settings.ps_drop_sell_pct`
+(default 4) below its close on the PS snapshot date. Missing RR or price keeps REMOVE.
+Not-held PS drops are unchanged. The green "premature drop" pill threshold is
+`ref_settings.premature_drop_up_pct` (default 4, was hard-coded 5). The PS drop row only
+lives until the next weekly PS snapshot. Tests: `tests/test_ps_drop_verdicts.py`.
