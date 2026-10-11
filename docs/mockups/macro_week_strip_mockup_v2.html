@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Macro Week Strip v2 — your data only</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f5; --card: #ffffff; --border: #e5e5e2;
+    --ink: #1c1917; --ink2: #57534e; --muted: #a8a29e;
+    --bull: #0d9488; --bear: #c2410c; --neu: #6b7280;
+    --bull-bg: #e0f2f0; --bear-bg: #fbe9e1; --neu-bg: #f3f4f6;
+    --warn: #b45309; --warn-bg: #fdf3e3; --accent: #1d4ed8;
+    --src: #7c3aed; --src-bg: #f3effd;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; }
+  h1 { font-size: 16px; margin: 0 0 2px; font-weight: 600; }
+  .sub { color: var(--ink2); font-size: 12px; }
+  .note { font-size: 12px; color: var(--ink2); }
+  code { font-size: 11px; }
+
+  .banner { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+            background: var(--src-bg); border: 1px solid #e4dafb; border-radius: 6px; padding: 6px 10px; font-size: 12px; }
+  .banner b { color: var(--src); }
+  .toggle { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; font-weight: 600; color: var(--src); }
+
+  .ghost { border: 1px dashed var(--border); border-radius: 6px; background: #fbfbfa;
+           color: var(--muted); padding: 8px 10px; font-size: 12px; }
+  .cockpit-band { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 4px; min-width: 0; }
+  .regime-old { color: var(--ink2); font-size: 12px; padding: 2px 4px 4px; }
+
+  /* strip */
+  .mw-strip { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 6px;
+              padding: 4px; border-top: 1px solid var(--border); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .mw-lbl { font-weight: 700; font-size: 11px; letter-spacing: .06em; color: var(--ink2); text-transform: uppercase;
+            margin: 2px 2px 0 0; }
+  .item { display: inline-flex; flex-direction: column; align-items: flex-start; }
+  .chip { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px;
+          border-radius: 999px; border: 1px solid var(--border); background: var(--card); white-space: nowrap; }
+  .chip.bull { background: var(--bull-bg); color: var(--bull); border-color: transparent; }
+  .chip.bear { background: var(--bear-bg); color: var(--bear); border-color: transparent; }
+  .chip.neu  { background: var(--neu-bg);  color: var(--neu);  border-color: transparent; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; font-weight: 600; }
+  .chip b { font-weight: 600; }
+  .q { display: inline-block; min-width: 18px; text-align: center; border-radius: 3px; font-weight: 700; font-size: 11px; padding: 0 3px; }
+  .q2 { background: #dcefd9; color: #2a5a3d; } .q3 { background: #fbe7c6; color: #8a5a10; }
+  .fit { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+  .fit button { font: inherit; font-size: 12px; cursor: pointer; border-radius: 999px; padding: 1px 9px;
+                border: 1px solid var(--border); background: var(--card); color: var(--ink); }
+  .fit button.against { border-color: var(--bear); color: var(--bear); font-weight: 600; }
+  .fit button:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .chip .tip { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; width: 290px;
+               white-space: normal; background: #1c1917; color: #fafaf9; font-size: 12px; line-height: 1.45;
+               padding: 8px 10px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 400; }
+  .chip:hover .tip, .chip:focus .tip { display: block; }
+  .tip code { color: #c4b5fd; }
+
+  /* source labels (hidden until toggle) */
+  .srcl { display: none; font: 10px/1.3 ui-monospace, Consolas, monospace; color: var(--src);
+          background: var(--src-bg); border-radius: 3px; padding: 1px 4px; margin-top: 2px; white-space: nowrap; }
+  body.show-src .srcl { display: inline-block; }
+  th .srcl { display: none; } body.show-src th .srcl { display: block; margin-top: 2px; text-transform: none; letter-spacing: 0; }
+
+  /* panel */
+  .mw-panel { border-top: 1px solid var(--border); padding: 6px 4px 4px; display: none; }
+  .mw-panel.open { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 10px; }
+  @media (max-width: 860px) { .mw-panel.open { grid-template-columns: 1fr; } .fit { margin-left: 0; } }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 600; color: var(--ink2); font-size: 11px; text-transform: uppercase;
+       letter-spacing: .04em; border-bottom: 1px solid var(--border); padding: 3px 6px; vertical-align: bottom; }
+  td { padding: 3px 6px; border-bottom: 1px solid #f0f0ee; white-space: nowrap; }
+  th.r, td.r { text-align: right; }
+  tr.grp td { color: var(--ink2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; background: #fafaf9; }
+  .sym { font-weight: 600; }
+  .ok { color: var(--bull); font-weight: 600; } .bad { color: var(--bear); font-weight: 600; } .mid { color: var(--warn); font-weight: 600; }
+  .he { font-weight: 600; } .he .u, .he .d, .he .n { letter-spacing: 2px; } .he .u { color: var(--bull); } .he .d { color: var(--bear); } .he .n { color: var(--muted); }
+  .rng { display: inline-block; width: 70px; height: 6px; background: var(--neu-bg); border-radius: 3px; position: relative; vertical-align: middle; margin-right: 4px; }
+  .rng i { position: absolute; top: -2px; width: 3px; height: 10px; background: var(--ink); border-radius: 1px; }
+  .rng.hot { background: linear-gradient(90deg, var(--neu-bg) 85%, var(--bear-bg) 85%); }
+  .cal h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); }
+  .day { display: grid; grid-template-columns: 54px 1fr; gap: 6px; padding: 3px 0; border-bottom: 1px solid #f0f0ee; font-size: 12px; }
+  .day .d { font-weight: 700; color: var(--ink2); }
+  .hi { color: var(--warn); font-weight: 600; }
+
+  .explain { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .explain h2 { font-size: 13px; margin: 10px 0 6px; } .explain h2:first-child { margin-top: 0; }
+  .explain td, .explain th { white-space: normal; vertical-align: top; }
+  .explain ul { margin: 4px 0 0; padding-left: 18px; }
+  .gap { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Macro Week Strip v2: built only from your database</h1>
+    <div class="sub">Nothing on this page comes from the Hedgeye PDF. Every value maps to one of your tables.</div>
+  </header>
+
+  <div class="banner">
+    <span><b>All numbers are illustrative.</b> I can't query your Postgres from here, so values and holdings are made up to show the layout.
+      Real values fill in from the tables shown when you turn on the source labels.</span>
+    <label class="toggle"><input type="checkbox" id="srcToggle"> Show data sources</label>
+  </div>
+
+  <div class="ghost">TOPBAR + MINI-TAPE (unchanged)</div>
+  <div class="ghost">① RISK DIAL (unchanged)</div>
+
+  <section class="cockpit-band" aria-label="Regime">
+    <div class="regime-old">REGIME line, opex and earnings (existing content, unchanged)…</div>
+
+    <div class="mw-strip" role="group" aria-label="Macro week strip">
+      <span class="mw-lbl">This week</span>
+
+      <span class="item"><span class="chip" tabindex="0">Quad <span class="q q2">M2</span><span class="q q2">Q2</span><span class="q q3">G3</span>
+        <span class="tip">Current month, quarter and global quad: the highest of <code>quad1_pct…quad4_pct</code> for each period_type. You maintain these in /ref.</span></span>
+        <span class="srcl">ref_quad_periods</span></span>
+
+      <span class="item"><span class="chip bull" tabindex="0">DXY ▲ <b>92%</b> rng
+        <span class="tip">Last price's position between LRR and TRR, plus the risk-range outlook (Bullish).<br>▲/▼ = direction of the 5-day change.</span></span>
+        <span class="srcl">drv_rr($DXY) · drv_quote</span></span>
+
+      <span class="item"><span class="chip bear" tabindex="0">10Y <b>5.3%</b> ▲ &gt;5%
+        <span class="tip">TNX:CGI ÷ 10. Turns red above your 5% gauge level (the same threshold the Risk Dial uses).</span></span>
+        <span class="srcl">drv_quote(TNX:CGI) · gauge seed 50.00</span></span>
+
+      <span class="item"><span class="chip bull" tabindex="0">VIX <b>15</b> calm
+        <span class="tip">The bucket comes from your existing vix_chop / vix_elevated gauge thresholds.</span></span>
+        <span class="srcl">drv_quote(VIX) · ref_risk_gauge</span></span>
+
+      <span class="item"><span class="chip neu" tabindex="0">MOVE <b>101</b> chop
+        <span class="tip">Same bands as your move_chop (100) and move_elevated (120) gauges.</span></span>
+        <span class="srcl">drv_quote(MOVE:GIF) · ref_risk_gauge</span></span>
+
+      <span class="item"><span class="chip warn" tabindex="0">⚑ CPI Wed · exp 0.3%
+        <span class="tip">Next flagged release in the next 7 days, with your <code>expected</code> value (e.g. exp 0.3%). Dates only, no times.</span></span>
+        <span class="srcl">ref_econ_indicator</span></span>
+
+      <span class="fit">
+        <span class="note">Your book:</span>
+        <button type="button" id="b1" aria-expanded="false" aria-controls="mwPanel">5 aligned</button>
+        <button type="button" class="against" id="b2" aria-expanded="false" aria-controls="mwPanel">2 against ▾</button>
+      </span>
+    </div>
+
+    <div class="mw-panel" id="mwPanel">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Holding<span class="srcl">drv_portfolio</span></th>
+            <th class="r">$ held<span class="srcl">qty × drv_quote.last_price</span></th>
+            <th>Quad fit<span class="srcl">drv_macro_score.macronet</span></th>
+            <th>HE outlooks<br><span style="font-weight:400;text-transform:none">RR · CALL · ETF · II</span><span class="srcl">drv_outlooks.rr/call/etf/ii_outlook</span></th>
+            <th>Where in range<span class="srcl">drv_rr.lrr / trr</span></th>
+            <th>Verdict</th>
+          </tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="6">▼ Against: Quad headwind and HE mostly bearish</td></tr>
+            <tr><td class="sym">GLD</td><td class="r">$18,400</td><td class="bad">✗ headwind</td><td class="he" title="RR Bearish · CALL Bearish · ETF Bearish · II —"><span class="d">▼▼▼</span><span class="n">–</span> <span class="bad">3/3 bear</span></td>
+                <td><span class="rng"><i style="left:40%"></i></span>40%</td><td class="bad">▼ against</td></tr>
+            <tr><td class="sym">IWM</td><td class="r">$9,200</td><td class="bad">✗ headwind</td><td class="he" title="RR Bearish · CALL — · ETF Bearish · II —"><span class="d">▼</span><span class="n">–</span><span class="d">▼</span><span class="n">–</span> <span class="bad">2/2 bear</span></td>
+                <td><span class="rng"><i style="left:22%"></i></span>22%</td><td class="bad">▼ against</td></tr>
+
+            <tr class="grp"><td colspan="6">◆ Mixed: Quad and HE disagree, or top of range</td></tr>
+            <tr><td class="sym">XLE</td><td class="r">$12,100</td><td class="ok">✓ tailwind</td><td class="he" title="RR Bearish · CALL Bearish · ETF Bullish · II —"><span class="d">▼▼</span><span class="u">▲</span><span class="n">–</span> <span class="bad">2/3 bear</span></td>
+                <td><span class="rng"><i style="left:55%"></i></span>55%</td><td class="mid">◆ mixed</td></tr>
+            <tr><td class="sym">QQQ</td><td class="r">$31,000</td><td class="ok">✓ tailwind</td><td class="he" title="RR Bullish · CALL Bullish · ETF Bullish · II Bullish"><span class="u">▲▲▲▲</span> <span class="ok">4/4 bull</span></td>
+                <td><span class="rng hot"><i style="left:94%"></i></span>94% ⚠</td><td class="mid">◆ top of range</td></tr>
+
+            <tr class="grp"><td colspan="6">▲ Aligned: Quad tailwind and HE mostly bullish</td></tr>
+            <tr><td class="sym">XLK</td><td class="r">$22,700</td><td class="ok">✓ tailwind</td><td class="he" title="RR Bullish · CALL Bullish · ETF Bullish · II —"><span class="u">▲▲▲</span><span class="n">–</span> <span class="ok">3/3 bull</span></td>
+                <td><span class="rng"><i style="left:68%"></i></span>68%</td><td class="ok">▲ aligned</td></tr>
+            <tr><td class="sym">IBIT</td><td class="r">$8,300</td><td class="ok">✓ tailwind</td><td class="he" title="RR Bullish · CALL — · ETF — · II —"><span class="u">▲</span><span class="n">–––</span> <span class="ok">1/1 bull</span></td>
+                <td><span class="rng"><i style="left:61%"></i></span>61%</td><td class="ok">▲ aligned</td></tr>
+            <tr><td class="sym">XLV</td><td class="r">$6,900</td><td class="ok">✓ tailwind</td><td class="he" title="RR Bullish · CALL Bullish · ETF — · II Bullish"><span class="u">▲▲</span><span class="n">–</span><span class="u">▲</span> <span class="ok">3/3 bull</span></td>
+                <td><span class="rng"><i style="left:48%"></i></span>48%</td><td class="ok">▲ aligned</td></tr>
+          </tbody>
+        </table>
+        <div class="note" style="padding:4px 6px">Sorted against → mixed → aligned, then by $ held. Shows top 7 by default; full list on click.</div>
+      </div>
+
+      <aside class="cal" aria-label="Next 7 days">
+        <h4>Next 7 days <span class="srcl">ref_econ_indicator (+ ref_calendar_event)</span></h4>
+        <div class="day"><span class="d">Tue 10/13</span><span>ADP NFP · Existing Home Sales</span></div>
+        <div class="day"><span class="d">Wed 10/14</span><span class="hi">⚑ CPI MoM · exp 0.3%</span></div>
+        <div class="day"><span class="d">Thu 10/15</span><span>PPI · exp 0.2% · Retail Sales</span></div>
+        <div class="day"><span class="d">Fri 10/16</span><span>—</span></div>
+        <p class="note" style="margin:6px 0 0">"exp" = your <code>expected</code> column. Only rows with <code>show_on_dashboard = 'Y'</code> appear.</p>
+      </aside>
+    </div>
+  </section>
+
+  <div class="ghost">④ FACTOR SCORECARD · ⑤ SHORTLIST · ⑥ HOUSEKEEPING (unchanged)</div>
+
+  <section class="explain">
+    <h2>Verdict rules (per holding)</h2>
+    <table>
+      <thead><tr><th>Check</th><th>Pass when</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>Quad fit</td><td><code>macronet &gt; 0</code> (the quad is a tailwind for this symbol)</td><td><code>drv_macro_score</code></td></tr>
+        <tr><td>HE outlooks</td><td>Most of the available RR / CALL / ETF / II outlooks are Bullish (blanks are skipped)</td><td><code>drv_outlooks</code></td></tr>
+        <tr><td>Range flag</td><td>Price ≥ 85% of LRR→TRR is flagged ⚠ (same cut-off as your existing <code>is_hot</code>)</td><td><code>drv_rr</code> + <code>drv_quote</code></td></tr>
+      </tbody>
+    </table>
+    <ul class="note">
+      <li><b>Aligned</b> = both pass · <b>Against</b> = both fail · <b>Mixed</b> = one fails, or a top-of-range ⚠.</li>
+      <li>Following your cockpit design rule C4, this only flags things. It never issues a buy or sell.</li>
+    </ul>
+
+    <h2>Gaps in your data (honest list)</h2>
+    <ul class="note">
+      <li><span class="gap">No event times:</span> neither <code>ref_econ_indicator</code> nor <code>ref_calendar_event</code> has a time column, so events show by day only.</li>
+      <li><span class="gap">Symbols with no HE coverage</span> (all four outlooks blank) show "––––", and only Quad fit decides the verdict.</li>
+      <li><span class="gap">Not shown:</span> Hedgeye's written commentary and weekly position calls. Those live only in the PDF, as agreed.</li>
+      <li><span class="gap">Not verified:</span> that the MOVE:GIF and VIX rows are fresh every day. Your freshness contract should cover this.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  const panel = document.getElementById('mwPanel');
+  const bs = [document.getElementById('b1'), document.getElementById('b2')];
+  bs.forEach(b => b.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    bs.forEach(x => x.setAttribute('aria-expanded', String(open)));
+    bs[1].textContent = open ? '2 against ▴' : '2 against ▾';
+  }));
+  document.getElementById('srcToggle').addEventListener('change', e =>
+    document.body.classList.toggle('show-src', e.target.checked));
+</script>
+</body>
+</html>

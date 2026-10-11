@@ -3802,3 +3802,50 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 
 /* 2026-09-30: green background on a 1W/4W cell whose change is positive. */
 .mr-tr.mr-tr-pos { background: var(--mr-bull-bg); color: var(--mr-bull); border-radius: 4px; padding: 1px 5px; display: inline-block; }
+
+/* TASK_148 -- Macro Week Strip, top of the centre column (.cat-col).
+   A card of pill chips; colour = state (--mr-* CVD-safe pair), and every state
+   also carries a glyph. Checklist is [hidden] (0px) until the Book chip is clicked. */
+.mw-strip[hidden], .mw-list[hidden] { display: none !important; }
+.mw-card { padding: 6px 10px; }
+.mw-card:has(.mw-strip[hidden]) { display: none; }
+.mw-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 11.5px; line-height: 20px; white-space: nowrap; }
+.mw-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3, #6b7280); margin-right: 2px; }
+.mw-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin: 0; background: var(--mr-neu-bg); border: 1px solid var(--border, #e5e5e2);
+  border-radius: 999px; font: inherit; color: var(--text-1, #1c1917); cursor: help; font-variant-numeric: tabular-nums; }
+.mw-chip b { font-weight: 700; }
+.mw-book { cursor: pointer; background: #fff; border-color: var(--text-3, #6b7280); font-weight: 600; }
+.mw-book:hover { background: var(--mr-neu-bg); }
+.mw-dim { color: var(--text-3, #6b7280); }
+.mw-chip.mw-bear { color: var(--mr-bear); background: var(--mr-bear-bg); border-color: var(--mr-bear); }
+.mw-chip.mw-bull { color: var(--mr-bull); background: var(--mr-bull-bg); border-color: var(--mr-bull); }
+.mw-he-tag { font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 3px; color: #fff; line-height: 15px; }
+.mw-he-bull { background: var(--mr-bull); } .mw-he-bear { background: var(--mr-bear); }
+.mw-q { display: inline-block; padding: 0 5px; margin-left: 2px; border-radius: 4px; color: #fff; font-weight: 700; font-size: 11px; line-height: 17px; }
+.mw-q1 { background: #2f9e2f; } .mw-q2 { background: #1f7af2; } .mw-q3 { background: #e07c1a; } .mw-q4 { background: #d83a3a; } .mw-qx { background: #9ca3af; }
+.mw-chip.mw-quad { background: #e0ecff; border-color: #93b4f0; color: #1e3a8a; }
+.mw-chip.mw-warn { color: var(--mr-warn); background: var(--mr-warn-bg); border-color: var(--mr-warn); }
+.mw-chip.mw-ev { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+.mw-bear { color: var(--mr-bear); }
+.mw-warn { color: var(--mr-warn); }
+.mw-bull { color: var(--mr-bull); }
+.mw-cnt-up { color: var(--mr-bull); font-weight: 700; }
+.mw-cnt-dn { color: var(--mr-bear); font-weight: 700; }
+/* aligned = green, against = red, mixed = slate (neutral), stretched = amber. */
+.mw-cnt-hot { color: #b7791f; font-weight: 700; }
+.mw-sep { color: var(--text-3, #6b7280); }
+.mw-cnt-mx { color: #475569; font-weight: 700; }
+.mw-zero { opacity: .4; }
+.mw-list { position: fixed; z-index: 900; box-sizing: border-box; max-height: 70vh; overflow: auto;
+  background: #fff; border: 1px solid var(--border, #e5e5e2); border-radius: 6px;
+  padding: 6px 8px; font-size: 10.5px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+.mw-list-grid { display: flex; gap: 12px; align-items: flex-start; }
+.mw-list-main { flex: 1 1 auto; min-width: 0; }
+.mw-list-side { flex: 0 0 180px; border-left: 1px solid var(--border, #e5e5e2); padding-left: 8px; }
+.mw-side-h { font-weight: 700; margin-bottom: 4px; }
+.mw-tbl { width: 100%; border-collapse: collapse; }
+.mw-tbl th { text-align: left; font-size: 9px; text-transform: uppercase; color: var(--text-3, #6b7280); padding: 2px 4px; }
+.mw-tbl td { padding: 2px 4px; border-top: 1px solid #f1f5f9; white-space: nowrap; }
+.mw-num { text-align: right; font-variant-numeric: tabular-nums; }
+.mw-he { letter-spacing: 1px; }
+.mw-more { margin-top: 4px; padding: 0; border: 0; background: none; color: var(--accent, #2563eb); cursor: pointer; font-size: 10.5px; }

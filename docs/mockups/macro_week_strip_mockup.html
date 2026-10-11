@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Macro Week Strip — mockup</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f5; --card: #ffffff; --border: #e5e5e2;
+    --ink: #1c1917; --ink2: #57534e; --muted: #a8a29e;
+    --bull: #0d9488; --bear: #c2410c; --neu: #6b7280;      /* app's CVD-safe .mr-* pair */
+    --bull-bg: #e0f2f0; --bear-bg: #fbe9e1; --neu-bg: #f3f4f6;
+    --warn: #b45309; --warn-bg: #fdf3e3; --accent: #1d4ed8;
+    --sample: #7c3aed; --sample-bg: #f3effd;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; }
+  h1 { font-size: 16px; margin: 0 0 2px; font-weight: 600; }
+  .sub { color: var(--ink2); font-size: 12px; }
+  .note { font-size: 12px; color: var(--ink2); }
+  .tag-sample { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em;
+                color: var(--sample); background: var(--sample-bg); border-radius: 3px; padding: 0 4px; }
+
+  /* ---- fake surrounding dashboard (greyed so the new piece stands out) ---- */
+  .ghost { border: 1px dashed var(--border); border-radius: 6px; background: #fbfbfa;
+           color: var(--muted); padding: 8px 10px; font-size: 12px; }
+  .cockpit-band { border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+                  padding: 4px; min-width: 0; }
+  .regime-old { color: var(--ink2); font-size: 12px; padding: 2px 4px 4px; }
+
+  /* ---- THE STRIP ---- */
+  .mw-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px;
+              padding: 4px; border-top: 1px solid var(--border); font-size: 12px;
+              font-variant-numeric: tabular-nums; }
+  .mw-lbl { font-weight: 700; font-size: 11px; letter-spacing: .06em; color: var(--ink2);
+            text-transform: uppercase; margin-right: 2px; }
+  .chip { position: relative; display: inline-flex; align-items: center; gap: 4px;
+          padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border);
+          background: var(--card); white-space: nowrap; cursor: default; }
+  .chip.bull { background: var(--bull-bg); color: var(--bull); border-color: transparent; }
+  .chip.bear { background: var(--bear-bg); color: var(--bear); border-color: transparent; }
+  .chip.neu  { background: var(--neu-bg);  color: var(--neu);  border-color: transparent; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; font-weight: 600; }
+  .chip b { font-weight: 600; }
+  .q { display: inline-block; min-width: 18px; text-align: center; border-radius: 3px;
+       font-weight: 700; font-size: 11px; padding: 0 3px; }
+  .q2 { background: #dcefd9; color: #2a5a3d; }
+  .q3 { background: #fbe7c6; color: #8a5a10; }
+  .sep { color: var(--border); }
+  .fit { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+  .fit button { font: inherit; font-size: 12px; cursor: pointer; border-radius: 999px;
+                padding: 1px 9px; border: 1px solid var(--border); background: var(--card); color: var(--ink); }
+  .fit button.against { border-color: var(--bear); color: var(--bear); font-weight: 600; }
+  .fit button:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* tooltip */
+  .chip .tip { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 5;
+               width: 280px; white-space: normal; background: #1c1917; color: #fafaf9;
+               font-size: 12px; line-height: 1.45; padding: 8px 10px; border-radius: 6px;
+               box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 400; }
+  .chip:hover .tip, .chip:focus .tip { display: block; }
+  .tip .src { display: block; margin-top: 4px; color: #a8a29e; font-size: 11px; }
+
+  /* ---- EXPANDED PANEL ---- */
+  .mw-panel { border-top: 1px solid var(--border); padding: 6px 4px 4px; display: none; }
+  .mw-panel.open { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 10px; }
+  @media (max-width: 860px) { .mw-panel.open { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 600; color: var(--ink2); font-size: 11px; text-transform: uppercase;
+       letter-spacing: .04em; border-bottom: 1px solid var(--border); padding: 3px 6px; }
+  td { padding: 3px 6px; border-bottom: 1px solid #f0f0ee; white-space: nowrap; }
+  td.r { text-align: right; }
+  tr.grp td { color: var(--ink2); font-size: 11px; font-weight: 700; text-transform: uppercase;
+              letter-spacing: .05em; background: #fafaf9; }
+  .sym { font-weight: 600; }
+  .dir { font-weight: 600; }
+  .dir.long { color: var(--bull); } .dir.short { color: var(--bear); } .dir.none { color: var(--neu); font-weight: 400; }
+  .fitcell { font-weight: 600; }
+  .fitcell.ok { color: var(--bull); } .fitcell.bad { color: var(--bear); } .fitcell.na { color: var(--muted); font-weight: 400; }
+  .smp { color: var(--sample); font-style: italic; }
+  .more { color: var(--accent); cursor: pointer; font-size: 12px; background: none; border: 0; padding: 4px 6px; }
+  .cal h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); }
+  .day { display: grid; grid-template-columns: 36px 1fr; gap: 2px 6px; padding: 3px 0; border-bottom: 1px solid #f0f0ee; font-size: 12px; }
+  .day .d { font-weight: 700; color: var(--ink2); }
+  .ev.hi { color: var(--warn); font-weight: 600; }
+
+  /* ---- explainer under the mockup ---- */
+  .explain { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .explain h2 { font-size: 13px; margin: 0 0 6px; }
+  .explain table td, .explain table th { white-space: normal; }
+  .explain ul { margin: 4px 0 0; padding-left: 18px; }
+  .size { display: inline-block; background: var(--neu-bg); border-radius: 4px; padding: 0 6px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Macro Week Strip — mockup for the <code>/</code> dashboard</h1>
+    <div class="sub">Hedgeye numbers come from <b>Macro Week Summary Notes, Oct 9 2026</b>.
+      Values marked <span class="tag-sample">SAMPLE</span> are placeholders until they're wired to your
+      data (<code>drv_rr</code>, positions). Hover a chip for detail. Click <b>"2 against"</b> to open the checklist.</div>
+  </header>
+
+  <div class="ghost">TOPBAR + MINI-TAPE (unchanged)</div>
+  <div class="ghost">① RISK DIAL (unchanged)</div>
+
+  <!-- The existing Regime band, with the new strip folded in -->
+  <section class="cockpit-band" aria-label="Regime">
+    <div class="regime-old">REGIME line, opex and earnings (existing content, unchanged)…</div>
+
+    <div class="mw-strip" role="group" aria-label="Macro week strip">
+      <span class="mw-lbl">Week 10/9</span>
+
+      <span class="chip" tabindex="0">Quad <span class="q q2">M2</span><span class="q q2">Q2</span><span class="q q3">G3</span>
+        <span class="tip"><b>Monthly Quad 2, Quarterly Quad 2, Global Quad 3.</b><br>
+          US: growth ↑ and inflation ↑, so favour pro-growth plus inflation hedges. Global: stagflation, so favour protection.
+          <span class="src">Your data: ref_quad_periods · Hedgeye: PDF p.1</span></span></span>
+
+      <span class="chip bull" tabindex="0">USD ▲ <b>cycle high</b>
+        <span class="tip">DXY Bullish TRADE and TREND, at a new #Quad2 cycle high (Mon).<br>
+          Gold–USD 30d correlation −0.87, BTC +0.72.<br>
+          <span class="tag-sample">SAMPLE</span> Your range position: 96% of LRR→TRR.
+          <span class="src">Your data: drv_rr (DXY), USD rail</span></span></span>
+
+      <span class="chip bear" tabindex="0">10Y <b>5.33%</b> ▲
+        <span class="tip">10Y yield hit 5.33% Wed, its highest since 2002. Risk range made a “huge higher low.”
+          The curve is now <b>steepening</b>.
+          <span class="src">Your data: TNX:CGI risk range, DGS10 / T10Y2Y (hist_macro)</span></span></span>
+
+      <span class="chip bull" tabindex="0">VIX <b>14.8</b> Investable
+        <span class="tip">VIX gauge 14.79, in the Investable bucket (&lt;20). Hedgeye warns it could reach the low 20s on a hot CPI.
+          <span class="src">Your data: VIX rail / Risk Dial gauge</span></span></span>
+
+      <span class="chip neu" tabindex="0">MOVE <b>100.7</b> ▼6.9% wk
+        <span class="tip">Bond volatility cooled −6.9% WoW but is still +32.3% MoM. That puts it right at your 100 "chop" threshold.
+          <span class="src">Your data: MOVE:GIF (thresholds 100/120)</span></span></span>
+
+      <span class="chip warn" tabindex="0">⚑ CPI Wed 8:30
+        <span class="tip"><b>The biggest event this week.</b> Wed: CPI. Thu: PPI, Retail Sales, Claims. Fri: Industrial Production.<br>
+          Hedgeye's Nowcast is still ticking higher.
+          <span class="src">Your data: ref_calendar_event / econ calendar</span></span></span>
+
+      <span class="fit">
+        <span class="note">Your book:</span>
+        <button type="button" id="fitBtn" aria-expanded="false" aria-controls="mwPanel">4 aligned</button>
+        <button type="button" class="against" id="fitBtn2" aria-expanded="false" aria-controls="mwPanel">2 against ▾</button>
+      </span>
+    </div>
+
+    <!-- Expanded checklist (hidden until clicked) -->
+    <div class="mw-panel" id="mwPanel">
+      <div>
+        <table>
+          <thead><tr>
+            <th>Theme</th><th>Ticker</th><th>Hedgeye</th><th>Your data says</th>
+            <th class="r">You hold</th><th>Fit</th>
+          </tr></thead>
+          <tbody>
+            <tr class="grp"><td colspan="6">⚠ Against you, review first</td></tr>
+            <tr><td>Gold</td><td class="sym">GLD</td><td class="dir short">Short candidate</td>
+                <td>Bearish TRADE+TREND · <span class="smp">88% of range</span></td>
+                <td class="r smp">$—</td><td class="fitcell bad">▼ against</td></tr>
+            <tr><td>Small caps</td><td class="sym">IWM</td><td class="dir short">Short</td>
+                <td class="smp">Bearish TREND</td>
+                <td class="r smp">$—</td><td class="fitcell bad">▼ against</td></tr>
+
+            <tr class="grp"><td colspan="6">✓ Aligned</td></tr>
+            <tr><td>Bitcoin</td><td class="sym">IBIT</td><td class="dir long">Long</td>
+                <td class="smp">Bullish TRADE+TREND</td><td class="r smp">$—</td><td class="fitcell ok">▲ aligned</td></tr>
+            <tr><td>Nasdaq 100</td><td class="sym">QQQ</td><td class="dir long">New long (Fri)</td>
+                <td class="smp">Bullish TREND</td><td class="r smp">$—</td><td class="fitcell ok">▲ aligned</td></tr>
+            <tr><td>Cybersecurity</td><td class="sym">BUG</td><td class="dir long">Long · +6.7% wk</td>
+                <td class="smp">Bullish</td><td class="r smp">$—</td><td class="fitcell ok">▲ aligned</td></tr>
+            <tr><td>Rate hedge</td><td class="sym">PFIX</td><td class="dir long">Long (trimmed)</td>
+                <td class="smp">Bullish TREND</td><td class="r smp">$—</td><td class="fitcell ok">▲ aligned</td></tr>
+
+            <tr class="grp"><td colspan="6">— Their call, you hold none</td></tr>
+            <tr class="extra"><td>Tankers</td><td class="sym">BWET</td><td class="dir long">Long · +64% since 9/22</td>
+                <td class="smp">Bullish</td><td class="r">—</td><td class="fitcell na">no position</td></tr>
+            <tr class="extra"><td>Ethereum</td><td class="sym">ETHA</td><td class="dir long">Long</td>
+                <td class="smp">Bullish</td><td class="r">—</td><td class="fitcell na">no position</td></tr>
+            <tr class="extra"><td>Solana</td><td class="sym">SOLZ</td><td class="dir long">Added Wed</td>
+                <td class="smp">Bullish TRADE+TREND</td><td class="r">—</td><td class="fitcell na">no position</td></tr>
+            <tr class="extra"><td>Qatar</td><td class="sym">QAT</td><td class="dir short">Short · −22% from peak</td>
+                <td class="smp">Bearish</td><td class="r">—</td><td class="fitcell na">no position</td></tr>
+          </tbody>
+        </table>
+        <button class="more" type="button" id="moreBtn">+ 7 more (CRAK, BNO, INDA, EWG, IGV, XLV, PBD)</button>
+      </div>
+
+      <aside class="cal" aria-label="This week">
+        <h4>This week</h4>
+        <div class="day"><span class="d">Tue</span><span>ADP · Existing Home Sales</span></div>
+        <div class="day"><span class="d">Wed</span><span><span class="ev hi">⚑ CPI 8:30</span> · Beige Book · IEA</span></div>
+        <div class="day"><span class="d">Thu</span><span>PPI · Retail Sales · Claims · Philly Fed</span></div>
+        <div class="day"><span class="d">Fri</span><span>Import/Export Px · Ind. Production</span></div>
+        <p class="note" style="margin:8px 0 0">Hedgeye watch-out: a hot CPI could push vol (VIX) into the low 20s.</p>
+      </aside>
+    </div>
+  </section>
+
+  <div class="ghost">④ FACTOR SCORECARD · ⑤ SHORTLIST · ⑥ HOUSEKEEPING (unchanged)</div>
+
+  <!-- How it works -->
+  <section class="explain">
+    <h2>How this works</h2>
+    <table>
+      <thead><tr><th>Piece</th><th>Space</th><th>Filled from</th></tr></thead>
+      <tbody>
+        <tr><td>Strip (always visible)</td><td><span class="size">+1 line ≈ 24px</span></td>
+            <td>Your own data: quad periods, DXY/10Y/VIX/MOVE risk ranges and rails, econ calendar</td></tr>
+        <tr><td>"aligned / against" count</td><td>inside the strip</td>
+            <td>Hedgeye's weekly calls × your CS/F positions</td></tr>
+        <tr><td>Checklist + week calendar</td><td><span class="size">0 until clicked</span></td>
+            <td>Same as above, sorted so <b>against you</b> comes first</td></tr>
+      </tbody>
+    </table>
+    <ul class="note">
+      <li><b>Fit rules:</b> you hold the same direction = aligned · you hold the opposite = against · no holding = not counted.</li>
+      <li>Chip colours follow the app's colour-blind-safe pair, and every chip also has an arrow (▲ ▼), so meaning never depends on colour alone.</li>
+      <li><b>Still open:</b> where the "Hedgeye" column comes from: (1) skip it, (2) parse the weekly PDF, (3) a quick weekly entry.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  const panel = document.getElementById('mwPanel');
+  const btns = [document.getElementById('fitBtn'), document.getElementById('fitBtn2')];
+  btns.forEach(b => b.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    btns.forEach(x => x.setAttribute('aria-expanded', String(open)));
+    btns[1].textContent = open ? '2 against ▴' : '2 against ▾';
+  }));
+  document.getElementById('moreBtn').addEventListener('click', e => {
+    e.target.textContent = 'Full list would load here from the weekly calls table';
+  });
+</script>
+</body>
+</html>

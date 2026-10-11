@@ -590,3 +590,26 @@ number. §3.2's gauge table:
 | `rr_flip_day` | positioning | RR flips_vs_prior ≥9 in the last 3 sessions |
 | `lists_quad_conflict` | positioning | ≥4 themes with `quad_conflict` |
 | `exposed_bear_themes` | self | risk $ in bear-stance themes >15% of risk $ |
+
+## Addendum -- Macro Week Strip (TASK_148, 2026-10-10)
+
+Chip line + "Your book vs your signals" checklist inside the Regime band
+(`#crossAssetPanel`; strip/list are siblings of `#regimeLineBody`, which
+`app.js::loadRegimeBand()` overwrites). Display only (C4), live query, no new
+table: `GET /api/cockpit/macro-week` (`api/routers/cockpit.py`) -> `web/macro_week.js`.
+
+- Chips: Quad M/Q/G (`ref_quad_periods`; global falls back to the latest row
+  at/before the current quarter, marked `*`), DXY (`drv_quote`/`drv_rr`, 5-session
+  change), 10Y (`TNX:CGI`, x10-normalised, red at/above the top active
+  `ref_level_watch` level), VIX/MOVE (`ref_vol_threshold` low/high -> calm/chop/high),
+  next major event (`ref_calendar_event`, day only; hidden when none in 7 days).
+- Event source is `ref_calendar_event`: `ref_econ_indicator` is stale and its
+  `expected` holds BULLISH/BEARISH, not a numeric forecast, so no "exp 0.3%".
+- Verdict per non-cash holding: Quad fit = sign of `drv_macro_score.macronet`
+  (positive = tailwind); HE = majority of `drv_outlooks` rr/call/etf/ii
+  (BULLISH/Long = bull, BEARISH/Short = bear, blanks skipped). Aligned =
+  tailwind + HE bull; Against = headwind + HE bear; else Mixed; any holding at
+  or above `macro_area_hot_pct` of its LRR->TRR range is Mixed. No HE coverage
+  -> Quad fit alone.
+- The rail is only ~200-380px wide, so the strip wraps (~3-4 short lines) and
+  the checklist opens as a wide popover instead of expanding inline.

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261001a">
+  <link rel="stylesheet" href="/static/styles.css?v=20261010k">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -233,6 +233,13 @@
         </div>
 
         <div class="cat-col">
+          <!-- TASK_148 Macro Week Strip, top of the centre column (moved from the
+               Regime band, 2026-10-10, user-directed). Filled by web/macro_week.js
+               <- GET /api/cockpit/macro-week. -->
+          <section class="cockpit-band mw-card" id="macroWeekCard">
+            <div id="macroWeekStrip" class="mw-strip" hidden></div>
+            <div id="macroWeekList" class="mw-list" hidden></div>
+          </section>
           <!-- 2026-09-30, user-directed: Hedgeye panel (Early Look/etc.) and the
                Market News panel moved to the TOP of this column (above Market
                Read). Collapse/expand state is per panel and remembered in
@@ -1007,6 +1014,7 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
+  <script src="/static/macro_week.js?v=20261010q" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/

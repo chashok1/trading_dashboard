@@ -1967,3 +1967,240 @@ def get_market_read_sectors(date: Optional[str] = Query(None)):
         out.sort(key=lambda r: r.get("n_rows") or 0, reverse=True)
 
     return {"as_of": d.isoformat(), "sectors": out, "total": total_row}
+
+
+# ---------------------------------------------------------------------------
+# TASK_148 -- Macro Week Strip: GET /api/cockpit/macro-week.
+# One line of macro chips (Quad M/Q/G, DXY, 10Y, VIX, MOVE, next event) +
+# the "Your book vs your signals" checklist, all read live from existing
+# tables (no new table). Display only -- never feeds derive_actionable.
+# ---------------------------------------------------------------------------
+
+# Events worth a chip; ref_calendar_event has no "flagged" column, and the
+# other source (ref_econ_indicator) is stale + carries no numeric expected.
+_MW_MAJOR_EVENTS = ("cpi", "ppi", "nfp", "fed meeting", "fomc", "gdp", "pce",
+                    "retail sales", "ism", "jolts", "jackson")
+_MW_BULL = ("bullish", "long")
+_MW_BEAR = ("bearish", "short")
+
+
+def _mw_quad_chips(session, d) -> dict:
+    """Quad M/Q/G labels for date d. Global falls back to the latest global
+    row at or before the current quarter (flagged stale) -- the user keeps
+    those by hand in /ref and may lag a quarter."""
+    qn = (d.month - 1) // 3 + 1
+    q = session.execute(text(
+        "SELECT quad FROM ref_quad_periods WHERE period_type='quarterly' "
+        "AND year=:y AND period_num=:n"), {"y": d.year, "n": qn}).scalar()
+    g = session.execute(text(
+        "SELECT quad, year, period_num FROM ref_quad_periods "
+        "WHERE period_type='global' AND quad IS NOT NULL "
+        "AND (year < :y OR (year = :y AND period_num <= :n)) "
+        "ORDER BY year DESC, period_num DESC LIMIT 1"),
+        {"y": d.year, "n": qn}).mappings().first()
+    return {
+        "monthly": _mr_current_quad_label(session, d),
+        "quarterly": q,
+        "global": g["quad"] if g else None,
+        "global_stale": bool(g and not (g["year"] == d.year and g["period_num"] == qn)),
+        "global_label": f"Q{g['period_num']} {g['year']}" if g else None,
+    }
+
+
+_MW_SOURCES = ("RR", "CALL", "ETF", "II", "SSS", "PS", "GOANY")
+
+
+def _mw_he_state(by_source: dict) -> tuple:
+    """(glyphs, n_bull, n_covered, state) from drv_source_standing rows
+    ({source_code: (outlook, signal_sign, on_list)}) for one symbol.
+    Outlook vocabulary is mixed-case (BULLISH/Bullish/NEUTRAL; II also
+    Long/Short). SSS uses its signal sign (+ bullish, - bearish). PS and
+    GOANY are list-membership sources: on the list = bullish, absent = no data."""
+    glyphs, bull, bear, cov = [], 0, 0, 0
+    for src in _MW_SOURCES:
+        row = by_source.get(src)
+        v = ""
+        if row:
+            outlook, sign, on_list = row
+            if src == "SSS":
+                v = "bullish" if (sign or 0) > 0 else "bearish" if (sign or 0) < 0 else ""
+            elif src in ("PS", "GOANY"):
+                v = "bullish" if on_list else ""
+            else:
+                v = (outlook or "").strip().lower()
+        if not v:
+            glyphs.append("")
+            continue
+        cov += 1
+        if v in _MW_BULL:
+            bull += 1
+            glyphs.append("up")
+        elif v in _MW_BEAR:
+            bear += 1
+            glyphs.append("dn")
+        else:
+            glyphs.append("flat")
+    state = None
+    if cov:
+        state = "bull" if bull * 2 > cov else "bear" if bear * 2 > cov else "mixed"
+    return glyphs, bull, cov, state
+
+
+@router.get("/api/cockpit/macro-week")
+def get_macro_week(date: Optional[str] = Query(None)):
+    from api._helpers import _get_ref_setting, rr_pos
+    d = _resolve_date(date)
+    hot_pct = float(_get_ref_setting("macro_area_hot_pct", "0.85"))
+    with session_scope() as s:
+        quad = _mw_quad_chips(s, d)
+
+        # --- market chips: last + 5-session change + RR position -------------
+        qrows = s.execute(text(
+            "SELECT tos_symbol, last_price, rn FROM ("
+            " SELECT tos_symbol, last_price,"
+            "  ROW_NUMBER() OVER (PARTITION BY tos_symbol ORDER BY as_of_date DESC) rn"
+            " FROM drv_quote WHERE as_of_date <= :d"
+            "  AND as_of_date > :d - 20"
+            "  AND tos_symbol IN ('$DXY','TNX:CGI','DGS2:FRED','VIX','MOVE:GIF','/GC','/CL')"
+            ") x WHERE rn IN (1, 6)"), {"d": d}).mappings().all()
+        px = {}
+        for r in qrows:
+            px.setdefault(r["tos_symbol"], {})[r["rn"]] = (
+                float(r["last_price"]) if r["last_price"] is not None else None)
+        rr = {r["tos_symbol"]: r for r in s.execute(text(
+            "SELECT tos_symbol, lrr, trr, outlook FROM drv_rr "
+            "WHERE as_of_date = :d AND tos_symbol IN ('$DXY','TNX:CGI','DGS2:FRED','VIX','MOVE:GIF','/GC','/CL')"),
+            {"d": d}).mappings().all()}
+        he = lambda sym: (rr.get(sym) or {}).get("outlook")
+        vol = {r["tos_symbol"]: (float(r["low"]), float(r["high"])) for r in s.execute(text(
+            "SELECT tos_symbol, low, high FROM ref_vol_threshold "
+            "WHERE tos_symbol IN ('VIX','MOVE:GIF')")).mappings().all()}
+        lvl = s.execute(text(
+            "SELECT MAX(level_value) FROM ref_level_watch "
+            "WHERE tos_symbol='TNX:CGI' AND is_active")).scalar()
+
+        def _chg(sym):
+            p = px.get(sym, {})
+            a, b = p.get(1), p.get(6)
+            return None if a is None or b is None else a - b
+
+        def _x10(v):
+            # TNX:CGI is x10 on TL/TD days, plain percent on Y-feed days.
+            return None if v is None else (v * 10 if v < 15 else v)
+
+        lvl2 = s.execute(text(
+            "SELECT MAX(level_value) FROM ref_level_watch "
+            "WHERE tos_symbol='DGS2:FRED' AND is_active")).scalar()
+        # DGS2:FRED is plain percent on Y-feed days but x10 on TL/TD days.
+        d2 = {k: (None if v is None else (v / 10.0 if v >= 15 else v))
+              for k, v in px.get("DGS2:FRED", {}).items()}
+        dxy_last = px.get("$DXY", {}).get(1)
+        dxy_rr = rr.get("$DXY")
+        tnx10 = _x10(px.get("TNX:CGI", {}).get(1))
+        tnx_prev10 = _x10(px.get("TNX:CGI", {}).get(6))
+
+        def _cmdty_chip(sym):
+            last = px.get(sym, {}).get(1)
+            r = rr.get(sym)
+            return {"last": last, "chg5": _chg(sym), "outlook": he(sym),
+                    "rr_pos": rr_pos(last, r["lrr"], r["trr"]) if r and last is not None else None}
+
+        def _vol_chip(sym):
+            last = px.get(sym, {}).get(1)
+            lo, hi = vol.get(sym, (None, None))
+            bucket = None
+            if last is not None and lo is not None:
+                bucket = "elevated" if last >= hi else "chop" if last >= lo else "calm"
+            return {"last": last, "chg5": _chg(sym), "low": lo, "high": hi, "bucket": bucket,
+                    "outlook": he(sym)}
+
+        chips = {
+            "dxy": {
+                "last": dxy_last, "chg5": _chg("$DXY"),
+                "rr_pos": rr_pos(dxy_last, dxy_rr["lrr"], dxy_rr["trr"]) if dxy_rr else None,
+                "outlook": dxy_rr["outlook"] if dxy_rr else None,
+            },
+            "dgs2": {
+                "pct": d2.get(1),
+                "chg5": None if d2.get(1) is None or d2.get(6) is None else d2[1] - d2[6],
+                "outlook": he("DGS2:FRED"),
+                "level": None if lvl2 is None else float(lvl2),
+                "above_level": bool(d2.get(1) is not None and lvl2 is not None and d2[1] >= float(lvl2)),
+            },
+            "tnx": {
+                "pct": None if tnx10 is None else tnx10 / 10.0,
+                "chg5": None if tnx10 is None or tnx_prev10 is None else (tnx10 - tnx_prev10) / 10.0,
+                "outlook": he("TNX:CGI"),
+                "level": None if lvl is None else float(lvl) / 10.0,
+                "above_level": bool(tnx10 is not None and lvl is not None and tnx10 >= float(lvl)),
+            },
+            "gold": _cmdty_chip("/GC"),
+            "wti": _cmdty_chip("/CL"),
+            "vix": _vol_chip("VIX"),
+            "move": _vol_chip("MOVE:GIF"),
+        }
+
+        # --- events: next 7 days, day-only (no time-of-day in the tables) ----
+        ev = s.execute(text(
+            "SELECT category, event_date FROM ref_calendar_event "
+            "WHERE event_date BETWEEN :d AND :d + 7 "
+            "ORDER BY event_date, category"), {"d": d}).mappings().all()
+        events = [{"name": e["category"], "date": e["event_date"].isoformat(),
+                   "days": (e["event_date"] - d).days,
+                   "major": any(k in (e["category"] or "").lower() for k in _MW_MAJOR_EVENTS)}
+                  for e in ev]
+
+        # --- checklist: current non-cash holdings -----------------------------
+        rows = s.execute(text(
+            "SELECT p.tos_symbol, COALESCE(p.held_qty_fid,0)+COALESCE(p.held_qty_cs,0) AS qty,"
+            " q.last_price, m.macronet,"
+            " r.lrr, r.trr"
+            " FROM drv_portfolio p"
+            " LEFT JOIN drv_quote q ON q.tos_symbol=p.tos_symbol AND q.as_of_date=p.as_of_date"
+            " LEFT JOIN drv_macro_score m ON m.tos_symbol=p.tos_symbol AND m.as_of_date=p.as_of_date"
+            " LEFT JOIN drv_rr r ON r.tos_symbol=p.tos_symbol AND r.as_of_date=p.as_of_date"
+            " WHERE p.as_of_date=:d AND COALESCE(p.held_qty_fid,0)+COALESCE(p.held_qty_cs,0)>0"
+            " AND NOT is_cash(p.tos_symbol, NULL, NULL)"), {"d": d}).mappings().all()
+        # One table holds every Hedgeye source per symbol (RR/CALL/ETF/II/SSS/PS/GOANY).
+        standing = {}
+        for ss in s.execute(text(
+                "SELECT tos_symbol, source_code, outlook, signal_sign, on_list "
+                "FROM drv_source_standing WHERE as_of_date=:d"), {"d": d}).all():
+            standing.setdefault(ss[0], {})[ss[1]] = (ss[2], ss[3], ss[4])
+
+    holdings = []
+    for r in rows:
+        price = float(r["last_price"]) if r["last_price"] is not None else None
+        mn = float(r["macronet"]) if r["macronet"] is not None else None
+        glyphs, n_bull, cov, he = _mw_he_state(standing.get(r["tos_symbol"], {}))
+        pos = rr_pos(price, r["lrr"], r["trr"])
+        hot = pos is not None and pos >= hot_pct
+        fit = None if mn is None or mn == 0 else "tailwind" if mn > 0 else "headwind"
+        # Quad verdict (independent of range): Aligned/Against need Quad and HE
+        # to agree; with no HE outlook at all it is never Aligned/Against (Mixed).
+        # Risk-range state is reported separately as `hot`.
+        if fit == "tailwind" and he == "bull":
+            verdict = "aligned"
+        elif fit == "headwind" and he == "bear":
+            verdict = "against"
+        else:
+            verdict = "mixed"
+        holdings.append({
+            "symbol": r["tos_symbol"], "qty": float(r["qty"]), "price": price,
+            "value": None if price is None else round(float(r["qty"]) * price, 2),
+            "macronet": mn, "fit": fit, "he": glyphs, "he_bull": n_bull, "he_n": cov,
+            "range_pos": pos, "hot": hot, "verdict": verdict,
+        })
+    order = {"against": 0, "mixed": 1, "aligned": 2}
+    # Quad-vs-HE verdict first, then Quad fit (headwind, tailwind, none), then
+    # most stretched risk range first (no range data last), then biggest position.
+    fit_order = {"headwind": 0, "tailwind": 1, None: 2}
+    holdings.sort(key=lambda h: (order[h["verdict"]], fit_order[h["fit"]],
+                                 -(h["range_pos"] if h["range_pos"] is not None else -1),
+                                 -(h["value"] or 0)))
+    return {
+        "as_of": d.isoformat(), "quad": quad, "chips": chips, "events": events,
+        "holdings": holdings, "hot_pct": hot_pct,
+        "counts": {k: sum(1 for h in holdings if h["verdict"] == k) for k in order},
+        "hot_count": sum(1 for h in holdings if h["hot"]),
+    }
