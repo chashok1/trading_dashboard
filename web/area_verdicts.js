@@ -1,6 +1,6 @@
 /* area_verdicts.js -- TASK_149 Area Driver Rules on `/`.
  *
- * (1) Compact area tiles in #areaVerdictStrip (centre column, under the Macro Week strip):
+ * (1) Compact area tiles in #areaVerdictStrip (centre column; same bar as the Macro Week chips):
  *     verdict glyph + colour, "$ held" only on Headwind/Stretched tiles, quiet areas collapsed
  *     into "+N quiet", a "$X headwind" total. Click a tile -> drawer with its driver legs
  *     (check / cross / ?), read text and linked stocks.
@@ -90,11 +90,12 @@
   }
 
   function render() {
-    var card = document.getElementById('areaVerdictCard');
     var strip = document.getElementById('areaVerdictStrip');
-    if (!card || !strip) return;
-    if (!data || !data.areas || !data.areas.length) { card.style.display = 'none'; return; }
-    card.style.display = '';
+    var sep = document.querySelector('.mw-areasep');
+    if (!strip) return;
+    if (!data || !data.areas || !data.areas.length) { strip.style.display = 'none'; if (sep) sep.style.display = 'none'; return; }
+    strip.style.display = '';
+    if (sep) sep.style.display = '';
     var loud = data.areas.filter(function (a) { return !isQuiet(a); });
     var quiet = data.areas.filter(isQuiet);
     var shown = showQuiet ? data.areas : loud;
@@ -284,7 +285,7 @@
   }
 
   function init() {
-    if (!document.getElementById('areaVerdictCard')) return;
+    if (!document.getElementById('areaVerdictStrip')) return;
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     document.addEventListener('click', onClick);

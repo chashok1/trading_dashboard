@@ -36,13 +36,13 @@
     return d.toLocaleDateString('en-US', { weekday: 'short' });
   }
 
-  // Hedgeye outlook tag (same green = bullish / red = bearish convention).
-  function heTag(o) {
+  // Surrounding colour = Hedgeye outlook (green bullish / red bearish / grey neutral or none),
+  // same meaning as the RR strips below. The arrow inside is the 5-session move.
+  function olCls(o) {
     var v = (o || '').toLowerCase();
-    if (v.indexOf('bull') === 0) return ' <span class="mw-he-tag mw-he-bull" title="Hedgeye outlook: bullish">H▲</span>';
-    if (v.indexOf('bear') === 0) return ' <span class="mw-he-tag mw-he-bear" title="Hedgeye outlook: bearish">H▼</span>';
-    return '';
+    return v.indexOf('bull') === 0 ? 'mw-bull' : v.indexOf('bear') === 0 ? 'mw-bear' : '';
   }
+  function warn(txt) { return ' <span class="mw-amber">' + txt + '</span>'; }
 
   function chip(cls, html, title) {
     return '<span class="mw-chip ' + cls + '" title="' + tip(title) + '">' + html + '</span>';
@@ -75,7 +75,7 @@
       '• Hedgeye outlook: ' + (c.outlook || '--'),
       'Source: drv_quote, drv_rr ($DXY)'
     ];
-    return chip(c.chg5 > 0 ? 'mw-bull' : c.chg5 < 0 ? 'mw-bear' : '', 'DXY ' + num(c.last, 1) + darr(c.chg5) + '<span class="mw-dim"> ' + pos + '</span>' + heTag(c.outlook), t);
+    return chip(olCls(c.outlook), 'DXY ' + num(c.last, 1) + darr(c.chg5) + '<span class="mw-dim"> ' + pos + '</span>', t);
   }
 
   function yieldChip(name, c, src) {
@@ -88,8 +88,8 @@
       '• Watched level: ' + (c.level == null ? '--' : num(c.level, 2) + '%') + (hi ? ' (at or above it)' : ''),
       'Source: ' + src + ', ref_level_watch'
     ];
-    return chip(hi ? 'mw-warn' : c.chg5 > 0 ? 'mw-bull' : c.chg5 < 0 ? 'mw-bear' : '',
-      name + ' ' + num(c.pct, 2) + '%' + darr(c.chg5) + (hi ? ' ⚠' : '') + heTag(c.outlook), t);
+    return chip(olCls(c.outlook),
+      name + ' ' + num(c.pct, 2) + '%' + darr(c.chg5) + (hi ? warn('⚠') : ''), t);
   }
 
   function tnxChip(c) {
@@ -102,8 +102,8 @@
       '• Watched level: ' + (c.level == null ? '--' : num(c.level, 2) + '%') + (hi ? ' (at or above it)' : ''),
       'Source: drv_quote TNX:CGI (stored x10; shown as %), ref_level_watch'
     ];
-    return chip(hi ? 'mw-warn' : c.chg5 > 0 ? 'mw-bull' : c.chg5 < 0 ? 'mw-bear' : '',
-      '10Y ' + num(c.pct, 2) + '%' + darr(c.chg5) + (hi ? ' ⚠' : '') + heTag(c.outlook), t);
+    return chip(olCls(c.outlook),
+      '10Y ' + num(c.pct, 2) + '%' + darr(c.chg5) + (hi ? warn('⚠') : ''), t);
   }
 
   function cmdtyChip(name, c, src) {
@@ -116,15 +116,15 @@
       '• Hedgeye outlook: ' + (c.outlook || '--'),
       'Source: drv_quote, drv_rr (' + src + ')'
     ];
-    return chip(c.chg5 > 0 ? 'mw-bull' : c.chg5 < 0 ? 'mw-bear' : '',
+    return chip(olCls(c.outlook),
       (name === 'Gold' ? 'Gold ' + Math.round(c.last).toLocaleString('en-US') : 'WTI ' + num(c.last, 2)) +
-      darr(c.chg5) + '<span class="mw-dim"> ' + pos + '</span>' + heTag(c.outlook), t);
+      darr(c.chg5) + '<span class="mw-dim"> ' + pos + '</span>', t);
   }
 
   function volChip(name, c, dp) {
     var b = c.bucket;
-    var glyph = b === 'elevated' ? ' ⚠' : b === 'chop' ? ' ◆' : '';
-    var cls = b === 'elevated' || b === 'chop' ? 'mw-warn' : c.chg5 > 0 ? 'mw-bull' : c.chg5 < 0 ? 'mw-bear' : '';
+    var glyph = b === 'elevated' ? warn('⚠') : b === 'chop' ? warn('◆') : '';
+    var cls = olCls(c.outlook);
     var t = [
       name + ' volatility',
       '• Level: ' + num(c.last, dp),
@@ -134,7 +134,7 @@
       'Source: drv_quote, ref_vol_threshold'
     ];
     var word = b === 'elevated' ? ' high' : b === 'chop' ? ' chop' : '';
-    return chip(cls, name + ' ' + num(c.last, dp) + darr(c.chg5) + word + glyph + heTag(c.outlook), t);
+    return chip(cls, name + ' ' + num(c.last, dp) + darr(c.chg5) + word + glyph, t);
   }
 
   function eventChip(events) {
@@ -242,7 +242,7 @@
 
   // The checklist opens as a popover under the strip, left-aligned to it -- 0px when closed.
   function placeList(list) {
-    var r = document.getElementById('macroWeekStrip').getBoundingClientRect();
+    var r = document.getElementById('macroWeekCard').getBoundingClientRect();
     var w = Math.min(Math.max(r.width, 560), window.innerWidth - 24);
     list.style.top = Math.round(r.bottom + 4) + 'px';
     list.style.left = Math.max(12, Math.min(Math.round(r.left), window.innerWidth - w - 12)) + 'px';

@@ -1500,6 +1500,95 @@ def _area_legs(detail) -> list:
     return legs
 
 
+# Friendly labels + sub-groups for the Hedgeye RR symbols (/api/cockpit/rr-strip).
+_RR_LABEL = {
+    "$COMP": "Nasdaq", "$SSEC": "Shanghai", "GDAXI:DE": "DAX", "N225:JP": "Nikkei",
+    "$DXY": "DXY", "/6B": "GBP", "/6C": "CAD", "/6E": "EUR", "/6J": "JPY",
+    "DGS2:FRED": "2Y", "TNX:CGI": "10Y", "TYX:CGI": "30Y",
+    "/BTC": "Bitcoin", "/BZ": "Brent", "/CL": "WTI", "/GC": "Gold", "/HG": "Copper",
+    "/NG": "Natgas", "/SI": "Silver", "PPLT": "Platinum",
+}
+# (group, sub-group order) -- markets row first, ETFs/stocks row second.
+_RR_SUB = {
+    "SPX": ("markets", 0), "$COMP": ("markets", 0), "RUT": ("markets", 0), "$SSEC": ("markets", 0),
+    "GDAXI:DE": ("markets", 0), "N225:JP": ("markets", 0),
+    "$DXY": ("markets", 1), "/6B": ("markets", 1), "/6C": ("markets", 1), "/6E": ("markets", 1), "/6J": ("markets", 1),
+    "DGS2:FRED": ("markets", 2), "TNX:CGI": ("markets", 2), "TYX:CGI": ("markets", 2),
+    "HYG": ("markets", 2), "LQD": ("markets", 2), "VIX": ("markets", 2),
+    "/GC": ("markets", 3), "/SI": ("markets", 3), "/HG": ("markets", 3), "/CL": ("markets", 3),
+    "/BZ": ("markets", 3), "/NG": ("markets", 3), "PPLT": ("markets", 3), "/BTC": ("markets", 3),
+}
+_RR_ON_TOP_BAR = {"$DXY", "DGS2:FRED", "TNX:CGI", "VIX", "/GC", "/CL"}   # Macro Week strip already shows these
+_RR_YIELDS = {"DGS2:FRED", "TNX:CGI", "TYX:CGI"}
+
+
+@router.get("/api/cockpit/rr-strip")
+def get_rr_strip(date: Optional[str] = Query(None)):
+    """Hedgeye RR symbols for the dashboard strips: outlook (colour), 5-day move and
+    risk-range position. Universe = drv_rr rows with a real Hedgeye range
+    (source 'RR') plus every symbol on the latest hist_rr snapshot (those with a
+    0/0 range are outlook-only). Read only."""
+    d = _resolve_date(date)
+    hot = float(_get_ref_setting("macro_area_hot_pct", "0.85"))
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT r.tos_symbol, r.lrr, r.trr, r.outlook, r.source,
+                   (SELECT h.name FROM hist_rr h WHERE h.tos_symbol = r.tos_symbol
+                     AND h.snapshot_date <= :d ORDER BY h.snapshot_date DESC LIMIT 1) AS name
+            FROM drv_rr r
+            WHERE r.as_of_date = :d AND r.tos_symbol IS NOT NULL
+              AND (r.source = 'RR' OR r.tos_symbol IN (
+                    SELECT tos_symbol FROM hist_rr WHERE tos_symbol IS NOT NULL
+                      AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_rr WHERE snapshot_date <= :d)))
+        """), {"d": d}).mappings().all()
+        syms = [r["tos_symbol"] for r in rows]
+        px = {}
+        for q in s.execute(text("""
+            SELECT tos_symbol, last_price, rn FROM (
+              SELECT tos_symbol, last_price,
+                     ROW_NUMBER() OVER (PARTITION BY tos_symbol ORDER BY as_of_date DESC) rn
+              FROM drv_quote WHERE as_of_date <= :d AND as_of_date > :d - 20
+                AND tos_symbol = ANY(:s)) x WHERE rn IN (1, 6)"""), {"d": d, "s": syms}).mappings().all():
+            px.setdefault(q["tos_symbol"], {})[q["rn"]] = (
+                float(q["last_price"]) if q["last_price"] is not None else None)
+
+    def _norm(sym, v, lrr):
+        # Yield symbols: drv_quote is x10 on some feeds, plain percent on others; drv_rr is x10.
+        if v is not None and sym in _RR_YIELDS and lrr is not None and lrr > 15 and v < 15:
+            return v * 10
+        return v
+
+    out = []
+    for r in rows:
+        sym = r["tos_symbol"]
+        o = (r["outlook"] or "").lower()
+        outlook = "bull" if "bull" in o else "bear" if "bear" in o else "neutral"
+        lrr = float(r["lrr"]) if r["lrr"] is not None else None
+        trr = float(r["trr"]) if r["trr"] is not None else None
+        p = px.get(sym, {})
+        last, prev = _norm(sym, p.get(1), lrr), _norm(sym, p.get(6), lrr)
+        has_range = r["source"] == "RR" and lrr is not None and trr is not None and trr > lrr
+        pos = state = None
+        if has_range and last is not None:
+            raw = (last - lrr) / (trr - lrr)
+            if raw < -0.5 or raw > 1.5:
+                state = "na"                       # scale/stale mismatch -- never show a wrong number
+            else:
+                pos = round(min(max(raw, 0.0), 1.0), 4)
+                state = "above" if raw > 1 else "below" if raw < 0 else "in"
+        group, sub = _RR_SUB.get(sym, ("etf_stock", 9))
+        out.append({
+            "symbol": sym, "label": _RR_LABEL.get(sym, sym), "name": r["name"],
+            "outlook": outlook, "outlook_raw": r["outlook"], "last": last,
+            "chg5": None if last is None or prev is None else last - prev,
+            "lrr": lrr if has_range else None, "trr": trr if has_range else None,
+            "pos": pos, "pos_state": state, "has_range": has_range,
+            "group": group, "sub": sub, "on_top_bar": sym in _RR_ON_TOP_BAR,
+            "extreme": None if pos is None else ("high" if pos >= hot else "low" if pos <= 1 - hot else None),
+        })
+    return {"as_of": d.isoformat(), "hot_pct": hot, "items": out}
+
+
 @router.get("/api/cockpit/area-verdicts")
 def get_area_verdicts(date: Optional[str] = Query(None)):
     """TASK_149 -- Area driver rules. One verdict per market area (drv_area_verdict),

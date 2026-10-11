@@ -1088,7 +1088,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .mt-fetch-time { font-size: 7px; color: var(--text-3, #a8a29e); white-space: nowrap; margin-top: 1px; }
 
 /* Per-symbol chip inside the mini-tape / symbol tape */
-.rr-chip {
+.rs-chip {
   display: inline-flex;
   flex-direction: column;
   justify-content: center;
@@ -3807,9 +3807,12 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    A card of pill chips; colour = state (--mr-* CVD-safe pair), and every state
    also carries a glyph. Checklist is [hidden] (0px) until the Book chip is clicked. */
 .mw-strip[hidden], .mw-list[hidden] { display: none !important; }
-.mw-card { padding: 6px 10px; }
+.mw-card { padding: 6px 10px; display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; }
+/* The Macro Week chips and the area verdict pills flow as ONE bar. */
+.mw-card > .mw-strip, .mw-card > .av-strip { display: contents; }
+.mw-card > .av-strip[style*="none"] { display: none; }
 .mw-card:has(.mw-strip[hidden]) { display: none; }
-.mw-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 11px; line-height: 18px; white-space: nowrap; }
+.mw-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 10px; line-height: 16px; white-space: nowrap; }
 .mw-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3, #6b7280); margin-right: 2px; }
 .mw-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin: 0; background: var(--mr-neu-bg); border: 1px solid var(--border, #e5e5e2);
   border-radius: 999px; font: inherit; color: var(--text-1, #1c1917); cursor: help; font-variant-numeric: tabular-nums; }
@@ -3819,6 +3822,14 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mw-dim { color: var(--text-3, #6b7280); }
 .mw-chip.mw-bear { color: var(--mr-bear); background: var(--mr-bear-bg); border-color: var(--mr-bear); }
 .mw-chip.mw-bull { color: var(--mr-bull); background: var(--mr-bull-bg); border-color: var(--mr-bull); }
+.mw-amber { color: var(--mr-warn); font-weight: 700; }
+/* Hedgeye RR symbol strips (web/rr_strip.js): same chip look as the Macro Week strip. */
+.rrs-card { padding: 5px 10px; }
+.rrs-row { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 10px; line-height: 16px; white-space: nowrap; }
+.rrs-row + .rrs-row { margin-top: 4px; }
+.rrs-chip { padding: 0 6px; }
+.rrs-tiny { padding: 0 5px; font-size: 9px; }
+.rrs-note { font-size: 10px; margin-left: 4px; }
 .mw-he-tag { font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 3px; color: #fff; line-height: 15px; }
 .mw-he-bull { background: var(--mr-bull); } .mw-he-bear { background: var(--mr-bear); }
 .mw-q { display: inline-block; padding: 0 5px; margin-left: 2px; border-radius: 4px; color: #fff; font-weight: 700; font-size: 10.5px; line-height: 16px; }
@@ -3853,7 +3864,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* ── TASK_149 Area Driver Rules (web/area_verdicts.js) ─────────────────────
    Verdict colours reuse the CVD-safe --mr-* pair; every state also has a glyph. */
 .av-card { padding: 5px 10px; }
-.av-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 11px; line-height: 18px; white-space: nowrap; }
+.av-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 10px; line-height: 16px; white-space: nowrap; }
 .av-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3, #6b7280); margin-right: 2px; }
 .av-sepline { align-self: stretch; width: 1px; background: var(--border, #e5e5e2); margin: 2px 2px; }
 .av-tile { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 10px; cursor: pointer; font: inherit;

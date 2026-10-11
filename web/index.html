@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261011c">
+  <link rel="stylesheet" href="/static/styles.css?v=20261011h">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -238,14 +238,18 @@
                <- GET /api/cockpit/macro-week. -->
           <section class="cockpit-band mw-card" id="macroWeekCard">
             <div id="macroWeekStrip" class="mw-strip" hidden></div>
+            <span class="av-sepline mw-areasep"></span>
+            <!-- TASK_149 area verdict pills now live in this same bar (2026-10-11, user-directed). Filled by
+                 web/area_verdicts.js, reads GET /api/cockpit/area-verdicts (advisory only). -->
+            <div id="areaVerdictStrip" class="av-strip"></div>
             <div id="macroWeekList" class="mw-list" hidden></div>
           </section>
-          <!-- TASK_149 Area Driver Rules: compact area tiles (Gold, Oil, Bitcoin...) right under the
-               Macro Week strip -- centre column, not the ~206px Regime band, so the tiles read in one
-               or two lines. Filled by web/area_verdicts.js <- GET /api/cockpit/area-verdicts (advisory
-               only). The same script also adds verdict pills to the macro rails. -->
-          <section class="cockpit-band av-card" id="areaVerdictCard" style="display:none;">
-            <div id="areaVerdictStrip" class="av-strip"></div>
+          <!-- Hedgeye RR symbol strips under the area verdict bar (2026-10-11, user-directed):
+               row 1 markets, row 2 ETFs and stocks. Colour = Hedgeye outlook, same as the Macro Week
+               strip. Filled by web/rr_strip.js, reads GET /api/cockpit/rr-strip. -->
+          <section class="cockpit-band rrs-card" id="rrStripCard" style="display:none;">
+            <div id="rrRow1" class="rrs-row"></div>
+            <div id="rrRow2" class="rrs-row"></div>
           </section>
           <!-- 2026-09-30, user-directed: Hedgeye panel (Early Look/etc.) and the
                Market News panel moved to the TOP of this column (above Market
@@ -1021,8 +1025,9 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
-  <script src="/static/macro_week.js?v=20261010q" defer></script>
-  <script src="/static/area_verdicts.js?v=20261011d" defer></script>
+  <script src="/static/macro_week.js?v=20261011b" defer></script>
+  <script src="/static/area_verdicts.js?v=20261011e" defer></script>
+  <script src="/static/rr_strip.js?v=20261011e" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
