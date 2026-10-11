@@ -18,5 +18,7 @@ VALUES
     ('drv_inferred_action',   'as_of_date', 3, 30, 'scheduler.run_nightly_outcomes', 'rule-performance', 'warning'),
     ('ref_vlm_intraday_curve','updated_at', 7, 0,  'scheduler.run_nightly_outcomes', 'actionable',       'warning'),
     ('drv_market_stat',       'as_of_date', 2, 0,  'derive_all',                     'actionable',       'warning'),
-    ('drv_pvv',               'as_of_date', 3, 0,  'derive_all',                     'actionable',       'warning')
+    ('drv_pvv',               'as_of_date', 3, 0,  'derive_all',                     'actionable',       'warning'),
+    ('drv_area_verdict',      'as_of_date', 3, 0,  'derive_all',                     'dashboard',        'warning'),
+    ('drv_driver_exposure',   'as_of_date', 3, 0,  'derive_all',                     'actionable',       'warning')
 ON CONFLICT (table_name) DO NOTHING;

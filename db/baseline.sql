@@ -9022,3 +9022,136 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('ps_drop_sell_pct',     '4', 'PS drop: SELL ALL if price is this % below its close on the PS snapshot date'),
     ('premature_drop_up_pct', '4', 'Premature-drop pill when price is up more than this % since the source dropped the symbol')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- =====================================================
+-- 2026-10-11 TASK_149 -- Area Driver Rules (docs/area_driver_rules_logic.md).
+-- Generalises the cross-asset engine: a rule may now be an ADVISORY area-
+-- verdict rule (mode='advisory', verdict set, no target_symbol) that never
+-- reaches consolidated_action/trig_action. The one pre-existing rule
+-- (BONDS_USD_TRR_GOLD_LRR) stays mode='actionable' exactly as before.
+-- =====================================================
+ALTER TABLE ref_cross_asset_rule ADD COLUMN IF NOT EXISTS area_key  TEXT;
+ALTER TABLE ref_cross_asset_rule ADD COLUMN IF NOT EXISTS verdict   TEXT;
+ALTER TABLE ref_cross_asset_rule ADD COLUMN IF NOT EXISTS read_text TEXT;
+ALTER TABLE ref_cross_asset_rule ADD COLUMN IF NOT EXISTS severity  TEXT NOT NULL DEFAULT 'warn';
+ALTER TABLE ref_cross_asset_rule ADD COLUMN IF NOT EXISTS mode      TEXT NOT NULL DEFAULT 'actionable';
+ALTER TABLE ref_cross_asset_rule ALTER COLUMN target_symbol DROP NOT NULL;
+ALTER TABLE ref_cross_asset_rule ALTER COLUMN target_action DROP NOT NULL;
+ALTER TABLE ref_cross_asset_rule DROP CONSTRAINT IF EXISTS ref_cross_asset_rule_mode_check;
+ALTER TABLE ref_cross_asset_rule ADD CONSTRAINT ref_cross_asset_rule_mode_check
+    CHECK (mode IN ('advisory','actionable'));
+ALTER TABLE ref_cross_asset_rule DROP CONSTRAINT IF EXISTS ref_cross_asset_rule_verdict_check;
+ALTER TABLE ref_cross_asset_rule ADD CONSTRAINT ref_cross_asset_rule_verdict_check
+    CHECK (verdict IS NULL OR verdict IN ('headwind','tailwind','turning','stretched'));
+
+-- New leg check types (etl/derive_cross_asset_rules.py): outlook_dir (up/down
+-- bucket, case-insensitive), outlook_flip (within lookback_days), delta
+-- (series change over lookback_days vs threshold_value), zone (vol zone),
+-- gauge (Risk Dial gauge fired), level (vs ref_level_watch), rule_fired.
+-- group_op='or' makes a leg_group pass when ANY member passes (new types only).
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS lookback_days   INT;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS threshold_value NUMERIC;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS leg_label       TEXT;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS group_op        TEXT;
+ALTER TABLE ref_cross_asset_rule_leg DROP CONSTRAINT IF EXISTS ref_cross_asset_rule_leg_check_type_check;
+ALTER TABLE ref_cross_asset_rule_leg ADD CONSTRAINT ref_cross_asset_rule_leg_check_type_check
+    CHECK (check_type IN ('rr_position','outlook','outlook_dir','outlook_flip','delta',
+                          'zone','gauge','level','rule_fired'));
+
+ALTER TABLE drv_cross_asset_signal ALTER COLUMN target_symbol DROP NOT NULL;
+ALTER TABLE drv_cross_asset_signal ALTER COLUMN target_action DROP NOT NULL;
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS mode         TEXT NOT NULL DEFAULT 'actionable';
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS area_key     TEXT;
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS verdict      TEXT;
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS severity     TEXT;
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS read_text    TEXT;
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS data_missing BOOL NOT NULL DEFAULT FALSE;
+
+-- Derived series for delta legs (expr = "A", "A - B" or "A + B" over hist_macro series ids).
+CREATE TABLE IF NOT EXISTS ref_driver_series (
+    series_key  TEXT PRIMARY KEY,
+    label       TEXT NOT NULL,
+    expr        TEXT NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'hist_macro'
+);
+
+-- The areas. parent_key = roll-up parent (is_leaf=FALSE rows have no rules).
+-- gate_*: dollar-link gate on drv_usd_correlation.w30 (gate_cmp 'le' = w30 <=
+-- gate_threshold; 'abs_ge' = |w30| >= gate_threshold); gate_fallback_asset is
+-- borrowed while gate_asset has no data. rail_area_key/rail_symbol = where the
+-- pill goes on the existing /api/macro-areas rails (symbol NULL = rail header).
+CREATE TABLE IF NOT EXISTS ref_driver_area (
+    area_key            TEXT PRIMARY KEY,
+    label               TEXT NOT NULL,
+    short_label         TEXT NOT NULL,
+    signal_symbol       TEXT,
+    parent_key          TEXT,
+    group_key           TEXT,
+    sort_order          INT  NOT NULL DEFAULT 0,
+    is_leaf             BOOL NOT NULL DEFAULT TRUE,
+    enabled             BOOL NOT NULL DEFAULT TRUE,
+    gate_asset          TEXT,
+    gate_fallback_asset TEXT,
+    gate_cmp            TEXT CHECK (gate_cmp IS NULL OR gate_cmp IN ('le','abs_ge')),
+    gate_threshold      NUMERIC,
+    macro_area_key      TEXT,
+    rail_area_key       TEXT,
+    rail_symbol         TEXT
+);
+
+-- Exposure map for areas reuses ref_gauge_transmission (gauge_key = area_key).
+-- axis adds 'sub_asset_class' | 'theme' | 'symbol'; inverted flips the verdict
+-- (PFIX etc.); exclude removes a symbol that a broader axis would pull in.
+ALTER TABLE ref_gauge_transmission ADD COLUMN IF NOT EXISTS inverted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ref_gauge_transmission ADD COLUMN IF NOT EXISTS exclude  BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Area verdict per date. verdict: headwind|tailwind|turning|stretched|unclear|quiet.
+-- raw_verdict = today's rules before the optional 2-day confirmation.
+CREATE TABLE IF NOT EXISTS drv_area_verdict (
+    as_of_date    DATE NOT NULL,
+    area_key      TEXT NOT NULL,
+    verdict       TEXT NOT NULL,
+    raw_verdict   TEXT NOT NULL,
+    prev_verdict  TEXT,
+    since_date    DATE NOT NULL,
+    gate_ok       BOOL,
+    gate_detail   JSONB,
+    fired_rules   JSONB,
+    read_text     TEXT,
+    data_missing  BOOL NOT NULL DEFAULT FALSE,
+    derived_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, area_key)
+);
+
+-- Linked stocks per area per date (tos_symbol per convention 15).
+-- area_verdict = the area's verdict; verdict = effective for this stock
+-- (headwind<->tailwind swapped when inverted).
+CREATE TABLE IF NOT EXISTS drv_driver_exposure (
+    as_of_date     DATE NOT NULL,
+    tos_symbol     TEXT NOT NULL,
+    area_key       TEXT NOT NULL,
+    area_verdict   TEXT NOT NULL,
+    verdict        TEXT NOT NULL,
+    tier           TEXT NOT NULL,
+    inverted       BOOL NOT NULL DEFAULT FALSE,
+    held           BOOL NOT NULL DEFAULT FALSE,
+    position_dollar NUMERIC,
+    message        TEXT,
+    derived_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, tos_symbol, area_key)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_driver_exposure_area
+    ON drv_driver_exposure(as_of_date, area_key);
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('area_verdict_confirm_days', '0', 'Area verdicts: 2 = a changed verdict must hold two derive dates before it flips; 0 = off'),
+    ('area_verdict_new_days',     '3', 'Area verdicts: show a "new" dot for this many days after a verdict changes')
+ON CONFLICT (setting_name) DO NOTHING;
+
+UPDATE ref_cross_asset_rule SET area_key = 'gold', mode = 'actionable'
+ WHERE rule_code = 'BONDS_USD_TRR_GOLD_LRR' AND area_key IS NULL;
+
+-- 2026-10-11: area driver rules -- a child area can borrow its parent's rules
+-- (rules_from) and be cancelled to Quiet when Hedgeye is bullish on its members.
+ALTER TABLE ref_driver_area ADD COLUMN IF NOT EXISTS rules_from TEXT;
+ALTER TABLE ref_driver_area ADD COLUMN IF NOT EXISTS hedgeye_cancels BOOLEAN NOT NULL DEFAULT FALSE;

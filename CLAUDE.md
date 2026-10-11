@@ -273,6 +273,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Composite editor (clone, threshold pre-fill, BASE picker) | `web/composite_edit.*`; API `/api/rules/composite/{id}/clone`, `/api/rules/base-composites` |
 | Group-of-groups nesting | `web/groups.html` (`memberOptionsHTML`/`memberTypeFor`) |
 | Cross-asset rules (multi-symbol RR-position conditions the atomic engine can't express, e.g. "Bonds/USD at TRR, Gold at LRR → buy Gold") | `docs/cross_asset_rules_logic.md`; `ref_cross_asset_rule(_leg)`; `etl/derive_cross_asset_rules.py` → `drv_cross_asset_signal`; folded into `derive_actionable.py` like a fired rule group; dashboard panel `web/cross_asset_panel.js` → `/api/cockpit/cross-asset-signals` |
+| Area driver rules (per-area verdict Headwind/Tailwind/Turning/Stretched/Unclear from driver legs, dashboard tiles + rail pills, Actionable Action-icon warning + "In headwind area" chip; advisory only) | `docs/area_driver_rules_logic.md`; `etl/derive_cross_asset_rules.py` (advisory rules) → `etl/derive_area_verdicts.py` → `drv_area_verdict`/`drv_driver_exposure`; `GET /api/cockpit/area-verdicts`; `web/area_verdicts.js`; seeds `db/seeds_area_driver.sql` |
 | Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Rule tuning, profiles (param sets), outcomes & scorecard — USE & FIX guide | `docs/rule_tuning_and_outcomes.md` |

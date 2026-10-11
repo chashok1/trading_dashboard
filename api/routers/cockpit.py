@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
-from api._helpers import _resolve_date
+from api._helpers import _resolve_date, _get_ref_setting
 from etl.db import session_scope
 
 router = APIRouter()
@@ -1467,7 +1467,7 @@ def get_cross_asset_signals(date: Optional[str] = Query(None)):
         rows = s.execute(text("""
             SELECT rule_code, fired, veto_active, target_symbol, target_action, description, detail
             FROM drv_cross_asset_signal
-            WHERE as_of_date = :d
+            WHERE as_of_date = :d AND mode = 'actionable'
             ORDER BY fired DESC, rule_code
         """), {"d": d}).mappings().all()
     out = []
@@ -1476,6 +1476,109 @@ def get_cross_asset_signals(date: Optional[str] = Query(None)):
         rd["detail"] = _jsonb(rd.get("detail")) or []
         out.append(rd)
     return {"as_of": d.isoformat(), "rows": out}
+
+
+def _area_legs(detail) -> list:
+    """Flatten one rule's drv_cross_asset_signal.detail into drawer legs:
+    [{phrase, passed, missing}] -- passed True/False, missing = input absent."""
+    legs = []
+    for chk in _jsonb(detail) or []:
+        if chk.get("is_veto"):
+            continue
+        mem = chk.get("members")
+        if chk.get("check_type") in ("outlook_dir", "outlook_flip", "delta", "zone",
+                                      "gauge", "level", "rule_fired") and mem:
+            for m in mem:
+                legs.append({"phrase": m.get("phrase") or m.get("label") or m.get("symbol"),
+                             "passed": bool(m.get("passed")), "missing": m.get("passed") is None})
+        elif chk.get("check_type") == "rr_position":
+            thr = f"{'>=' if chk.get('comparison') == '>=' else '<='} {chk.get('threshold_pct'):g}%"
+            pct = chk.get("rr_pct")
+            legs.append({"phrase": f"{chk.get('symbol')} at {pct:g}% of range (needs {thr})" if pct is not None
+                         else f"{chk.get('symbol')} range position unavailable",
+                         "passed": bool(chk.get("passed")), "missing": pct is None})
+    return legs
+
+
+@router.get("/api/cockpit/area-verdicts")
+def get_area_verdicts(date: Optional[str] = Query(None)):
+    """TASK_149 -- Area driver rules. One verdict per market area (drv_area_verdict),
+    its rules' legs (drv_cross_asset_signal), the linked stocks (drv_driver_exposure),
+    parent roll-ups, and where the pills go on the existing macro rails. Thin read;
+    nothing is computed here except $ totals. Advisory only."""
+    d = _resolve_date(date)
+    new_days = int(float(_get_ref_setting("area_verdict_new_days", "3")))
+    with session_scope() as s:
+        areas = [dict(r) for r in s.execute(text("""
+            SELECT a.*, v.verdict, v.since_date, v.read_text, v.gate_detail, v.data_missing,
+                   (v.as_of_date IS NOT NULL) AS has_row
+            FROM ref_driver_area a
+            LEFT JOIN drv_area_verdict v ON v.area_key = a.area_key AND v.as_of_date = :d
+            WHERE a.enabled ORDER BY a.sort_order"""), {"d": d}).mappings().all()]
+        rules = {}
+        for r in s.execute(text("""
+            SELECT rule_code, area_key, verdict, fired, data_missing, description, read_text, detail
+            FROM drv_cross_asset_signal
+            WHERE as_of_date = :d AND mode = 'advisory' AND area_key IS NOT NULL
+            ORDER BY rule_code"""), {"d": d}).mappings().all():
+            rules.setdefault(r["area_key"], []).append({
+                "rule_code": r["rule_code"], "verdict": r["verdict"], "fired": r["fired"],
+                "data_missing": r["data_missing"], "description": r["description"],
+                "read_text": r["read_text"], "legs": _area_legs(r["detail"])})
+        stocks = {}
+        for r in s.execute(text("""
+            SELECT area_key, tos_symbol, verdict, tier, inverted, held, position_dollar
+            FROM drv_driver_exposure WHERE as_of_date = :d
+            ORDER BY held DESC, position_dollar DESC NULLS LAST, tos_symbol"""), {"d": d}).mappings().all():
+            stocks.setdefault(r["area_key"], []).append({
+                "tos_symbol": r["tos_symbol"], "verdict": r["verdict"], "tier": r["tier"],
+                "inverted": r["inverted"], "held": r["held"],
+                "position_dollar": float(r["position_dollar"] or 0)})
+
+    leaf, parents, by_key = [], [], {}
+    headwind_syms = {}
+    for a in areas:
+        key = a["area_key"]
+        verdict = a["verdict"] if a["has_row"] else None
+        since = a["since_date"]
+        st = stocks.get(key, [])
+        held_dollar = sum(x["position_dollar"] for x in st
+                          if x["held"] and not x["inverted"] and verdict in ("headwind", "stretched"))
+        if verdict == "headwind":
+            for x in st:
+                if x["held"] and not x["inverted"]:
+                    headwind_syms[x["tos_symbol"]] = x["position_dollar"]
+        gate = _jsonb(a["gate_detail"])
+        row = {"area_key": key, "label": a["label"], "short_label": a["short_label"],
+               "group_key": a["group_key"], "parent_key": a["parent_key"],
+               "signal_symbol": a["signal_symbol"], "is_leaf": a["is_leaf"],
+               "rail_area_key": a["rail_area_key"], "rail_symbol": a["rail_symbol"],
+               "verdict": verdict, "read_text": a["read_text"], "data_missing": a["data_missing"],
+               "since_date": since.isoformat() if since else None,
+               "is_new": bool(since and (d - since).days <= new_days),
+               "gate": gate, "held_dollar": round(held_dollar, 2),
+               "rules": rules.get(a["rules_from"] or key, []), "stocks": st[:40], "n_stocks": len(st)}
+        by_key[key] = row
+        (leaf if a["is_leaf"] else parents).append(row)
+    for p in parents:
+        kids = [r for r in leaf if r["parent_key"] == p["area_key"]]
+        counts = {}
+        for k in kids:
+            if k["verdict"] and k["verdict"] != "quiet":
+                counts[k["verdict"]] = counts.get(k["verdict"], 0) + 1
+        p["children"] = [k["area_key"] for k in kids]
+        p["counts"] = counts
+    rails = {}
+    for r in leaf + parents:
+        if r["rail_area_key"]:
+            slot = rails.setdefault(r["rail_area_key"], {"header": None, "rows": {}})
+            if r["rail_symbol"]:
+                slot["rows"][r["rail_symbol"]] = r["area_key"]
+            elif r["is_leaf"] or slot["header"] is None:
+                slot["header"] = r["area_key"]
+    return {"as_of": d.isoformat(), "areas": leaf, "parents": parents, "rails": rails,
+            "headwind_dollar": round(sum(headwind_syms.values()), 2),
+            "headwind_count": sum(1 for r in leaf if r["verdict"] == "headwind")}
 
 
 # ---------------------------------------------------------------------------

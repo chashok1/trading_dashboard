@@ -20,7 +20,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import text
 
 from api._helpers import (
-    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, rr_pos,
+    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, rr_pos, vol_zone,
 )
 from etl.db import session_scope
 from etl.derive_macro import _classify_style
@@ -574,14 +574,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 vt = vt_map.get(sym, {})
                 zone = None
                 if last is not None and vt:
-                    low = float(vt.get("low") or 0)
-                    high = float(vt.get("high") or 0)
-                    if last <= low:
-                        zone = "investable"
-                    elif last <= high:
-                        zone = "chop"
-                    else:
-                        zone = "elevated"
+                    zone = vol_zone(last, vt.get("low") or 0, vt.get("high") or 0)
                 member_details.append({
                     "symbol": sym,
                     "role": role,

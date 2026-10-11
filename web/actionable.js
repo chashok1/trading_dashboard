@@ -69,6 +69,7 @@ const state = {
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
     iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
+    headwind_only: false, // TASK_149 chip — held/buy rows whose area is in Headwind (driver_flags)
     rr_min: 0, rr_max: 100, // RR (Risk Range %) dual-thumb slider — 0/100 = no filter
     quads: [],           // Quad favorability filter (multi-select, like symbols_multi) --
                           // '1'..'4', empty = no filter. A row must be net-bullish
@@ -2000,6 +2001,7 @@ async function loadActionable(opts) {
     ]);
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
+    try { _syncTriggerSourcePills(); } catch (_) { /* TASK_149 chip count; non-fatal */ }
     // 2026-10-01: volatility gauge zones (VIX/VXN/VXD/RVX/GVZ/OVX/MOVE) for
     // the Action-icon warnings in _signalReasons. Keyed by gauge label.
     state.volZones = {};
@@ -2398,6 +2400,7 @@ function matchesBaseFilters(r) {
   // doesn't drive ETF's/II's own action — see docs/actionable_logic.md).
   if (state.filters.etfchg_only && !r.etfchg_date) return false;
   if (state.filters.iichg_only && !r.iichg_date) return false;
+  if (state.filters.headwind_only && !_inHeadwindArea(r)) return false;
   // RR (Risk Range %) slider — r._rrPos is already computed per-row during
   // load (0-100, null if lrr/trr/last_price unavailable). Rows with no RR
   // data are excluded once the band is narrowed off its full 0-100 default.
@@ -2794,6 +2797,9 @@ function _syncTriggerSourcePills() {
   wrap.querySelectorAll('[data-flag-pill]').forEach(el => {
     el.classList.toggle('active', !!state.filters[el.dataset.flagPill]);
   });
+  // TASK_149: live count on the "In headwind area" chip.
+  const hw = wrap.querySelector('[data-flag-pill="headwind_only"] .hw-count');
+  if (hw) hw.textContent = String((state.allRows || []).filter(_inHeadwindArea).length);
 }
 
 // Returns the display name for an account_number using state.allAccounts lookup.
@@ -2975,7 +2981,7 @@ function clearAllFilters() {
   f.bull_prob_min = 0;
   f.agreement_class = '';
   f.symbols_multi = [];
-  f.etfchg_only = false; f.iichg_only = false;
+  f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false;
   f.sector = ''; f.style = ''; f.asset_class = ''; f.industry = '';
   f.rr_min = 0; f.rr_max = 100;
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
@@ -3648,10 +3654,38 @@ function _earningsWarning(row) {
   return null;
 }
 
+// TASK_149 (area driver rules): advisory per-area flags from the server
+// (row.driver_flags <- drv_driver_exposure). Only holdings and buy candidates
+// get a line; everything else stays silent. Never changes the Final Call.
+const _AREA_VERDICT_GLYPH = { headwind: '▼ Headwind', tailwind: '▲ Tailwind',
+                              stretched: '⚠ Stretched', turning: '◆ Turning' };
+function _areaFlagsFor(row, side) {
+  const fl = row.driver_flags;
+  if (!fl || !fl.length) return [];
+  return (row.held_today || side === 'buy') ? fl : [];
+}
+function _inHeadwindArea(r) {
+  const fl = r && r.driver_flags;
+  if (!fl || !fl.length) return false;
+  return _areaFlagsFor(r, finalCall(r).side).some(f => f.verdict === 'headwind');
+}
+
 function _signalReasons(row, side) {
   const isSell = side === 'sell';
   const warn = [];
   const buy = [];
+
+  // TASK_149: one generic line per flagged area. Buy-oriented framing like
+  // everything below (Headwind/Stretched = caution, Tailwind = confirm);
+  // the return at the bottom swaps the lists on sell rows.
+  for (const f of _areaFlagsFor(row, side)) {
+    const g = _AREA_VERDICT_GLYPH[f.verdict];
+    if (!g) continue;
+    const line = f.label + ' area ' + g + (f.is_new ? ' (new)' : '') +
+      (f.inverted ? ' [inverse position]' : '') + (f.message ? ' — ' + f.message : '');
+    if (f.verdict === 'headwind' || f.verdict === 'stretched') warn.push(line);
+    else if (f.verdict === 'tailwind') buy.push(line);
+  }
 
   // 2026-08-10 -- advisory-only buy warnings (never touch consolidated_
   // action/final_code server-side -- see etl/derive_actionable.py's own
@@ -6866,7 +6900,7 @@ function renderGrid() {
     state.filters.source || state.filters.account || state.filters.held_only ||
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
     state.filters.agreement_class || state.filters.stopOnly ||
-    state.filters.etfchg_only || state.filters.iichg_only ||
+    state.filters.etfchg_only || state.filters.iichg_only || state.filters.headwind_only ||
     state.filters.watchlist_only ||
     (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);

@@ -941,6 +941,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         SELECT rule_code, target_symbol, target_action, description
         FROM drv_cross_asset_signal
         WHERE as_of_date = :d AND fired = TRUE
+          AND mode = 'actionable' AND target_symbol IS NOT NULL
     """), {"d": as_of_date}).mappings().all():
         cross_asset_by_symbol.setdefault(r["target_symbol"], []).append(dict(r))
 

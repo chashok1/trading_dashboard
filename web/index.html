@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261010k">
+  <link rel="stylesheet" href="/static/styles.css?v=20261011c">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -239,6 +239,13 @@
           <section class="cockpit-band mw-card" id="macroWeekCard">
             <div id="macroWeekStrip" class="mw-strip" hidden></div>
             <div id="macroWeekList" class="mw-list" hidden></div>
+          </section>
+          <!-- TASK_149 Area Driver Rules: compact area tiles (Gold, Oil, Bitcoin...) right under the
+               Macro Week strip -- centre column, not the ~206px Regime band, so the tiles read in one
+               or two lines. Filled by web/area_verdicts.js <- GET /api/cockpit/area-verdicts (advisory
+               only). The same script also adds verdict pills to the macro rails. -->
+          <section class="cockpit-band av-card" id="areaVerdictCard" style="display:none;">
+            <div id="areaVerdictStrip" class="av-strip"></div>
           </section>
           <!-- 2026-09-30, user-directed: Hedgeye panel (Early Look/etc.) and the
                Market News panel moved to the TOP of this column (above Market
@@ -1015,6 +1022,7 @@
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
   <script src="/static/macro_week.js?v=20261010q" defer></script>
+  <script src="/static/area_verdicts.js?v=20261011d" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
@@ -1037,7 +1045,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20260930cc" defer></script>
+  <script src="/static/macro_areas.js?v=20261011a" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

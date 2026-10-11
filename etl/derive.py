@@ -3679,6 +3679,21 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # TASK_149 (area driver rules): one verdict per market area from the
+    # advisory cross-asset rules, then the linked stocks per area. Runs after
+    # drv_actionable (exposure needs held + position $; the verdict step posts
+    # its own meta_warning that derive_actionable's clear would otherwise
+    # wipe). Advisory only -- never feeds consolidated_action/trig_action.
+    try:
+        from etl.derive_area_verdicts import derive_area_verdicts, derive_driver_exposure
+        counts["drv_area_verdict"] = _safe("drv_area_verdict", derive_area_verdicts)
+        counts["drv_driver_exposure"] = _safe("drv_driver_exposure", derive_driver_exposure)
+    except Exception:
+        log.exception("derive_area_verdicts import/run failed (non-fatal)")
+        counts["drv_area_verdict"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # 2026-08-18: export-frequency tier per symbol (user_pinned / held /
     # active_90d / hedgeye_90d / dashboard_dependency / special_format /
     # dormant) -- TOS-export right-sizing design, no task number. Runs

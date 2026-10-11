@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Area Driver Rules — design</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f5; --card: #ffffff; --border: #e5e5e2; --line: #f0f0ee;
+    --ink: #1c1917; --ink2: #57534e; --muted: #a8a29e;
+    --bull: #0d9488; --bear: #c2410c; --neu: #6b7280;
+    --bull-bg: #e0f2f0; --bear-bg: #fbe9e1; --neu-bg: #f3f4f6;
+    --warn: #b45309; --warn-bg: #fdf3e3; --turn: #2563eb; --turn-bg: #e8effd;
+    --accent: #1d4ed8; --new: #7c3aed; --new-bg: #f3effd;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  code { font: 11.5px ui-monospace, Consolas, monospace; background: #f4f4f2; padding: 0 3px; border-radius: 3px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header p { margin: 2px 0 0; color: var(--ink2); }
+  nav { position: sticky; top: 0; z-index: 20; background: rgba(247,247,245,.95); border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(4px); }
+  nav .in { max-width: 1180px; margin: 0 auto; padding: 6px 16px; display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 12px; }
+  nav a { color: var(--ink2); text-decoration: none; } nav a:hover { color: var(--accent); }
+  section.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  h2 .n { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center;
+          background: var(--ink); color: #fff; font-size: 11px; }
+  h3 { font-size: 13px; margin: 14px 0 6px; }
+  p { margin: 4px 0; }
+  .lede { color: var(--ink2); max-width: 820px; }
+  ul.tight { margin: 4px 0; padding-left: 18px; } ul.tight li { margin: 2px 0; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; border-radius: 3px; padding: 0 5px; vertical-align: 1px; }
+  .tag.new { color: var(--new); background: var(--new-bg); }
+  .tag.have { color: var(--bull); background: var(--bull-bg); }
+  .tag.ext { color: var(--warn); background: var(--warn-bg); }
+  .illus { font-size: 11px; color: var(--new); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink2);
+       font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 6px; vertical-align: bottom; }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tw { overflow-x: auto; }
+  .r { text-align: right; } .nw { white-space: nowrap; }
+
+  /* verdict vocabulary */
+  .v { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 0 8px; font-weight: 600; font-size: 12px; white-space: nowrap; }
+  .v.hw { background: var(--bear-bg); color: var(--bear); }
+  .v.tw2 { background: var(--bull-bg); color: var(--bull); }
+  .v.tu { background: var(--turn-bg); color: var(--turn); }
+  .v.ca { background: var(--warn-bg); color: var(--warn); }
+  .v.un { background: var(--neu-bg); color: var(--neu); }
+  .v.qu { background: transparent; color: var(--muted); border: 1px dashed var(--border); font-weight: 400; }
+
+  /* ---------- mock dashboard ---------- */
+  .mock { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 10px; display: grid; gap: 8px; }
+  .ghost { border: 1px dashed var(--border); border-radius: 6px; background: #fbfbfa; color: var(--muted); padding: 6px 10px; font-size: 12px; }
+  .band { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 4px; min-width: 0; }
+  .line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .line + .line { border-top: 1px solid var(--border); }
+  .lbl { font-weight: 700; font-size: 11px; letter-spacing: .06em; color: var(--ink2); text-transform: uppercase; width: 72px; flex: none; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); white-space: nowrap; }
+  .chip.bull { background: var(--bull-bg); color: var(--bull); border-color: transparent; }
+  .chip.bear { background: var(--bear-bg); color: var(--bear); border-color: transparent; }
+  .chip.neu  { background: var(--neu-bg); color: var(--neu); border-color: transparent; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; font-weight: 600; }
+  .tile { font: inherit; font-size: 11.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+          padding: 1px 6px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+  .tile.hw { background: var(--bear-bg); color: var(--bear); }
+  .tile.tw2 { background: var(--bull-bg); color: var(--bull); }
+  .tile.tu { background: var(--turn-bg); color: var(--turn); }
+  .tile.ca { background: var(--warn-bg); color: var(--warn); }
+  .tile.qu { background: var(--card); color: var(--muted); border-color: var(--border); }
+  .tile .held { font-weight: 700; }
+  .tile[aria-expanded="true"] { outline: 2px solid currentColor; outline-offset: 1px; }
+  .tile:focus-visible, .expo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .grp { width: 1px; height: 14px; background: var(--border); margin: 0 2px; }
+  .expo { margin-left: auto; font: inherit; font-size: 12px; cursor: pointer; border-radius: 999px; padding: 1px 9px;
+          border: 1px solid var(--bear); color: var(--bear); background: var(--card); font-weight: 600; }
+  .drawer { border-top: 1px solid var(--border); padding: 8px 6px 6px; display: none; }
+  .drawer.open { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; }
+  @media (max-width: 860px) { .drawer.open { grid-template-columns: 1fr; } .expo { margin-left: 0; } .lbl { width: auto; } }
+  .legs td:first-child { width: 22px; text-align: center; font-weight: 700; }
+  .ok { color: var(--bull); } .bad { color: var(--bear); } .mut { color: var(--muted); }
+  .read { background: #fafaf9; border-left: 3px solid var(--border); padding: 6px 8px; margin: 6px 0; color: var(--ink2); font-size: 12px; }
+  .tier { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink2);
+          background: var(--neu-bg); border-radius: 3px; padding: 0 4px; }
+  .tier.inv { color: var(--bull); background: var(--bull-bg); }
+
+  /* rail mock */
+  .rails { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 860px) { .rails { grid-template-columns: 1fr; } }
+  .rail { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 4px 6px; font-size: 12px; }
+  .rail .hdr { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); padding-bottom: 3px; border-bottom: 1px solid var(--line); }
+  .rail .row { display: grid; grid-template-columns: 54px 1fr 40px; gap: 6px; align-items: center; padding: 2px 0; color: var(--ink2); }
+  .bar { height: 6px; background: var(--neu-bg); border-radius: 3px; position: relative; }
+  .bar i { position: absolute; top: -2px; width: 3px; height: 10px; background: var(--ink); border-radius: 1px; }
+
+  /* action popup mock */
+  .popup { max-width: 470px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); box-shadow: 0 6px 20px rgba(0,0,0,.08); padding: 10px 12px; font-size: 12px; }
+  .popup h4 { margin: 0 0 6px; font-size: 12px; }
+  .popup .sec { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin: 8px 0 3px; }
+  .popup .sec.c { color: var(--warn); } .popup .sec.k { color: var(--bull); }
+  .popup li { margin: 2px 0; }
+  .popup li.newline { background: var(--new-bg); border-radius: 3px; padding: 1px 4px; margin-left: -4px; }
+
+  /* architecture */
+  .arch { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+  @media (max-width: 960px) { .arch { grid-template-columns: 1fr; } .arch .arr { transform: rotate(90deg); } }
+  .col { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #fcfcfb; display: grid; gap: 6px; align-content: start; position: relative; }
+  .col .t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink2); }
+  .box { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 5px 7px; font-size: 11.5px; line-height: 1.35; }
+  .box b { display: block; font-size: 12px; }
+  .box.n { border-color: #d9ccfa; background: var(--new-bg); }
+  .box.x { border-color: #f1d9b5; background: var(--warn-bg); }
+  .col::after { content: "→"; position: absolute; right: -11px; top: 46%; color: var(--muted); font-size: 16px; }
+  .col:last-child::after { content: none; }
+  @media (max-width: 960px) { .col::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -18px; } }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--ink2); margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid var(--border); background: var(--card); }
+  .legend .ln::before { background: var(--new-bg); border-color: #d9ccfa; }
+  .legend .lx::before { background: var(--warn-bg); border-color: #f1d9b5; }
+
+  .tree { font: 12px/1.6 ui-monospace, Consolas, monospace; background: #fafaf9; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; white-space: pre; overflow-x: auto; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .callout { border: 1px solid #f1d9b5; background: var(--warn-bg); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+  .callout b { color: var(--warn); }
+  .phase { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 860px) { .phase { grid-template-columns: 1fr; } }
+  .ph { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .ph .t { font-weight: 700; } .ph .s { color: var(--ink2); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<nav><div class="in">
+  <a href="#idea">1 · The idea</a><a href="#ui">2 · What you see</a><a href="#catalog">3 · Rule catalog</a>
+  <a href="#exposure">4 · Which stocks get flagged</a><a href="#arch">5 · Architecture</a><a href="#data">6 · Data model</a>
+  <a href="#noise">7 · Noise &amp; safety</a><a href="#plan">8 · Rollout</a><a href="#q">9 · Decisions</a>
+</div></nav>
+
+<div class="wrap">
+<header>
+  <h1>Area Driver Rules — design</h1>
+  <p>For each market area (Gold, Silver, Oil, Bitcoin, Stocks…), read <b>what drives it</b> and whether those drivers are <b>helping or hurting</b>.
+     Then flag every stock you hold or are about to buy in that area.
+     Built only on data already in your database. <span class="illus">All numbers shown are illustrative.</span></p>
+</header>
+
+<!-- 1 -->
+<section class="card" id="idea">
+  <h2><span class="n">1</span>The idea in one picture</h2>
+  <div class="tree">  CAUSE (drivers)                                EFFECT (area verdict)     YOUR STOCKS (warnings)
+  ───────────────                                ─────────────────────     ──────────────────────
+  Dollar ▲ + 10Y ▲  (gold–USD corr −0.87 ✓) ──►  Gold    ▼ HEADWIND  ──►  GLD, GDX, NEM …  ⚠ caution on buy
+  Gold rule + Silver ▼                      ──►  Silver  ▼ HEADWIND  ──►  SLV …            ⚠ caution on buy
+  WTI ▲ + Brent ▲ + oil vol calm            ──►  Oil     ▲ TAILWIND  ──►  XLE, BNO …       ✓ confirms buy
+  Nasdaq ▲ + Nasdaq vol calm                ──►  Bitcoin ▲ TAILWIND  ──►  IBIT, MSTR …     ✓ confirms buy</div>
+  <h3>Five verdicts (plus Quiet), one vocabulary everywhere</h3>
+  <div class="tw"><table>
+    <tr><th>Verdict</th><th>Means</th><th>What you do with it</th></tr>
+    <tr><td><span class="v hw">▼ Headwind</span></td><td>The drivers are working against this area</td><td>Think twice before buying; consider trimming</td></tr>
+    <tr><td><span class="v tw2">▲ Tailwind</span></td><td>The drivers support this area</td><td>Buy signals in this area are confirmed</td></tr>
+    <tr><td><span class="v tu">◆ Turning</span></td><td>A driver just flipped (within 5 days) and price is not stretched</td><td>Put it on watch; this is often the early entry</td></tr>
+    <tr><td><span class="v ca">⚠ Stretched</span></td><td>Good trend, but price is at the top of its range or vol is elevated</td><td>Don't chase; wait for a pullback</td></tr>
+    <tr><td><span class="v un">○ Unclear</span></td><td>The usual driver link is broken (e.g. gold no longer moves against the dollar) or data is stale</td><td>Ignore driver rules for now and trust price</td></tr>
+    <tr><td><span class="v qu">— Quiet</span></td><td>No rule fires</td><td>Nothing to do (silence is the default)</td></tr>
+  </table></div>
+  <p class="lede" style="margin-top:8px">Like your other advisory warnings, this <b>never changes a Final Call</b>. It adds a reason to your existing Action-icon caution or confirm list.
+  A rule can be promoted to influence actions only after it proves itself (section 7).</p>
+</section>
+
+<!-- 2 -->
+<section class="card" id="ui">
+  <h2><span class="n">2</span>What you see — three places, one look</h2>
+  <p class="lede"><b>A. Dashboard (first glance).</b> One new line in the Regime band, directly under TASK_148's "This week" strip. Top line = causes, new line = effects.
+     Click any area to open its drawer. <span class="illus">Try clicking Gold, Oil or "$41k headwind". Thin dividers group Metals · Energy · Risk · Rates; hover shows the full name. $ appears only where it matters: areas that are against you or stretched.</span></p>
+
+  <div class="mock">
+    <div class="ghost">① RISK DIAL (unchanged)</div>
+    <div class="band">
+      <div class="line">
+        <span class="lbl">This week</span>
+        <span class="chip">Quad <b>M2·Q2·G3</b></span>
+        <span class="chip bull">DXY ▲ 92%</span><span class="chip bear">10Y 5.3% ▲</span>
+        <span class="chip bull">VIX 15</span><span class="chip neu">MOVE 101</span><span class="chip warn">⚑ CPI Wed</span>
+        <span class="mut" style="margin-left:auto;font-size:11px">← TASK_148 (in progress)</span>
+      </div>
+      <div class="line" role="group" aria-label="Area verdicts">
+        <span class="lbl">Areas</span>
+        <span class="grp" aria-hidden="true"></span>
+        <button class="tile hw" data-a="gold" title="Gold" aria-expanded="false">Gold ▼ <span class="held">$18k</span></button>
+        <button class="tile hw" data-a="silver" title="Silver" aria-expanded="false">Silver ▼</button>
+        <button class="tile tu" data-a="copper" title="Copper / broad commodities" aria-expanded="false">Copper ◆</button>
+        <span class="grp" aria-hidden="true"></span>
+        <button class="tile tw2" data-a="oil" title="Oil & energy" aria-expanded="false">Oil ▲</button>
+        <span class="grp" aria-hidden="true"></span>
+        <button class="tile tw2" data-a="btc" title="Bitcoin / crypto" aria-expanded="false">Bitcoin ▲</button>
+        <button class="tile ca" data-a="spx" title="Large caps" aria-expanded="false">Lg caps ⚠ <span class="held">$96k</span></button>
+        <button class="tile hw" data-a="iwm" title="Small caps" aria-expanded="false">Sm caps ▼ <span class="held">$9k</span></button>
+        <span class="grp" aria-hidden="true"></span>
+        <button class="tile hw" data-a="bonds" title="Bonds / duration" aria-expanded="false">Bonds ▼ <span class="held">$14k</span></button>
+        <button class="tile hw" data-a="em" title="International / EM" aria-expanded="false">EM ▼</button>
+        <button class="tile qu" data-a="quiet" title="Areas with no rule firing" aria-expanded="false">+2 quiet</button>
+        <button class="expo" data-a="expo" aria-expanded="false">$41k headwind ▾</button>
+      </div>
+      <div class="drawer" id="drawer"></div>
+    </div>
+    <div class="ghost">Macro rails · Accounts · Sectors (unchanged, but each rail header gets a verdict pill → B)</div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div>
+      <p class="lede"><b>B. Your existing macro rails.</b> Each rail header gets the same pill, so the verdict sits next to the instruments that drive it. No new band.</p>
+      <div class="rails" style="grid-template-columns:1fr 1fr">
+        <div class="rail"><div class="hdr">Precious Metals <span class="v hw">▼ Headwind</span></div>
+          <div class="row"><span>Gold</span><span class="bar"><i style="left:40%"></i></span><span class="r bad">−0.8%</span></div>
+          <div class="row"><span>Silver</span><span class="bar"><i style="left:31%"></i></span><span class="r bad">−1.4%</span></div>
+          <div class="row"><span>GLD</span><span class="bar"><i style="left:42%"></i></span><span class="r bad">−0.7%</span></div></div>
+        <div class="rail"><div class="hdr">Energy <span class="v tw2">▲ Tailwind</span></div>
+          <div class="row"><span>WTI</span><span class="bar"><i style="left:66%"></i></span><span class="r ok">+1.2%</span></div>
+          <div class="row"><span>Brent</span><span class="bar"><i style="left:70%"></i></span><span class="r ok">+1.4%</span></div>
+          <div class="row"><span>Nat Gas</span><span class="bar"><i style="left:48%"></i></span><span class="r mut">+0.1%</span></div></div>
+      </div>
+    </div>
+    <div>
+      <p class="lede"><b>C. Actionable — the warning you already use.</b> The Action-icon popup (<code>_signalReasons</code>) gets one generic line per flagged area.
+        Headwind lands in <b>Caution</b> on buys; on sells it flips to <b>Confirm</b>, exactly like your sector-Bear warning does today.</p>
+      <div class="popup">
+        <h4>GLD · Final Call: BUY SOME</h4>
+        <div class="sec c">⚠ Caution</div>
+        <ul class="tight">
+          <li class="newline"><b>Gold area ▼ Headwind</b> — Dollar ▲ (92% of range) and 10Y ▲ while Gold ▼. Gold–USD link valid (corr −0.84).</li>
+          <li>Gold Vol not investable (chop, 21.4)</li>
+        </ul>
+        <div class="sec k">✓ Confirms</div>
+        <ul class="tight"><li>RSI oversold (29)</li></ul>
+      </div>
+      <p style="font-size:11px;color:var(--ink2);margin-top:6px">Plus a toolbar filter chip on Actionable: <span class="chip">In headwind area (6)</span>, so you can list them all in one click.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="card" id="catalog">
+  <h2><span class="n">3</span>Rule catalog — 12 areas</h2>
+  <p class="lede">Shorthand: <b>▲/▼</b> = the instrument's own risk-range outlook (<code>drv_rr.outlook</code>) · <b>rng</b> = position in LRR→TRR ·
+   <b>flip</b> = outlook changed in the last 5 days · <b>real yld</b> = 10Y minus 10Y breakeven (<code>DGS10 − T10YIE</code>) · <b>Δ20d</b> = 20-day change.
+   Every input already exists in your DB. One exception is flagged.</p>
+  <div class="tw"><table>
+    <tr><th>Area</th><th>Driven by</th><th>Gate (rules valid only if…)</th><th><span class="v hw">▼ Headwind</span> when</th><th><span class="v tw2">▲ Tailwind</span> when</th><th><span class="v tu">◆</span> / <span class="v ca">⚠</span> when</th></tr>
+    <tr><td class="nw"><b>Gold</b><br><code>/GC</code></td><td>Dollar + real rates</td><td>USD–gold corr ≤ −0.3 <span class="tag have">HAVE</span></td>
+        <td>DXY ▲ and (10Y ▲ or real yld Δ20d ↑) and /GC ▼</td><td>DXY ▼ and real yld Δ20d ↓ and /GC ▲</td>
+        <td>◆ DXY or 10Y flips ▲→▼ and /GC rng ≤ 50<br>Your existing <code>BONDS_USD_TRR_GOLD_LRR</code> becomes this area's "buy at extreme" rule</td></tr>
+    <tr><td class="nw"><b>Silver</b><br><code>/SI</code></td><td>Dollar + rates + industry</td><td>USD–silver corr ≤ −0.3 <span class="tag new">ADD 1 SEED</span></td>
+        <td>Gold rule fires and /SI ▼ — or /SI ▼ and /HG ▼ (industrial demand)</td><td>Gold tailwind and /SI ▲</td><td>◆ same as Gold, plus /HG flips ▼→▲</td></tr>
+    <tr><td class="nw"><b>Copper / broad commodities</b><br><code>/HG</code>, DBC</td><td>Dollar + global growth</td><td>USD–CRB corr ≤ −0.3 <span class="tag have">HAVE</span></td>
+        <td>DXY ▲ and /HG ▼</td><td>DXY ▼ and /HG ▲</td><td>◆ /HG flips ▼→▲ while DXY not ▲</td></tr>
+    <tr><td class="nw"><b>Oil &amp; energy</b><br><code>/CL /BZ /NG</code></td><td>Supply/demand (dollar is a weak link)</td><td>— (USD–oil corr shown as info only)</td>
+        <td>/CL ▼ and /BZ ▼ and /HG ▼ (demand slowing)</td><td>/CL ▲ and /BZ ▲ and OVX not elevated</td><td>⚠ /CL rng ≥ 85 and OVX chop/elevated → don't chase</td></tr>
+    <tr><td class="nw"><b>Bitcoin / crypto</b><br><code>/BTC</code></td><td>Risk appetite + liquidity</td><td>Dollar legs used only if |USD–BTC corr| ≥ 0.3 (sign varies) <span class="tag have">HAVE</span></td>
+        <td>/BTC ▼ and ($COMP ▼ or VXN chop/elevated)</td><td>/BTC ▲ and $COMP ▲ and VXN investable</td><td>⚠ /BTC rng ≥ 85 and VXN not investable</td></tr>
+    <tr><td class="nw"><b>Large caps</b><br><code>SPX $COMP $DJI</code></td><td>Credit + vol + rates</td><td>—</td>
+        <td>SPX ▼ and (Risk Dial <code>credit_stress</code> or <code>vix_elevated</code> fired)</td><td>SPX ▲ and HYG ▲ and VIX investable</td><td>⚠ Risk Dial <code>spx_top_range</code> fired</td></tr>
+    <tr><td class="nw"><b>Small caps</b><br><code>RUT</code></td><td>Rates + credit (most rate-sensitive)</td><td>—</td>
+        <td>RUT ▼ and (10Y ▲ or HY spread Δ20d widening)</td><td>RUT ▲ and 10Y ▼</td><td>◆ 10Y flips ▲→▼ and RUT rng ≤ 50</td></tr>
+    <tr><td class="nw"><b>Tech / long-duration growth</b><br><code>$COMP</code>, IT sector</td><td>Real rates</td><td>—</td>
+        <td>real yld Δ20d ↑ and 10Y above your 5% level (<code>ref_level_watch</code>)</td><td>real yld Δ20d ↓ and $COMP ▲</td><td>⚠ VXN chop/elevated and $COMP rng ≥ 85</td></tr>
+    <tr><td class="nw"><b>Bonds / duration</b><br><code>TLT IEF</code></td><td>Yields + inflation expectations</td><td>—</td>
+        <td>TNX ▲ (yields up) and T10YIE Δ20d ↑</td><td>TNX ▼ and MOVE not elevated</td><td>◆ TNX flips ▲→▼<br><i>Inverted members (PFIX) get the opposite verdict</i></td></tr>
+    <tr><td class="nw"><b>Credit</b><br><code>HYG LQD</code></td><td>Equity vol + spreads</td><td>—</td>
+        <td>HY spread Δ20d widening and VIX chop/elevated</td><td>HY spread Δ20d tightening and HYG ▲</td><td>⚠ Risk Dial <code>credit_equity_divergence</code> fired</td></tr>
+    <tr><td class="nw"><b>Intl / EM</b><br><code>EEM EWZ EWY EWG</code></td><td>Dollar</td><td>—</td>
+        <td>DXY ▲ and area ETF ▼</td><td>DXY ▼ and area ETF ▲</td><td>◆ DXY flips ▲→▼</td></tr>
+    <tr><td class="nw"><b>Precious metals</b> (group)</td><td colspan="5">Roll-up only, no rules of its own: shows its members' verdicts, e.g. "2 ▼ · 0 ▲". The same applies to any parent area (Commodities, Risk assets).</td></tr>
+  </table></div>
+  <div class="callout" style="margin-top:10px"><b>Honest notes.</b>
+    (1) These rules are <b>standard driver relationships, not proven on your data</b>. Each starts advisory and earns trust through the scorecard in section 7.
+    (2) Silver has no USD correlation series yet. It needs one seed row in <code>ref_corr_asset</code> (yfinance <code>SI=F</code>); until then it borrows gold's gate.
+    (3) Quads are optional: each area can take <code>drv_macro_score</code> as an extra "confirm" leg later, but no rule depends on it.</div>
+</section>
+
+<!-- 4 -->
+<section class="card" id="exposure">
+  <h2><span class="n">4</span>Which stocks get flagged</h2>
+  <p class="lede">A stock is linked to an area through <b>any</b> of four tiers, most specific first. Every tier already exists except the override, which is one more option on an existing table.</p>
+  <div class="tw"><table>
+    <tr><th>Tier</th><th>Rule</th><th>Example</th><th>Source</th></tr>
+    <tr><td><span class="tier">Direct</span></td><td>The area's own instruments</td><td>GLD, SLV, PPLT → Precious metals</td><td><code>ref_macro_area</code> members <span class="tag have">HAVE</span></td></tr>
+    <tr><td><span class="tier">Class</span></td><td>Asset class / sector / style match</td><td>asset_class "Gold" → Gold · sector "Energy" → Oil</td><td><code>ref_gauge_transmission</code> (axis sector / asset_class / style) <span class="tag have">HAVE</span>, keyed by area</td></tr>
+    <tr><td><span class="tier">Theme</span></td><td>Hedgeye theme tag</td><td>theme "Crypto" → Bitcoin · "Precious metals" → Gold</td><td><code>ref_symbol_theme</code> <span class="tag have">HAVE</span></td></tr>
+    <tr><td><span class="tier">Override</span></td><td>Hand-picked include / exclude</td><td>MSTR → Bitcoin · NEM → Gold</td><td><code>ref_gauge_transmission</code> + axis <code>'symbol'</code> <span class="tag ext">EXTEND</span></td></tr>
+    <tr><td><span class="tier inv">Inverted</span></td><td>The stock moves <i>against</i> the area: the verdict flips</td><td>PFIX in a Bonds headwind → ✓ tailwind</td><td><code>ref_symbol_theme.inverted</code> <span class="tag have">HAVE</span> + same flag on transmission rows</td></tr>
+  </table></div>
+  <h3>Who gets a warning (keeps it quiet)</h3>
+  <ul class="tight">
+    <li><b>Holdings</b> in a Headwind or Stretched area → caution on the Action icon, and counted in "$ in headwind".</li>
+    <li><b>Buy candidates</b> (Final Call is a buy) in a Headwind area → caution. In a Tailwind area → confirm.</li>
+    <li><b>Everything else</b> → no warning. The rest of the universe stays silent.</li>
+    <li><b>One line per stock per area.</b> If several rules fire, the strongest verdict wins and the others show on hover.</li>
+  </ul>
+</section>
+
+<!-- 5 -->
+<section class="card" id="arch">
+  <h2><span class="n">5</span>Architecture — extend, don't add a fifth silo</h2>
+  <p class="lede">Today, "market condition → my stocks" logic lives in <b>four places</b> that don't talk to each other:
+   the cross-asset rule engine (1 gold rule), market patterns (8 one-day shocks), Risk Dial gauges (sizing), and hard-coded JS warnings in <code>_signalReasons</code>.
+   This design <b>generalizes the cross-asset engine</b> into the single home for standing driver rules, and reuses the exposure map the gauges and patterns already share.</p>
+  <div class="arch">
+    <div class="col"><span class="t">1 · Inputs</span>
+      <div class="box"><b>Prices &amp; ranges</b><code>drv_quote</code> · <code>drv_rr</code> (+ outlook history)</div>
+      <div class="box"><b>Macro series</b><code>hist_macro</code>: DGS10, T10YIE, HY spread</div>
+      <div class="box"><b>Correlations</b><code>drv_usd_correlation</code> (gold, oil, CRB, BTC, SPX)</div>
+      <div class="box x"><b>Gauges &amp; zones</b><code>drv_market_stat.gauges_fired</code> · vol zones are computed today only inside <code>api/routers/macro_areas.py</code>, so move that logic to a shared helper</div>
+    </div>
+    <div class="col"><span class="t">2 · Rules (data, not code)</span>
+      <div class="box n"><b>ref_driver_area</b>12 areas + parent for roll-up</div>
+      <div class="box x"><b>ref_cross_asset_rule</b>+ area_key, verdict, read_text, mode</div>
+      <div class="box x"><b>…_rule_leg</b>+ check types: flip, delta, series, corr gate, gauge, zone, level</div>
+      <div class="box n"><b>ref_driver_series</b>derived series, e.g. real yld = DGS10 − T10YIE</div>
+    </div>
+    <div class="col"><span class="t">3 · Evaluate (nightly + on load)</span>
+      <div class="box x"><b>derive_cross_asset_rules.py</b>same step in <code>derive_all</code>, after drv_rr</div>
+      <div class="box n"><b>drv_area_verdict</b>area · verdict · since · legs JSON · gate_ok</div>
+      <div class="box"><b>drv_cross_asset_signal</b>unchanged, per-rule detail</div>
+    </div>
+    <div class="col"><span class="t">4 · Resolve exposure</span>
+      <div class="box x"><b>ref_gauge_transmission</b>+ axis 'symbol', + inverted · keyed by area</div>
+      <div class="box"><b>ref_macro_area · ref_symbol_theme · ref_sector</b></div>
+      <div class="box n"><b>drv_driver_exposure</b>symbol · area · verdict · tier · inverted · message</div>
+    </div>
+    <div class="col"><span class="t">5 · Surfaces</span>
+      <div class="box n"><b>/api/cockpit/area-verdicts</b>→ dashboard "Areas" line + rail pills</div>
+      <div class="box x"><b>/api/actionable rows</b>+ <code>driver_flags[]</code> → <code>_signalReasons</code> (1 generic loop)</div>
+      <div class="box x"><b>meta_warning</b>only "rule couldn't run, data stale" → toolbar badge</div>
+      <div class="box"><b>Watch digest email</b>(optional) verdict <i>changes</i> on holdings</div>
+    </div>
+  </div>
+  <div class="legend"><span>Existing, reused as-is</span><span class="lx">Existing, extended</span><span class="ln">New</span></div>
+
+  <h3>Key design calls</h3>
+  <div class="tw"><table>
+    <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+    <tr><td>New engine or extend?</td><td><b>Extend</b> the cross-asset engine</td><td>It already has legs, groups, vetoes, a derive step and an Actionable hook. A second engine would split the logic again.</td></tr>
+    <tr><td>Patterns vs driver rules</td><td>Keep both, different jobs</td><td>Patterns = <i>what changed today</i> (one-day z-score shocks). Driver rules = <i>the standing condition</i> (multi-day trend state).</td></tr>
+    <tr><td>Where warnings show</td><td>Action icon + dashboard, <b>not</b> the toolbar badge</td><td>The toolbar badge means "your data is broken". Mixing market alerts into it would bury real failures.</td></tr>
+    <tr><td>Exposure map</td><td>One table for gauges, patterns <i>and</i> areas</td><td><code>ref_gauge_transmission</code> already serves two producers; its own comment allows other keys.</td></tr>
+    <tr><td>Server or browser</td><td>Compute server-side, render in JS</td><td>Today's JS warnings are hard-coded per case. One generic loop over <code>driver_flags</code> replaces that pattern for all areas.</td></tr>
+    <tr><td>Later clean-up</td><td>Move the hard-coded JS warnings (curve → Financials, vol gauge → asset class) into rule rows</td><td>One place to see and tune every market → stock warning. Optional, Phase 3.</td></tr>
+  </table></div>
+</section>
+
+<!-- 6 -->
+<section class="card" id="data">
+  <h2><span class="n">6</span>Data model changes</h2>
+  <div class="tw"><table>
+    <tr><th>Object</th><th>Change</th><th>Notes</th></tr>
+    <tr><td><code>ref_driver_area</code> <span class="tag new">NEW</span></td><td>area_key, label, signal_symbol, parent_key, sort_order, enabled</td><td>12 rows + parents (Metals, Energy, Risk, Rates). Editable in /ref.</td></tr>
+    <tr><td><code>ref_cross_asset_rule</code> <span class="tag ext">EXTEND</span></td><td>+ area_key, verdict, read_text, severity, mode ('advisory' | 'actionable'); target_symbol becomes nullable</td><td>The existing gold rule keeps working unchanged and is tagged area_key = 'gold'.</td></tr>
+    <tr><td><code>ref_cross_asset_rule_leg</code> <span class="tag ext">EXTEND</span></td><td>check_type adds: <code>outlook_flip</code>, <code>delta</code>, <code>corr_gate</code>, <code>gauge</code>, <code>zone</code>, <code>level</code>; + lookback_days, series_key</td><td>Existing <code>rr_position</code>, <code>outlook</code> and <code>is_veto</code> are unchanged. <code>corr_gate</code> failing → verdict Unclear.</td></tr>
+    <tr><td><code>ref_driver_series</code> <span class="tag new">NEW</span></td><td>series_key, expr (e.g. <code>DGS10 - T10YIE</code>), source</td><td>Keeps formulas out of code.</td></tr>
+    <tr><td><code>ref_gauge_transmission</code> <span class="tag ext">EXTEND</span></td><td>axis adds 'theme', 'symbol'; + inverted bool</td><td>gauge_key may now be an area_key.</td></tr>
+    <tr><td><code>ref_corr_asset</code> <span class="tag ext">SEED</span></td><td>+ silver row (yfinance SI=F)</td><td>Feeds the silver gate.</td></tr>
+    <tr><td><code>drv_area_verdict</code> <span class="tag new">NEW</span></td><td>as_of_date, area_key, verdict, prev_verdict, since_date, fired_rules, legs, gate_ok</td><td>Idempotent DELETE/INSERT per date. <b>Freshness-contract row required</b> (TASK_142 rule).</td></tr>
+    <tr><td><code>drv_driver_exposure</code> <span class="tag new">NEW</span></td><td>as_of_date, tos_symbol, area_key, verdict, tier, inverted, message</td><td>Freshness-contract row required. Uses <code>tos_symbol</code> (convention 15).</td></tr>
+    <tr><td><code>v_driver_scorecard</code> <span class="tag new">NEW</span></td><td>per area × verdict: forward 5d / 20d return of the area's signal instrument, n, win rate, CI</td><td>Same shape as <code>v_theme_stance_scorecard</code>; refreshed in <code>run_nightly_outcomes()</code>.</td></tr>
+  </table></div>
+</section>
+
+<!-- 7 -->
+<section class="card" id="noise">
+  <h2><span class="n">7</span>Noise control &amp; safety</h2>
+  <div class="two">
+    <div>
+      <h3>Keeping it quiet</h3>
+      <ul class="tight">
+        <li><b>Silence default:</b> quiet areas collapse into one "+N quiet" link and generate no warnings.</li>
+        <li><b>Holdings + buy candidates only</b> get warnings (section 4).</li>
+        <li><b>One line per stock per area</b>; other fired rules show on hover.</li>
+        <li><b>"New" dot for 3 days</b> after a verdict changes, so a flip is noticed without an alert.</li>
+        <li><b>Optional 2-day confirmation</b> before a verdict flips (avoids one-day whipsaw). Off by default; a <code>ref_settings</code> switch.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Safety rails</h3>
+      <ul class="tight">
+        <li><b>Advisory only.</b> <code>mode='advisory'</code> never touches <code>consolidated_action</code> / <code>trig_action</code> (cockpit rule C4).</li>
+        <li><b>Promotion gate:</b> a rule may switch to <code>mode='actionable'</code> only when its scorecard is positive on ≥ 30 samples (your TASK_147 rule). It then folds in through the existing cross-asset path at low priority.</li>
+        <li><b>One zone definition:</b> the derive and the rails must call the same vol-zone helper, so a tile never says "calm" while the rail says "chop".</li>
+        <li><b>Stale data → Unclear, not wrong:</b> a leg with missing or stale input makes the area Unclear and posts one toolbar warning, rather than silently reading "quiet".</li>
+        <li><b>Read text describes, never explains:</b> "Dollar ▲ and 10Y ▲ while Gold ▼", never invented causes (same rule as <code>ref_market_pattern.read_text</code>).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="card" id="plan">
+  <h2><span class="n">8</span>Rollout — three tasks, each useful on its own</h2>
+  <div class="phase">
+    <div class="ph"><div class="t">TASK_149 · Engine + metals &amp; energy</div>
+      <div class="s">Schema extensions · new check types · <code>drv_area_verdict</code> / <code>drv_driver_exposure</code> + freshness rows · areas: Gold, Silver, Copper, Oil · dashboard "Areas" line + drawer · rail pills · Action-icon line + filter chip.</div></div>
+    <div class="ph"><div class="t">TASK_150 · Risk &amp; rates areas</div>
+      <div class="s">Bitcoin, Large caps, Small caps, Tech, Bonds, Credit, Intl/EM · inverted handling (PFIX) · "$ in headwind" drawer · silver correlation seed.</div></div>
+    <div class="ph"><div class="t">TASK_151 · Prove it</div>
+      <div class="s"><code>v_driver_scorecard</code> + nightly refresh · validation report · optional email of verdict changes · optional move of the hard-coded JS warnings into rule rows.</div></div>
+  </div>
+  <p class="lede" style="margin-top:8px">TASK_148 (the "This week" strip) ships first. The Areas line sits directly under it.</p>
+</section>
+
+<!-- 9 -->
+<section class="card" id="q">
+  <h2><span class="n">9</span>Decisions for you</h2>
+  <div class="tw"><table>
+    <tr><th>#</th><th>Question</th><th>My recommendation</th></tr>
+    <tr><td>1</td><td>Is the area list right? (add or remove: Ag, Cannabis, Utilities, Yen…)</td><td>Start with these 12. Cannabis and Ag have no clear driver in your data.</td></tr>
+    <tr><td>2</td><td>Warn on holdings only, or on buy candidates too?</td><td>Both (section 4). Buy candidates are where a warning saves money.</td></tr>
+    <tr><td>3</td><td>Should "$ in headwind" also cover Stretched areas?</td><td>No. Headwind only; keep it a clear number.</td></tr>
+    <tr><td>4</td><td>Turn on the 2-day confirmation?</td><td>Off at first; review after a month of flips.</td></tr>
+    <tr><td>5</td><td>Email verdict changes on your holdings?</td><td>Yes, inside the existing watch digest. Changes only, never the full list.</td></tr>
+  </table></div>
+</section>
+</div>
+
+<script>
+// Drawer content per area (illustrative values only)
+const A = {
+  gold: { name: 'Gold', v: ['hw','▼ Headwind'], since: 'since Mon 10/5',
+    legs: [['✓','ok','Gate: USD–gold 30d corr −0.84 (≤ −0.3)'],['✗','bad','DXY outlook Bullish, 92% of range'],['✗','bad','10Y outlook Bullish · real yield +18bp over 20d'],['✗','bad','/GC outlook Bearish']],
+    read: 'Dollar ▲ and real yields ▲ while Gold ▼. Historically this combination pressures gold and gold-linked stocks.',
+    stocks: [['GLD','$18,400','Direct',''],['GDX','—','Class','asset class Gold'],['NEM','—','Override','']] },
+  silver: { name: 'Silver', v: ['hw','▼ Headwind'], since: 'since Tue 10/6',
+    legs: [['✓','ok','Gate: borrows gold\'s correlation (silver series not yet seeded)'],['✗','bad','Gold rule fired'],['✗','bad','/SI outlook Bearish'],['–','mut','/HG Bearish (industrial leg, not needed)']],
+    read: 'Gold headwind and Silver ▼.', stocks: [['SLV','—','Direct','not held · buy candidate']] },
+  copper: { name: 'Copper', v: ['tu','◆ Turning'], since: 'flipped Thu 10/8',
+    legs: [['✓','ok','Gate: USD–CRB corr −0.52'],['✓','ok','/HG outlook flipped Bearish → Bullish (2 days ago)'],['✗','bad','DXY still Bullish']],
+    read: 'Copper trend turned up while the dollar is still strong. Watch list, not yet a tailwind.', stocks: [['XLB','—','Class','sector Materials · not held']] },
+  oil: { name: 'Oil & energy', v: ['tw2','▲ Tailwind'], since: 'since 9/24',
+    legs: [['✓','ok','/CL outlook Bullish, 66% of range'],['✓','ok','/BZ outlook Bullish'],['✓','ok','OVX investable'],['–','mut','USD–oil corr −0.12 (info only)']],
+    read: 'WTI ▲ and Brent ▲ with oil vol calm.', stocks: [['XLE','$12,100','Class','sector Energy'],['BNO','—','Theme','not held']] },
+  btc: { name: 'Bitcoin', v: ['tw2','▲ Tailwind'], since: 'since 9/30',
+    legs: [['–','mut','USD–BTC corr +0.71: dollar legs active with reversed sign'],['✓','ok','/BTC outlook Bullish'],['✓','ok','$COMP Bullish'],['✓','ok','VXN investable']],
+    read: 'Bitcoin ▲ alongside Nasdaq ▲ and calm Nasdaq vol.', stocks: [['IBIT','$8,300','Direct',''],['MSTR','—','Override','not held']] },
+  spx: { name: 'Large caps', v: ['ca','⚠ Stretched'], since: 'since Fri 10/9',
+    legs: [['✓','ok','SPX outlook Bullish'],['✓','ok','HYG Bullish · VIX investable'],['⚠','bad','Risk Dial spx_top_range fired (SPX 94% of range)']],
+    read: 'Trend intact but SPX at the top of its risk range. Don\'t chase new buys.', stocks: [['QQQ','$31,000','Direct',''],['XLK','$22,700','Class','S&P 500 flag'],['…','$42,300','Class','+9 more S&P names']] },
+  iwm: { name: 'Small caps', v: ['hw','▼ Headwind'], since: 'since 9/29',
+    legs: [['✗','bad','RUT outlook Bearish'],['✗','bad','10Y outlook Bullish'],['–','mut','HY spread +6bp / 20d (not needed)']],
+    read: 'Small caps ▼ while yields ▲.', stocks: [['IWM','$9,200','Direct','']] },
+  bonds: { name: 'Bonds', v: ['hw','▼ Headwind'], since: 'since 9/22',
+    legs: [['✗','bad','TNX outlook Bullish (yields rising)'],['✗','bad','10Y breakeven +9bp / 20d']],
+    read: 'Yields ▲ with inflation expectations ▲.', stocks: [['TLT','$14,000','Direct',''],['PFIX','$3,200','Inverted','moves opposite → ✓ tailwind']] },
+  quiet: { name: 'Quiet areas', v: ['qu','— Quiet'], since: '', legs: [['–','mut','Tech / long-duration growth: no rule fired'],['–','mut','Credit: no rule fired']], read: 'Silence is the default: quiet areas take no space on the line.', stocks: [] },
+  em: { name: 'Intl / EM', v: ['hw','▼ Headwind'], since: 'since 9/21',
+    legs: [['✗','bad','DXY outlook Bullish'],['✗','bad','EEM outlook Bearish']],
+    read: 'Dollar ▲ while EM ▼.', stocks: [['EEM','—','Direct','not held'],['EWG','—','Direct','not held']] },
+  expo: { name: 'Holdings in headwind areas', v: ['hw','$41,600 · 3 holdings'], since: '', legs: null,
+    read: 'Sorted by $ held. Click a symbol to open it in Actionable.',
+    stocks: [['GLD','$18,400','Gold','Direct'],['TLT','$14,000','Bonds','Direct'],['IWM','$9,200','Small caps','Direct'],['PFIX','$3,200','Bonds','Inverted → not counted']] }
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const drawer = document.getElementById('drawer');
+let openKey = null;
+function render(k) {
+  const a = A[k];
+  const legs = a.legs ? `<table class="legs"><tbody>${a.legs.map(l => `<tr><td class="${l[1]}">${esc(l[0])}</td><td>${esc(l[2])}</td></tr>`).join('')}</tbody></table>` : '';
+  const head = k === 'expo' ? '<tr><th>Holding</th><th class="r">$ held</th><th>Area</th><th>Tier</th></tr>'
+                            : '<tr><th>Stock</th><th class="r">$ held</th><th>Tier</th><th>Note</th></tr>';
+  const rows = a.stocks.length ? a.stocks.map(s => `<tr><td><b>${esc(s[0])}</b></td><td class="r">${esc(s[1])}</td><td><span class="tier ${/Invert/.test(s[2]+s[3])?'inv':''}">${esc(s[2])}</span></td><td>${esc(s[3])}</td></tr>`).join('')
+                              : '<tr><td colspan="4" class="mut">No linked stocks to show.</td></tr>';
+  drawer.innerHTML = `<div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(a.name)}</b><span class="v ${a.v[0]}">${esc(a.v[1])}</span><span class="mut" style="font-size:11px">${esc(a.since)}</span></div>
+    ${legs}<div class="read">${esc(a.read)}</div></div>
+    <div><div class="tw"><table>${head}${rows}</table></div>
+    <div style="font-size:11px;color:var(--ink2);margin-top:4px">Holdings and buy candidates only · <a href="#" onclick="return false">Open in Actionable →</a></div></div>`;
+}
+document.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.a;
+  document.querySelectorAll('[data-a]').forEach(x => x.setAttribute('aria-expanded', 'false'));
+  if (openKey === k) { drawer.classList.remove('open'); openKey = null; return; }
+  render(k); drawer.classList.add('open'); b.setAttribute('aria-expanded', 'true'); openKey = k;
+}));
+</script>
+</body>
+</html>

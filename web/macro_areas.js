@@ -620,7 +620,7 @@
           // low/high threshold bar between the zone text and the candle/
           // %chg) dropped too -- user: "what is bar between investable
           // text and Value? Can we remove that."
-          '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
+          '<div class="msr-row" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m)) + '">' +
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
               // Prefer a real per-symbol label override; when there isn't
               // one (label just repeats the area's own name, e.g. VIX's
@@ -661,7 +661,7 @@
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
       return sep + (
-        '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
+        '<div class="msr-row" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m, dispName)) + '">' +
           (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             // Same fallback as the gauge row above: dispName only differs
@@ -992,6 +992,8 @@
       container.innerHTML = byContainer[containerId] || '<div class="msr-loading">No data.</div>';
     });
     renderAccountsCards(areas);
+    // TASK_149: area-verdict pills on the rails (web/area_verdicts.js; no-op until its data lands).
+    if (window.AreaVerdicts) window.AreaVerdicts.decorateRails();
   }
 
   // 2026-09-30, user-directed: Accounts panel "Cards" view -- the same

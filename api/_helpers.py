@@ -213,6 +213,22 @@ def load_vol_thresholds(session) -> dict:
     }
 
 
+def vol_zone(last, low, high):
+    """Vol-regime zone for one gauge reading: 'investable' (<= low), 'chop'
+    (<= high), 'elevated' (above high); None when the reading or band is
+    missing. THE single zone definition -- /api/macro-areas rails, the area
+    verdict derive (etl/derive_cross_asset_rules.py) and the dashboard tiles
+    all call this so a tile can never say calm while the rail says chop."""
+    if last is None or low is None or high is None:
+        return None
+    last, low, high = float(last), float(low), float(high)
+    if last <= low:
+        return "investable"
+    if last <= high:
+        return "chop"
+    return "elevated"
+
+
 def eod_feed_status(as_of_date) -> dict:
     """Check whether the EOD price feed (hist_tl) has rows for `as_of_date`.
 

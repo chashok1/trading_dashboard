@@ -1376,9 +1376,36 @@ def get_actionable(
     except Exception:
         _by_acct = {}
 
+    # TASK_149: area-driver flags per symbol (drv_driver_exposure, advisory
+    # only -- feeds _signalReasons + the "In headwind area" chip, never the
+    # Final Call). One generic list per row; the JS decides caution/confirm.
+    _driver_flags = {}
+    try:
+        from api._helpers import _get_ref_setting
+        _new_days = int(float(_get_ref_setting("area_verdict_new_days", "3")))
+        with session_scope() as _ds:
+            for _x in _ds.execute(text("""
+                SELECT e.tos_symbol, e.area_key, ar.label, e.area_verdict, e.verdict,
+                       e.tier, e.inverted, e.message, (:d - v.since_date) <= :nd AS is_new
+                FROM drv_driver_exposure e
+                JOIN ref_driver_area ar ON ar.area_key = e.area_key
+                LEFT JOIN drv_area_verdict v
+                       ON v.as_of_date = e.as_of_date AND v.area_key = e.area_key
+                WHERE e.as_of_date = :d ORDER BY ar.sort_order
+            """), {"d": d, "nd": _new_days}).mappings():
+                _driver_flags.setdefault(_x["tos_symbol"], []).append({
+                    "area_key": _x["area_key"], "label": _x["label"],
+                    "area_verdict": _x["area_verdict"], "verdict": _x["verdict"],
+                    "tier": _x["tier"], "inverted": _x["inverted"],
+                    "message": _x["message"], "is_new": bool(_x["is_new"]),
+                })
+    except Exception:
+        _driver_flags = {}
+
     out = []
     for r in rows:
         d_ = dict(r)
+        d_["driver_flags"] = _driver_flags.get(d_.get("tos_symbol"), [])
         _t = _trades.get(d_.get("tos_symbol")) or {}
         _lb, _ls = _t.get("bought"), _t.get("sold")
         d_["last_bought_date"] = _lb.isoformat() if _lb else None

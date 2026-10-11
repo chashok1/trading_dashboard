@@ -4,6 +4,12 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-10-11
+
+- **TASK_149 Area Driver Rules**: `ref_cross_asset_rule` gains `area_key/verdict/read_text/severity/mode` (`target_symbol`/`target_action` now nullable); `ref_cross_asset_rule_leg` gains `lookback_days/threshold_value/leg_label/group_op` and new `check_type`s; `drv_cross_asset_signal` gains `mode/area_key/verdict/severity/read_text/data_missing`; `ref_gauge_transmission` gains `inverted/exclude`. New: `ref_driver_series`, `ref_driver_area`, `drv_area_verdict`, `drv_driver_exposure`, two `ref_settings` (`area_verdict_confirm_days`, `area_verdict_new_days`), two `ref_freshness_contract` rows. Seeds in `db/seeds_area_driver.sql` (also adds the `silver` row to `ref_corr_asset`). `derive_actionable.py` now folds only `mode='actionable'` cross-asset rows. Apply with `python -m db.init_db`. Logic: `docs/area_driver_rules_logic.md`.
+
+---
+
 ## 2026-09-22
 
 - **Theme grid 1w/4w trend arrows bugfix: every theme showed "flat".**
@@ -832,3 +838,6 @@ Append-only log of schema and behaviour changes. Most-recent first.
 - **RR loader**: `load_rr()` in `load_raw.py`, registered in `CUSTOM_HANDLERS['rr']`.
 - **hist_ps**: Uses `ticker` column; mapped to `tos_symbol` via `_populate_ps_tos_symbol()` through `ref_rrt`.
 - **Schema migration pattern**: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `baseline.sql`.
+
+## 2026-10-11 — Tech split into 4 child areas (area driver rules)
+`ref_driver_area` gains `rules_from` + `hedgeye_cancels`. `tech` is now a parent; children `tech_sw`/`tech_semis`/`tech_big`/`tech_spec` share its rates rules and map stocks via `ref_gauge_transmission` (`db/seeds_area_tech_split.sql`). A stock links to its single most specific child. A child's rates headwind is set aside (Quiet) when more than half of its Hedgeye-covered member stocks lean bullish (`etl/derive_area_verdicts.py::_he_breadth`; derived from stock-level outlooks, Hedgeye gives none at category level).
