@@ -1,7 +1,7 @@
 # Source Standing — single source of truth (`drv_source_standing`)
 
 Design doc. Implementation is handed to the developer agent via
-`agent-tasks/TASK_9_source_standing_unification.md`. Cowork authored this; no
+`agent-tasks/archive/TASK_9_source_standing_unification.md`. Cowork authored this; no
 code is written by Cowork.
 
 ## Problem

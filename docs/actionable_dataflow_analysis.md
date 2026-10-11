@@ -33,7 +33,7 @@ You loaded **TOSL intraday** (before today's close). Under the anchor model
 > files land.
 
 The "Did it refresh?" checklist and the SQL to prove it are in
-`agent-tasks/TASK_92_verify_actionable_refresh.md`.
+`agent-tasks/archive/TASK_92_verify_actionable_refresh.md`.
 
 ---
 
@@ -207,7 +207,7 @@ the regime you're trading *into*, not the tick-by-tick.
 The authoritative DB-level proof (the load actually wrote `drv_quote` for `D`
 and the cascade re-ran) requires Postgres, which this session can't reach. That
 verification is specced for the developer agent in
-`agent-tasks/TASK_92_verify_actionable_refresh.md`.
+`agent-tasks/archive/TASK_92_verify_actionable_refresh.md`.
 
 ---
 

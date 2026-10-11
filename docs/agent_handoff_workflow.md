@@ -99,3 +99,5 @@ Cowork NEVER (no exception):
 Cowork always CAN: write planning/analysis docs (e.g. `docs/*.md`,
 `docs/audit/*.md`), task specs, and process documentation — none of which is
 code.
+
+Finished task specs and handoff files are archived to `agent-tasks/archive/` (handoffs in `agent-tasks/archive/handoff/`) at the start of each new round.

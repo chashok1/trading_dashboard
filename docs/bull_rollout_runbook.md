@@ -5,7 +5,7 @@ changes (TASK 65–69) were, or you want to turn them on/off. Plain-English, no 
 remember anything.
 
 **Source of the plan:** `docs/audit/bull_calc_analysis.md` (the full analysis).
-**Task specs:** `agent-tasks/TASK_65..69_*.md`. **Build order:** see `AGENT_WORK_7.md`.
+**Task specs:** `agent-tasks/archive/TASK_65..69_*.md`. **Build order:** see `agent-tasks/archive/handoff/AGENT_WORK_7.md`.
 
 ---
 
@@ -31,7 +31,7 @@ stuff. Defaults are set so doing nothing = today's behavior.
 
 ## The activation sequence (do this, in order, when you're ready)
 
-1. **Let the agent build the whole queue** (`AGENT_WORK_7.md`). Safe — see the promise
+1. **Let the agent build the whole queue** (`agent-tasks/archive/handoff/AGENT_WORK_7.md`). Safe — see the promise
    above. Nothing you trade changes yet.
 2. **Look at the Performance screen (TASK 65).** Which rules actually have edge
    (`proven` / `promising`)? Which are `unproven` noise? Just look — no action.
