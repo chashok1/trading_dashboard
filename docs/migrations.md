@@ -841,3 +841,14 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-10-11 — Tech split into 4 child areas (area driver rules)
 `ref_driver_area` gains `rules_from` + `hedgeye_cancels`. `tech` is now a parent; children `tech_sw`/`tech_semis`/`tech_big`/`tech_spec` share its rates rules and map stocks via `ref_gauge_transmission` (`db/seeds_area_tech_split.sql`). A stock links to its single most specific child. A child's rates headwind is set aside (Quiet) when more than half of its Hedgeye-covered member stocks lean bullish (`etl/derive_area_verdicts.py::_he_breadth`; derived from stock-level outlooks, Hedgeye gives none at category level).
+
+## 2026-10-11 — TASK_150 quick fixes
+- Hedgeye "Book-SOME" real-time alerts now parse as `signal_kind='Sell-SOME'` (`etl/hedgeye/parsers.py`); the RTA derive also maps old NULL-kind rows whose `raw_subject` matches `book-some` to Sell-SOME (no raw `hist_rta` rewrite).
+- `db/seeds_area_driver.sql`: CRAK linked to Oil; BLOK, HOOD linked to Bitcoin (`ref_gauge_transmission` symbol rows).
+- New setting `ref_settings.lowconf_sell_sources` (default `SSS,RR,ETF`, `db/seeds_lowconf_sell_sources.sql`): `drv_actionable.low_confidence` is also TRUE when the only sell evidence is a REMOVE/REDUCE from those sources. Annotation only.
+
+## 2026-10-11 — TASK_151 per-account sizes
+`ref_accounts.size_mult` (0-5, default 0; seeded IRA 1 / F-A 2 / F-M 1 only if no multiplier exists yet, `db/seeds_account_size.sql`), `ref_asset_allocation.units_pct` (units / 400000; derive falls back to it when NULL), new `drv_account_size` (as_of_date, tos_symbol, account_short; raw + $1k-rounded min/max/unit, account value, held $, over_max) built by `etl/derive_account_size.py` in `derive_all` right after `drv_actionable`. Freshness contract row `drv_account_size` (refreshed_by `derive_all`). Additive: Final Call / household sizing unchanged. Shown via `account_sizes` on `/api/actionable` rows (per-account OVER MAX pill in `web/actionable.js`).
+
+## 2026-10-12 — TASK_152 / TASK_153 live advice
+New `hist_advice_plan` (frozen night plan per stock/account for the next trading day; rewritten until 09:30 ET) and `hist_advice_live` (saved live checks, kept forever) in `db/baseline.sql`; `ref_settings` keys + freshness-contract rows in `db/seeds_live_advice.sql`. `etl/derive_live_advice.py` builds the plan (`derive_all` step `hist_advice_plan`) and runs the live check after price pulls (`etl/yahoo_fetch.py`, TOSL load in `etl/etl_load.py`). New `GET /api/actionable/live`. Actionable screen: LIVE column, "Today's actions" panel, Act (N) chip; the Trade toolbar button is removed and Trade no longer starts ON (Buy ideas section replaces it). Additive: Final Call sizing is unchanged. See `docs/live_advice_logic.md`. Apply with `python -m db.init_db`; restart the server and scheduler (etl/ changed).

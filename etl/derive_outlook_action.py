@@ -1322,7 +1322,11 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 rta_rows = session.execute(text(f"""
                     WITH ranked AS (
                         SELECT COALESCE(tos_symbol, symbol) AS sym,
-                               side, signal_kind, alert_ts, snapshot_date,
+                               side,
+                               COALESCE(signal_kind, CASE
+                                 WHEN raw_subject ~* 'book-some'
+                                 THEN 'Sell-SOME' END) AS signal_kind,
+                               alert_ts, snapshot_date,
                                ROW_NUMBER() OVER (
                                    PARTITION BY COALESCE(tos_symbol, symbol)
                                    ORDER BY alert_ts DESC

@@ -1028,6 +1028,7 @@ def fetch_y_smart() -> dict:
             _last_auto_fetch_date = today
             _mark_eod_done(today)
             logger.info("Y smart (EOD) complete for %s", today)
+            _run_live_advice_check()
             return {"eod": True, "cache": cache_result,
                     "detail": detail_result, "hist": hist_result}
 
@@ -1048,6 +1049,7 @@ def fetch_y_smart() -> dict:
                 hist_result = _load_cache_to_hist_y(today)
 
             logger.info("Y smart (intraday) complete for %s", today)
+            _run_live_advice_check()
             return {"eod": False, "cache": cache_result, "hist": hist_result}
 
     except Exception as ex:
@@ -1061,6 +1063,17 @@ def fetch_y_smart() -> dict:
 # ---------------------------------------------------------------------------
 # Public: hourly intraday price-only refresh (market hours, cache-only)
 # ---------------------------------------------------------------------------
+
+def _run_live_advice_check() -> None:
+    """TASK_152: compare the night plan with the prices just pulled and save the
+    check (etl/derive_live_advice.py). Never raises -- a broken check must not
+    break a price pull."""
+    try:
+        from etl.derive_live_advice import run_live_check_safe
+        run_live_check_safe()
+    except BaseException:
+        logger.exception("live advice check failed (non-fatal)")
+
 
 def fetch_hourly_quotes() -> dict:
     """
@@ -1097,6 +1110,7 @@ def fetch_hourly_quotes() -> dict:
                 derive_all(s, anchor)
 
         logger.info("Hourly quote refresh complete: %s", cache_result)
+        _run_live_advice_check()
         return {"symbols": len(tickers), "cache": cache_result,
                 "anchor": str(anchor) if anchor else None}
     except Exception as ex:

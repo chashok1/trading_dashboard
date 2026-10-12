@@ -293,3 +293,10 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category, inverted, exclude
     ('intl_em','symbol','EEM',FALSE,FALSE),
     ('intl_em','symbol','FXI',FALSE,FALSE)
 ON CONFLICT (gauge_key, axis, category) DO NOTHING;
+
+-- TASK_150: link CRAK -> Oil; BLOK, HOOD -> Bitcoin (symbol overrides).
+INSERT INTO ref_gauge_transmission (gauge_key, axis, category, inverted, exclude) VALUES
+    ('oil','symbol','CRAK',FALSE,FALSE),
+    ('bitcoin','symbol','BLOK',FALSE,FALSE),
+    ('bitcoin','symbol','HOOD',FALSE,FALSE)
+ON CONFLICT (gauge_key, axis, category) DO NOTHING;

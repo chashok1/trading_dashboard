@@ -389,6 +389,10 @@ def parse_real_time_alert(email: Email) -> Parsed:
         if mk:
             analyst = mk.group("analyst").strip() if mk.group("analyst") else None
             signal_kind = mk.group("kind").strip()
+        elif re.search(r"\bBook-SOME\b", rest, re.I):
+            # "Book-SOME (Investing Summit!): NET" = take some profit, has no
+            # word "Signal". Same meaning as Sell-SOME.
+            signal_kind = "Sell-SOME"
 
     # body headline: e.g. "SELL SIGNAL - SHORTING ROP $339.80"
     bl = _body_lines(email.plaintext)
@@ -428,6 +432,14 @@ def parse_real_time_alert(email: Email) -> Parsed:
         if intro and _COMPANY_SUFFIX_RE.search(intro[0]):
             intro = intro[1:]
     intro_text = " ".join(intro)
+
+    # The subject says "Sell Signal" but the prose under the headline can say the
+    # playbook is to sell-SOME (ETHA 2026-10-12: "we should sell-SOME on the bounce").
+    # The prose is the real instruction -> partial, not a full exit.
+    if (signal_kind or "").strip().lower() == "sell" and side != "short" \
+            and re.search(r"\bsell[\s\-]*some\b", intro_text, re.I):
+        signal_kind = "Sell-SOME"
+        p.flags.append("sell_some_from_body")
 
     # coaching notes (ordered list after "Coaching Notes:")
     coaching = []

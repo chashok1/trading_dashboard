@@ -1226,6 +1226,10 @@
     body.act-page .act-main-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; }
     body.act-page .act-content-row { display: flex; flex: 1; min-height: 180px; overflow: hidden; }
     body.act-page #hedgeyePanel { flex-shrink: 0; }
+    /* TASK_153: Today's actions panel + LIVE column tags (existing colour tokens only) */
+    .live-tag { font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 6px; background: #f1f5f9; color: #64748b; border: 1px solid #d1d5db; }
+    .live-tag-warn { color: var(--warn); border-color: var(--warn); background: #fff7ed; }
+    tr.ta-flash td { background: #fef9c3 !important; transition: background 1s; }
     body.act-page .act-table-wrap { flex: 1; overflow-x: auto; overflow-y: auto; min-height: 0; }
 
     /* Side panels REMOVED (2026-09-01, user request: "remove the side
@@ -1355,6 +1359,7 @@
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
       <div id="hedgeyePanel" style="display:none; margin-bottom:6px;"></div>
 
+
       <!-- TASK_142: amber freshness chip -- shown only when drv_rule_outcome
            (the table behind the Rules-edge pills) has breached its
            ref_freshness_contract. Populated by updateEdgeDataChip() in
@@ -1450,7 +1455,8 @@
                have to leave this screen to manage the list. User: "actionable
                screen -> add a radio button My next to Trade|Trade2|WL". -->
           <div class="seg-ctrl" title="Trade Mode view">
-            <button id="tradeModeBtn" class="tip-rich" data-tip="Trade (Strict): only qualifying buys, held sells (full or partial), stop breaches">💱 Trade</button>
+            <!-- TASK_153 (2026-10-12): the Trade button was removed -- Trade's buys now live in the
+                 Buy ideas section of Today's actions. Trade2 and WL are unchanged. -->
             <button id="tradeModeDiffBtn" class="tip-rich" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">🥈 Trade2</button>
             <button id="watchlistOnlyBtn" class="tip-rich" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">⏳ WL</button>
           </div>
@@ -1483,6 +1489,7 @@
             <div class="act-chip" data-flag-pill="etfchg_only" title="Filter to symbols with a recent ETF Pro Change event (informational -- does not drive ETF's own action)"><span>EC</span></div>
             <div class="act-chip" data-flag-pill="iichg_only" title="Filter to symbols with a recent II Pro Change event (informational -- does not drive II's own action)"><span>IC</span></div>
             <div class="act-chip" data-flag-pill="headwind_only" title="TASK_149: holdings and buy candidates whose market area (Gold, Oil, Bitcoin...) is in Headwind -- advisory only, never changes the Final Call"><span>In headwind area (<span class="hw-count">0</span>)</span></div>
+            <div class="act-chip" data-flag-pill="act_only" title="TASK_153: stocks with a live timing signal today (sell all, spike trim, buy-back, dip buy) plus Trade Mode buy ideas. Over-max is info only."><span>Act (<span class="act-count">0</span>)</span></div>
           </div>
           <!-- Account filter -- placeholder option itself reads "Acct" (no
                separate label), same convention as Sectors/Asset Classes/
@@ -1721,6 +1728,7 @@
               <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" data-filter-key="final_code" data-filter-type="str" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;min-width:90px;">ACTION</th>
               <th data-col="macro" class="sortable" data-key="macronet" data-type="num" data-filter-key="macro_action" data-filter-type="str" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;min-width:64px;">MACRO</th>
               <th data-col="pvv" class="sortable" data-key="_pvv_rank" data-type="num" data-filter-key="pvv_decision" data-filter-type="str" title="PVV: Price/Volume/Volatility ROC signal in 4 time buckets (Today/5d/3w/3m), consolidated into one decision. Informational only — not part of consolidated_action. Hover for per-bucket detail." style="width:90px;min-width:90px;">PVV</th>
+              <th data-col="live" class="sortable" data-key="_live_rank" data-type="num" title="LIVE: how today's price compares with last night's plan lines (trim, dip-buy, buy-back, over-max). Sorted by tier first: required, consider, buy idea, info. Informational only; never changes the Final Call. Hover for sizes per account." style="width:90px;min-width:90px;">LIVE</th>
               <th data-col="rr" class="sortable" data-key="_rrPos" data-type="num" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right), 0-100%. Sort ascending to bring rows near LRR to the top, descending for rows near TRR." style="width:52px;min-width:52px;">RR</th>
               <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:44px;min-width:44px;">Vlm</th>
               <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade. Numbers below: IVP / HV / IV." style="width:62px;min-width:62px;">IV</th>
@@ -1960,7 +1968,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20261011a"></script>
+  <script src="/static/actionable.js?v=20261012b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261009b" defer></script>
 <script src="/static/warning_badge.js"></script>

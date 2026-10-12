@@ -681,6 +681,15 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
         except BaseException:
             log.exception("source watchlist file generation failed after %s load (continuing)", ft)
 
+    # TASK_152: a TOSL load is a price pull -- compare the night plan with the
+    # newer prices and save the live check. Never raises.
+    if do_derive and derive_error is None and ft.upper() == 'TOSL':
+        try:
+            from etl.derive_live_advice import run_live_check_safe
+            run_live_check_safe()
+        except BaseException:
+            log.exception("live advice check failed after TOSL load (continuing)")
+
     return {"status": "loaded", "rows_inserted": ins if 'ins' in locals() else 0}
 
 

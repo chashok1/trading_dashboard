@@ -9155,3 +9155,154 @@ UPDATE ref_cross_asset_rule SET area_key = 'gold', mode = 'actionable'
 -- (rules_from) and be cancelled to Quiet when Hedgeye is bullish on its members.
 ALTER TABLE ref_driver_area ADD COLUMN IF NOT EXISTS rules_from TEXT;
 ALTER TABLE ref_driver_area ADD COLUMN IF NOT EXISTS hedgeye_cancels BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =====================================================
+-- 2026-10-11 TASK_151: per-account min/max/unit sizes.
+-- account size = category pct x account value x ref_accounts.size_mult,
+-- rounded to the nearest $1,000 (etl/derive_account_size.py). ADDITIVE:
+-- the household Final Call sizing (ref_asset_allocation dollars) is unchanged.
+-- size_mult 0 = not a trading account (no rows). Range 0-5, edit on /ref.
+-- =====================================================
+ALTER TABLE IF EXISTS ref_accounts
+    ADD COLUMN IF NOT EXISTS size_mult NUMERIC NOT NULL DEFAULT 0
+    CHECK (size_mult >= 0 AND size_mult <= 5);
+
+-- units / the old fixed $400,000 household base (derive falls back to this
+-- when NULL, since refresh_ref rebuilds the table from the workbook).
+ALTER TABLE IF EXISTS ref_asset_allocation ADD COLUMN IF NOT EXISTS units_pct NUMERIC;
+
+CREATE TABLE IF NOT EXISTS drv_account_size (
+    as_of_date     DATE NOT NULL,
+    tos_symbol     TEXT NOT NULL,
+    account_short  TEXT NOT NULL,
+    category       TEXT,
+    account_value  NUMERIC,
+    size_mult      NUMERIC,
+    value_date     DATE,          -- position-file date the value came from
+    min_raw        NUMERIC,
+    max_raw        NUMERIC,
+    unit_raw       NUMERIC,
+    min_dollar     NUMERIC,       -- rounded to nearest $1,000
+    max_dollar     NUMERIC,
+    unit_dollar    NUMERIC,
+    held_dollar    NUMERIC,
+    over_max       BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (as_of_date, tos_symbol, account_short)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_account_size_sym
+    ON drv_account_size(as_of_date, tos_symbol);
+
+-- =====================================================
+-- 2026-10-12 TASK_152: frozen night plan + saved live checks
+-- (etl/derive_live_advice.py; docs/live_advice_logic.md).
+-- hist_advice_plan: one row per stock per trading account for the NEXT
+-- trading day, written after the end-of-day derive (derive_all step). It may
+-- be rewritten (DELETE+INSERT of that plan_date; own table, not raw feed
+-- data) until 9:30 ET on plan_date, then it is frozen.
+-- hist_advice_live: one row per stock/account per price pull (non-NONE
+-- signals every check; NONE only the first time a key appears that day).
+-- Kept forever: it is the scoring record for the later Daily review.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS hist_advice_plan (
+    plan_date        DATE NOT NULL,
+    tos_symbol       TEXT NOT NULL,
+    account_short    TEXT NOT NULL,
+    made_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    anchor_date      DATE,
+    final_action     TEXT,
+    final_code       TEXT,
+    final_side       TEXT,
+    winning_source   TEXT,
+    winning_action   TEXT,
+    kept_sellall     BOOLEAN NOT NULL DEFAULT FALSE,
+    kept_sellsome    BOOLEAN NOT NULL DEFAULT FALSE,
+    kept_remove      BOOLEAN NOT NULL DEFAULT FALSE,
+    low_confidence   BOOLEAN NOT NULL DEFAULT FALSE,
+    outlook          TEXT,
+    outlook_turned   BOOLEAN NOT NULL DEFAULT FALSE,
+    stop_breached    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_cash          BOOLEAN NOT NULL DEFAULT FALSE,
+    is_macro         BOOLEAN NOT NULL DEFAULT FALSE,
+    sector           TEXT,
+    trend_line       NUMERIC,
+    earnings_gap     BOOLEAN NOT NULL DEFAULT FALSE,
+    account_value    NUMERIC,
+    value_date       DATE,
+    size_mult        NUMERIC,
+    account_cash     NUMERIC,
+    category         TEXT,
+    min_raw          NUMERIC,
+    max_raw          NUMERIC,
+    unit_raw         NUMERIC,
+    min_dollar       NUMERIC,
+    max_dollar       NUMERIC,
+    unit_dollar      NUMERIC,
+    held_dollar      NUMERIC,
+    held_shares      NUMERIC,
+    gain_pct         NUMERIC,
+    sector_share_pct NUMERIC,
+    over_ratio       NUMERIC,
+    prior_close      NUMERIC,
+    prior_close_date DATE,
+    sd20             NUMERIC,
+    sd_note          TEXT,
+    lrr              NUMERIC,
+    trr              NUMERIC,
+    trim_line        NUMERIC,
+    overmax_trim_line NUMERIC,
+    trim_size        NUMERIC,
+    dip_eligible     BOOLEAN NOT NULL DEFAULT FALSE,
+    dip_tier         TEXT,
+    dip_line         NUMERIC,
+    dip_size         NUMERIC,
+    starter_account  TEXT,
+    starter_order    INT,
+    last_sell_price  NUMERIC,
+    last_sell_date   DATE,
+    buyback_line     NUMERIC,
+    buyback_size     NUMERIC,
+    rule_version     TEXT,
+    PRIMARY KEY (plan_date, tos_symbol, account_short)
+);
+
+CREATE TABLE IF NOT EXISTS hist_advice_live (
+    checked_at       TIMESTAMPTZ NOT NULL,
+    plan_date        DATE NOT NULL,
+    tos_symbol       TEXT NOT NULL,
+    account_short    TEXT NOT NULL,
+    price            NUMERIC,
+    price_time       TIMESTAMPTZ,
+    day_high         NUMERIC,
+    day_low          NUMERIC,
+    signal           TEXT NOT NULL,
+    live_rank        INT,
+    reason           TEXT,
+    side             TEXT,
+    size_dollar      NUMERIC,
+    shares           NUMERIC,
+    limit_price      NUMERIC,
+    price_kind       TEXT,
+    evidence         TEXT,
+    caution          TEXT,
+    bounce_price     NUMERIC,
+    chase            BOOLEAN NOT NULL DEFAULT FALSE,
+    pvv_line         TEXT,
+    tier             TEXT,
+    list_rank        INT,
+    in_list          BOOLEAN NOT NULL DEFAULT FALSE,
+    optional_line    BOOLEAN NOT NULL DEFAULT FALSE,
+    small_line       BOOLEAN NOT NULL DEFAULT FALSE,
+    est_value        NUMERIC,
+    carried_days     INT,
+    stale            BOOLEAN NOT NULL DEFAULT FALSE,
+    gain_pct         NUMERIC,
+    outlook_turned   BOOLEAN NOT NULL DEFAULT FALSE,
+    sector_name      TEXT,
+    sector_share_pct NUMERIC,
+    notes            JSONB,
+    PRIMARY KEY (checked_at, tos_symbol, account_short)
+);
+CREATE INDEX IF NOT EXISTS ix_hist_advice_live_day
+    ON hist_advice_live(plan_date, checked_at);
+CREATE INDEX IF NOT EXISTS ix_hist_advice_live_sym
+    ON hist_advice_live(tos_symbol, plan_date);

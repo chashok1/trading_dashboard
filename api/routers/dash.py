@@ -437,6 +437,26 @@ def get_actionable_settings():
     }
 
 
+@router.get("/api/actionable/live")
+def get_actionable_live(date: Optional[str] = Query(None)):
+    """TASK_152/153: live advice for the LIVE column + "Today's actions" panel.
+    Latest saved check (hist_advice_live) merged with the frozen night plan
+    (hist_advice_plan): per-stock tier/lines/tooltip fields plus the `today`
+    block (must / consider / buyideas / not_listed / messages). Read-only --
+    checks are written by etl/derive_live_advice.run_live_check on price pulls.
+    `date` = a plan date (default: latest plan on or before today ET)."""
+    from datetime import date as _date
+    pd_ = None
+    if date:
+        try:
+            pd_ = _date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    from etl.derive_live_advice import build_live_payload
+    with session_scope() as s:
+        return build_live_payload(s, pd_)
+
+
 @router.post("/api/actionable/email-trade-mode")
 def post_email_trade_mode():
     """Manual, on-demand send of the Trade Mode export (same content as
@@ -1402,9 +1422,30 @@ def get_actionable(
     except Exception:
         _driver_flags = {}
 
+    # TASK_151: per-account min/max/unit + held + over-max (drv_account_size).
+    # Additive display data; the household target_min/max_dollar are unchanged.
+    _acct_sizes = {}
+    try:
+        with session_scope() as _zs:
+            for _x in _zs.execute(text("""
+                SELECT s.tos_symbol, s.account_short, s.size_mult, s.min_dollar,
+                       s.max_dollar, s.unit_dollar, s.held_dollar, s.over_max
+                FROM drv_account_size s
+                WHERE s.as_of_date = :d ORDER BY s.account_short
+            """), {"d": d}).mappings():
+                _acct_sizes.setdefault(_x["tos_symbol"], []).append({
+                    "name": _x["account_short"], "mult": float(_x["size_mult"] or 0),
+                    "min": float(_x["min_dollar"] or 0), "max": float(_x["max_dollar"] or 0),
+                    "unit": float(_x["unit_dollar"] or 0),
+                    "held": float(_x["held_dollar"] or 0), "over": bool(_x["over_max"]),
+                })
+    except Exception:
+        _acct_sizes = {}
+
     out = []
     for r in rows:
         d_ = dict(r)
+        d_["account_sizes"] = _acct_sizes.get(d_.get("tos_symbol"), [])
         d_["driver_flags"] = _driver_flags.get(d_.get("tos_symbol"), [])
         _t = _trades.get(d_.get("tos_symbol")) or {}
         _lb, _ls = _t.get("bought"), _t.get("sold")

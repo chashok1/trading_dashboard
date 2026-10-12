@@ -3679,6 +3679,29 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # TASK_151: per-account min/max/unit sizes (additive; never feeds the
+    # Final Call). After drv_actionable (needs position_category).
+    try:
+        from etl.derive_account_size import derive_account_size
+        counts["drv_account_size"] = _safe("drv_account_size", derive_account_size)
+    except Exception:
+        log.exception("derive_account_size import/run failed (non-fatal)")
+        counts["drv_account_size"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # TASK_152: frozen night plan for the NEXT trading day (live advice lines:
+    # trim / dip / buy-back). Anchor only; rewritten until 9:30 ET on its plan
+    # date, then frozen. Needs drv_account_size + drv_actionable. Non-critical.
+    try:
+        from etl.derive_live_advice import build_plan_safe
+        counts["hist_advice_plan"] = _safe("hist_advice_plan", build_plan_safe)
+    except Exception:
+        log.exception("build_plan_safe import failed (non-fatal)")
+        counts["hist_advice_plan"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # TASK_149 (area driver rules): one verdict per market area from the
     # advisory cross-asset rules, then the linked stocks per area. Runs after
     # drv_actionable (exposure needs held + position $; the verdict step posts

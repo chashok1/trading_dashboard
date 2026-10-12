@@ -1502,11 +1502,11 @@ def _area_legs(detail) -> list:
 
 # Friendly labels + sub-groups for the Hedgeye RR symbols (/api/cockpit/rr-strip).
 _RR_LABEL = {
-    "$COMP": "Nasdaq", "$SSEC": "Shanghai", "GDAXI:DE": "DAX", "N225:JP": "Nikkei",
+    "$COMP": "NDX", "$SSEC": "SSE", "GDAXI:DE": "DAX", "N225:JP": "N225",
     "$DXY": "DXY", "/6B": "GBP", "/6C": "CAD", "/6E": "EUR", "/6J": "JPY",
     "DGS2:FRED": "2Y", "TNX:CGI": "10Y", "TYX:CGI": "30Y",
-    "/BTC": "Bitcoin", "/BZ": "Brent", "/CL": "WTI", "/GC": "Gold", "/HG": "Copper",
-    "/NG": "Natgas", "/SI": "Silver", "PPLT": "Platinum",
+    "/BTC": "BTC", "/BZ": "Brent", "/CL": "WTI", "/GC": "Gold", "/HG": "Copper",
+    "/NG": "NatGas", "/SI": "Silver", "PPLT": "Plat",
 }
 # (group, sub-group order) -- markets row first, ETFs/stocks row second.
 _RR_SUB = {

@@ -11,6 +11,7 @@ const TOGGLEABLE_COLS = [
   { id: 'chg',       label: '%CHG' },
   { id: 'macro',     label: 'MACRO' },
   { id: 'pvv',       label: 'PVV' },
+  { id: 'live',      label: 'LIVE' },
   { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
   { id: 'iv',        label: 'IV' },
@@ -58,8 +59,10 @@ const state = {
     bull_prob_min: 0,    // TASK_66: minimum bull_prob (0 = no filter)
     agreement_class: '', // TASK_69: '' = all; else exact match on agreement_class
     stopOnly: false,     // TASK_119: STOP chip — filter to stop_breached rows
-    trade_mode: true,    // TASK_124: show only qualifying buys / SA sells / stop breaches
-                         // (always starts ON, not persisted — reset near page init)
+    trade_mode: false,   // TASK_124: show only qualifying buys / SA sells / stop breaches
+                         // TASK_153 (2026-10-12): no longer starts ON -- the "Today's actions"
+                         // panel's Buy ideas section replaces it; the Trade button is gone from
+                         // the toolbar (not persisted, forced false near page init)
                          // trade_mode_diff (Trade2) and watchlist_only (WL) are its sibling
                          // toggles, same seg-ctrl group; not in this literal, set near
                          // page init alongside trade_mode (search "always starts ON").
@@ -70,6 +73,7 @@ const state = {
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
     iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
     headwind_only: false, // TASK_149 chip — held/buy rows whose area is in Headwind (driver_flags)
+    act_only: false,      // TASK_153 "Act (N)" chip — MUST + CONSIDER + BUYIDEA stocks from /api/actionable/live
     rr_min: 0, rr_max: 100, // RR (Risk Range %) dual-thumb slider — 0/100 = no filter
     quads: [],           // Quad favorability filter (multi-select, like symbols_multi) --
                           // '1'..'4', empty = no filter. A row must be net-bullish
@@ -1410,8 +1414,9 @@ function _legendHtml() {
       <div style="color:#475569;">REMOVE / REDUCE / INCREASE / ADD / HOLD / NONE group rows by
         consolidated_action; click a chip to filter, click ALL to clear.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">OVER MAX pill</div>
-      <div style="color:#475569;">Held position exceeds its category Max (position sizing, not a market
-        signal) — orange pill next to ACTION, tooltip shows the $ to trim back to cap. Informational only;
+      <div style="color:#475569;">Held position exceeds an account's own Max (per-account sizes: category % x
+        account value x multiplier, rounded to $1k) — orange pill next to ACTION, e.g. "IRA over max ($30.9k / $17k)";
+        tooltip lists every trading account's min / max / unit / held. Informational only;
         it never overrides the ACTION badge itself, same as Sources/Technical/Macro inputs.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">ESTABLISHED / NEAR MAX pill</div>
       <div style="color:#475569;">Blue, informational-only pill on a held BUY row: ESTABLISHED = already
@@ -1419,7 +1424,7 @@ function _legendHtml() {
         ACTION badge, AMT$, or confidence — a position already AT or OVER its Max is a hard limit instead,
         capped straight to HOLD (unaffected by this pill).</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence flag</div>
-      ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
+      ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules) or a sell from a source with no measured edge (ref_settings.lowconf_sell_sources: SSS/RR/ETF); consolidated_action is unchanged, this is a confidence flag')}
       ${row('UNPROVEN SELL', 'TASK_141: when ref_settings.unproven_sell_mode=\'suppress\' (default \'annotate\', usually OFF), a LOW CONF-only sell can no longer win the row — suppressed_reason shows "UNPROVEN SELL" and the drilldown still shows the suppressed action + rule ids')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
       <div style="color:#475569;">A held position that just crossed below its Trade line ("TD STM") or its Trend
@@ -1979,7 +1984,10 @@ async function loadActionable(opts) {
   // trade_mode_diff (2026-08-28) doesn't itself surface suppressed rows
   // (it's buys-only by construction, see _isTradeModeDiffBuy), but fetching
   // them anyway keeps this consistent/harmless if that ever changes.
-  if ((state.filters.trade_mode || state.filters.trade_mode_diff) && !state.filters.show_hidden) {
+  // TASK_153: the Act (N) chip also needs suppressed rows (an "AT CEILING" stock can still carry
+  // a live trim or buy-back).
+  if ((state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only)
+      && !state.filters.show_hidden) {
     params.append('show_suppressed', 'true');
   }
   try {
@@ -2114,6 +2122,10 @@ async function loadActionable(opts) {
       r._priority = _computePriority(r);
       r._pvv_rank = _pvvRank(r.pvv_decision);
     });
+    // TASK_153: latest live-advice check (LIVE column + Today's actions panel).
+    // Own try/catch -- a live-advice failure must never block the grid.
+    await _fetchLiveData();
+    _applyLiveToRows();
     // Expose monthly score map for market_bar.js tape chips
     window._macroScoreMap = Object.fromEntries(
       state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
@@ -2347,12 +2359,15 @@ function matchesBaseFilters(r) {
   // 2026-10-03: My is no longer exclusive/overriding -- it is a plain narrowing filter
   // (applied below, next to Held/watch) on top of whichever list is on. Today's old "My" =
   // My + Trade + Trade2.
+  // TASK_153: the "Act (N)" chip picks its own rows (the stocks in Today's actions), so it
+  // skips the hidden-row rule below, same as Trade / Trade2 do.
+  if (state.filters.act_only && !_liveActSet().has(r.tos_symbol)) return false;
   if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
     const tmOk = state.filters.trade_mode && _matchesTradeMode(r);
     const tmdOk = state.filters.trade_mode_diff && _matchesTradeModeDiff(r);
     const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
     if (!tmOk && !tmdOk && !wlOk) return false;
-  } else if (!state.filters.show_hidden) {
+  } else if (!state.filters.show_hidden && !state.filters.act_only) {
     // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove
     // rows -- same criteria as the grid's own "H" flag, via _hiddenReason (kept as
     // a single source of truth after the two independently drifted, see its own
@@ -2486,7 +2501,7 @@ function applyClientFilter(opts) {
     }
     // 2026-10-03 (user): Trade / Trade2 / My already pick their own rows, so the Actionable
     // toggle no longer applies on top of them (it hid stop-breached positions whose call was HOLD).
-    const _ownList = state.filters.trade_mode || state.filters.trade_mode_diff;
+    const _ownList = state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only;
     if (state.filters.actionable_only && !_ownList) {
       const a = _chipAction(r);
       return a !== 'HOLD' && a !== 'NONE';
@@ -2800,6 +2815,9 @@ function _syncTriggerSourcePills() {
   // TASK_149: live count on the "In headwind area" chip.
   const hw = wrap.querySelector('[data-flag-pill="headwind_only"] .hw-count');
   if (hw) hw.textContent = String((state.allRows || []).filter(_inHeadwindArea).length);
+  // TASK_153: "Act (N)" = stocks in Today's actions (MUST + CONSIDER + Buy ideas).
+  const ac = wrap.querySelector('[data-flag-pill="act_only"] .act-count');
+  if (ac) ac.textContent = String(_liveActSet().size);
 }
 
 // Returns the display name for an account_number using state.allAccounts lookup.
@@ -2981,7 +2999,7 @@ function clearAllFilters() {
   f.bull_prob_min = 0;
   f.agreement_class = '';
   f.symbols_multi = [];
-  f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false;
+  f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false; f.act_only = false;
   f.sector = ''; f.style = ''; f.asset_class = ''; f.industry = '';
   f.rr_min = 0; f.rr_max = 100;
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
@@ -3074,9 +3092,49 @@ function _badgeAction(row) {
 // Overage ... should not drive the main action" — it's now a purely
 // informational OVER MAX pill, see _finalCallHtml). REMOVE rows are
 // excluded — sell-all already covers the position, over-max is moot.
+// TASK_151: compact $ for per-account sizes ($17k, $30.9k).
+function _fmtK(v) {
+  const n = Number(v) || 0;
+  if (Math.abs(n) < 1000) return '$' + Math.round(n);
+  return '$' + (Math.round(n / 100) / 10).toString().replace(/\.0$/, '') + 'k';
+}
+// Accounts whose held $ is above their own rounded max.
+function _acctOver(row) {
+  return ((row && row.account_sizes) || []).filter(a => a.over);
+}
+// Pill label: "IRA over max ($30.9k / $17k)"; several accounts -> names only.
+function _acctOverMaxText(row) {
+  const o = _acctOver(row);
+  if (!o.length) return null;
+  if (o.length === 1) return `${o[0].name} over max (${_fmtK(o[0].held)} / ${_fmtK(o[0].max)})`;
+  return o.map(a => a.name).join(', ') + ' over max';
+}
+// Bulleted per-account list (plain text, one "• " line per trading account).
+function _acctSizeLines(row) {
+  const L = (row && row.account_sizes) || [];
+  const lines = L.map(a => `• ${a.name} x${a.mult.toFixed(1)}: min ${_fmtK(a.min)} / max ${_fmtK(a.max)}`
+    + ` / unit ${_fmtK(a.unit)} / held ${_fmtK(a.held)}${a.over ? ' (OVER MAX)' : ''}`);
+  if (L.length) lines.push(`• All accounts: min ${_fmtK(L.reduce((t, a) => t + a.min, 0))}`
+    + ` / max ${_fmtK(L.reduce((t, a) => t + a.max, 0))}`);
+  return lines;
+}
+function _overMaxTitle(row) {
+  if (row.account_sizes && row.account_sizes.length)
+    return 'Over its per-account max (informational only, does not change the action):\n'
+      + _acctSizeLines(row).join('\n');
+  return 'Held position exceeds its category Max by '
+    + fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar))
+    + ' — informational only, does not change the action above';
+}
+function _overMaxLabel(row) {
+  return _acctOverMaxText(row) || 'OVER MAX';
+}
 function _isOverMaxOverlay(row) {
   if (!row) return false;
   if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
+  // TASK_151: per-account sizes (drv_account_size) decide when present; the
+  // household check below is only the fallback for rows without them.
+  if (row.account_sizes && row.account_sizes.length) return _acctOver(row).length > 0;
   const pos = Number(row.current_position_dollar);
   const max = Number(row.target_max_dollar);
   return isFinite(pos) && isFinite(max) && max > 0 && pos > max;
@@ -3980,7 +4038,7 @@ function _finalCallHtml(row) {
                     : '';
   if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px ' + (ltAvoid ? '#b45309' : '#7c3aed') + ';';
   var lowConfSub = isLowConf
-    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;text-align:center;margin-top:3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
+    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;text-align:center;margin-top:3px;" title="Sell evidence comes only from unproven rules or sources with no measured edge (SSS/RR/ETF) — cross-check before acting">LOW CONF</div>' : '';
   // TASK_119: STOP pill — held position that just crossed below its Trade
   // or Trend line (prior 3 days above, today below). 2026-08-12: text
   // "STOP" swapped for a down-cross icon (▼, the same glyph this file
@@ -4030,9 +4088,8 @@ function _finalCallHtml(row) {
   // Final Call now, and over-max is just another informational pill
   // alongside stop/earnings/signal, not a badge override.
   var overMaxPill = _isOverMaxOverlay(row)
-    ? ' <span class="overmax-pill" title="Held position exceeds its category Max by '
-      + escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))
-      + ' — informational only, does not change the action above">OVER MAX</span>'
+    ? ' <span class="overmax-pill" title="' + escapeHtml(_overMaxTitle(row)) + '">'
+      + escapeHtml(_overMaxLabel(row)) + '</span>'
     : '';
   var sizingPill = _sizingStagePill(row);
   // 2026-09-02, user: "supporting signals and caution signals are not
@@ -5163,6 +5220,12 @@ function initSourcePopover() {
       showNotesPop(notesEl, notesEl.dataset.notespop, nr && nr.company_name);
       return;
     }
+    const liveEl = e.target.closest('[data-livepop]');
+    if (liveEl) {
+      const r = state.rows.find(x => x.tos_symbol === liveEl.dataset.livepop);
+      if (r) _showDataPop(liveEl, _buildLivePopHtml(r));
+      return;
+    }
     const pvvEl = e.target.closest('[data-pvvpop]');
     if (pvvEl) {
       const r = state.rows.find(x => x.tos_symbol === pvvEl.dataset.pvvpop);
@@ -5199,7 +5262,7 @@ function initSourcePopover() {
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop],[data-tradabilitypop],[data-actionpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-livepop],[data-signalpop],[data-tradabilitypop],[data-actionpop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -5313,6 +5376,225 @@ function _pvvCellHtml(r) {
   return `<span class="act-badge ${cls}" data-pvvpop="${escapeHtml(r.tos_symbol)}" `
        + `style="font-size:10px;padding:1px 5px;cursor:help;">${escapeHtml(label)}</span>`;
 }
+// ── TASK_153: LIVE column + "Today's actions" panel ───────────────────────
+// Data = GET /api/actionable/live (etl/derive_live_advice.py): the latest saved
+// live check merged with the frozen night plan. Display only -- nothing here
+// changes the Final Call, AMT$ or any size. docs/live_advice_logic.md.
+const _LIVE_SIG = {
+  TRIM_TO_MAX:    { label: 'TRIM→MAX', cls: 'act-sell-strong-tint', rank: 0 },
+  SELL_ALL:       { label: 'SELL ALL',      cls: 'act-sell-strong-tint', rank: 0 },
+  TRIM:           { label: 'TRIM',          cls: 'act-sell-tint',        rank: 1 },
+  SELL_SOME:      { label: 'SELL SOME',     cls: 'act-sell-tint',        rank: 1 },
+  DIP_BUY_STRONG: { label: 'DIP BUY',       cls: 'act-buy-strong-tint',  rank: 2 },
+  BUY_BACK:       { label: 'BUY BACK',      cls: 'act-buy-tint',         rank: 3 },
+  BUY_IDEA:       { label: 'BUY IDEA',      cls: 'act-buy-tint',         rank: 3 },
+  DIP_BUY_LIGHT:  { label: 'dip buy',       cls: 'act-neutral-tint',     rank: 4, light: true },
+  WAIT:           { label: 'WAIT',          cls: 'act-neutral-tint',     rank: 5 },
+};
+const _LIVE_TIER_IDX = { MUST: 0, CONSIDER: 1, BUYIDEA: 2, INFO: 3 };
+const _LIVE_TIER_LABEL = { MUST: 'Do today', CONSIDER: 'Consider', BUYIDEA: 'Buy idea', INFO: 'Info only' };
+state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen: null };
+
+async function _fetchLiveData() {
+  try {
+    // Live advice is for "now": skip it when a past date is on screen.
+    const viewingLatest = !state.anchorDate || !state.date || state.date === state.anchorDate;
+    const d = viewingLatest ? await fetchJson('/api/actionable/live') : null;
+    state.live.data = d;
+    state.live.bySym = (d && d.stocks) || {};
+    state.live.act = new Set((d && d.today && d.today.act_symbols) || []);
+  } catch (e) {
+    console.warn('live advice unavailable:', e);
+    state.live.data = null; state.live.bySym = {}; state.live.act = new Set();
+  }
+  try { _syncTriggerSourcePills(); } catch (e) { console.warn('act chip:', e); }
+}
+function _liveActSet() { return (state.live && state.live.act) || new Set(); }
+
+// Row sort key: tier first (MUST 0, CONSIDER 1, BUYIDEA 2, INFO 3, none 9), then the
+// signal order of DESIGN_SPEC_3 (TRIM->MAX, TRIM, DIP BUY, BUY BACK, dip buy, WAIT), then
+// larger dollars first. INFO is treated as "none" while "Show all live signals" is off.
+function _liveShown(s) {
+  if (!s || !s.signal || !_LIVE_SIG[s.signal]) return false;
+  if (s.tier === 'INFO' && s.signal !== 'TRIM_TO_MAX' && !state.live.showAll) return false;
+  return true;
+}
+function _liveDollars(s) {
+  return (s.lines || []).filter(l => !l.small && !l.optional).reduce((a, l) => a + (Number(l.size) || 0), 0);
+}
+function _liveRankFor(s) {
+  if (!_liveShown(s)) return 9e9;
+  const t = _LIVE_TIER_IDX[s.tier] != null ? _LIVE_TIER_IDX[s.tier] : 3;
+  const sr = _LIVE_SIG[s.signal].rank;
+  return t * 1e9 + sr * 1e8 + (1e7 - Math.min(_liveDollars(s), 1e7 - 1));
+}
+function _applyLiveToRows() {
+  const by = (state.live && state.live.bySym) || {};
+  for (const r of (state.allRows || [])) {
+    const s = by[r.tos_symbol] || null;
+    r._live = s;
+    r._live_rank = _liveRankFor(s);
+  }
+}
+
+function _liveTimeText(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET';
+  } catch (_) { return ''; }
+}
+function _liveAgeText(min) {
+  if (min == null) return '';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h} h ${m} m` : `${m} m`;
+}
+function _liveK(v) {
+  const x = Number(v) || 0;
+  return x >= 1000 ? '$' + (Math.round(x / 100) / 10) + 'k' : '$' + Math.round(x).toLocaleString();
+}
+function _liveP(v) { return v == null ? '' : '$' + Number(v).toFixed(2); }
+
+// One cell per row: badge + chase / ! tags. Dash (still hoverable) when nothing is live.
+function _liveCellHtml(r) {
+  const sym = escapeHtml(r.tos_symbol || '');
+  const s = r._live;
+  if (!state.live || !state.live.data) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  if (!_liveShown(s)) {
+    const bang = s && s.caution ? ' <span class="live-tag live-tag-warn" title="Caution — hover for detail">!</span>' : '';
+    return `<span style="color:#cbd5e1;font-size:10px;" data-livepop="${sym}">—</span>${bang}`;
+  }
+  const m = _LIVE_SIG[s.signal];
+  const stale = s.stale ? 'outline:2px solid var(--warn);outline-offset:1px;' : '';
+  const light = m.light || s.tier === 'INFO' ? 'opacity:.6;' : '';
+  let h = `<span class="act-badge ${m.cls}" data-livepop="${sym}" `
+        + `style="font-size:10px;padding:1px 5px;cursor:help;${stale}${light}">${escapeHtml(m.label)}</span>`;
+  if (s.chase) h += ' <span class="live-tag" title="Price is in the top 20% of today\'s range (or near the top of the risk range)">chase</span>';
+  if (s.caution) h += ' <span class="live-tag live-tag-warn" title="Caution — hover for detail">!</span>';
+  return h;
+}
+
+// Bulleted hover tooltip (same _showDataPop mechanism as data-pvvpop).
+function _buildLivePopHtml(r) {
+  const s = r._live;
+  const sym = r.tos_symbol || '—';
+  const li = (t, style) => `<li${style ? ` style="${style}"` : ''}>${t}</li>`;
+  const lis = [];
+  const live = state.live.data || {};
+  const m = s && s.signal ? _LIVE_SIG[s.signal] : null;
+  let title = `${escapeHtml(sym)} — ${m ? escapeHtml(m.label) : 'no live signal'}`;
+  if (s && s.tier) title += ` <span style="color:#64748b;font-weight:400;font-size:10px;">(${escapeHtml(_LIVE_TIER_LABEL[s.tier] || s.tier)})</span>`;
+  if (!s) {
+    lis.push(li('No live plan for this stock today (not held and not on the dip-buy list).'));
+  } else {
+    const p = s.plan || {};
+    if (p.prior_close != null) {
+      lis.push(li(`Price ${s.price != null ? _liveP(s.price) : 'n/a'}, prior close ${_liveP(p.prior_close)}`
+        + (p.sd_pct != null ? `, normal daily move ${p.sd_pct.toFixed(1)}% (SD)` : '')));
+    }
+    if (p.trim_line != null) lis.push(li(`Trim line ${_liveP(p.trim_line)} (prior close + 1.5 SD)`));
+    if (p.dip_line != null && p.dip_tier) lis.push(li(`Dip-buy line ${_liveP(p.dip_line)} (${p.dip_tier === 'Strong' ? 'Strong: buy call last night, −1.5 SD' : 'Light: −2.0 SD'})`));
+    const lines = (s.lines || []).filter(l => l.signal && l.signal !== 'NONE');
+    const acct = n => (s.accounts || []).find(a => a.name === n) || {};
+    for (const l of lines) {
+      const a = acct(l.account);
+      const sh = l.shares ? `${Math.round(l.shares)} shares` : '';
+      const opt = l.optional ? ' <i style="color:#64748b;">(optional)</i>' : '';
+      const small = l.small ? ` <i style="color:#64748b;">(${_liveK(l.size)} — too small to list)</i>` : '';
+      let t = '';
+      if (l.signal === 'TRIM_TO_MAX') {
+        t = `<b>${escapeHtml(l.account)}:</b> over max (${_liveK(a.held)} vs ${_liveK(a.max)}`
+          + `${a.over_ratio ? ', ' + a.over_ratio.toFixed(2) + '×' : ''}) → sell ${sh} to max`;
+      } else if (l.signal === 'SELL_ALL') {
+        t = `<b>${escapeHtml(l.account)}:</b> sell the whole position (${sh}, ~${_liveK(l.size)})`;
+      } else if (l.signal === 'TRIM') {
+        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveK(l.size)}) ≈ ${sh}`
+          + (l.price ? ` at ${_liveP(l.price)}+` : '');
+      } else if (l.signal === 'SELL_SOME') {
+        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveK(l.size)}) ≈ ${sh}`;
+      } else if (l.signal === 'BUY_BACK') {
+        t = `<b>${escapeHtml(l.account)}:</b> buy back ${_liveK(l.size)} ≈ ${sh} at ${_liveP(l.price)} or less`
+          + (a.last_sell_price ? ` (you sold near ${_liveP(a.last_sell_price)})` : '');
+      } else if (l.signal === 'DIP_BUY_STRONG' || l.signal === 'DIP_BUY_LIGHT') {
+        const starter = (l.verb || '') === 'START';
+        t = starter
+          ? `Starter in <b>${escapeHtml(l.account)}</b> at min ${_liveK(l.size)} ≈ ${sh}${_liveStarterNext(s, l.account)}`
+          : `<b>${escapeHtml(l.account)}:</b> add 1 unit (${_liveK(l.size)}) ≈ ${sh} at ${_liveP(l.price)} or less`;
+      } else if (l.signal === 'WAIT') {
+        t = `<b>${escapeHtml(l.account)}:</b> buy-back line reached but the price is still falling — wait for it to stop`;
+      } else if (l.signal === 'BUY_IDEA') {
+        t = `Trade-mode buy idea (~${_liveK(l.size)}) — the Final Call's own size`;
+      }
+      if (t) lis.push(li(t + opt + small));
+      if (l.hold_note) lis.push(li(`You marked this stock <b>Hold</b> — moved from required to optional`, 'color:#64748b;'));
+      if (l.also) lis.push(li(`Also fired today: ${escapeHtml(String(l.also).replace(/_/g, ' ').toLowerCase())}`, 'color:#64748b;'));
+    }
+    // range bullets for buys
+    const isBuy = lines.some(l => l.side === 'buy' && l.signal !== 'WAIT');
+    if (isBuy && p.room_pct != null) {
+      lis.push(li(`Room to top of range: ${p.room_pct.toFixed(1)}%` + (p.room_sd != null ? ` (${p.room_sd.toFixed(1)} normal moves)` : '')));
+      if (p.range_width_pct != null) lis.push(li(`Range width: ${p.range_width_pct.toFixed(1)}% (LRR ${_liveP(p.lrr)} – TRR ${_liveP(p.trr)})`));
+    }
+    if (lines.some(l => l.signal === 'WAIT') && s.pvv_line) lis.push(li(escapeHtml(s.pvv_line)));
+    // caution + sell-the-bounce
+    if (s.caution) {
+      for (const c of String(s.caution).split('\n')) lis.push(li(`<b style="color:var(--warn);">Caution:</b> ${escapeHtml(c)}`));
+      if (s.bounce_price != null) lis.push(li(`If you still want out: sell the bounce at ${_liveP(s.bounce_price)} (good for 5 days)`));
+    }
+    if (lines.some(l => l.side === 'sell') && s.final_action && /BUY/i.test(s.final_action)) {
+      lis.push(li(`Final Call: ${escapeHtml(s.final_action)} — limits and price beat the night call`, 'color:#64748b;'));
+    }
+    // why required / est value
+    const must = lines.find(l => l.tier === 'MUST' && !l.optional);
+    if (must) {
+      if (must.signal === 'TRIM_TO_MAX') {
+        const a = acct(must.account);
+        lis.push(li(`Why required: ${a.over_ratio ? a.over_ratio.toFixed(1) + '×' : 'over'} your ${_liveK(a.max)} ${escapeHtml(must.account)} max; stocks over 1.25× fell vs your book about 75% of the time`));
+      } else if (must.signal === 'SELL_ALL') {
+        lis.push(li(`Why required: ${escapeHtml(must.reason || 'a kept source says SELL ALL')} on a stock you hold`));
+      }
+    }
+    if (s.est_value) lis.push(li(`Est. value ≈ $${Math.round(s.est_value)} (size × typical edge)`));
+    // notes
+    const n = s.notes || {};
+    if (n.gain_pct != null && n.gain_pct >= (n.gain_note_min || 20)) lis.push(li(`Gain +${n.gain_pct.toFixed(0)}% since cost`));
+    if (n.outlook_turned) lis.push(li('Outlook turned from Bullish today'));
+    if (n.sector && n.sector_share_pct != null && n.sector_share_pct >= (n.sector_note_min || 35)) {
+      lis.push(li(`Sector: ${escapeHtml(_liveSectorName(n.sector))}, ${n.sector_share_pct.toFixed(0)}% of your stock book`));
+    }
+    if (n.stop_breached) lis.push(li('Caution: STOP hit (warning only)', 'color:var(--warn);'));
+    if (s.carried_days > 0) lis.push(li(`Open since ${escapeHtml(_liveDayName(s.since_date))} (day ${s.carried_days + 1})`));
+    lis.push(li(s.stale
+      ? `Price ${_liveAgeText(live.stale_minutes)} old — no new signals from it`
+      : `Checked ${_liveTimeText(live.price_time)}`, 'color:#94a3b8;'));
+  }
+  return `<div class="sp-title">${title}</div>`
+       + `<ul style="margin:2px 0 4px 16px;padding:0;list-style:disc;font-size:10.5px;line-height:1.5;color:#334155;">${lis.join('')}</ul>`;
+}
+function _liveStarterNext(s, acct) {
+  const rest = (s.accounts || []).filter(a => a.starter_order && a.name !== acct)
+    .sort((x, y) => x.starter_order - y.starter_order).map(a => a.name);
+  return rest.length ? ` (next: ${rest.join(', then ')})` : '';
+}
+// Sector names arrive in mixed case ("Health care" / "Health Care"); show Title Case.
+function _liveSectorName(s) {
+  return String(s || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+function _liveDayName(iso) {
+  if (!iso) return '';
+  try { return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }); } catch (_) { return iso; }
+}
+
+// The top "Today's actions" panel was removed 2026-10-12 (user): the LIVE column + Act (N) chip carry it.
+function initTodayPanel() {
+  // Pick up new checks without a full reload (a check is saved after each price pull).
+  setInterval(async () => {
+    const before = state.live.data && state.live.data.checked_at;
+    await _fetchLiveData();
+    const after = state.live.data && state.live.data.checked_at;
+    if (after !== before) { _applyLiveToRows(); if (state.allRows.length) renderGrid(); }
+  }, 120000);
+}
+
 // Small arrow glyph for a bucket leg direction ('up'/'down'/'flat'/null).
 function _pvvArrow(dir) {
   if (dir === 'up')   return '<span style="color:#16a34a;">&#9650;</span>';
@@ -5463,7 +5745,7 @@ function _buildActionPopHtml(row) {
   // ---- Risk flags (computed early too -- the Recommendation caveats on these) ----
   const flags = [];
   if (row.low_confidence && side === 'sell') {
-    flags.push('LOW CONF — sell evidence comes only from rules with a demonstrated negative historical edge');
+    flags.push('LOW CONF — sell evidence comes only from unproven rules or sources with no measured edge (SSS/RR/ETF)');
   }
   if (row.stop_breached) {
     flags.push((row.stop_signal || 'STOP') + ' — held, just crossed below its '
@@ -6389,8 +6671,16 @@ function _buildActionPopHtmlV2(row) {
   const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
   if (_at) symExtras += `<div class="actpop-xl">${_at}</div>`;
   if (_isOverMaxOverlay(row)) {
-    symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">OVER MAX by `
-       + `${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}</div>`;
+    symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">`
+       + (row.account_sizes && row.account_sizes.length
+          ? escapeHtml(_overMaxLabel(row))
+          : `OVER MAX by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}`)
+       + `</div>`;
+  }
+  if (row.account_sizes && row.account_sizes.length) {
+    symExtras += `<div class="actpop-xl" style="text-align:left;"><b>Account sizes</b><ul style="margin:2px 0 0 14px;padding:0;list-style:disc;">`
+       + _acctSizeLines(row).map(l => `<li>${escapeHtml(l.replace(/^• /, ''))}</li>`).join('')
+       + `</ul></div>`;
   }
   const _sz = _sizingStageInfo(row);
   if (_sz) {
@@ -6851,12 +7141,13 @@ function renderGrid() {
     r._fc_side     = fc.side;
     // TASK_124: Trade Mode's own criteria already narrows to entry-ripe
     // qualifying buys — never band these into the collapsed Watchlist.
-    r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
+    r._watchlisted = (state.filters.trade_mode || state.filters.act_only) ? false : _buyNoiseGated(r);
     r._actionInfo = _actionedInfo(r);
     r._parkedActioned = !!r._actionInfo;   // 2026-10-02: parked in every view (was Trade view only; else just dimmed)
     r._priority = _computePriority(r);
     r._pvv_rank = _pvvRank(r.pvv_decision);
   }
+  _applyLiveToRows();
   hideSourcePop();
   sortRows();
   updateSortIndicators();
@@ -6901,7 +7192,7 @@ function renderGrid() {
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
     state.filters.agreement_class || state.filters.stopOnly ||
     state.filters.etfchg_only || state.filters.iichg_only || state.filters.headwind_only ||
-    state.filters.watchlist_only ||
+    state.filters.act_only || state.filters.watchlist_only ||
     (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
 
@@ -6953,14 +7244,14 @@ function renderGrid() {
 }
 
 // Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
-// gate). One <tr><td colspan> spanning every grid column (23 — keep in sync
+// gate). One <tr><td colspan> spanning every grid column (24 — keep in sync
 // with the <th data-col> count in actionable.html); clicking toggles
 // state.watchlistExpanded and re-renders.
 function _watchlistBandRowEl(count, expanded) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 23;
+  td.colSpan = 24;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -6986,7 +7277,7 @@ function _actionedBandRowEl(count, expanded, rows) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 23;
+  td.colSpan = 24;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -7224,6 +7515,7 @@ function _buildRowEl(r) {
       <td data-col="action" style="padding:6px 4px;"><div class="hdr-anchor-box">${fcHtml}</div></td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;"><div class="hdr-anchor-box">${macroCellHtml(r)}</div></td>
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
+      <td data-col="live" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_liveCellHtml(r)}</td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
         <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}</div>
@@ -7739,7 +8031,7 @@ async function openDrilldown(row) {
   // MAX pill) — no longer a "was X" badge override, so the modal's own
   // Action row gets the same pill instead.
   const modalOverMaxPill = _isOverMaxOverlay(row)
-    ? ` <span class="overmax-pill" title="Held position exceeds its category Max by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}">OVER MAX</span>`
+    ? ` <span class="overmax-pill" title="${escapeHtml(_overMaxTitle(row))}">${escapeHtml(_overMaxLabel(row))}</span>`
     : '';
   const modalSizingPill = _sizingStagePill(row);
   const kv = $('modalKv');
@@ -8988,7 +9280,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // re-armed-every-visit convention. 2026-09-10: the three (Trade/Trade2/
   // WL) are no longer forced mutually exclusive (see matchesBaseFilters).
   // WL (watchlist_only) off by default, same convention.
-  state.filters.trade_mode = true;
+  // TASK_153 (2026-10-12, user): one combined "Today's actions" list -- Buy ideas
+  // there are the Trade buys, so Trade no longer starts ON (and its toolbar
+  // button is gone). Trade2 and WL keep working; _isTradeModeQualifyingBuy and
+  // the other Trade helpers stay (Buy ideas / Trade2 / WL / the nightly email use them).
+  state.filters.trade_mode = false;
   state.filters.trade_mode_diff = false;
   state.filters.watchlist_only = false;
   state.filters.my_only = false;
@@ -9033,6 +9329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('emailTradeModeBtn').addEventListener('click', emailTradeMode);
   $('copySymbolsBtn').addEventListener('click', copySymbols);
   initSourcePopover();
+  initTodayPanel();   // TASK_153: "Today's actions" panel (click a line, show-all link, hide/show)
   // Row-check (bulk-select) — the per-row inline Act/Skip/Snooze buttons
   // (ACT column) were removed 2026-08-15: user "don't need it, I can use
   // the checkbox [+ bulk action buttons] for now." inlineAction() itself is
@@ -9094,6 +9391,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const key = flagEl.dataset.flagPill;
         state.filters[key] = !state.filters[key];
         _syncTriggerSourcePills();
+        // TASK_153: Act (N) needs suppressed rows from the server (see loadActionable).
+        if (key === 'act_only') { loadActionable({ preserveState: true }); return; }
         applyClientFilter();
         return;
       }

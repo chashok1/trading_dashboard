@@ -353,6 +353,18 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     )).first()
     unproven_sell_mode = (_sell_mode_row[0] if _sell_mode_row and _sell_mode_row[0] else "annotate")
 
+    # ─── TASK_150: lowconf_sell_sources ─────────────────────────────────────
+    # Sources whose REMOVE/REDUCE showed no edge (SSS/RR/ETF sells). A sell
+    # backed ONLY by these gets low_confidence (annotation only).
+    _lc_row = session.execute(text(
+        "SELECT setting_value FROM ref_settings WHERE setting_name = 'lowconf_sell_sources'"
+    )).first()
+    lowconf_sell_sources = {
+        x.strip().upper()
+        for x in ((_lc_row[0] if _lc_row and _lc_row[0] is not None else "SSS,RR,ETF").split(","))
+        if x.strip()
+    }
+
     source_precedence: dict = {}
     for r in session.execute(text(
         "SELECT source_code, static_rank, measured_rank, buy_edge_20d, n "
@@ -1018,10 +1030,17 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             for c in fired_sell_composites
         )
         has_unproven_sell = any(c in unproven_sell_ids for c in fired_sell_composites)
-        source_driven_sell = any(
-            a["action"] in ("REMOVE", "REDUCE") for a in src_actions
+        sell_srcs = {
+            str(a["source_code"]).upper() for a in src_actions
+            if a["action"] in ("REMOVE", "REDUCE")
+        }
+        # A sell from a source outside the weak list is real evidence: no demotion.
+        kept_source_sell = any(c not in lowconf_sell_sources for c in sell_srcs)
+        has_weak_source_sell = bool(sell_srcs) and not kept_source_sell
+        low_confidence = (
+            (has_unproven_sell or has_weak_source_sell)
+            and not has_proven_sell and not kept_source_sell
         )
-        low_confidence = has_unproven_sell and not has_proven_sell and not source_driven_sell
 
         triggered_groups: list[dict] = []  # for the JSONB column + trig_action
         group_candidates: list[dict] = []  # synthetic actions for consolidated_action

@@ -853,3 +853,6 @@ below the Trade line (`drv_technicals.a_trade_value`); or price is >= `ref_setti
 Not-held PS drops are unchanged. The green "premature drop" pill threshold is
 `ref_settings.premature_drop_up_pct` (default 4, was hard-coded 5). The PS drop row only
 lives until the next weekly PS snapshot. Tests: `tests/test_ps_drop_verdicts.py`.
+
+## Per-account sizes (TASK_151)
+Account min/max/unit = category pct (`ref_asset_allocation` min_pct/max_pct/units_pct) x the account's latest position-file value x `ref_accounts.size_mult`, rounded to the nearest $1,000 (>$0 never below $1,000). Stored in `drv_account_size` (`etl/derive_account_size.py`). Display only (per-account OVER MAX pill + Action popup list): the household sizing table above and the Final Call are unchanged.
