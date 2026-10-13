@@ -46,6 +46,7 @@ _BULL = {
     4:  "Up day, low touched LRR",
     5:  "Down day, above midpoint",
     6:  "Up day, low above LRR, below midpoint, MACD rising and MACDH rising",
+    7:  "Touched TRR zone, pulled back, still above midpoint, TRR rising",
 }
 # not-bull path (QJ 0..1): nbull_rr_rule codes
 _NBULL = {

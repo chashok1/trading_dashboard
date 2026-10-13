@@ -3169,6 +3169,17 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     except Exception:
         pass
 
+    # Pullback size (fraction of the LRR-TRR range below the day high) for the TRR-pullback buy (bull code 7).
+    pullback = 0.10
+    try:
+        _pb = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name='range_pullback_pct'"
+        )).first()
+        if _pb and _pb[0] is not None and 0 < float(_pb[0]) <= 1:
+            pullback = float(_pb[0])
+    except Exception:
+        pass
+
     # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
     result = session.execute(text("""
         WITH inputs AS (
@@ -3190,10 +3201,18 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 a.trr_idx,
                 a.mrr_idx,
                 a.lrr_idx,
-                drr.lrr AS lrr
+                drr.lrr AS lrr,
+                drr.trr AS trr,
+                prr.trr AS prev_trr,
+                q.high_price AS high_px
             FROM drv_quote q
             LEFT JOIN drv_rr drr
               ON drr.as_of_date = q.as_of_date AND drr.tos_symbol = q.tos_symbol
+            LEFT JOIN LATERAL (
+                SELECT trr FROM drv_rr
+                WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date
+                ORDER BY as_of_date DESC LIMIT 1
+            ) prr ON TRUE
             LEFT JOIN LATERAL (
                 SELECT a_trend_value, a_trade_value, a_bb_top_slope, a_bb_bot_slope
                 FROM hist_td
@@ -3320,6 +3339,16 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                      AND c.macdh_direction < 0 THEN 3
                 WHEN c.perf1d_sd_rule <  0 AND c.lrr_eff = 0
                      AND c.trade_rule > 0 THEN 2
+                -- 2026-10-12, user (OKTA): bull path only. The day high reached the top
+                -- zone (trr_idx >= 0), price came back off the high but is still above
+                -- the midpoint, on a DOWN day, at least range_pullback_pct of the range below the
+                -- day high, and TRR is higher than the prior day's TRR -> BM (code 7).
+                WHEN c.trr_idx >= 0 AND c.perf1d_sd_rule < 0
+                     AND c.high_px IS NOT NULL AND c.close < c.high_px
+                     AND c.high_px - c.close >= :pullback * (c.trr - c.lrr)
+                     AND c.lrr IS NOT NULL AND c.trr IS NOT NULL AND c.trr > c.lrr
+                     AND c.close > (c.lrr + c.trr) / 2.0
+                     AND c.prev_trr IS NOT NULL AND c.trr > c.prev_trr THEN 7
                 WHEN c.perf1d_sd_rule >= 0 AND c.mrr_idx = 0 THEN 1
                 WHEN c.perf1d_sd_rule <= -1 AND c.mrr_idx = -1
                      AND c.lrr_eff = 1 THEN -1
@@ -3342,7 +3371,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
-           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol})
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol, "pullback": pullback})
 
     rows_pass1 = result.rowcount or 0
 

@@ -5,3 +5,8 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('range_trr_zone_pct', '0.20', 'At TRR = the day high is in the top this fraction of the LRR-TRR range'),
     ('range_mid_zone_pct', '0.10', 'At midpoint = price is within +/- this fraction of the range around the middle')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-10-12: pullback size for the bull-path TRR-pullback buy (technical code 7, db/seeds_bull_rr_rule_7.sql).
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('range_pullback_pct', '0.10', 'TRR-pullback buy: price is at least this fraction of the LRR-TRR range below the day high')
+ON CONFLICT (setting_name) DO NOTHING;
