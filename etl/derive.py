@@ -3180,6 +3180,12 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     except Exception:
         pass
 
+    # 2026-10-13, user: the band steepness (a_bb_top_slope / a_bb_bot_slope) is computed here from
+    # the stored daily bands (etl/band_slope.py), not taken from the TOS script. Symbols with too
+    # little history keep the TOS value (COALESCE below).
+    from etl.band_slope import load_band_slope_table
+    load_band_slope_table(session, as_of_date)
+
     # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
     result = session.execute(text("""
         WITH inputs AS (
@@ -3189,8 +3195,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 q.last_price                       AS close,
                 td.a_trend_value,
                 td.a_trade_value,
-                td.a_bb_top_slope,
-                td.a_bb_bot_slope,
+                COALESCE(bsl.top_score, td.a_bb_top_slope) AS a_bb_top_slope,
+                COALESCE(bsl.bot_score, td.a_bb_bot_slope) AS a_bb_bot_slope,
                 tw.standard_dev                    AS sd,
                 med.median_sd,
                 a.macdh_direction,
@@ -3213,6 +3219,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date
                 ORDER BY as_of_date DESC LIMIT 1
             ) prr ON TRUE
+            LEFT JOIN _band_slope bsl ON bsl.tos_symbol = q.tos_symbol
             LEFT JOIN LATERAL (
                 SELECT a_trend_value, a_trade_value, a_bb_top_slope, a_bb_bot_slope
                 FROM hist_td
