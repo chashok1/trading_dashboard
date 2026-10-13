@@ -544,9 +544,38 @@ def compute_intermediates(row: dict) -> dict:
     DQ = _f(row.get("high_today"))
     DM = _f(row.get("last_price"))
     DR = _f(row.get("low_today"))
-    ES = _safe_div(DQ - ED, AC) if DQ is not None and ED is not None else None
-    ET = _safe_div(DM - (ED + EC) / 2.0, AC) if DM is not None and EC is not None and ED is not None else None
-    EU = _safe_div(DR - EC, AC) if DR is not None and EC is not None else None
+    # 2026-10-12, user: "at TRR" = the HIGH is in the TOP range_trr_zone_pct of the LRR-TRR
+    # range, and "at the midpoint" = the price is within +/-range_mid_zone_pct of the range
+    # around the middle (not SD units). Zone widths are ref_settings (defaults 0.20 / 0.10);
+    # thresholds stay -0.25 / 1.0 (trr) and +/-0.25 (mrr):
+    #   ES: at/below TRR -> (high-TRR)/range*0.25/trr_pct, so -trr_pct of the range below TRR = -0.25;
+    #       above TRR keeps the SD scale (a break of >1 SD above TRR still = 1).
+    #   ET: (price-mid)/(mid_pct*range) * 0.25, so +/-mid_pct of the range = +/-0.25.
+    _z_lrr = _f(row.get("_zone_lrr")) or 0.25
+    _z_trr = _f(row.get("_zone_trr")) or 0.20
+    _z_mid = _f(row.get("_zone_mid")) or 0.10
+    _rng = (ED - EC) if (ED is not None and EC is not None and ED > EC) else None
+    if DQ is not None and ED is not None:
+        ES = (DQ - ED) / _rng * 0.25 / _z_trr if (_rng and DQ <= ED) else _safe_div(DQ - ED, AC)
+    else:
+        ES = None
+    if DM is not None and EC is not None and ED is not None:
+        _mid = (ED + EC) / 2.0
+        ET = (DM - _mid) / (_z_mid * _rng) * 0.25 if _rng else _safe_div(DM - _mid, AC)
+    else:
+        ET = None
+    # 2026-10-12, user: "at LRR" = the low is in the BOTTOM range_lrr_zone_pct (0.25) of the LRR-TRR range,
+    # not within 1 SD (the SD is ~8% of price on some stocks, so MDB's low 9% above
+    # LRR counted as "at LRR"). Below LRR the break test stays in SD units (-0.25 SD).
+    # Above LRR the position is scaled so lrr_pct of the range = 1.0, which keeps the
+    # existing lrr_idx thresholds (-0.25 / 1.0) unchanged: 0 = at LRR, 1 = clear of it.
+    if DR is not None and EC is not None:
+        if DR < EC or ED is None or ED <= EC:
+            EU = _safe_div(DR - EC, AC)
+        else:
+            EU = (DR - EC) / (ED - EC) / _z_lrr
+    else:
+        EU = None
 
     # ---- VS struct ----
     vs = _decode_vs(row.get("a_volume_spike"), AD)
@@ -1386,6 +1415,30 @@ WHERE dst.as_of_date = src.as_of_date AND dst.tos_symbol = src.tos_symbol
 """
 
 
+def _get_range_zones(session: Session) -> dict:
+    """Zone widths (fractions of the LRR-TRR range) for the at-LRR / at-TRR / at-midpoint tests.
+
+    ref_settings range_lrr_zone_pct / range_trr_zone_pct / range_mid_zone_pct
+    (defaults 0.25 / 0.20 / 0.10). Keys are the row keys compute_intermediates reads.
+    """
+    out = {"_zone_lrr": 0.25, "_zone_trr": 0.20, "_zone_mid": 0.10}
+    names = {"range_lrr_zone_pct": "_zone_lrr", "range_trr_zone_pct": "_zone_trr",
+             "range_mid_zone_pct": "_zone_mid"}
+    try:
+        for n, v in session.execute(text(
+                "SELECT setting_name, setting_value FROM ref_settings "
+                "WHERE setting_name IN ('range_lrr_zone_pct','range_trr_zone_pct','range_mid_zone_pct')")):
+            try:
+                f = float(v)
+                if 0 < f <= 1:
+                    out[names[n]] = f
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+    return out
+
+
 def _get_sd_window(session: Session) -> str:
     """Return the sd_median_window_days interval string for WORKING_SET_SQL's :win param.
 
@@ -1414,6 +1467,7 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         log.warning("drv_cat_atomic_input: ref_trig_atomic_rule empty; skipping")
         return 0
     win = _get_sd_window(session)
+    zones = _get_range_zones(session)
     session.execute(
         text("DELETE FROM drv_cat_atomic_input WHERE as_of_date = :d"),
         {"d": as_of_date})
@@ -1429,6 +1483,7 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
     records = []
     for r in rows:
         row = dict(r)
+        row.update(zones)
         compute_intermediates(row)
         out: dict = {}
         eval_specs(row, COLUMN_SPECS_PASS1, trig_rules, out)
@@ -1481,5 +1536,6 @@ def get_symbol_intermediates(session: Session, tos_symbol: str, as_of_date) -> d
     if not row:
         return {}
     row_dict = dict(row)
+    row_dict.update(_get_range_zones(session))
     compute_intermediates(row_dict)
     return row_dict
