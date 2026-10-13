@@ -576,6 +576,10 @@ def compute_intermediates(row: dict) -> dict:
             EU = (DR - EC) / (ED - EC) / _z_lrr
     else:
         EU = None
+    # 2026-10-12, user: no valid LRR-TRR range (LRR or TRR missing, or TRR not above LRR) =
+    # no at-LRR / at-TRR / at-midpoint reading at all, so the range rules stay silent.
+    if not _rng:
+        ES = ET = EU = None
 
     # ---- VS struct ----
     vs = _decode_vs(row.get("a_volume_spike"), AD)
@@ -1289,6 +1293,9 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
         try:
             if ftype == "trig_ifs":
                 val = row.get(src) if src in row else out.get(src)
+                if val is None and db_col in ("trr_idx", "mrr_idx", "lrr_idx"):
+                    out[db_col] = None   # no range -> no reading (not "0 = at the level")
+                    continue
                 strict = False
                 simple = False
                 positive_only = False
