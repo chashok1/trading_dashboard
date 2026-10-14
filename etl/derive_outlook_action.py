@@ -625,7 +625,7 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
 
     pct_delta = '% Delta Since Initial'. Compares the current weekly SSS
     snapshot to the previous one:
-      - dropped from the list  -> REMOVE if held, else no action
+      - dropped from the list  -> REMOVE (held or not)
       - new on the list        -> ADD
       - on the list both weeks -> pct_delta < 0  -> REDUCE
                                   pct_delta >= 0 -> week-over-week:
@@ -636,9 +636,9 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     if not present_now and not present_prev:
         return None, "not on SSS list"
     if not present_now:
-        if held:
-            return "REMOVE", "dropped from SSS list"
-        return None, "dropped from SSS list, not held"
+        # Recorded whether or not held: the source layer states the fact, and
+        # derive_actionable marks an unheld REMOVE "NOT HELD" (visible, no sell).
+        return "REMOVE", "dropped from SSS list"
     if not present_prev:
         return "ADD", "new on SSS list"
     # on the list both weeks

@@ -779,6 +779,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         src_priority[r[0]] = int(r[1])
         src_category[r[0]] = r[2]
 
+    # Periodic sources look up to the live ceiling (same one their derive step
+    # uses) so a same-day file shows before the anchor advances.
     # Load all per-source actions for this date.
     # Periodic sources (ETF/II/SSS/PS) store actions with their period's snapshot date,
     # not the current derive date. Map to their effective snapshot dates like v_outlook_changes does.
@@ -789,27 +791,27 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                        WHEN source_code = 'ETF' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa1
                             WHERE doa1.source_code = 'ETF'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        WHEN source_code = 'II' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa2
                             WHERE doa2.source_code = 'II'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        WHEN source_code = 'SSS' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa3
                             WHERE doa3.source_code = 'SSS'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        WHEN source_code = 'PS' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa4
                             WHERE doa4.source_code = 'PS'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        WHEN source_code = 'RR' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa5
                             WHERE doa5.source_code = 'RR'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        WHEN source_code = 'GOANY' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa6
                             WHERE doa6.source_code = 'GOANY'
-                              AND as_of_date <= :d)
+                              AND as_of_date <= :ceil)
                        ELSE :d
                    END AS effective_date
             FROM (SELECT DISTINCT source_code FROM drv_outlook_action) sources
@@ -822,7 +824,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         WHERE doa.as_of_date = ssd.effective_date
         ORDER BY doa.tos_symbol, doa.source_code
     """)
-    all_actions = session.execute(source_dates_sql, {"d": as_of_date}).mappings().all()
+    all_actions = session.execute(
+        source_dates_sql,
+        {"d": as_of_date, "ceil": position_ceiling(session, as_of_date)}).mappings().all()
 
     # Group by symbol
     by_sym: dict[str, list[dict]] = {}

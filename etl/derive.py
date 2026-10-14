@@ -3484,7 +3484,28 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
 
 def derive_all(session: Session, as_of_date: date,
                parent_run_id: Optional[int] = None) -> dict:
-    """Run every derive_* in dependency order. Returns {table: rows_built}."""
+    """Run every derive_* in dependency order. Returns {table: rows_built}.
+
+    Serialised per as_of_date with a Postgres advisory lock held on a
+    dedicated connection (the cascade's own rollbacks/commits would drop a
+    transaction-level lock). Two overlapping derives for the same date used
+    to collide on drv_* primary keys; the second now waits for the first.
+    """
+    lock_conn = session.get_bind().connect()
+    try:
+        lock_conn.execute(text("SELECT pg_advisory_lock(:k)"),
+                          {"k": 7_300_000 + as_of_date.toordinal()})
+        return _derive_all_impl(session, as_of_date, parent_run_id)
+    finally:
+        try:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"),
+                              {"k": 7_300_000 + as_of_date.toordinal()})
+        finally:
+            lock_conn.close()
+
+
+def _derive_all_impl(session: Session, as_of_date: date,
+                     parent_run_id: Optional[int] = None) -> dict:
     # 2026-09-21, user-directed: no anchor is ever a Saturday/Sunday -- the
     # market's never open, so hist_td never has a weekend export_date and
     # get_anchor_date()/backfill_derives.py's hist_td-driven date list can
