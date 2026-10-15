@@ -2900,8 +2900,8 @@ function renderAccountFilter() {
 // Toolbar tooltips for the two filter groups: a name line, bullet lines, then the live
 // state (ON/OFF, or why the button is being ignored). Rendered by the [data-tip].tip-rich CSS.
 const _BTN_TIPS = {
-  showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Not used while Trade, Trade2 or WL is on']],
-  actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Not used while Trade or Trade2 is on']],
+  showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Click while Trade, Trade2 or WL is on to switch to this view']],
+  actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Click while Trade or Trade2 is on to switch to this view']],
   tradeModeBtn: ['Trade', ['The strict list: buys worth making now', 'Plus sells on positions you hold, and stop breaches', 'Combine with Trade2 / WL to add their rows']],
   tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They fail a strict check: timing, tradability, PVV or Trade line', 'Buys only: no sells or stop breaches']],
   watchlistOnlyBtn: ['WL (waiting list)', ['Unheld buy ideas waiting for better entry timing', 'Technical not yet ready (not BS/BM)', 'Never includes positions you hold']],
@@ -2915,10 +2915,7 @@ function _refreshToolbarTips() {
     tradeModeDiffBtn: f.trade_mode_diff, watchlistOnlyBtn: f.watchlist_only, heldOnly: f.held_only,
     myOnlyBtn: f.my_only, watchOnlyBtn: f.watch_only };
   const tradeOn = f.trade_mode || f.trade_mode_diff;
-  const ignored = {
-    showHidden: (tradeOn || f.watchlist_only) ? 'Trade / Trade2 / WL is on' : '',
-    actionableOnlyBtn: tradeOn ? 'Trade / Trade2 is on' : '',
-  };
+  const ignored = {};
   for (const id in _BTN_TIPS) {
     const b = $(id); if (!b) continue;
     const [name, lines] = _BTN_TIPS[id];
@@ -2940,6 +2937,12 @@ function _syncTradeModeButtons() {
   if (watchlistOnlyBtn) watchlistOnlyBtn.classList.toggle('active', !!f.watchlist_only);
   const myOnlyBtn = $('myOnlyBtn');
   if (myOnlyBtn) myOnlyBtn.classList.toggle('active', !!f.my_only);
+  // Actionable / Hidden show as unselected while Trade / Trade2 / WL overrides them.
+  const tmOn = !!(f.trade_mode || f.trade_mode_diff);
+  const aoBtn = $('actionableOnlyBtn');
+  if (aoBtn) aoBtn.classList.toggle('active', !!f.actionable_only && !tmOn);
+  const shBtn = $('showHidden');
+  if (shBtn) shBtn.classList.toggle('active', !!f.show_hidden && !(tmOn || f.watchlist_only));
   _refreshToolbarTips();
 }
 
@@ -2959,7 +2962,8 @@ function syncFilterUi() {
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');
   if (showHidden) {
-    showHidden.classList.toggle('active', !!f.show_hidden);
+    // 2026-10-15, user: unselected (no strikethrough) while Trade / Trade2 / WL is on.
+    showHidden.classList.toggle('active', !!f.show_hidden && !(f.trade_mode || f.trade_mode_diff || f.watchlist_only));
     _refreshToolbarTips();
   }
   _syncTradeModeButtons();
@@ -2983,7 +2987,8 @@ function syncFilterUi() {
   // actionable_only toggle
   const aoBtn = $('actionableOnlyBtn');
   if (aoBtn) {
-    aoBtn.classList.toggle('active', !!f.actionable_only);
+    // 2026-10-15, user: Actionable shows as unselected while Trade / Trade2 is on (it is not in use).
+    aoBtn.classList.toggle('active', !!f.actionable_only && !(f.trade_mode || f.trade_mode_diff));
     _refreshToolbarTips();
   }
 }
@@ -9317,7 +9322,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // there are the Trade buys, so Trade no longer starts ON (and its toolbar
   // button is gone). Trade2 and WL keep working; _isTradeModeQualifyingBuy and
   // the other Trade helpers stay (Buy ideas / Trade2 / WL / the nightly email use them).
-  state.filters.trade_mode = false;
+  // 2026-10-15, user: Trade starts ON again (the button is back in the toolbar).
+  state.filters.trade_mode = true;
   state.filters.trade_mode_diff = false;
   state.filters.watchlist_only = false;
   state.filters.my_only = false;
@@ -9452,9 +9458,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyClientFilter();
   });
   $('showHidden').addEventListener('click', () => {
-    state.filters.show_hidden = !state.filters.show_hidden;
-    $('showHidden').classList.toggle('active', state.filters.show_hidden);
-    _refreshToolbarTips();
+    const f = state.filters;
+    if (f.trade_mode || f.trade_mode_diff || f.watchlist_only) {
+      // Trade / Trade2 / WL override Show hidden; clicking it switches to that view.
+      f.trade_mode = false;
+      f.trade_mode_diff = false;
+      f.watchlist_only = false;
+      f.show_hidden = true;
+    } else {
+      f.show_hidden = !f.show_hidden;
+    }
+    syncFilterUi();
     // H column (U4) only renders when show_hidden is on.
     applyColumnVisibility();
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
@@ -9645,7 +9659,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Actionable-only toggle
   $('actionableOnlyBtn').addEventListener('click', () => {
-    state.filters.actionable_only = !state.filters.actionable_only;
+    const f = state.filters;
+    if (f.trade_mode || f.trade_mode_diff) {
+      // Trade / Trade2 override Actionable; clicking it switches to the Actionable view.
+      f.trade_mode = false;
+      f.trade_mode_diff = false;
+      f.actionable_only = true;
+      syncFilterUi();
+      loadActionable();   // Trade also controls whether suppressed rows are fetched
+      return;
+    }
+    f.actionable_only = !f.actionable_only;
     syncFilterUi();
     applyClientFilter();
   });

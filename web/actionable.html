@@ -1455,8 +1455,9 @@
                have to leave this screen to manage the list. User: "actionable
                screen -> add a radio button My next to Trade|Trade2|WL". -->
           <div class="seg-ctrl" title="Trade Mode view">
-            <!-- TASK_153 (2026-10-12): the Trade button was removed -- Trade's buys now live in the
-                 Buy ideas section of Today's actions. Trade2 and WL are unchanged. -->
+            <!-- 2026-10-15, user: Trade button brought back (TASK_153 had removed it). Starts OFF;
+                 Buy ideas in Today's actions still shows the same buys. -->
+            <button id="tradeModeBtn" class="tip-rich" data-tip="Trade: the strict list of buys worth making now, plus sells on held positions and stop breaches">🥇 Trade</button>
             <button id="tradeModeDiffBtn" class="tip-rich" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">🥈 Trade2</button>
             <button id="watchlistOnlyBtn" class="tip-rich" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">⏳ WL</button>
           </div>
@@ -1968,7 +1969,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20261014d"></script>
+  <script src="/static/actionable.js?v=20261015e"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261009b" defer></script>
 <script src="/static/warning_badge.js"></script>
