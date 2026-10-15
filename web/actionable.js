@@ -2277,6 +2277,15 @@ function _isTradeModeStopBreach(r) {
 function _isFixedIncome(r) {
   return (r.asset_class || '').toString().toLowerCase() === 'fixed income';
 }
+// 2026-10-14, user: Fixed Income funds also stay out of the normal view. They show only under
+// Trade2, or when the user is looking one up directly (symbol search / multi-symbol / account).
+function _fiHidden(r) {
+  if (!_isFixedIncome(r)) return false;
+  const f = state.filters;
+  if (f.trade_mode_diff || f.account || f.symbol_search) return false;
+  if (f.symbols_multi && f.symbols_multi.length) return false;
+  return true;
+}
 function _matchesTradeMode(r) {
   if (_isFixedIncome(r)) return false;
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
@@ -2383,6 +2392,7 @@ function matchesBaseFilters(r) {
     // 2026-09-15 comment on the SELL carve-out).
     if (_hiddenReason(r)) return false;
   }
+  if (_fiHidden(r)) return false;
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
   }
