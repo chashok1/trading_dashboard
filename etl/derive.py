@@ -3378,7 +3378,10 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 -- is checked BEFORE "up day, low touched LRR" (4) -- a stock that has already run
                 -- from LRR to TRR is not a bounce-off-LRR buy. Past data: those days did slightly
                 -- worse than the market (-0.34% over 10d vs +0.11% for the normal bounce).
-                WHEN c.trr_idx >= 0 THEN -1
+                -- 2026-10-15, user (MDB): "at TRR" also needs the latest price ABOVE the range
+                -- midpoint (same idea as the LRR side) -- a high that reached the top zone and
+                -- then closed in the lower half is a reversal, not "at TRR".
+                WHEN c.trr_idx >= 0 AND c.close > (c.lrr + c.trr) / 2.0 THEN -1
                 -- 2026-10-15, user (ULTA): "low touched LRR" needs the latest price NOT above the
                 -- range midpoint -- a stock that opened at LRR and ran above 50% is not a bounce buy.
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_eff = 0

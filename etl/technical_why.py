@@ -53,7 +53,7 @@ _BULL = {
 }
 # not-bull path (QJ 0..1): nbull_rr_rule codes
 _NBULL = {
-    -1: "At TRR (top of range)",
+    -1: "At TRR (top of range), price above the midpoint",
     2:  "Up day, low above LRR, at/below midpoint, MACD rising but MACDH not rising",
     3:  "Down day, low at LRR, above Trade and Trend",
     4:  "Up day, low touched LRR, price at or below the midpoint",
