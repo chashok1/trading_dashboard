@@ -2272,7 +2272,13 @@ function _isTradeModeHeldSell(r) {
 function _isTradeModeStopBreach(r) {
   return !!r.held_today && !!r.stop_breached;
 }
+// 2026-10-14, user: Fixed Income funds (BUXX / CLOX / CLOZ) are kept out of the main Trade view
+// and shown in Trade2 instead (all their buys / held sells / stop breaches).
+function _isFixedIncome(r) {
+  return (r.asset_class || '').toString().toLowerCase() === 'fixed income';
+}
 function _matchesTradeMode(r) {
+  if (_isFixedIncome(r)) return false;
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
 }
 // "My" list (ref_my_stocks) membership -- state.mySymbols is loaded once in
@@ -2296,6 +2302,9 @@ function _matchesTradeModeDiff(r) {
   // renderGrid's r._watchlisted split below), same as the default view, so
   // hiding them from Trade2 outright wasn't needed; they were never mixed
   // into the main Trade2 rows to begin with.
+  if (_isFixedIncome(r)) {
+    return _isTradeModeQualifyingBuyLoose(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
+  }
   return _isTradeModeDiffBuy(r);
 }
 // Numeric hit-rate badge for a qualifying Trade Mode row — the winning
