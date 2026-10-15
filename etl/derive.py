@@ -2914,9 +2914,19 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
             SELECT tos_ticker FROM ref_rrt WHERE rr_name = :sym LIMIT 1
         """), {"sym": symbol}).first()
 
-        if row and row[0]:
-            # Found in ref_rrt - update all rows for this symbol
-            tos_sym = row[0]
+        tos_sym = row[0] if row and row[0] else None
+        if tos_sym is None:
+            # Auto-map: a plain ticker that already exists in TOSD (hist_td)
+            # needs no ref_rrt row (futures/FX/indices still do).
+            hit = session.execute(text("""
+                SELECT 1 FROM hist_td WHERE tos_symbol = :sym LIMIT 1
+            """), {"sym": symbol}).first()
+            if hit:
+                tos_sym = symbol
+                log.info(f"hist_rr: auto-mapped '{symbol}' via hist_td (no ref_rrt row)")
+
+        if tos_sym:
+            # Found (ref_rrt or auto-map) - update all rows for this symbol
             session.execute(text("""
                 UPDATE hist_rr SET tos_symbol = :tos WHERE symbol = :sym
             """), {"tos": tos_sym, "sym": symbol})

@@ -1013,6 +1013,9 @@ def get_warnings():
         try:
             from etl.warnings import get_warnings as _meta_warnings
             for w in _meta_warnings(s):
+                # Unmapped RR symbols get one live, actionable item (block D).
+                if w.get("code") in ("rr_symbol_unmapped", "rr_unmapped_count"):
+                    continue
                 warnings.append({
                     "id": "mw-" + str(w["id"]),
                     "level": "error" if w.get("severity") == "error" else "warning",
@@ -1024,15 +1027,26 @@ def get_warnings():
 
         # C.5) Check for missing tos_symbol in hist_rr (not defined in ref_rrt)
         try:
-            null_count = s.execute(text("""
-                SELECT COUNT(*) FROM hist_rr WHERE tos_symbol IS NULL
-            """)).scalar() or 0
-            if null_count > 0:
+            # Per symbol, last 14 days of RR, with a hint on how to fix each.
+            rows = s.execute(text("""
+                SELECT rr.symbol, MIN(rr.snapshot_date) AS since, COUNT(*) AS n,
+                       EXISTS (SELECT 1 FROM hist_td t
+                               WHERE t.tos_symbol = rr.symbol) AS in_tosd
+                FROM hist_rr rr
+                WHERE rr.tos_symbol IS NULL
+                  AND rr.snapshot_date >= (SELECT MAX(snapshot_date) - 14 FROM hist_rr)
+                GROUP BY rr.symbol ORDER BY MIN(rr.snapshot_date)
+            """)).fetchall()
+            if rows:
                 warnings.append({
                     "id": "hist_rr_missing_tos_symbol",
-                    "level": "warning",
-                    "title": f"{null_count} RR row(s) missing tos_symbol",
-                    "items": [{"label": f"{null_count} rows without TOS symbol mapping (not defined in ref_rrt)"}]
+                    "level": "error",
+                    "title": f"{len(rows)} Hedgeye RR symbol(s) not mapped - ranges not shown",
+                    "items": [{"label": (
+                        f"{r[0]} (since {r[1]}, {r[2]} days): "
+                        + ("will map on next derive" if r[3] else
+                           "not in TOSD - add to a TOS watchlist, or add a ref_rrt row")
+                    )} for r in rows],
                 })
         except Exception:
             pass
