@@ -46,7 +46,7 @@ _BULL = {
     1:  "At midpoint, up/flat day",
     2:  "Down day, low at LRR, Trade line positive",
     3:  "Up day, low above LRR, below midpoint, MACD rising but MACDH not rising",
-    4:  "Up day, low touched LRR",
+    4:  "Up day, low touched LRR, price at or below the midpoint",
     5:  "Down day, above midpoint",
     6:  "Up day, low above LRR, below midpoint, MACD rising and MACDH rising",
     7:  "Touched TRR zone, pulled back, still above midpoint, TRR rising",
@@ -56,7 +56,7 @@ _NBULL = {
     -1: "At TRR (top of range)",
     2:  "Up day, low above LRR, at/below midpoint, MACD rising but MACDH not rising",
     3:  "Down day, low at LRR, above Trade and Trend",
-    4:  "Up day, low touched LRR",
+    4:  "Up day, low touched LRR, price at or below the midpoint",
     5:  "Up day, low above LRR, at/below midpoint, MACD rising and MACDH rising",
 }
 
