@@ -19,6 +19,9 @@ from __future__ import annotations
 from typing import Optional
 
 NL = chr(10)
+# Highlight markers, rendered by web/actionable.js::_whyHtml (red / green).
+# Stripped to plain text anywhere the text can't carry markup.
+R, G, E = "{r}", "{g}", "{/}"
 
 
 def _n(v) -> Optional[float]:
@@ -73,18 +76,18 @@ def explain_technical(d: dict) -> Optional[str]:
 
     # 1. Trend / Trade read
     if qe == -2:
-        return _two(f"Price {_usd(last)} below Trade ({_usd(trade)}) and Trend ({_usd(trend)})",
+        return _two(f"Price {_usd(last)} {R}below{E} Trade ({_usd(trade)}) and Trend ({_usd(trend)})",
                     "bearish, overrides all other checks")
     if qe == -1:
-        return _two(f"Trade ({_usd(trade)}) below Trend ({_usd(trend)}), price {_usd(last)} "
-                    f"less than 1 SD above Trade",
+        return _two(f"Trade ({_usd(trade)}) {R}below{E} Trend ({_usd(trend)}), price {_usd(last)} "
+                    f"above Trade by less than one typical daily move",
                     "bearish, overrides all other checks")
     if qe == 1:
-        return _two(f"Price {_usd(last)} above Trend ({_usd(trend)}), more than 1/2 SD below "
-                    f"Trade ({_usd(trade)})",
+        return _two(f"Price {_usd(last)} {R}below{E} Trade ({_usd(trade)}) by more than half a "
+                    f"typical daily move, above Trend ({_usd(trend)})",
                     "bearish, overrides range position")
     if qe == 2:
-        return _two(f"Price {_usd(last)} above Trade ({_usd(trade)}), below Trend ({_usd(trend)})",
+        return _two(f"Price {_usd(last)} above Trade ({_usd(trade)}), {R}below{E} Trend ({_usd(trend)})",
                     "neutral zone, no signal")
 
     # 2. Bollinger band streak
@@ -92,7 +95,7 @@ def explain_technical(d: dict) -> Optional[str]:
     qj = 0 if qj is None else int(qj)
     if qj < 0:
         bb = d.get("bb_desc") or "bearish"
-        return _two(f"Price above Trade and Trend, but Bollinger streak is bearish ({bb})",
+        return _two(f"Price above Trade and Trend, but Bollinger streak is {R}bearish{E} ({bb})",
                     "bearish band, overrides range position")
 
     # 3. Range position
@@ -105,12 +108,21 @@ def explain_technical(d: dict) -> Optional[str]:
     if raw is None:
         raw = _n(d.get("lrr_idx"))
     if eff is not None and int(eff) == -1:
-        return _two(f"Price {_usd(last)} more than 1/2 SD below LRR ({_usd(d.get('lrr'))})",
+        return _two(f"Price {_usd(last)} {R}below{E} LRR ({_usd(d.get('lrr'))}) by more than "
+                    f"one and a half typical daily moves",
                     "broken support overrides bullish Trend, Trade and band")
     held = ""
     if raw is not None and int(raw) == -1:
-        held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) but price "
-                f"{_usd(last)} recovered: support held. ")
+        lrr_v, last_v = _n(d.get("lrr")), _n(last)
+        if lrr_v is not None and last_v is not None and last_v < lrr_v:
+            # Shallow dip: still under LRR, but by less than the break depth -- these
+            # usually bounce (past-data check, 2026-10-14), so watch rather than sell.
+            held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) and price "
+                    f"{_usd(last)} is still just under it (less than one and a half typical "
+                    f"daily moves): watch for a bounce or a deeper break. ")
+        else:
+            held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) but price "
+                    f"{_usd(last)} recovered: {G}support held{E}. ")
     if qj >= 2:
         q = _n(d.get("bull_rr_action"))
         why = _BULL.get(int(q)) if q is not None else None

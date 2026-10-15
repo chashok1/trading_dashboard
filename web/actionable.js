@@ -5824,7 +5824,7 @@ function _buildActionPopHtml(row) {
   const rraUpper = (row.rr_action || '').toUpperCase();
   const techSide = _TECH_BUY.has(rraUpper) ? 'buy' : _TECH_SELL.has(rraUpper) ? 'sell' : null;
   const techColor = techSide === side ? color : techSide ? '#b45309' : '#94a3b8';
-  const techDesc = row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '';  // rr_why: plain-English reason (etl/technical_why.py)
+  const techDesc = _whyPlain(row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '');  // rr_why: plain-English reason (etl/technical_why.py)
   h += `<div>Technical : <b style="color:${techColor};">${rra}</b></div>`
      + `<div style="margin:2px 0 4px 4px;color:#64748b;">${techDesc ? escapeHtml(techDesc) : 'no descriptor'}</div></div>`;
 
@@ -6208,6 +6208,16 @@ function _actpopRrBarHtml(row) {
 // explanation (informational only -- never changes the signal). User bought
 // XLE below its Trade line and asked why Technical still says SELL TO MIN;
 // the signal is a trend read, not a P&L read, so this just shows both.
+// Technical "why" text carries {r}..{/} (red) / {g}..{/} (green) highlight markers
+// (etl/technical_why.py). _whyHtml renders them; _whyPlain strips them for places
+// that can't show markup (tooltips, plain-text fallbacks).
+function _whyPlain(s) { return String(s == null ? '' : s).replace(/\{(?:r|g|\/)\}/g, ''); }
+function _whyHtml(s) {
+  return escapeHtml(String(s == null ? '' : s))
+    .replace(/\{r\}/g, '<span style="color:#dc2626;font-weight:600;">')
+    .replace(/\{g\}/g, '<span style="color:#16a34a;font-weight:600;">')
+    .replace(/\{\/\}/g, '</span>');
+}
 function _techCostNote(row) {
   const q = Number(row.held_qty), c = Number(row.held_cost);
   if (!row.held_today || !(q > 0) || !(c > 0)) return '';
@@ -6250,8 +6260,8 @@ function _actpopDriverBullets(row, side) {
     // 2026-10-02: Technical shows two label:value pieces -- Why <situation> /
     // Call <action>: <verdict> -- from rr_why's two lines (etl/technical_why.py).
     if (tw) {
-      noteHtml = `<div class="actpop-tw"><span class="tw-k">Why</span>${escapeHtml(tw.why)}</div>`
-        + `<div class="actpop-tw"><span class="tw-k">Call</span><b>${escapeHtml(actionLabel)}</b>: ${escapeHtml(tw.verdict)}</div>`
+      noteHtml = `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`
+        + `<div class="actpop-tw"><span class="tw-k">Call</span><b>${escapeHtml(actionLabel)}</b>: ${_whyHtml(tw.verdict)}</div>`
         + (tw.cost ? `<div class="actpop-tw tw-cost">${escapeHtml(tw.cost)}</div>` : '');
     }
     // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header
@@ -6298,7 +6308,7 @@ function _actpopDriverBullets(row, side) {
     const tag = stopGate ? (techSide === 'sell' ? 'agrees' : techSide === 'buy' ? 'conflicts' : '')
                 : techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
                           : 'drove it'; // no source row at all -- Technical is the only driver
-    const desc = ((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
+    const desc = _whyPlain((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
     // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
     const _twLines = String(row.rr_why || '').split('\n');
     const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
@@ -9978,7 +9988,7 @@ function setupRRActionCol() {
         ${_rrHDesc ? `<span style="font-size:10px;font-weight:400;color:#475569;">${escapeHtml(_rrHDesc)}</span>` : ''}
         ${priceHtml}
       </div>
-      ${rowData?.rr_why ? `${sec('Why this signal')}<div style="font-size:11px;color:#0f172a;line-height:1.4;margin-bottom:4px;max-width:280px;">${escapeHtml(rowData.rr_why)}${_techCostNote(rowData) ? `<div style="margin-top:3px;color:#475569;">${escapeHtml(_techCostNote(rowData))}</div>` : ''}</div>` : ''}
+      ${rowData?.rr_why ? `${sec('Why this signal')}<div style="font-size:11px;color:#0f172a;line-height:1.4;margin-bottom:4px;max-width:280px;">${_whyHtml(rowData.rr_why)}${_techCostNote(rowData) ? `<div style="margin-top:3px;color:#475569;">${escapeHtml(_techCostNote(rowData))}</div>` : ''}</div>` : ''}
       ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(null, rowData?.tn_td_desc || d.tn_td_desc))}
       ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(null, rowData?.bb_desc   || d.bb_desc))}
       ${(()=>{ const _z=rowData?.rr_bull_bear?(rowData.rr_bull_bear==='B'?'Bull Up':'Bull Side Ways'):''; const _zc=rowData?.rr_bull_bear==='B'?'#16a34a':'#f59e0b'; return rowScore(`RR${_z?` <span style="font-size:8px;font-weight:400;text-transform:none;color:${_zc};">${_z}</span>`:''}`,d.rr_action,shortDesc(null,d.rr_desc)); })()}

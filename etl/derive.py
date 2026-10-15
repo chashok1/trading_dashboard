@@ -3156,13 +3156,17 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         _win_days = 30
     win_interval = f"{_win_days} days"
 
-    # LRR-break tolerance (SD) for the Technical signal. 2026-10-02, user:
-    # 1/2 SD (was 1/4, read from the lrr_idx atomic rule's brkeout_from).
-    # Now its own setting so the rules engine's lrr_idx rule is untouched.
-    lrr_tol = 0.5
+    # LRR-break depth for the Technical signal, in ATR14 ("typical daily moves").
+    # 2026-10-14, user-approved after a past-data check (May-Oct 2026): a dip
+    # shallower than ~1.5 ATR below LRR usually bounced (beat the market ~+1% over
+    # 5-10d); only deeper breaks kept falling. Was 1/2 SD (2026-10-02). Its own
+    # setting so the rules engine's lrr_idx rule is untouched. A symbol with no
+    # ATR falls back to ATR_FALLBACK x its SD (ATR ran ~1.34x the SD, median).
+    lrr_tol = 1.5
+    atr_fallback = 1.34
     try:
         _lt = session.execute(text(
-            "SELECT setting_value FROM ref_settings WHERE setting_name='lrr_break_sd_tolerance'"
+            "SELECT setting_value FROM ref_settings WHERE setting_name='lrr_break_atr_mult'"
         )).first()
         if _lt and _lt[0] is not None:
             lrr_tol = abs(float(_lt[0]))
@@ -3199,6 +3203,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 COALESCE(bsl.bot_score, td.a_bb_bot_slope) AS a_bb_bot_slope,
                 tw.standard_dev                    AS sd,
                 med.median_sd,
+                bsl.atr                            AS atr,
                 a.macdh_direction,
                 a.macd_direction,
                 a.trade_rule,
@@ -3253,13 +3258,14 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 -- 2026-10-01, user: "change it to use closing price or the current
                 -- price" -- a broken LRR support (lrr_idx = -1, from today's LOW)
                 -- only counts if the latest price (live intraday, the close after
-                -- hours) is also more than :lrrtol SD below LRR. If the low broke
+                -- hours) is also more than :lrrtol ATR below LRR. If the low broke
                 -- but price recovered, support held: treat as "touched LRR" (0)
                 -- so the normal range-position rules apply. lrr_idx itself
                 -- (low-based, also used by the rules engine) is unchanged.
                 CASE WHEN i.lrr_idx = -1 AND i.lrr IS NOT NULL
-                          AND LEAST(i.sd, i.median_sd) > 0
-                          AND (i.close - i.lrr) / LEAST(i.sd, i.median_sd) >= -:lrrtol
+                          AND COALESCE(i.atr, :atrfb * LEAST(i.sd, i.median_sd)) > 0
+                          AND (i.close - i.lrr)
+                              / COALESCE(i.atr, :atrfb * LEAST(i.sd, i.median_sd)) >= -:lrrtol
                      THEN 0 ELSE i.lrr_idx END AS lrr_eff,
                 CASE WHEN i.close = i.a_trend_value THEN 0.1
                      WHEN LEAST(i.sd, i.median_sd) IS NULL
@@ -3378,7 +3384,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
-           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol, "pullback": pullback})
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol, "atrfb": atr_fallback, "pullback": pullback})
 
     rows_pass1 = result.rowcount or 0
 

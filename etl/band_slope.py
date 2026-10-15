@@ -69,6 +69,11 @@ def band_score(values: Sequence[float], atr: Optional[float]) -> Optional[float]
 
 def compute_band_slopes(session: Session, as_of_date: date) -> dict:
     """{tos_symbol: (top_score, bot_score)} from hist_td bands and hist_y daily bars <= as_of_date."""
+    return compute_band_slopes_and_atr(session, as_of_date)[0]
+
+
+def compute_band_slopes_and_atr(session: Session, as_of_date: date) -> tuple[dict, dict]:
+    """(band scores, {tos_symbol: ATR14}) -- ATR for every symbol with enough daily bars."""
     bands: dict = {}
     for sym, top, bot in session.execute(text("""
         SELECT tos_symbol, a_bb_top, a_bb_bottom FROM (
@@ -104,18 +109,27 @@ def compute_band_slopes(session: Session, as_of_date: date) -> dict:
         t, b = band_score(tops, atr), band_score(bots, atr)
         if t is not None and b is not None:
             out[sym] = (t, b)
-    return out
+    atrs = {}
+    for sym, hlc in bars.items():
+        a = wilder_atr(*hlc)
+        if a is not None and a > 0:
+            atrs[sym] = a
+    return out, atrs
 
 
 def load_band_slope_table(session: Session, as_of_date: date) -> int:
     """Fill temp table _band_slope for the Technical derive. Returns rows written."""
     session.execute(text(
         "CREATE TEMP TABLE IF NOT EXISTS _band_slope "
-        "(tos_symbol text PRIMARY KEY, top_score numeric, bot_score numeric) ON COMMIT DROP"))
+        "(tos_symbol text PRIMARY KEY, top_score numeric, bot_score numeric, atr numeric) "
+        "ON COMMIT DROP"))
     session.execute(text("DELETE FROM _band_slope"))
-    scores = compute_band_slopes(session, as_of_date)
-    if scores:
+    scores, atrs = compute_band_slopes_and_atr(session, as_of_date)
+    rows = [{"s": s, "t": scores[s][0] if s in scores else None,
+             "b": scores[s][1] if s in scores else None, "a": atrs.get(s)}
+            for s in set(scores) | set(atrs)]
+    if rows:
         session.execute(
-            text("INSERT INTO _band_slope (tos_symbol, top_score, bot_score) VALUES (:s, :t, :b)"),
-            [{"s": s, "t": t, "b": b} for s, (t, b) in scores.items()])
+            text("INSERT INTO _band_slope (tos_symbol, top_score, bot_score, atr) "
+                 "VALUES (:s, :t, :b, :a)"), rows)
     return len(scores)
