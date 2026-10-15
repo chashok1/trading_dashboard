@@ -18,6 +18,7 @@ from etl._derive_common import position_ceiling, _ps_drop_verdicts
 
 log = logging.getLogger("etl.derive_actionable")
 
+_SSS_REMOVE_KEEP_DAYS = 5   # how long a "dropped from SSS list" REMOVE stays visible (calendar days)
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 # RTA (long-book, same-day trigger) ranks highest — a real-time alert on a
 # held position should always headline over a standing weekly/monthly list.
@@ -833,20 +834,48 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     for r in all_actions:
         by_sym.setdefault(r["tos_symbol"], []).append(dict(r))
 
+    # 2026-10-14, user: SSS now arrives daily, and only the newest file's rows are read above,
+    # so a "dropped from SSS list" REMOVE was visible for one day only (NVDA, AMAT). Keep a
+    # recent SSS REMOVE visible for _SSS_REMOVE_KEEP_DAYS (the SSSCHG window) unless the stock
+    # is back on the newest list (or already has a row there).
+    _sss_dates = [r["as_of_date"] for r in all_actions if r["source_code"] == "SSS"]
+    if _sss_dates:
+        _sss_eff = max(_sss_dates)
+        _on_now = {r["tos_symbol"] for r in all_actions if r["source_code"] == "SSS"}
+        _seen: set = set()
+        for r in session.execute(text("""
+            SELECT tos_symbol, source_code, base_weight, prev_weight, prev_date,
+                   weight_delta, held_today, action, action_reason, category,
+                   analyst_rank, as_of_date, source_snapshot_date
+            FROM drv_outlook_action
+            WHERE source_code = 'SSS' AND action = 'REMOVE'
+              AND as_of_date < :eff
+              AND as_of_date >= CAST(:eff AS date) - CAST(:keep AS integer)
+            ORDER BY as_of_date DESC
+        """), {"eff": _sss_eff, "keep": _SSS_REMOVE_KEEP_DAYS}).mappings().all():
+            if r["tos_symbol"] in _on_now or r["tos_symbol"] in _seen:
+                continue
+            _seen.add(r["tos_symbol"])
+            by_sym.setdefault(r["tos_symbol"], []).append(dict(r))
+
     # 2026-10-09, user rule: a held PS drop is evaluated HERE (read time, every
     # derive) not when the row was written, because RR/price/Trade line change
     # daily while the stored REMOVE row is frozen at the PS snapshot date.
     # Default HOLD (PS steps aside); stays REMOVE only if RR not Bullish, price
     # below Trade line, or >= ps_drop_sell_pct below its close at the drop.
+    # 2026-10-14, user: an SSS drop is judged the same way ("make SSS like PS").
     _ps_drops: dict = {}
     for _sym, _acts in by_sym.items():
         for _a in _acts:
-            if (_a["source_code"] == "PS" and _a["action"] == "REMOVE"
-                    and _a["held_today"]
-                    and (_a["action_reason"] or "").startswith("dropped from list")):
-                _ps_drops.setdefault(_a["as_of_date"], []).append((_sym, _a))
-    for _snap, _items in _ps_drops.items():
-        _verd = _ps_drop_verdicts(session, as_of_date, _snap, [x[0] for x in _items])
+            _lbl = ("PS" if (_a["source_code"] == "PS"
+                             and (_a["action_reason"] or "").startswith("dropped from list"))
+                    else "SSS" if (_a["source_code"] == "SSS"
+                                   and (_a["action_reason"] or "").startswith("dropped from SSS list"))
+                    else None)
+            if _lbl and _a["action"] == "REMOVE" and _a["held_today"]:
+                _ps_drops.setdefault((_lbl, _a["as_of_date"]), []).append((_sym, _a))
+    for (_lbl, _snap), _items in _ps_drops.items():
+        _verd = _ps_drop_verdicts(session, as_of_date, _snap, [x[0] for x in _items], _lbl)
         for _sym, _a in _items:
             if _sym in _verd:
                 _a["action"], _a["action_reason"] = _verd[_sym]
@@ -1138,6 +1167,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             if "_group_prio" in a:
                 return a["_group_prio"]
             src = a["source_code"]
+            # 2026-10-14, user: an SSS "dropped from list" removal ranks like a PS drop.
+            if (src == "SSS" and a.get("action") == "REMOVE"
+                    and (a.get("action_reason") or "").startswith("dropped from SSS list")):
+                src = "PS"
             if source_order_mode == "measured" and src in source_precedence:
                 p = source_precedence[src]
                 if p.get("measured_rank") is not None:

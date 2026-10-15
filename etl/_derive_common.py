@@ -267,7 +267,7 @@ def _setting_num(session: Session, name: str, default: float) -> float:
 
 
 def _ps_drop_verdicts(session: Session, as_of_date: date, drop_snap: date,
-                      syms: list[str]) -> dict[str, tuple[str, str]]:
+                      syms: list[str], label: str = "PS") -> dict[str, tuple[str, str]]:
     """Held symbols that dropped off PS -> (action, reason).
 
     2026-10-09, user rule: a PS drop alone is NOT a sell. Default is HOLD
@@ -305,8 +305,9 @@ def _ps_drop_verdicts(session: Session, as_of_date: date, drop_snap: date,
         if pct is not None and pct <= -sell_pct:
             why.append(f"price {pct:+.1f}% since drop")
         if why:
-            out[sym] = ("REMOVE", "dropped from list; " + "; ".join(why))
+            out[sym] = ("REMOVE", ("dropped from list; " if label == "PS"
+                                   else f"dropped from {label} list; ") + "; ".join(why))
         else:
             mv = f", price {pct:+.1f}% since drop" if pct is not None else ""
-            out[sym] = ("HOLD", f"dropped from PS list but RR Bullish{mv} — ignored")
+            out[sym] = ("HOLD", f"dropped from {label} list but RR Bullish{mv} — ignored")
     return out
