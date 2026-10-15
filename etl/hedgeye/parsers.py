@@ -1087,6 +1087,20 @@ _TOP5_HEADER_NOSEP_RE = re.compile(
     re.S)
 
 
+def _shared_side(side, syms, side_for):
+    """Side to stamp on a note that names several tickers.
+
+    A paragraph's side comes from its lead ticker, so copying it onto every
+    other ticker mentioned (e.g. TSCO named in a Target-short paragraph)
+    mislabels them. With more than one ticker, keep a side only when every
+    ticker is in the HEDGEYE POSITIONS summary and they all agree; else None.
+    """
+    if len(syms) <= 1:
+        return side
+    sides = {side_for.get(s) for s in syms}
+    return sides.pop() if len(sides) == 1 and None not in sides else None
+
+
 def parse_the_call(email: Email) -> Parsed:
     p = Parsed("the_call")
     text = email.plaintext
@@ -1191,7 +1205,8 @@ def parse_the_call(email: Email) -> Parsed:
                     tail_m = _TOP5_SIDE_TAIL_RE.search(full_text.rstrip())
                     side = tail_m.group(1).lower() if tail_m else side_for.get(fallback_syms[0], "long")
                     p.notes.append(_note(email, "the_call_commentary", full_text,
-                                         tickers=fallback_syms, signal_kind=side))
+                                         tickers=fallback_syms,
+                                         signal_kind=_shared_side(side, fallback_syms, side_for)))
                 continue
             syms = [s.upper() for s in _TICKER_PAREN.findall(pm.group(1))]
             if not syms:
@@ -1221,7 +1236,8 @@ def parse_the_call(email: Email) -> Parsed:
                 # come from either header regex, which only sees the leading
                 # name(s), so re-scan the full paragraph to keep that intact.
                 all_syms = sorted(set(s.upper() for s in _TICKER_PAREN.findall(full_text))) or syms
-                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=all_syms, signal_kind=side))
+                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=all_syms,
+                                     signal_kind=_shared_side(side, all_syms, side_for)))
     p.add_rows("hist_call_top5", top_rows)
     return p
 
