@@ -6706,10 +6706,14 @@ function _buildActionPopHtmlV2(row) {
           : `OVER MAX by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}`)
        + `</div>`;
   }
-  if (row.account_sizes && row.account_sizes.length) {
-    symExtras += `<div class="actpop-xl" style="text-align:left;"><b>Account sizes</b><ul style="margin:2px 0 0 14px;padding:0;list-style:disc;">`
-       + _acctSizeLines(row).map(l => `<li>${escapeHtml(l.replace(/^• /, ''))}</li>`).join('')
-       + `</ul></div>`;
+  // 2026-10-14, user: the popup shows one reference account (IRA, size x1), not the full
+  // per-account list. The over-max tooltip still lists every account.
+  const _refAcct = (row.account_sizes || []).find(a => a.name === 'IRA');
+  if (_refAcct) {
+    symExtras += `<div class="actpop-xl" style="text-align:left;">`
+       + escapeHtml(`${_refAcct.name} x${_refAcct.mult.toFixed(1)}: min ${_fmtK(_refAcct.min)} / max ${_fmtK(_refAcct.max)}`
+         + ` / unit ${_fmtK(_refAcct.unit)} / held ${_fmtK(_refAcct.held)}${_refAcct.over ? ' (OVER MAX)' : ''}`)
+       + `</div>`;
   }
   const _sz = _sizingStageInfo(row);
   if (_sz) {
