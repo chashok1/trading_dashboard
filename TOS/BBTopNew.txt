@@ -1,0 +1,95 @@
+####   BridgeBands_PG — TOP band only, LEAN build v2
+####   Same fitted values as TOS/BBTop.txt (TASK_128–131, calibrated vs
+####   hist_rr — docs/tos_rr_calibration.md).
+####   Lean-build notes: built-in StDev() * Sqrt(n/(n-1)) replaces the custom
+####   fold-based sample stdev (identical result, far cheaper); TOP's inactive
+####   levers (VIX coupling, vol-level, dir-vol, semi-dev, PVV — all fitted at 0)
+####   are removed. Formulas remain in docs/tos_rr_calibration.md and
+####   etl/calibrate_tos_rr.py for future recalibration.
+####
+#### ===========================  WHAT CHANGED vs v1  ==========================
+####   1. Header now matches this file (TOP only, one plot).
+####   2. Per-ticker k override in ONE table block, with on/off switch
+####      (useTickerKOverrides) and a manual override (kManual).
+####   3. Unused input vixWidthMult removed (only BOTTOM uses it).
+####   4. Magic number 15.87 given a name (annFactorIV). Value kept as 15.87,
+####      not Sqrt(252)=15.8745, so output matches the calibration exactly.
+####   Plot name unchanged (bridge_band_top) — existing columns/scans still work.
+####   Numeric output is IDENTICAL to v1 with default inputs.
+####
+#### ===========================  USAGE  =======================================
+#### Works as a chart study and as a custom column (a_bb_top) as-is.
+####
+####   TOP = topMid + topKEff*(1+topCIvHvWidth*(IV/HV-1))*sigma
+#### ===========================================================================
+
+# ============================ [CONTROL] inputs ===============================
+input useTickerKOverrides = yes;  # no = ignore per-ticker k table, use topK
+input kManual = 0.0;              # > 0 forces k for this instance (chart testing)
+
+# ============================ [SHARED] inputs ================================
+input length = 10;          # EMA/StDev backbone window (n)
+input volFastLen = 3;       # RelVol fast window (f)
+input volSlowLen = 15;      # RelVol slow window (s)
+input horizonDays = 3;      # IV-implied-move horizon (h; sqrt(h) scaling)
+input sigmaWeight = 0.75;   # w: realized-vs-IV sigma blend weight
+
+# ============================ [TOP] inputs ===================================
+input topMomFastLen = 12;    # momentum EMA fast window
+input topMomSlowLen = 26;    # momentum EMA slow window
+input topCTilt = 0.25;       # c_t: volume-confirmed midpoint tilt
+input topCMom = 0.5;         # c_m: trend-momentum midpoint tilt
+input topCIvHvWidth = -0.5;  # c_iv: width IV/HV multiplier
+input topK = 1.3;            # width scale (default for all tickers)
+
+# ============================ [TICKER k TABLE] ===============================
+# Why this exists: a watchlist column runs the SAME code on every row, and
+# thinkScript has no lookup tables or per-row inputs. Checking the symbol is
+# the only way to give a ticker its own calibrated k.
+# To add a ticker: add one isXXX line + one line in the k chain below.
+# (thinkScript cannot store strings in a def, so GetSymbol() is called per test.)
+input topKVixOverride = 1.44;
+
+def isVix = GetSymbol() == "VIX";
+
+def topKTable = if isVix then topKVixOverride
+                else topK;
+
+def topKEff = if kManual > 0 then kManual
+              else if useTickerKOverrides then topKTable
+              else topK;
+
+# ============================ [SHARED] computation ===========================
+# Sample stdev = built-in StDev (population) * bias correction.
+def sampleFix = Sqrt(length / (length - 1.0));
+def annFactorHV = Sqrt(252);   # annualizes the HV proxy
+def annFactorIV = 15.87;       # IV -> daily move divisor, as calibrated (~Sqrt(252))
+
+# --- price leg ---------------------------------------------------------------
+def ema = ExpAverage(close, length);
+def sdev = StDev(close, length) * sampleFix;
+
+# --- volume leg: RelVol, clamped [0.5,2.0], neutral (1) when volume missing --
+def volFast = Average(volume, volFastLen);
+def volSlow = Average(volume, volSlowLen);
+def relVolRaw = if IsNaN(volSlow) or volSlow == 0 then 1 else volFast / volSlow;
+def relVol = Min(2.0, Max(0.5, relVolRaw));
+
+# --- volatility leg: IV/HV ratio, clamped, neutral (1) when IV missing -------
+def iv = imp_volatility();
+def hvAnn = if close == 0 then 0 else sdev / close * annFactorHV;
+def ivHvRaw = if IsNaN(iv) or hvAnn == 0 then 1 else iv / hvAnn;
+def ivHv = Min(2.0, Max(0.5, ivHvRaw));
+
+# --- sigma: realized/IV-implied blend (IV missing -> pure realized) ----------
+def ivImplied = if IsNaN(iv) then 0 else close * iv / annFactorIV * Sqrt(horizonDays);
+def wEff = if IsNaN(iv) then 1 else sigmaWeight;
+def sigma = (wEff * sdev) + ((1 - wEff) * ivImplied);
+
+# ============================ [TOP] band =====================================
+def topEmaFastMom = ExpAverage(close, topMomFastLen);
+def topEmaSlowMom = ExpAverage(close, topMomSlowLen);
+def topMid = ema + (topCTilt * relVol * (close - ema)) + (topCMom * (topEmaFastMom - topEmaSlowMom));
+def topIvHvWidthMult = Min(2.0, Max(0.5, 1 + (topCIvHvWidth * (ivHv - 1))));
+
+plot bridge_band_top = topMid + (topKEff * topIvHvWidthMult * sigma);

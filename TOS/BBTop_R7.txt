@@ -1,0 +1,21 @@
+#### R7 TOP (watchlist column). Set the column aggregation to DAILY.
+#### TOP = center * Exp(kUp * dVol)
+####   center = 5-day exponential average of the close
+####   dVol   = 75% realized daily vol (10-day smooth) + 25% implied daily vol, floor 0.3%
+#### Change the numbers below to tune. No inputs.
+
+def anchorLen = 5;
+def rvLen = 10;
+def ivWeight = 0.25;
+def kUp = 1.75;
+def minVol = 0.003;
+
+def ret = if IsNaN(close[1]) or close[1] <= 0 then 0 else Log(close / close[1]);
+def rv = Sqrt(ExpAverage(Sqr(ret), rvLen));
+def ivRaw = imp_volatility();
+def ivD = if IsNaN(ivRaw) or ivRaw <= 0 then Double.NaN else ivRaw / Sqrt(252);
+def volRaw = if IsNaN(ivD) then rv else (1 - ivWeight) * rv + ivWeight * ivD;
+def dVol = Max(minVol, volRaw);
+def center = ExpAverage(close, anchorLen);
+
+plot Data = center * Exp(kUp * dVol);

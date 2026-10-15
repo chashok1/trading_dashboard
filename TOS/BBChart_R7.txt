@@ -1,0 +1,27 @@
+#### R7 CHART: draws the R7 top (cyan) and bottom (blue) on a DAILY chart. Same math as BBTop_R7 / BBBottom_R7.
+#### Change the numbers below to tune. No inputs.
+
+def anchorLen = 5;
+def rvLen = 10;
+def ivWeight = 0.25;
+def kUp = 1.75;
+def kDown = 1.95;
+def minVol = 0.003;
+
+def ret = if IsNaN(close[1]) or close[1] <= 0 then 0 else Log(close / close[1]);
+def rv = Sqrt(ExpAverage(Sqr(ret), rvLen));
+def ivRaw = imp_volatility();
+def ivD = if IsNaN(ivRaw) or ivRaw <= 0 then Double.NaN else ivRaw / Sqrt(252);
+def volRaw = if IsNaN(ivD) then rv else (1 - ivWeight) * rv + ivWeight * ivD;
+def dVol = Max(minVol, volRaw);
+def center = ExpAverage(close, anchorLen);
+
+plot R7Top = center * Exp(kUp * dVol);
+plot R7Bottom = center * Exp(-kDown * dVol);
+
+R7Top.SetDefaultColor(Color.CYAN);
+R7Top.SetLineWeight(2);
+R7Bottom.SetDefaultColor(Color.BLUE);
+R7Bottom.SetLineWeight(2);
+
+AddLabel(yes, "R7  Top " + Round(R7Top, 2) + "  Bottom " + Round(R7Bottom, 2), Color.CYAN);

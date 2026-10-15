@@ -9,11 +9,12 @@ inside the normal derive cascade, plus a rolling 20-trading-day median and
 a WARN/ALERT drift flag that acts as the "time to recalibrate" alarm.
 
 Idempotent: DELETE WHERE as_of_date=D then INSERT (via replace_for_date).
-Rows only for symbols present in BOTH hist_rr and hist_td — same
-carry-forward alignment (hist_rr snapshot_date <= D, hist_td snapshot_date
-< D, EOD max sequence) and reverse-symbol scaling (ref_rrt.reverse,
-ref_settings.rr_reverse_scale) as etl/calibrate_tos_rr.py and
-etl/derive.py::_derive_rr_impl.
+Rows only for symbols present in BOTH hist_rr and hist_td. Pairing
+(2026-10-15 fix): the latest hist_rr row per symbol with snapshot_date <= D
+is paired with the hist_td EOD row (max sequence) of the SAME export_date,
+because hist_rr.snapshot_date is the close date Hedgeye computed from
+(the file loads the next morning). Reverse-symbol scaling (ref_rrt.reverse,
+ref_settings.rr_reverse_scale) as in etl/derive.py::_derive_rr_impl.
 
 Rolling medians are computed over the symbol's own prior drv_bb_rr_gap
 rows (this table IS the rolling-window store — a live view would be
@@ -54,17 +55,20 @@ OUTLIER_SYMBOLS = {"VIX", "ORCL", "NFLX"}  # docs/tos_rr_calibration.md — stru
 OUTLIER_MULT = 2.0
 
 _RR_SQL = """
-    SELECT DISTINCT ON (tos_symbol) tos_symbol, buy_trade, sell_trade
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, snapshot_date, buy_trade, sell_trade
     FROM hist_rr
     WHERE snapshot_date <= :d
     ORDER BY tos_symbol, snapshot_date DESC
 """
 
+# Pairing (2026-10-15 fix): hist_rr.snapshot_date is the CLOSE date Hedgeye used
+# (file loads the next morning), so it pairs with the TOSD EOD row of the SAME
+# export_date -- not the day before. See DESIGN_SPEC_7.md.
 _TD_SQL = """
-    SELECT DISTINCT ON (tos_symbol) tos_symbol, a_bb_top, a_bb_bottom
+    SELECT DISTINCT ON (tos_symbol, export_date) tos_symbol, export_date, a_bb_top, a_bb_bottom
     FROM hist_td
-    WHERE snapshot_date < :d AND tos_symbol = ANY(:syms)
-    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+    WHERE export_date = ANY(:dates) AND tos_symbol = ANY(:syms)
+    ORDER BY tos_symbol, export_date, sequence DESC
 """
 
 _REV_SQL = """
@@ -127,8 +131,11 @@ def _derive_bb_rr_gap_impl(session: Session, as_of_date: date, run_id: int) -> i
     rr_by_sym = {r["tos_symbol"]: r for r in rr_rows}
     rr_syms = list(rr_by_sym.keys())
 
-    td_rows = session.execute(text(_TD_SQL), {"d": as_of_date, "syms": rr_syms}).mappings().all()
-    td_by_sym = {r["tos_symbol"]: r for r in td_rows}
+    rr_dates = sorted({r["snapshot_date"] for r in rr_rows})
+    td_rows = session.execute(text(_TD_SQL), {"dates": rr_dates, "syms": rr_syms}).mappings().all()
+    td_by_key = {(r["tos_symbol"], r["export_date"]): r for r in td_rows}
+    td_by_sym = {s: td_by_key[(s, rr_by_sym[s]["snapshot_date"])]
+                 for s in rr_syms if (s, rr_by_sym[s]["snapshot_date"]) in td_by_key}
 
     # Rows only for symbols present in BOTH feeds.
     both_syms = [s for s in rr_syms if s in td_by_sym]
