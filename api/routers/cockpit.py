@@ -2417,35 +2417,49 @@ def _oc_bucket(col: str) -> str:
 
 @router.get("/api/cockpit/outlook-changes")
 def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, ge=1, le=60)) -> dict:
+    """Day-over-day outlook changes (Bullish/Neutral/Bearish buckets) for Macro Rail symbols over the last `days`
+    days, newest first. Each row compares a symbol's reading to its previous reading (days without an outlook, e.g.
+    weekends, are skipped). One entry per symbol: its newest change plus the full path through the window. Country ETFs excluded."""
     d = _resolve_date(date)
     with session_scope() as s:
         cur = s.execute(text("SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :d"), {"d": d}).scalar()
-        prev = s.execute(text("SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :p"),
-                         {"p": (cur or d) - timedelta(days=days)}).scalar() if cur else None
-        if not cur or not prev:
-            return {"as_of": str(cur or d), "prev": None, "total": 0, "changes": []}
+        if not cur:
+            return {"as_of": str(d), "prev": None, "total": 0, "changes": []}
+        start = cur - timedelta(days=days)
         rows = s.execute(text(f"""
-            SELECT m.area_key, a.tos_symbol, {_oc_bucket('b.outlook')} AS frm, {_oc_bucket('a.outlook')} AS to_o,
-              (SELECT min(x.as_of_date) FROM drv_rr x
-                WHERE x.tos_symbol = a.tos_symbol AND x.as_of_date > :p AND {_oc_bucket('x.outlook')} = {_oc_bucket('a.outlook')}
-                  AND NOT EXISTS (SELECT 1 FROM drv_rr y WHERE y.tos_symbol = a.tos_symbol
-                                   AND y.as_of_date > x.as_of_date AND y.as_of_date > :p
-                                   AND {_oc_bucket('y.outlook')} <> {_oc_bucket('a.outlook')})) AS changed_on,
-              COALESCE((SELECT rs.description FROM ref_sector rs WHERE rs.ticker = a.tos_symbol), '') AS descr
-            FROM ref_macro_area m
-            JOIN drv_rr a ON a.tos_symbol = m.member_symbol AND a.as_of_date = :c
-            JOIN drv_rr b ON b.tos_symbol = a.tos_symbol AND b.as_of_date = :p
-            WHERE m.enabled AND m.area_key <> 'country_etfs'
-              AND {_oc_bucket('a.outlook')} IS NOT NULL AND {_oc_bucket('b.outlook')} IS NOT NULL
-              AND {_oc_bucket('a.outlook')} <> {_oc_bucket('b.outlook')}
-            ORDER BY m.area_key, a.tos_symbol"""), {"c": cur, "p": prev}).mappings().all()
-        seen, out = set(), []
-        for r in rows:
-            if r["tos_symbol"] in seen:      # a symbol sitting in two panels shows once
-                continue
-            seen.add(r["tos_symbol"])
-            out.append({"symbol": r["tos_symbol"], "panel": _OC_PANEL.get(r["area_key"], r["area_key"]),
-                        "from": r["frm"], "to": r["to_o"],
-                        "changed_on": r["changed_on"].isoformat() if r["changed_on"] else None,
-                        "desc": r["descr"] or ""})
-    return {"as_of": cur.isoformat(), "prev": prev.isoformat(), "total": len(out), "changes": out}
+            WITH r AS (
+              SELECT tos_symbol, as_of_date, bkt,
+                     LAG(bkt) OVER (PARTITION BY tos_symbol ORDER BY as_of_date) AS pbkt
+              FROM (SELECT tos_symbol, as_of_date, {_oc_bucket('outlook')} AS bkt
+                    FROM drv_rr
+                    WHERE as_of_date <= :c AND as_of_date >= :lb AND outlook IS NOT NULL
+                      AND tos_symbol IN (SELECT member_symbol FROM ref_macro_area
+                                         WHERE enabled AND area_key <> 'country_etfs')) q
+            )
+            SELECT m.area_key, r.tos_symbol, r.pbkt AS frm, r.bkt AS to_o, r.as_of_date AS changed_on,
+                   COALESCE((SELECT rs.description FROM ref_sector rs WHERE rs.ticker = r.tos_symbol), '') AS descr
+            FROM r
+            JOIN ref_macro_area m ON m.member_symbol = r.tos_symbol AND m.enabled AND m.area_key <> 'country_etfs'
+            WHERE r.as_of_date > :p AND r.pbkt IS NOT NULL AND r.bkt <> r.pbkt
+            ORDER BY r.as_of_date DESC, m.area_key, r.tos_symbol"""),
+            {"c": cur, "p": start, "lb": start - timedelta(days=7)}).mappings().all()
+        # One entry per symbol: its newest change as from/to/changed_on, plus the whole path through the window
+        # (path = states oldest -> newest, path_dates[i] = date the path moved into path[i+1]).
+        by_sym = {}
+        for r in rows:                                   # rows are newest-first
+            e = by_sym.get(r["tos_symbol"])
+            if e is None:
+                by_sym[r["tos_symbol"]] = e = {"symbol": r["tos_symbol"],
+                    "panel": _OC_PANEL.get(r["area_key"], r["area_key"]),
+                    "from": r["frm"], "to": r["to_o"], "changed_on": r["changed_on"].isoformat(),
+                    "desc": r["descr"] or "", "_steps": {}}
+            e["_steps"].setdefault(r["changed_on"], (r["frm"], r["to_o"]))   # a symbol in two panels counts once
+        out = []
+        for e in by_sym.values():
+            steps = sorted(e.pop("_steps").items())      # oldest -> newest
+            e["path"] = [steps[0][1][0]] + [st[1] for _, st in steps]
+            e["path_dates"] = [dt.isoformat() for dt, _ in steps]
+            out.append(e)
+        out.sort(key=lambda e: e["symbol"])
+        out.sort(key=lambda e: e["changed_on"], reverse=True)
+    return {"as_of": cur.isoformat(), "prev": start.isoformat(), "total": len(out), "changes": out}

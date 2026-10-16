@@ -20,15 +20,23 @@
       return '<i class="' + (i === b ? 't' : (i >= lo && i <= hi ? 'p' : '')) + '"></i>';
     }).join('') + '</div>';
   }
-  // Compact chip: "XLP  Bearish -> Bullish" (green = upgrade, red = downgrade); details in the tooltip.
-  function chip(d, asOf) {
-    var up = d.delta > 0;
-    var tip = [d.symbol + (d.desc ? ' - ' + d.desc : ''), d.panel,
-      d.from + ' -> ' + d.to + ' (' + (up ? '+' : '') + d.delta + ' step' + (Math.abs(d.delta) === 1 ? '' : 's') + ')',
-      'Changed ' + (ago(d.changed_on, asOf) || 'this week')].join(String.fromCharCode(10));
+  // One chip per symbol: its path through the window as icons ("RSP  up -> down -> Bullish"); the last step is spelled
+  // out for the newest two days. Paths longer than 4 states keep the last 4 behind an ellipsis; details in the tooltip.
+  function chip(d, asOf, wordy) {
+    var path = d.path && d.path.length > 1 ? d.path : [d.from, d.to];
+    var flips = [];
+    for (var i = 0; i + 1 < path.length; i++) {
+      flips.push(path[i] + ' -> ' + path[i + 1] + (d.path_dates && d.path_dates[i] ? '  (' + d.path_dates[i].slice(5, 7) + '/' + d.path_dates[i].slice(8, 10) + ')' : ''));
+    }
+    var tip = [d.symbol + (d.desc ? ' - ' + d.desc : ''), d.panel].concat(flips).join(String.fromCharCode(10));
+    var shown = path.length > 4 ? path.slice(-4) : path;
+    var last = shown.length - 1;
+    var steps = shown.map(function (st, i) {
+      return (i ? '<i class="oc-ar">&rarr;</i>' : '') +
+        (i === last && wordy ? '<span class="oc-w ' + cls(st) + '">' + esc(st) + '</span>' : shape(st));
+    }).join('');
     return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + esc(d.symbol) + '</b>' +
-      '<span class="oc-ft"><span class="oc-w ' + cls(d.from) + '">' + esc(d.from) + '</span> &rarr; <span class="oc-w ' + cls(d.to) + '">' + esc(d.to) + '</span></span>' +
-      (d.changed_on ? '<span class="oc-dt">' + d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) + '</span>' : '') + '</span>';
+      '<span class="oc-ft">' + (path.length > shown.length ? '<i class="oc-ar">&hellip;</i>' : '') + steps + '</span></span>';
   }
 
   // ---- Macro Rail row markers (2026-10-16): "from -> to" in a reserved slot on each rail row. ----
@@ -79,8 +87,18 @@
       return String(y.changed_on || '').localeCompare(String(x.changed_on || '')) ||
         Math.abs(y.delta) - Math.abs(x.delta) || x.symbol.localeCompare(y.symbol);
     });
-    var parts = all.map(function (d) { return chip(d, D.as_of); });
-    var chips = parts.join('');
+    // Flat list, newest first: a date label ("10/15") ahead of each day's chips.
+    // The two newest change days (today + yesterday) spell out the new state: "▼ → Bullish"; older days are icons only.
+    var recent = {};
+    all.map(function (d) { return d.changed_on || ''; }).filter(function (v, i, a) { return a.indexOf(v) === i; })
+      .sort().reverse().slice(0, 2).forEach(function (v) { recent[v] = 1; });
+    var items = [], lastDay = null;
+    all.forEach(function (d) {
+      var day = d.changed_on ? d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) : '';
+      if (day !== lastDay) { items.push({ label: day || 'This week', html: '<span class="oc-dl">' + esc(day || 'This week') + '</span>' }); lastDay = day; }
+      items.push({ chip: true, day: day, html: chip(d, D.as_of, !!recent[d.changed_on || '']) });
+    });
+    var chips = items.map(function (i) { return i.html; }).join('');
     el.innerHTML = '<div class="oc-body"><span class="oc-line" id="ocLine">' + chips + '</span>' +
       '<button class="oc-more" id="ocMore" type="button" title="Show all outlook changes" hidden></button></div>' +
       '<div class="oc-pop" id="ocPop" hidden></div>';
@@ -89,12 +107,26 @@
     function setOpen(v) { st.open = v; pop.hidden = !v; more.classList.toggle('on', v); }
     // Count the chips that do not fit on the one line.
     function fit() {
-      var lr = line.getBoundingClientRect().right, hidden = 0;
-      Array.prototype.forEach.call(line.children, function (c) { if (c.getBoundingClientRect().right > lr + 0.5) hidden++; });
-      pop.innerHTML = parts.slice(parts.length - hidden).join('');   // overlay = only the chips that do not fit on the line
-      more.hidden = !hidden;
-      more.textContent = '+' + hidden + ' more ▾';
-      if (!hidden) setOpen(false);
+      more.hidden = false; more.textContent = '+99 more ▾';   // measure with the button present (it narrows the line)
+      // Two static rows: size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
+      var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1, nChips = 0;
+      line.style.maxHeight = (2 * h + 4) + 'px';
+      var lb = line.getBoundingClientRect().bottom;
+      Array.prototype.forEach.call(line.children, function (c, i) {
+        if (first < 0 && c.getBoundingClientRect().bottom > lb + 0.5) first = i;
+      });
+      // A date label left alone at the end of the line (its chips pushed to the overlay) moves to the overlay too.
+      Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
+      if (first > 0 && !items[first].label && items[first - 1].label) { first--; line.children[first].style.visibility = 'hidden'; }
+      if (first >= 0) items.forEach(function (it, i) { if (i >= first && it.chip) nChips++; });
+      // Overlay = what does not fit on the line; if it starts mid-day, repeat that day's label.
+      var rest = first < 0 ? [] : items.slice(first);
+      if (rest.length && rest[0].chip) rest.unshift({ html: '<span class="oc-dl">' + esc(rest[0].day || 'This week') + '</span>' });
+      // A day label left dangling at the end of the line (all its chips pushed off) is hidden too.
+      pop.innerHTML = rest.map(function (i) { return i.html; }).join('');
+      more.hidden = !nChips;
+      more.textContent = '+' + nChips + ' more ▾';
+      if (!nChips) setOpen(false);
     }
     more.onclick = function (e) { e.stopPropagation(); setOpen(!st.open); };
     document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) setOpen(false); });
@@ -114,7 +146,7 @@
       // Rail markers are isolated: a failure here must never hide the top bar below.
       try {
         var m = {};
-        (st.data.changes || []).forEach(function (c) { m[c.symbol] = c; });
+        (st.data.changes || []).forEach(function (c) { if (!m[c.symbol]) m[c.symbol] = c; });   // rail marker = the symbol's newest change
         window._ocMap = m;
         addChip(Object.keys(m).length);
         document.dispatchEvent(new Event('oc-loaded'));
