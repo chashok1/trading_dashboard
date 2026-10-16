@@ -7124,6 +7124,7 @@ function _actionedInfo(r) {
   // date, which lags during the day. Null on older dates picked in the date picker.
   const day = r.session_day;
   if (!day) return null;
+  if (state.unparkedSyms && state.unparkedSyms.has(r.tos_symbol)) return null;   // user moved it back to the main list
   const b = r.last_bought_date === day;
   const sd = r.last_sold_date === day;
   const done = !!r.done_today;
@@ -7332,7 +7333,7 @@ function _actionedBandRowEl(count, expanded, rows) {
   });
   // "Move all to main list": undoes Done on every Done-only row in the band. Rows parked
   // because you actually bought/sold today stay (those come from trade files).
-  const doneRows = (rows || []).filter(r => r._actionInfo && r._actionInfo.doneOnly);
+  const doneRows = (rows || []).filter(r => r._actionInfo);
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;align-items:center;gap:12px;';
   btn.style.width = 'auto'; btn.style.flex = '1';
@@ -7341,10 +7342,10 @@ function _actionedBandRowEl(count, expanded, rows) {
     const mv = document.createElement('button');
     mv.type = 'button';
     mv.textContent = `Move all to main list (${doneRows.length})`;
-    mv.title = 'Undo Done on every row marked Done today. Rows you bought or sold today stay here.';
+    mv.title = 'Move every row in this band back to the main list (undoes Done; bought/sold rows stay out of the band until you reload).';
     mv.style.cssText = 'background:none;border:none;cursor:pointer;font-size:11px;font-weight:600;'
       + 'color:#2563eb;text-decoration:underline;padding:2px 0;white-space:nowrap;';
-    mv.addEventListener('click', () => moveAllDoneToMain(doneRows, (rows || []).length - doneRows.length));
+    mv.addEventListener('click', () => moveAllDoneToMain(doneRows, 0));
     wrap.appendChild(mv);
   }
   td.appendChild(wrap);
@@ -7353,7 +7354,9 @@ function _actionedBandRowEl(count, expanded, rows) {
 }
 
 async function moveAllDoneToMain(doneRows, staying) {
-  const res = await Promise.allSettled(doneRows.map(r =>
+  if (!state.unparkedSyms) state.unparkedSyms = new Set();
+  for (const r of doneRows) if (!r._actionInfo.doneOnly) state.unparkedSyms.add(r.tos_symbol);
+  const res = await Promise.allSettled(doneRows.filter(r => r._actionInfo.doneOnly || r.done_today).map(r =>
     fetchJson(`/api/actionable/${encodeURIComponent(r.tos_symbol)}/action?date=${encodeURIComponent(state.date)}`, { method: 'DELETE' })));
   const ok = res.filter(x => x.status === 'fulfilled').length;
   const failed = res.length - ok;
