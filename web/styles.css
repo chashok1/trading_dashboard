@@ -1905,11 +1905,11 @@ svg.rr-candle {
    room to spare, regardless of the actual value's digit count — plus
    tabular-nums so the digits themselves don't jitter in width from row to
    row. */
-.msr-chg { font-size: 10px; font-weight: 700; padding: 0 4px;
+.msr-chg { font-size: 10px; font-weight: 700; padding: 0 2px; min-width: 0; overflow: hidden;
            border-radius: 3px; text-align: center;
            font-variant-numeric: tabular-nums;
            white-space: nowrap; box-sizing: border-box; display: inline-block;
-           color: #fff; flex: 0 0 46px; }
+           color: #fff; flex: 0 0 42px; }
 /* Price/$-change modes (2026-09-24, macro_areas.js::_chgChipHtml,
    _chipCompactPrice/_chipCompactDollarChg) -- same chip, printing a price
    or a $ change instead of a %chg. Both formatters' own worst case is
@@ -1955,6 +1955,9 @@ svg.rr-candle {
 .msr-dur-flat { color: #9ca3af; }
 /* Range bar in rail (narrower than grid version) */
 .msr-rb-wrap { display: flex; align-items: center; gap: 3px; }
+/* 2026-10-16: 4px breathing room between the Tn arrow and the range bar, taken from the %chg chip's 46px -> 42px. */
+.msr-data-cluster > .msr-rb-wrap { margin-left: 4px; }
+.msr-data-cluster > .mra-muted { flex: 0 0 36px; text-align: center; }   /* 'n/a' placeholder keeps the bar's footprint */
 .msr-rb {
   position: relative; height: 3px; width: 32px;
   background: var(--border, #e5e7eb); border-radius: 2px; flex-shrink: 0;
@@ -2223,8 +2226,8 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    column (.macro-rail-col) and the horizontal gap between the 5 columns
    themselves (.macro-rail-row), for one consistent spacing throughout. */
 .macro-rail-row { display: flex; align-items: flex-start; gap: 4px; }
-.msr-colhdr { display: flex; gap: 2px; margin-left: auto; }   /* lives in the panel's header bar, right-aligned over the pills */
-.msr-colhdr-btn { flex: 0 0 46px; box-sizing: border-box; border: none; background: none; padding: 0; cursor: pointer;
+.msr-colhdr { display: flex; gap: 2px; margin-left: auto; margin-right: -6.8px; }   /* lives in the panel's header bar, right-aligned over the pills */
+.msr-colhdr-btn { flex: 0 0 42px; box-sizing: border-box; border: none; background: none; padding: 0; cursor: pointer;
                   font: inherit; text-transform: uppercase; text-align: center; color: var(--text-2, #666); white-space: nowrap; }
 .msr-colhdr-ic { font-size: 9px; margin-left: 1px; opacity: .7; }
 .msr-colhdr-btn:hover, .msr-colhdr-btn.on { color: #2563eb; }
@@ -2232,7 +2235,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .msr-per { display: inline-block; min-width: 38px; text-align: right; font-size: 10px; color: var(--text-3, #6b7280); }
 .msr-per-up { color: #15803d; } .msr-per-dn { color: #b91c1c; }
 .macro-rail-col { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 130px; }
-.macro-rail-row > .macro-rail-col:first-child { flex-grow: 1.5; }   /* 2026-10-15: col 1 (Major Markets + Sectors) 50% wider; the other columns give up the width */
+.macro-rail-row > .macro-rail-col:first-child { flex-grow: 1.5; min-width: 400px; }   /* 2026-10-16: never narrower than carets+name+change slot+Td/Tn+bar+candle+Day/MTD/QTD/YTD pills, or the right-anchored pills get clipped */   /* 2026-10-15: col 1 (Major Markets + Sectors) 50% wider; the other columns give up the width */
 /* 2026-09-24, user-directed: "I only need one header bar 'Accounts' and
    display 5 columns and adjust the rows" -- one panel spanning the full
    row width (see index.html's inline flex:1 1 100% override on that one
@@ -3929,7 +3932,6 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* Breadth panel in the left column: two tiles per row */
 #breadthBand .mr-tiles { grid-template-columns: 1fr 1fr; }
 #breadthBand[hidden] { display: none !important; }
-
 /* Outlook changes panel (top of centre column) -- compact chip strip */
 .oc-card { padding: 0; overflow: hidden; }
 .oc-card[hidden] { display: none !important; }
@@ -3958,3 +3960,33 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .oc-body { align-items: center; }
 .oc-tog { border: none; background: none; cursor: pointer; padding: 0 2px; font-size: 11px; line-height: 1; color: var(--text-2, #666); }
 .oc-tog:hover { color: var(--text-1, #222); }
+
+
+/* 2026-10-16 -- Macro Week strip, area-verdict pills and Hedgeye RR strips use the same chip look as the
+   Outlook changes strip: 6px corners, a 3px colored left edge, a soft tint of that color, dark text. */
+.mw-card .mw-chip, .rrs-card .mw-chip, .mw-card .av-tile {
+  --rc: #8a93a6; --rcbg: #f0f1f5;
+  border-radius: 6px; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--rc);
+  background: var(--rcbg); color: #16181f; padding: 1px 7px 1px 5px;
+}
+.mw-card .mw-chip.mw-bull, .rrs-card .mw-chip.mw-bull, .mw-card .av-tailwind { --rc: #0f9d58; --rcbg: #e6f6ee; color: #16181f; border-color: var(--border, #e5e5e2); }
+.mw-card .mw-chip.mw-bear, .rrs-card .mw-chip.mw-bear, .mw-card .av-headwind { --rc: #e5484d; --rcbg: #fdecec; color: #16181f; border-color: var(--border, #e5e5e2); }
+.mw-card .mw-chip.mw-warn, .mw-card .av-stretched { --rc: #f59e0b; --rcbg: #fef3c7; color: #16181f; border-color: var(--border, #e5e5e2); }
+.mw-card .mw-chip.mw-quad, .mw-card .mw-chip.mw-ev, .mw-card .av-turning { --rc: #4f46e5; --rcbg: #eef2ff; color: #16181f; border-color: var(--border, #e5e5e2); }
+.mw-card .mw-chip.mw-book { background: var(--card-bg, #fff); --rc: #6b7280; }
+.mw-card .av-unclear, .mw-card .av-quiet { --rcbg: #f0f1f5; color: var(--text-3, #6b7280); border-style: solid; border-color: var(--border, #e5e5e2); }
+.mw-card .av-total { --rc: #e5484d; background: var(--card-bg, #fff); color: #16181f; border-color: var(--border, #e5e5e2); }
+.mw-card .mw-chip, .rrs-card .mw-chip, .mw-card .av-tile { border-left-color: var(--rc) !important; border-left-style: solid !important; }
+
+.oc-grp-gap { margin-right: 16px; }
+
+/* Outlook-change slot on Macro Rail rows (web/outlook_changes.js): reserved 26px, grey square / green up / red down */
+.oc-slot { flex: none; width: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 1px; font-size: 8px; line-height: 1; }
+.oc-slot.has { cursor: default; }
+.oc-s { font-style: normal; } .oc-s.bull { color: #0f9d58; } .oc-s.bear { color: #e5484d; } .oc-s.neu { color: #8a93a6; }
+.oc-ar { font-style: normal; color: var(--text-3, #98a0b3); font-size: 8px; }
+.oc-filter { border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2, #5b6172); border-radius: 999px;
+             padding: 0 7px; font-size: 9px; font-weight: 600; line-height: 13px; cursor: pointer; margin-left: 6px; }
+.oc-filter[hidden] { display: none; }
+.oc-filter.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }

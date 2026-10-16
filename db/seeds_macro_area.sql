@@ -549,3 +549,8 @@ ON CONFLICT (area_key, member_symbol) DO UPDATE SET
 
 -- 2026-10-15: QQQ removed from Major Markets/top9 (per request).
 UPDATE ref_macro_area SET enabled = FALSE WHERE area_key = 'top9' AND member_symbol = 'QQQ';
+
+-- 2026-10-16: RSP added to Major Markets/top9 (per request). role='dual' (tradable ETF), sort_order 40 (after $DJI).
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('top9', 'Major Markets', 'RSP', 'dual', 40)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;

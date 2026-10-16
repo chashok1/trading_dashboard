@@ -622,6 +622,11 @@
     }).join('');
   }
 
+  // Outlook-change slot (web/outlook_changes.js): fixed-width, empty unless this symbol's outlook changed this week.
+  function _oc(sym) { return window.ocMarker ? window.ocMarker(sym) : ''; }
+  function _ocCls(sym) { return window.ocHas && window.ocHas(sym) ? ' has-oc' : ''; }
+  document.addEventListener('oc-loaded', function () { if (_lastAreasData) renderRail(_lastAreasData); });
+
   function railAreaRow(area) {
     _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
     var members = _sortedMembers(area);
@@ -645,7 +650,7 @@
           // low/high threshold bar between the zone text and the candle/
           // %chg) dropped too -- user: "what is bar between investable
           // text and Value? Can we remove that."
-          '<div class="msr-row" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m)) + '">' +
+          '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m)) + '">' +
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
               // Prefer a real per-symbol label override; when there isn't
               // one (label just repeats the area's own name, e.g. VIX's
@@ -654,6 +659,7 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
+            _oc(m.symbol) +
             // 2026-09-23, user-directed: "display the actual values in
             // small font between desc and the text Investable/Elevated" --
             // .msr-gauge-vix already existed in styles.css (9px, gray) but
@@ -686,7 +692,7 @@
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
       return sep + (
-        '<div class="msr-row" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m, dispName)) + '">' +
+        '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m, dispName)) + '">' +
           (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             // Same fallback as the gauge row above: dispName only differs
@@ -698,6 +704,7 @@
             // to show).
             symLink(esc(dispName), m.symbol, dispName !== m.symbol ? dispName : m.desc) +
           '</span>' +
+          _oc(m.symbol) +
           '<div class="msr-data-cluster">' +
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
