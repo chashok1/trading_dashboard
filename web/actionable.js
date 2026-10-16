@@ -7115,6 +7115,17 @@ function _emptyStateHtml() {
 //    "over max $X" note. Never applies to SELL ALL or a breached stop.
 //  * Every sell-signal row also shows a quiet gray "Bought <date>" tag when you
 //    bought the symbol in the last 60 days (context only; no parking).
+// Symbols the user moved back to the main list for a given session day; kept in
+// localStorage so a refresh doesn't re-park them (resets naturally on the next day).
+function _unparkedSet(day) {
+  if (!state.unparkedSyms || state.unparkedDay !== day) {
+    state.unparkedDay = day;
+    try { state.unparkedSyms = new Set(JSON.parse(localStorage.getItem('act_unparked_' + day) || '[]')); }
+    catch (e) { state.unparkedSyms = new Set(); }
+  }
+  return state.unparkedSyms;
+}
+
 function _actionedInfo(r) {
   const code = (r.final_code || '').toUpperCase();
   // 2026-10-02: an explicit Done click still counts on SELL ALL / breached-stop rows
@@ -7124,7 +7135,7 @@ function _actionedInfo(r) {
   // date, which lags during the day. Null on older dates picked in the date picker.
   const day = r.session_day;
   if (!day) return null;
-  if (state.unparkedSyms && state.unparkedSyms.has(r.tos_symbol)) return null;   // user moved it back to the main list
+  if (_unparkedSet(day).has(r.tos_symbol)) return null;   // user moved it back to the main list
   const b = r.last_bought_date === day;
   const sd = r.last_sold_date === day;
   const done = !!r.done_today;
@@ -7354,13 +7365,16 @@ function _actionedBandRowEl(count, expanded, rows) {
 }
 
 async function moveAllDoneToMain(doneRows, staying) {
-  if (!state.unparkedSyms) state.unparkedSyms = new Set();
-  for (const r of doneRows) if (!r._actionInfo.doneOnly) state.unparkedSyms.add(r.tos_symbol);
-  const res = await Promise.allSettled(doneRows.filter(r => r._actionInfo.doneOnly || r.done_today).map(r =>
+  const day = doneRows[0] && doneRows[0]._actionInfo.date;
+  const set = _unparkedSet(day);
+  for (const r of doneRows) if (!r._actionInfo.doneOnly) set.add(r.tos_symbol);
+  try { localStorage.setItem('act_unparked_' + day, JSON.stringify([...set])); } catch (e) {}
+  const toUndo = doneRows.filter(r => r._actionInfo.doneOnly || r.done_today);
+  const res = await Promise.allSettled(toUndo.map(r =>
     fetchJson(`/api/actionable/${encodeURIComponent(r.tos_symbol)}/action?date=${encodeURIComponent(state.date)}`, { method: 'DELETE' })));
-  const ok = res.filter(x => x.status === 'fulfilled').length;
-  const failed = res.length - ok;
-  showStatus(`Moved ${ok} to main list` + (staying ? ` (${staying} bought/sold stay)` : '')
+  const failed = res.filter(x => x.status !== 'fulfilled').length;
+  const ok = doneRows.length - failed;
+  showStatus(`Moved ${ok} to main list`
     + (failed ? `; ${failed} failed` : ''), failed ? 'error' : 'success', 3500);
   await loadActionable({ preserveState: true });
 }
