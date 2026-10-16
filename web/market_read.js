@@ -52,7 +52,8 @@
     'Momentum': 'macroRemainingBand', 'Defensives': 'macroRemainingBand',
     'Cyclicals': 'macroRemainingBand', 'Healthcare': 'macroRemainingBand',
     'Tech/software': 'macroRemainingBand', 'Semis': 'macroRemainingBand',
-    'Energy': 'macroCommoditiesBand', 'Precious metals': 'macroCommoditiesBand',
+    'Big tech & hardware': 'macroRemainingBand', 'Quantum & speculative': 'macroRemainingBand',
+    'Energy': 'macroCommoditiesBand', 'Precious metals': 'macroCommoditiesBand', 'Gold': 'macroCommoditiesBand',
     'Industrial metals': 'macroCommoditiesBand', 'Ags': 'macroCommoditiesBand',
     'Crypto': 'macroCryptoBand',
     'Developed intl': 'macroCountryBand', 'Emerging': 'macroCountryBand',
@@ -384,6 +385,16 @@
       '• You hold ' + fmtMoney(t.you_dollar) + ' (' + (t.you_pct != null ? t.you_pct + '%' : '—') + ' of your portfolio)'] : ['No fit read for this theme.'];
   }
 
+  // Driver column: the area-verdict for the area with the same name (web/area_verdicts.js::cellFor); filled again
+  // when that data lands.
+  function _drvCell(theme) {
+    var h = window.AreaVerdicts && window.AreaVerdicts.cellFor ? window.AreaVerdicts.cellFor(theme) : '';
+    return h || '<span class="mr-dim">&mdash;</span>';
+  }
+  document.addEventListener('av-loaded', function () {
+    document.querySelectorAll('td.mr-drv[data-mr-drv]').forEach(function (td) { td.innerHTML = _drvCell(td.getAttribute('data-mr-drv')); });
+  });
+
   function themeRowHtml(t) {
     var band = THEME_TO_BAND[t.theme];
     var members = t.members || {};
@@ -407,6 +418,7 @@
       '<td class="mr-num">' + fmtMoney(t.you_dollar) + '</td>' +
       '<td class="mr-num">' + (t.you_pct != null ? t.you_pct + '%' : '—') + '</td>' +
       '<td' + _tt(_fitTitle(t)) + '>' + fitCell(t.fit) + '</td>' +
+      '<td class="mr-drv" data-mr-drv="' + esc(t.theme) + '">' + _drvCell(t.theme) + '</td>' +
       '</tr>';
   }
 
@@ -423,7 +435,7 @@
   var _MR_HDRS = [
     ['theme', 'Theme'], ['lists', 'Lists'], ['quad', 'QUAD'], ['w1', '1w'], ['w4', '4w'],
     ['rr', 'RR'], ['etf', 'ETF'], ['ps', 'PS'], ['sss', 'SSS'], ['src', '&gt;Td&gt;Tn|Td'],
-    ['you_d', 'You $'], ['you_p', 'You %'], ['fit', 'Fit']
+    ['you_d', 'You $'], ['you_p', 'You %'], ['fit', 'Fit'], ['drv', 'Driver']
   ];
   var _MR_VOTE = '&#9650; bullish &middot; &#9660; bearish &middot; &ndash; neutral &middot; two small triangles = split &middot; &mdash; no read';
   var _MR_CELL = 'Hover a cell to see the symbols behind it.';
@@ -440,6 +452,7 @@
     quad:  ['QUAD', ['What the quad regime model says for this theme: BULL, BEAR or NTRL (neutral); n/a = no read.', 'A red outline means it disagrees with the Lists column.', 'Hover a cell for the detail.']],
     you_d: ['You $', ['Dollars you hold in this theme (your positions mapped to it).']],
     you_p: ['You %', ['Share of your portfolio held in this theme.']],
+    drv:   ['Driver', ['Headwind / tailwind for this theme from the area driver rules (dollar, yields, Hedgeye outlooks).', 'About the market, not your holdings; your own dollars are in You $ and Fit.', 'Hover a cell for the reason. Click it to open the drivers.', 'A dash means no driver area is defined for this theme.']],
     fit:   ['Fit', ['Your position vs the signals. Hover a cell for the reason.', '<b>&#10003;</b> in line &middot; <b>exposed</b> you hold it and the lists are bearish &middot; <b>conflict</b> lists and quad model disagree &middot; <b>split</b> lists are mixed and you hold some &middot; <b>none</b> lists are bullish, you hold none.']]
   };
   function _wireThemeHeaderPops(root) {
@@ -461,7 +474,7 @@
   function _themeGridColHtml(groups, byTheme) {
     var rows = groups.map(function (g) {
       var body = g.themes.map(function (th) { return byTheme[th] ? themeRowHtml(byTheme[th]) : ''; }).join('');
-      return '<tr class="mr-group"><td colspan="13">' + esc(g.label) + '</td></tr>' + body;
+      return '<tr class="mr-group"><td colspan="14">' + esc(g.label) + '</td></tr>' + body;
     }).join('');
     return '<div class="mr-scroll"><table class="mr-table"><thead><tr>' +
       _MR_HDRS.map(function (h) { return '<th data-mr-hdr="' + h[0] + '">' + h[1] + '</th>'; }).join('') +
@@ -566,7 +579,10 @@
     if (oldHeadline) oldHeadline.remove();
 
     body.querySelectorAll('[data-mr-band]').forEach(function (row) {
-      row.addEventListener('click', function () { _mrExpandRail(row.getAttribute('data-mr-band')); });
+      row.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('td.mr-drv')) return;   // the Driver cell opens its own drivers drawer
+        _mrExpandRail(row.getAttribute('data-mr-band'));
+      });
       row.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') _mrExpandRail(row.getAttribute('data-mr-band'));
       });

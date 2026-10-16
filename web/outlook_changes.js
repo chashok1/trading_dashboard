@@ -77,7 +77,7 @@
   }
 
   // One line of chips (newest change first, no grouping); the rest float in an overlay under it.
-  var _ro = false;
+  var _ro = false, _docClick = false;
   function render() {
     var el = document.getElementById('outlookChangesCard');
     var D = st.data;
@@ -95,15 +95,17 @@
     var items = [], lastDay = null;
     all.forEach(function (d) {
       var day = d.changed_on ? d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) : '';
-      if (day !== lastDay) { items.push({ label: day || 'This week', html: '<span class="oc-dl">' + esc(day || 'This week') + '</span>' }); lastDay = day; }
+      if (day !== lastDay) { if (lastDay !== null) items.push({ label: day || 'This week', html: '<span class="oc-dl">' + esc(day || 'This week') + '</span>' }); lastDay = day; }   // the newest day's label is left off (user-directed)
       items.push({ chip: true, day: day, html: chip(d, D.as_of, !!recent[d.changed_on || '']) });
     });
     var chips = items.map(function (i) { return i.html; }).join('');
-    el.innerHTML = '<div class="oc-body"><span class="oc-line" id="ocLine">' + chips + '</span>' +
-      '<button class="oc-more" id="ocMore" type="button" title="Show all outlook changes" hidden></button></div>' +
-      '<div class="oc-pop" id="ocPop" hidden></div>';
-    el.hidden = false;
+    // The skeleton (#ocLine, #ocMore, #ocPop, and #macroWeekStrip ahead of them) lives in index.html so the Macro Week
+    // pills (event, Book) can sit at the start of this bar; only the chips are filled here.
     var line = el.querySelector('#ocLine'), more = el.querySelector('#ocMore'), pop = el.querySelector('#ocPop');
+    if (!line || !more || !pop) return;
+    line.innerHTML = chips;
+    line.hidden = false;
+    window.syncOcCard();
     function setOpen(v) { st.open = v; pop.hidden = !v; more.classList.toggle('on', v); }
     // Count the chips that do not fit on the one line.
     function fit() {
@@ -129,10 +131,25 @@
       if (!nChips) setOpen(false);
     }
     more.onclick = function (e) { e.stopPropagation(); setOpen(!st.open); };
-    document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) setOpen(false); });
+    if (!_docClick) { _docClick = true; document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) { var p2 = document.getElementById('ocPop'), m2 = document.getElementById('ocMore'); if (p2) p2.hidden = true; if (m2) m2.classList.remove('on'); st.open = false; } }); }
     setOpen(false);
     fit();
     if (!_ro && window.ResizeObserver) { _ro = true; new ResizeObserver(function () { fit(); }).observe(el); }
+  }
+
+  // The card is shown when it has anything: Macro Week pills at its start and/or outlook-change chips.
+  window.syncOcCard = function () {
+    var el = document.getElementById('outlookChangesCard');
+    if (!el) return;
+    var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
+    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (line && !line.hidden && line.children.length));
+  };
+  function hideLine() {
+    var line = document.getElementById('ocLine'), more = document.getElementById('ocMore'), pop = document.getElementById('ocPop');
+    if (line) { line.hidden = true; line.innerHTML = ''; }
+    if (more) more.hidden = true;
+    if (pop) pop.hidden = true;
+    window.syncOcCard();
   }
 
   async function load() {
@@ -151,9 +168,9 @@
         addChip(Object.keys(m).length);
         document.dispatchEvent(new Event('oc-loaded'));
       } catch (e2) { console.warn('outlook rail markers failed', e2); }
-      if (!st.data.changes || !st.data.changes.length) { el.hidden = true; return; }
+      if (!st.data.changes || !st.data.changes.length) { hideLine(); return; }
       render();
-    } catch (e) { el.hidden = true; }
+    } catch (e) { hideLine(); }
   }
   window.loadOutlookChanges = load;
   document.addEventListener('DOMContentLoaded', load);

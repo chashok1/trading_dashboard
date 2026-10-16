@@ -554,3 +554,11 @@ UPDATE ref_macro_area SET enabled = FALSE WHERE area_key = 'top9' AND member_sym
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
   ('top9', 'Major Markets', 'RSP', 'dual', 40)
 ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;
+
+-- 2026-10-16, user-directed: SPMO, Bitcoin (/BTC), ETHA and Dollar ($DXY) moved into Major Markets (top9). The Crypto panel
+-- is left empty (web/macro_areas.js hides it). The Bitcoin verdict's rail pill follows its row.
+UPDATE ref_macro_area SET area_key = 'top9', label = 'Major Markets', sort_order = 50 WHERE area_key = 'remaining' AND member_symbol = 'SPMO';
+UPDATE ref_macro_area SET area_key = 'top9', label = 'Bitcoin',       sort_order = 60 WHERE area_key = 'crypto'    AND member_symbol = '/BTC';
+UPDATE ref_macro_area SET area_key = 'top9', label = 'Major Markets', sort_order = 70 WHERE area_key = 'crypto'    AND member_symbol = 'ETHA';
+UPDATE ref_macro_area SET area_key = 'top9', label = 'Dollar',        sort_order = 80 WHERE area_key = 'rates_duration' AND member_symbol = '$DXY';
+UPDATE ref_driver_area SET rail_area_key = 'top9', rail_symbol = '/BTC' WHERE area_key = 'bitcoin';

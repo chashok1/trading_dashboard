@@ -2340,7 +2340,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    Major Markets (9 members) needs a couple rows' scroll at 170px; no
    browser attached to measure the real rendered .msr-row height. */
 .dash-macro-rail { max-height: 150px; overflow-y: auto; }
-#macroRailTop9.dash-macro-rail { max-height: 170px; }
+#macroRailTop9.dash-macro-rail { max-height: none; overflow-y: visible; }   /* 2026-10-16: Major Markets grew to 9 rows; show them all, no scrollbar */
 /* 2026-09-01 -- USD & Currency (now "Currency") shrunk 2 rows off the
    150px default -- user: "reduce the height by two rows (about 25%)".
    2026-09-23 -- briefly joined the "grow to fit, no scrollbar" group below
@@ -3614,9 +3614,10 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 }
 .mr-scroll { overflow-x: auto; }
 .mr-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 10px; }
+.mr-table .av-pill { margin-left: 0; }   /* 2026-10-16: Driver column cell */
 .mr-table th { text-align: center; color: var(--text-3); font-weight: 500; font-size: 8.5px; text-transform: uppercase;
-  letter-spacing: .03em; padding: 2px 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.mr-table td { padding: 2px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  letter-spacing: .03em; padding: 2px 2.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mr-table td { padding: 2px 2.5px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .mr-group td { background: var(--bg); color: var(--text-3); font-size: 7px; text-transform: uppercase;
   letter-spacing: .03em; padding: 2px 4px; }
 .mr-theme-cell { font-weight: 500; cursor: pointer; }
@@ -3825,7 +3826,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* The Macro Week chips and the area verdict pills flow as ONE bar. */
 .mw-card > .mw-strip, .mw-card > .av-strip { display: contents; }
 .mw-card > .av-strip[style*="none"] { display: none; }
-.mw-card:has(.mw-strip[hidden]) { display: none; }
+/* (the Macro Week pills moved into the Outlook changes bar 2026-10-16, so the card no longer hides with them) */
 .mw-strip { display: flex; flex-wrap: wrap; gap: 4px 5px; align-items: center; font-size: 10px; line-height: 16px; white-space: nowrap; }
 .mw-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3, #6b7280); margin-right: 2px; }
 .mw-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin: 0; background: var(--mr-neu-bg); border: 1px solid var(--border, #e5e5e2);
@@ -4002,3 +4003,38 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .oc-filter[hidden] { display: none; }
 .oc-filter.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
 body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
+
+/* 2026-10-16 -- Macro Week event/Book pills now live inside the Outlook changes card: same chip look as they had on .mw-card. */
+.oc-body > .mw-strip { flex: none; align-self: flex-start; }
+.oc-card .mw-chip { --rc: #8a93a6; --rcbg: #f0f1f5; border-radius: 6px; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--rc) !important;
+                    border-left-style: solid !important; background: var(--rcbg); color: #16181f; padding: 1px 7px 1px 5px; }
+.oc-card .mw-chip.mw-bull { --rc: #0f9d58; --rcbg: #e6f6ee; } .oc-card .mw-chip.mw-bear { --rc: #e5484d; --rcbg: #fdecec; }
+.oc-card .mw-chip.mw-warn { --rc: #f59e0b; --rcbg: #fef3c7; }
+.oc-card .mw-chip.mw-quad, .oc-card .mw-chip.mw-ev { --rc: #4f46e5; --rcbg: #eef2ff; }
+.oc-card .mw-chip.mw-book { background: var(--card-bg, #fff); --rc: #6b7280; }
+
+/* 2026-10-16 -- US Dollar outlook pill, right end of the area-verdict card. */
+.oc-lead { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 4px; align-self: flex-start; margin-right: 12px; }
+.oc-lead > .mw-strip { justify-content: space-between; flex-wrap: nowrap; }   /* event pill left, Book pill flush with the dollar pill's right edge */
+.oc-lead .oc-grp-gap { margin-right: 0; }
+.oc-lead > .mw-usd-slot { display: flex; }
+.mw-chip.mw-usd { gap: 6px; padding: 1px 10px 1px 8px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.mw-usd-l { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-3, #98a0b3); }
+.mw-usd b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mw-usd-bar { width: 38px; flex: none; }
+.mw-usd-o { font-size: 9.5px; font-weight: 700; padding: 0 7px; border-radius: 999px; background: var(--rc); color: #fff; line-height: 15px; }
+
+/* 2026-10-16 -- Headwind panel (right column): the old "$X headwind" popup content, inline. */
+.av-panel { padding: 4px 8px 6px; font-size: 10px; }   /* same size as the Sectors / rotation panel (10px text, 9px labels) */
+#headwindBody .av-sh { font-weight: 600; font-size: 10px; }
+#headwindBody .av-read { font-weight: 400; }
+#headwindBody .av-stk { font-size: 9px; }
+#headwindBody .av-up { color: var(--mr-bull, #0f9d58); } #headwindBody .av-dn { color: var(--mr-bear, #e5484d); }
+#headwindBody .av-sh { color: var(--mr-bear, #e5484d); }                        /* area names: red, they are in Headwind */
+#headwindBody .av-stk-held { background: var(--mr-bear-bg, #fdecec); border-color: var(--mr-bear, #e5484d); color: #16181f; }   /* held stocks stand out */
+#headwindBody .av-dh { display: none; }   /* the panel header already says it */
+#headwindBand.av-flash { box-shadow: 0 0 0 2px #e5484d inset; transition: box-shadow .3s; }
+
+/* 2026-10-16, user-directed: the Themes grid uses the Macro Rail's colours (green #1d9e75 up / pink-red #d4537e down, grey
+   neutral) instead of Market Read's teal/orange pair. Scoped to the grid; the Driver pills inside it follow the same palette. */
+#quadRotationPanel .mr-table { --mr-bull: #1d9e75; --mr-bear: #d4537e; --mr-neu: #888888; --mr-bull-bg: #e1f5ee; --mr-bear-bg: #fbe4ec; }

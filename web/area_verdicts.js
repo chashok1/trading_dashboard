@@ -92,7 +92,7 @@
   function render() {
     var strip = document.getElementById('areaVerdictStrip');
     var sep = document.querySelector('.mw-areasep');
-    if (!strip) return;
+    if (!strip) { renderHeadwindPanel(); return; }   // tile card removed 2026-10-16; the right-column panel is all that renders here
     if (!data || !data.areas || !data.areas.length) { strip.style.display = 'none'; if (sep) sep.style.display = 'none'; return; }
     strip.style.display = '';
     if (sep) sep.style.display = '';
@@ -100,14 +100,21 @@
     var quiet = data.areas.filter(isQuiet);
     var shown = showQuiet ? data.areas : loud;
     var html = '';
-    var prevGroup = null;
+    // Grouped like the Outlook changes strip, with a gap instead of a text label (group name kept as a hover title).
+    var GLBL = { metals: 'Metals', energy: 'Energy', risk: 'Risk assets', rates: 'Rates & Credit' };
+    var order = [], byG = {};
     shown.forEach(function (a) {
-      if (prevGroup && a.group_key !== prevGroup) html += '<span class="av-sepline"></span>';
-      prevGroup = a.group_key;
-      html += isQuiet(a)
-        ? '<button type="button" class="av-tile av-quiet" data-av="' + esc(a.area_key) + '" title="' + esc(tileTip(a)) + '">' +
-          esc(a.short_label) + ' <b>—</b></button>'
-        : tileHtml(a);
+      var g = a.group_key || '';
+      if (!byG[g]) { byG[g] = []; order.push(g); }
+      byG[g].push(a);
+    });
+    order.forEach(function (g) {
+      html += '<span class="oc-grp oc-grp-gap" title="' + esc(GLBL[g] || g) + '">' + byG[g].map(function (a) {
+        return isQuiet(a)
+          ? '<button type="button" class="av-tile av-quiet" data-av="' + esc(a.area_key) + '" title="' + esc(tileTip(a)) + '">' +
+            esc(a.short_label) + ' <b>—</b></button>'
+          : tileHtml(a);
+      }).join('') + '</span>';
     });
     if (quiet.length) {
       html += '<button type="button" class="av-more" id="avQuietBtn" title="Areas where no rule fires (silence is the default)">' +
@@ -116,9 +123,10 @@
     if (data.headwind_count > 0 || data.headwind_dollar > 0) {
       html += '<button type="button" class="av-tile av-total" id="avTotalBtn" title="' +
         esc('Money you hold (once per stock) in areas currently in Headwind. Inverse positions are not counted.\nClick for the list.') +
-        '">' + usd(data.headwind_dollar) + ' headwind ▾</button>';
+        '">' + usd(data.headwind_dollar) + ' headwind ↘</button>';
     }
     strip.innerHTML = html;
+    renderHeadwindPanel();
   }
 
   /* ── drawer ─────────────────────────────────────────────────────── */
@@ -169,6 +177,19 @@
     h += heGroupHtml(a);
     if ((a.stocks && a.stocks.length) || !(a.gate && a.gate.he)) h += '<div class="av-sh">Linked stocks</div>' + stockChips(a);
     return h;
+  }
+  // 2026-10-16, user-directed: the "$X headwind" pill's list now lives in a right-column panel (#headwindBand, between
+  // Dollar correlation and Sectors) instead of a popup; clicking the pill scrolls to it.
+  function renderHeadwindPanel() {
+    var band = document.getElementById('headwindBand'), body = document.getElementById('headwindBody');
+    if (!band || !body) return;
+    var has = data && data.areas && data.areas.some(function (a) { return a.verdict === 'headwind'; });
+    band.hidden = !has;
+    if (!has) { body.innerHTML = ''; return; }
+    var tot = document.getElementById('headwindTotal');
+    if (tot) tot.textContent = usd(data.headwind_dollar || 0);
+    // Colour the arrows (green up, red down) in the reasons and area names.
+    body.innerHTML = totalDrawerHtml().replace(/▲/g, '<span class="av-up">▲</span>').replace(/▼/g, '<span class="av-dn">▼</span>');
   }
   function totalDrawerHtml() {
     var rows = data.areas.filter(function (a) { return a.verdict === 'headwind'; });
@@ -266,13 +287,18 @@
     }
     render();
     decorateRails();
+    document.dispatchEvent(new Event('av-loaded'));
   }
 
   function onClick(e) {
     var tgt = e.target.closest ? e.target.closest('[data-av], #avQuietBtn, #avTotalBtn') : null;
     if (!tgt) return;
     if (tgt.id === 'avQuietBtn') { showQuiet = !showQuiet; render(); return; }
-    if (tgt.id === 'avTotalBtn') { openDrawer(tgt, totalDrawerHtml()); return; }
+    if (tgt.id === 'avTotalBtn') {
+      var hb = document.getElementById('headwindBand');
+      if (hb && !hb.hidden) { hb.scrollIntoView({ behavior: 'smooth', block: 'center' }); hb.classList.add('av-flash'); setTimeout(function () { hb.classList.remove('av-flash'); }, 1500); }
+      return;
+    }
     var a = byKey(tgt.getAttribute('data-av'));
     if (!a) return;
     e.stopPropagation();
@@ -285,7 +311,7 @@
   }
 
   function init() {
-    if (!document.getElementById('areaVerdictStrip')) return;
+    if (!document.getElementById('areaVerdictStrip') && !document.getElementById('headwindBand')) return;
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     document.addEventListener('click', onClick);
@@ -299,7 +325,33 @@
     load();
   }
 
-  window.AreaVerdicts = { load: load, decorateRails: decorateRails };
+  // Themes grid "Driver" cell (web/market_read.js): the verdict for the area/parent whose label equals the theme name.
+  // Same hover text as the tile; click opens the same drawer. '' until the data lands or when no area matches.
+  function cellFor(theme) {
+    if (!data) return '';
+    var t = String(theme).toLowerCase();
+    var same = function (x) { return String(x.label).toLowerCase() === t; };
+    var a = (data.areas || []).filter(same)[0];
+    if (a) {
+      var v = a.verdict || 'quiet';
+      return '<span class="av-pill av-' + esc(v) + '" data-av="' + esc(a.area_key) + '" title="' + esc(tileTip(a)) + '">' +
+        (a.is_new ? '<span class="av-new" title="Verdict changed in the last few days">●</span> ' : '') +
+        (v === 'quiet' ? G[v] : G[v] + ' ' + NAME[v]) +
+        ((v === 'headwind' || v === 'stretched') && a.held_dollar > 0 ? ' <span class="av-usd">' + usd(a.held_dollar) + '</span>' : '') + '</span>';
+    }
+    var p = (data.parents || []).filter(same)[0];
+    if (p) {
+      var kids = (p.children || []).map(byKey).filter(Boolean);
+      var txt = rollupText(p) || '–';
+      var heldSum = kids.reduce(function (n, k) { return n + ((k.verdict === 'headwind' || k.verdict === 'stretched') ? (k.held_dollar || 0) : 0); }, 0);
+      return '<span class="av-pill av-' + (rollupText(p) ? rollupClass(p) : 'quiet') + '" data-av="' + esc(p.area_key) + '" title="' +
+        esc(['Roll-up of ' + kids.map(function (k) { return k.label; }).join(', ')].concat(kids.map(tileTip)).join(String.fromCharCode(10, 10))) +
+        '">' + (kids.some(function (k) { return k.is_new; }) ? '<span class="av-new" title="A verdict changed in the last few days">●</span> ' : '') + txt + (heldSum > 0 ? ' <span class="av-usd">' + usd(heldSum) + '</span>' : '') + '</span>';
+    }
+    return '';
+  }
+
+  window.AreaVerdicts = { load: load, decorateRails: decorateRails, cellFor: cellFor };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

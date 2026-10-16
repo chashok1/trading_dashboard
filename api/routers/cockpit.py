@@ -1686,8 +1686,9 @@ _MR_MACRO_THEMES = ["Rates up", "Duration", "Credit", "USD", "Volatility", "Cash
 _MR_GROUPS = [
     ("Macro", _MR_MACRO_THEMES),
     ("Equity factors", ["Large caps", "Small caps", "Breadth", "Momentum",
-                          "Defensives", "Cyclicals", "Healthcare", "Tech/software", "Semis"]),
-    ("Commodities & real assets", ["Energy", "Precious metals", "Industrial metals",
+                          "Defensives", "Cyclicals", "Healthcare", "Tech/software", "Semis",
+                          "Big tech & hardware", "Quantum & speculative"]),
+    ("Commodities & real assets", ["Energy", "Precious metals", "Gold", "Industrial metals",
                                      "Ags", "Crypto"]),
     ("International", ["Developed intl", "Emerging"]),
 ]
@@ -2405,7 +2406,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
 # ---------------------------------------------------------------------------
 _OC_PANEL = {"commodities_ag": "Industrial & Ag", "commodities_metals": "Precious Metals",
              "commodities_energy": "Energy", "sector_etfs": "Sectors", "top9": "Major Markets",
-             "usd_currency": "Currency", "rates_duration": "USD, Rates & Duration", "credit": "Credit",
+             "usd_currency": "Currency", "rates_duration": "Rates & Duration", "credit": "Credit",
              "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis", "remaining": "Tech & ETFs"}
 
 

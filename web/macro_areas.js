@@ -893,6 +893,7 @@
     crypto:               'macroRailCrypto',
     sector_etfs:         'macroRailSectorEtfs',
     remaining:           'macroRailRemaining',
+    rr_other:            'macroRailOtherRr',   // 2026-10-16 -- Hedgeye RR symbols not on any other panel
     // 2026-09-24 -- "Accounts" panel: live current holdings (not a
     // ref_macro_area row) -- user: "add a new panel for accounts ...
     // display all stocks in all accounts." One merged area (was briefly 2,
@@ -1037,6 +1038,13 @@
       if (!container) return;
       container.innerHTML = byContainer[containerId] || '<div class="msr-loading">No data.</div>';
     });
+    // A panel left with no members (Crypto, after its two rows moved to Major Markets) hides itself.
+    ['crypto'].forEach(function (k) {
+      var c = document.getElementById(_AREA_CONTAINER_ID[k]), band = c && c.closest ? c.closest('section.rail-band') : null;
+      if (band) band.hidden = !byContainer[_AREA_CONTAINER_ID[k]];
+    });
+    var orBand = document.getElementById('macroOtherRrBand');   // Other RR hides itself when empty
+    if (orBand) orBand.hidden = !byContainer.macroRailOtherRr;
     Object.keys(_PERIOD_AREAS).forEach(function (k) {
       var hdr = document.getElementById('colhdr_' + k);
       var ar = areas.filter(function (a) { return a.area_key === k; })[0];

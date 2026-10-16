@@ -191,6 +191,8 @@ class TestMemberCountsMatchTable:
         data = _get_macro_areas()
         for area in data["areas"]:
             key = area["area_key"]
+            if key in ("rr_other", "accounts", "sss_signal"):   # built live, not ref_macro_area rows
+                continue
             assert key in expected, f"Area {key!r} in response but not in ref_macro_area"
             assert len(area["members"]) == expected[key], (
                 f"Area {key!r}: expected {expected[key]} members, "

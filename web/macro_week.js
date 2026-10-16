@@ -78,6 +78,31 @@
     return chip(olCls(c.outlook), 'DXY ' + num(c.last, 1) + darr(c.chg5) + '<span class="mw-dim"> ' + pos + '</span>', t);
   }
 
+  // US Dollar pill (second card, right end): outlook word, DXY level, 5-session move, and where price sits in its risk range.
+  function usdPill(c) {
+    if (!c) return '';
+    var o = (c.outlook || '').toLowerCase();
+    var word = o.indexOf('bull') === 0 ? 'Bullish' : o.indexOf('bear') === 0 ? 'Bearish' : o ? 'Neutral' : 'No outlook';
+    var has = c.rr_pos != null;
+    var pct = has ? Math.round(c.rr_pos * 100) : null;
+    var tickPos = has ? 'calc(3px + (100% - 6px) * ' + Math.min(Math.max(c.rr_pos, 0), 1).toFixed(4) + ')' : '0';
+    var bar = has
+      ? '<span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tickPos + '"></span><span class="msr-rb-tick' +
+        (c.rr_pos >= 0.85 ? ' hot' : c.rr_pos <= 0.15 ? ' cold' : '') + '" style="left:' + tickPos + '"></span></span>'
+      : '';
+    var t = [
+      'US Dollar (DXY)',
+      '• Hedgeye outlook: ' + (c.outlook || '--'),
+      '• Last: ' + num(c.last, 2),
+      '• 5-session change: ' + (c.chg5 == null ? '--' : (c.chg5 > 0 ? '+' : '') + num(c.chg5, 2)),
+      '• Position in risk range (LRR to TRR): ' + (has ? pct + '%' : '--'),
+      'Source: drv_quote, drv_rr ($DXY)'
+    ];
+    return '<span class="mw-chip mw-usd ' + olCls(c.outlook) + '" title="' + tip(t) + '"><span class="mw-usd-l">US DOLLAR</span>' +
+      '<b>' + num(c.last, 2) + '</b>' + darr(c.chg5) + bar + (has ? '<span class="mw-dim">' + pct + '%</span>' : '') +
+      '<span class="mw-usd-o">' + word + '</span></span>';
+  }
+
   function yieldChip(name, c, src) {
     var hi = c.above_level;
     var t = [
@@ -241,14 +266,20 @@
     if (!strip || !list) return;
     var open = !list.hidden;
     var c = data.chips;
+    // Grouped like the Outlook changes strip, but with a gap instead of a text label (label kept as a hover title).
+    var grp = function (label, chips) {
+      var h = chips.filter(Boolean).join('');
+      return h ? '<span class="oc-grp oc-grp-gap" title="' + label + '">' + h + '</span>' : '';
+    };
     strip.innerHTML = [
-      dxyChip(c.dxy), c.dgs2 ? yieldChip('2Y', c.dgs2, 'drv_quote DGS2:FRED') : '', tnxChip(c.tnx),
-      volChip('VIX', c.vix, 1), volChip('MOVE', c.move, 0),
-      c.gold ? cmdtyChip('Gold', c.gold, '/GC') : '', c.wti ? cmdtyChip('WTI', c.wti, '/CL') : '',
-      eventChip(data.events),
-      data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''
+      // Market chips (DXY/2Y/10Y/VIX/MOVE/Gold/WTI) dropped 2026-10-16: those symbols are on the Macro Rail.
+      grp('Next event', [eventChip(data.events)]),
+      grp('Book', [data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''])
     ].join('');
-    strip.hidden = false;
+    var usdEl = document.getElementById('usdPill');
+    if (usdEl) usdEl.innerHTML = usdPill(c.dxy);
+    strip.hidden = !strip.innerHTML;
+    if (window.syncOcCard) window.syncOcCard();
     renderQuadCards(data);
     list.innerHTML = open ? listHtml(data) : '';
     if (open) placeList(list);
@@ -263,7 +294,7 @@
 
   // The checklist opens as a popover under the strip, left-aligned to it -- 0px when closed.
   function placeList(list) {
-    var r = document.getElementById('macroWeekCard').getBoundingClientRect();
+    var r = document.getElementById('outlookChangesCard').getBoundingClientRect();
     var w = Math.min(Math.max(r.width, 560), window.innerWidth - 24);
     list.style.top = Math.round(r.bottom + 4) + 'px';
     list.style.left = Math.max(12, Math.min(Math.round(r.left), window.innerWidth - w - 12)) + 'px';
@@ -291,6 +322,7 @@
       render(last);
     } catch (e) {
       strip.hidden = true;
+      if (window.syncOcCard) window.syncOcCard();
       var list = document.getElementById('macroWeekList');
       if (list) list.hidden = true;
     }

@@ -128,7 +128,7 @@ _AREA_DISPLAY_NAME = {
     # 2026-09-23 -- "Rates & Duration" -> "USD, Rates, & Duration": Dollar
     # ($DXY) moved in here (rates_duration, sort_order=10) after a brief
     # stop in Major Markets. See db/seeds_macro_area.sql's own comment.
-    "rates_duration":      "USD, Rates, & Duration",
+    "rates_duration":      "Rates & Duration",   # 2026-10-16: "USD, Rates, & Duration" -> "Rates & Duration" (user)
     "credit":              "Credit",
     "commodities_energy":  "Energy",
     "commodities_metals":  "Precious Metals",
@@ -248,6 +248,16 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             WHERE enabled = TRUE
             ORDER BY sort_order
         """)).mappings().all()
+
+        # 2026-10-16 -- "Other RR" panel: every symbol on the newest Hedgeye RR snapshot that is not a member of
+        # any rail panel above. Rebuilt on every call from hist_rr + ref_macro_area, nothing hardcoded, so a
+        # symbol Hedgeye adds/drops (or one later added to a proper panel) follows automatically.
+        rr_other_syms = [r[0] for r in s.execute(text("""
+            SELECT DISTINCT tos_symbol FROM hist_rr
+            WHERE tos_symbol IS NOT NULL
+              AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_rr WHERE snapshot_date <= :d)
+              AND tos_symbol NOT IN (SELECT member_symbol FROM ref_macro_area WHERE enabled = TRUE)
+            ORDER BY tos_symbol"""), {"d": anchor})]
 
         # Load drv_rr for anchor date
         rr_rows = s.execute(text("""
@@ -748,6 +758,10 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             continue
         areas_out.append(_build_area_result(
             area_key, _AREA_DISPLAY_NAME.get(area_key, area_key), area_members[area_key]))
+
+    if rr_other_syms:
+        areas_out.append(_build_area_result("rr_other", "Other RR", [
+            {"member_symbol": sym, "role": "dual", "label": "Other RR"} for sym in rr_other_syms]))
 
     # 2026-09-24, user-directed: "similar to macro rail panel add a new
     # panel for accounts below that -> display all stocks in all accounts."
