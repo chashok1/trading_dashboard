@@ -3925,3 +3925,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 #quadCardsPanel .qc-val { font-size: 12px; font-weight: 700; white-space: nowrap; }
 #quadCardsPanel .qc.q1 { border-color: var(--quad1); } #quadCardsPanel .qc.q2 { border-color: var(--quad2); }
 #quadCardsPanel .qc.q3 { border-color: var(--quad3); } #quadCardsPanel .qc.q4 { border-color: var(--quad4); }
+
+/* Breadth panel in the left column: two tiles per row */
+#breadthBand .mr-tiles { grid-template-columns: 1fr 1fr; }
+#breadthBand[hidden] { display: none !important; }

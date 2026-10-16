@@ -536,18 +536,27 @@
     var panel = document.getElementById('quadRotationPanel');
     var body = document.getElementById('quadRotationPanelBody');
     if (!panel || !body) return;
+    // 2026-10-15, user-directed: the Breadth tiles now live in the LEFT column below Notes
+    // (#breadthBand, 2 tiles per row: SSS | ETF Pro / PS | CALL / RR); Themes stays here.
+    var bBand = document.getElementById('breadthBand'), bBody = document.getElementById('breadthBandBody');
+    if (bBand && bBody) {
+      if (data && (data.breadth || []).length) {
+        var breadthCollapsed = _dailyCollapsed('mrBreadth_collapsed');
+        bBody.innerHTML =
+          _sectionHeaderHtml('Breadth', flipNoteText(data), 'mrBreadthToggle', breadthCollapsed) +
+          '<div id="qrBreadthBody" style="display:' + (breadthCollapsed ? 'none' : 'block') + ';">' + breadthStripHtml(data) + '</div>';
+        bBand.hidden = false;
+        _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth', true);
+      } else { bBand.hidden = true; }
+    }
     if (!data || !(data.themes || []).length) { panel.style.display = 'none'; return; }
 
-    var breadthCollapsed = _dailyCollapsed('mrBreadth_collapsed');
     var themesCollapsed = localStorage.getItem('mrThemes_collapsed') === '1';
     body.innerHTML =
-      _sectionHeaderHtml('Breadth', flipNoteText(data), 'mrBreadthToggle', breadthCollapsed) +
-      '<div id="qrBreadthBody" style="display:' + (breadthCollapsed ? 'none' : 'block') + ';">' + breadthStripHtml(data) + '</div>' +
       _sectionHeaderHtml('Themes', '', 'mrThemesToggle', themesCollapsed) +
       '<div id="qrThemesBody" style="display:' + (themesCollapsed ? 'none' : 'block') + ';">' + themeGridHtml(data) + '</div>';
     panel.style.display = 'block';
     _wireThemeHeaderPops(body);
-    _wireSectionToggle('mrBreadthToggle', 'qrBreadthBody', 'mrBreadth_collapsed', 'Breadth', true);
     _wireSectionToggle('mrThemesToggle', 'qrThemesBody', 'mrThemes_collapsed', 'Themes');
 
     // 2026-09-30, user-directed: the Market Read headline line under the Regime

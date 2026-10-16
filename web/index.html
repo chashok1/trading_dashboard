@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261015g">
+  <link rel="stylesheet" href="/static/styles.css?v=20261015h">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -169,6 +169,12 @@
                api/routers/dash.py's /api/dashboard-notes endpoints. -->
           <section class="cockpit-band" id="dashNotesBand">
             <div id="dashNotesBody">Loading…</div>
+          </section>
+
+          <!-- 2026-10-15 -- Breadth tiles (SSS | ETF Pro / PS | CALL / RR), moved from the
+               Market Read panel; filled by web/market_read.js::render(). -->
+          <section class="cockpit-band" id="breadthBand" hidden>
+            <div id="breadthBandBody"></div>
           </section>
 
           <!-- 2026-09-30, user-directed: the "What changed" events panel (#eventsBand)
@@ -1027,7 +1033,7 @@
        already does (web/actionable.html loads this same script for that).
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/market_read.js?v=20260930bj" defer></script>
+  <script src="/static/market_read.js?v=20261015a" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
