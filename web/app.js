@@ -2904,6 +2904,7 @@ async function refreshAll() {
   await loadCatAccountFilter();
   await Promise.all([
     loadRegimeBand(),
+    (window.loadOutlookChanges ? window.loadOutlookChanges() : null),
     reloadFactorScorecards(),
     loadCumPnlSnapshot(),
     loadDashPortfolioMix(),

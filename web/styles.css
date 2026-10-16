@@ -3929,3 +3929,32 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* Breadth panel in the left column: two tiles per row */
 #breadthBand .mr-tiles { grid-template-columns: 1fr 1fr; }
 #breadthBand[hidden] { display: none !important; }
+
+/* Outlook changes panel (top of centre column) -- compact chip strip */
+.oc-card { padding: 0; overflow: hidden; }
+.oc-card[hidden] { display: none !important; }
+.oc-kpis { margin-left: 8px; font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 9.5px; color: var(--text-3, #98a0b3); }
+.oc-up { color: #0f9d58; } .oc-dn { color: #e5484d; }
+.oc-body { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px 5px; }
+.oc-chip2 { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-left: 3px solid var(--rc);
+            border-radius: 6px; padding: 1px 7px 1px 5px; font-size: 10px; background: var(--rcbg); cursor: default; white-space: nowrap;
+            --rc: #0f9d58; --rcbg: #e6f6ee; }
+.oc-chip2.bear { --rc: #e5484d; --rcbg: #fdecec; }
+.oc-chip2.neu { --rc: #8a93a6; --rcbg: #f0f1f5; }
+.oc-chip2 b { color: #16181f; font-size: 10.5px; } .oc-ft { font-weight: 600; } .oc-w.bull { color: #0f9d58; } .oc-w.bear { color: #e5484d; } .oc-w.neu { color: #8a93a6; }
+.oc-dt { color: var(--text-3, #98a0b3); font-size: 9.5px; font-weight: 600; }
+
+/* Outlook changes: filter chips live in the header bar; chips are grouped by panel */
+.oc-hdr { height: auto !important; min-height: 14px; flex-wrap: wrap; overflow: visible !important; padding: 2px 8px; }
+.oc-fbar { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.oc-fchip { border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2, #5b6172); border-radius: 999px;
+            padding: 0 7px; font-size: 9px; font-weight: 600; line-height: 13px; cursor: pointer; }
+.oc-fchip.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.oc-fchip i { font-style: normal; opacity: .7; margin-left: 3px; }
+.oc-grp { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-right: 8px; }
+.oc-gl { font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-3, #98a0b3); }
+
+/* Outlook changes: no header bar -- the collapse arrow sits at the start of the first line */
+.oc-body { align-items: center; }
+.oc-tog { border: none; background: none; cursor: pointer; padding: 0 2px; font-size: 11px; line-height: 1; color: var(--text-2, #666); }
+.oc-tog:hover { color: var(--text-1, #222); }

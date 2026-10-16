@@ -2396,3 +2396,56 @@ def get_macro_week(date: Optional[str] = Query(None)):
         "counts": {k: sum(1 for h in holdings if h["verdict"] == k) for k in order},
         "hot_count": sum(1 for h in holdings if h["hot"]),
     }
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-15 -- Outlook changes panel (top of the centre column): Macro Rail symbols whose
+# Risk Range outlook (drv_rr.outlook) differs from ~7 days ago. Country ETFs excluded.
+# Display only. Label case is ignored ("Bullish" == "BULLISH").
+# ---------------------------------------------------------------------------
+_OC_PANEL = {"commodities_ag": "Industrial & Ag", "commodities_metals": "Precious Metals",
+             "commodities_energy": "Energy", "sector_etfs": "Sectors", "top9": "Major Markets",
+             "usd_currency": "Currency", "rates_duration": "USD, Rates & Duration", "credit": "Credit",
+             "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis", "remaining": "Tech & ETFs"}
+
+
+def _oc_bucket(col: str) -> str:
+    """SQL: collapse any outlook label (Hedgeye BULLISH/Bullish, our Mild/Light grades) to Bullish/Neutral/Bearish."""
+    return (f"(CASE WHEN lower({col}) LIKE '%bull%' THEN 'Bullish' "
+            f"WHEN lower({col}) LIKE '%bear%' THEN 'Bearish' WHEN {col} IS NULL THEN NULL ELSE 'Neutral' END)")
+
+
+@router.get("/api/cockpit/outlook-changes")
+def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, ge=1, le=60)) -> dict:
+    d = _resolve_date(date)
+    with session_scope() as s:
+        cur = s.execute(text("SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :d"), {"d": d}).scalar()
+        prev = s.execute(text("SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :p"),
+                         {"p": (cur or d) - timedelta(days=days)}).scalar() if cur else None
+        if not cur or not prev:
+            return {"as_of": str(cur or d), "prev": None, "total": 0, "changes": []}
+        rows = s.execute(text(f"""
+            SELECT m.area_key, a.tos_symbol, {_oc_bucket('b.outlook')} AS frm, {_oc_bucket('a.outlook')} AS to_o,
+              (SELECT min(x.as_of_date) FROM drv_rr x
+                WHERE x.tos_symbol = a.tos_symbol AND x.as_of_date > :p AND {_oc_bucket('x.outlook')} = {_oc_bucket('a.outlook')}
+                  AND NOT EXISTS (SELECT 1 FROM drv_rr y WHERE y.tos_symbol = a.tos_symbol
+                                   AND y.as_of_date > x.as_of_date AND y.as_of_date > :p
+                                   AND {_oc_bucket('y.outlook')} <> {_oc_bucket('a.outlook')})) AS changed_on,
+              COALESCE((SELECT rs.description FROM ref_sector rs WHERE rs.ticker = a.tos_symbol), '') AS descr
+            FROM ref_macro_area m
+            JOIN drv_rr a ON a.tos_symbol = m.member_symbol AND a.as_of_date = :c
+            JOIN drv_rr b ON b.tos_symbol = a.tos_symbol AND b.as_of_date = :p
+            WHERE m.enabled AND m.area_key <> 'country_etfs'
+              AND {_oc_bucket('a.outlook')} IS NOT NULL AND {_oc_bucket('b.outlook')} IS NOT NULL
+              AND {_oc_bucket('a.outlook')} <> {_oc_bucket('b.outlook')}
+            ORDER BY m.area_key, a.tos_symbol"""), {"c": cur, "p": prev}).mappings().all()
+        seen, out = set(), []
+        for r in rows:
+            if r["tos_symbol"] in seen:      # a symbol sitting in two panels shows once
+                continue
+            seen.add(r["tos_symbol"])
+            out.append({"symbol": r["tos_symbol"], "panel": _OC_PANEL.get(r["area_key"], r["area_key"]),
+                        "from": r["frm"], "to": r["to_o"],
+                        "changed_on": r["changed_on"].isoformat() if r["changed_on"] else None,
+                        "desc": r["descr"] or ""})
+    return {"as_of": cur.isoformat(), "prev": prev.isoformat(), "total": len(out), "changes": out}
