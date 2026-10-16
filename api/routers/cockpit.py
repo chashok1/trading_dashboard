@@ -2407,7 +2407,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
 _OC_PANEL = {"commodities_ag": "Industrial & Ag", "commodities_metals": "Precious Metals",
              "commodities_energy": "Energy", "sector_etfs": "Sectors", "top9": "Major Markets",
              "usd_currency": "Currency", "rates_duration": "Rates & Duration", "credit": "Credit",
-             "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis", "remaining": "Tech & ETFs"}
+             "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis & Crypto", "remaining": "Tech & ETFs"}
 
 
 def _oc_bucket(col: str) -> str:

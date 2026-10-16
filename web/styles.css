@@ -2158,7 +2158,8 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* 2026-08-27 -- gap tightened 8px -> 4px -- the other "3 main columns"
    gap, between dial-changed-col and cat-col -- part of the same page-wide
    unification as .cockpit-bands above. */
-.main-col { display: grid; grid-template-columns: 0.328fr 1.66fr; gap: 4px; align-items: start; }
+.main-col { display: grid; grid-template-columns: 0.3116fr 1.66fr;   /* 2026-10-16: left column 0.328fr -> 0.3116fr (-5%), user-directed */
+   gap: 4px; align-items: start; }
 /* 2026-08-27 -- gap tightened 8px -> 1px, every panel in this column
    (Risk Dial, Mkt Situation, Opex, CPI, Earnings, Regime, Notes, What
    changed, Housekeeping) -- user: "Don't leave too much space between the
@@ -4038,3 +4039,30 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 /* 2026-10-16, user-directed: the Themes grid uses the Macro Rail's colours (green #1d9e75 up / pink-red #d4537e down, grey
    neutral) instead of Market Read's teal/orange pair. Scoped to the grid; the Driver pills inside it follow the same palette. */
 #quadRotationPanel .mr-table { --mr-bull: #1d9e75; --mr-bear: #d4537e; --mr-neu: #888888; --mr-bull-bg: #e1f5ee; --mr-bear-bg: #fbe4ec; }
+
+/* 2026-10-16, user-directed: Accounts as a single vertical column at the right end, beside Macro Rail / Signal Strength /
+   Themes / Hedgeye. */
+.rail-split { display: grid; grid-template-columns: minmax(0, 1fr) 238px; gap: 4px; align-items: start; }   /* 238px (was 280px, -15%); the change-marker slot is hidden in Accounts rows to make room */
+.rail-split-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rail-split-side { min-width: 0; }
+.rail-split-side .macro-rail-row, .rail-split-side .macro-rail-col, .rail-split-side .macro-rail-row > .macro-rail-col:first-child { min-width: 0; }   /* beats the 400px first-column rule */
+.rail-split-side .dash-macro-rail-5col { column-count: 1; max-height: none; overflow: visible; }
+
+/* 2026-10-16, user-directed: Sectors (Signal Strength) cards in 6 columns. */
+#marketReadSectorsBand .mr-sect { column-count: 6; column-width: auto; column-gap: 5px; }
+#marketReadSectorsBand .dash-macro-rail-5col { column-count: 6; }   /* the rows view of the same panel: 6 columns too (it was 5) */
+.rail-split-side .oc-slot { display: none; }   /* Accounts rows carry no outlook-change marker slot */
+
+/* 2026-10-16 -- AI Bubble panel: like Major Markets, one column of rail rows per supply-chain layer (wraps on narrow windows). */
+#aiBubbleBand.ab-collapsed .ab-body { display: none; }
+#aiBubbleBand .mr-sect-legend { margin-left: 8px; }
+#aiBubbleBand .ab-up { color: #1d9e75; font-weight: 700; } #aiBubbleBand .ab-dn { color: #d4537e; font-weight: 700; }
+/* packed by web/macro_areas.js::renderAiBubble: 6 columns of 6 stocks, layers flowing from one column into the next */
+.ab-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 8px; padding: 4px 6px 6px; align-items: start; }
+.ab-col { min-width: 0; }
+.ab-col > .ab-colhdr:not(:first-child) { margin-top: 5px; }
+.ab-colhdr { display: flex; justify-content: space-between; align-items: baseline; font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+             letter-spacing: .03em; color: var(--text-2, #5b6172); border-bottom: 1px solid var(--border); padding: 0 2px 2px; margin-bottom: 2px; }
+.ab-cnt { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 9.5px; }
+.ab-cnt .up { color: #1d9e75; } .ab-cnt .dn { color: #d4537e; }
+#aiBubbleBand .oc-slot { display: none; }   /* no change-marker slot here -- keeps a row within one layer column */

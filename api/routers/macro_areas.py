@@ -138,7 +138,7 @@ _AREA_DISPLAY_NAME = {
     # so the old name no longer fits. See db/seeds_macro_area.sql.
     "usd_currency":        "Currency",
     "country_etfs":        "Country ETFs",
-    "cannabis":            "Cannabis",
+    "cannabis":            "Cannabis & Crypto",   # 2026-10-16: was "Cannabis" (ETHA added)
     "crypto":              "Crypto",
     "sector_etfs":         "Sectors",
     "remaining":           "Tech & ETFs",
@@ -243,11 +243,16 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
 
         # Load ref_macro_area members
         members_rows = s.execute(text("""
-            SELECT area_key, label, member_symbol, role, sort_order
+            SELECT area_key, label, member_symbol, role, sort_order, pinned
             FROM ref_macro_area
             WHERE enabled = TRUE
             ORDER BY sort_order
         """)).mappings().all()
+
+        # 2026-10-16 -- AI Bubble panel membership (ref_ai_layer): (group header, symbol, display name), in layer order.
+        ai_layers = [(str(r[0]) + " " + r[1], r[2], r[3]) for r in s.execute(text(
+            "SELECT layer_no, layer_name, symbol, display_name FROM ref_ai_layer WHERE enabled "
+            "ORDER BY layer_no, sort_order, symbol")).all()]
 
         # 2026-10-16 -- "Other RR" panel: every symbol on the newest Hedgeye RR snapshot that is not a member of
         # any rail panel above. Rebuilt on every call from hist_rr + ref_macro_area, nothing hardcoded, so a
@@ -680,6 +685,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "symbol": sym,
                 "role": role,
                 "label": mc.get("label"),
+                "pinned": bool(mc.get("pinned")),
                 "last": _maybe_float(last),
                 "pct_change": _maybe_float(pct_chg),
                 "net_chng": _maybe_float(net_chg),
@@ -758,6 +764,12 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             continue
         areas_out.append(_build_area_result(
             area_key, _AREA_DISPLAY_NAME.get(area_key, area_key), area_members[area_key]))
+
+    if ai_layers:
+        # 2026-10-16, user-directed: the AI supply-chain layers as a rail panel -- one group header per layer, rows from live data.
+        ai_cfg = [{"member_symbol": sym, "role": "dual", "label": disp or "AI Bubble", "account_group": grp}
+                  for grp, sym, disp in ai_layers]
+        areas_out.append(_build_area_result("ai_bubble", "AI Bubble", ai_cfg))
 
     if rr_other_syms:
         areas_out.append(_build_area_result("rr_other", "Other RR", [

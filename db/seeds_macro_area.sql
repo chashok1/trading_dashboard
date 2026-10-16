@@ -562,3 +562,19 @@ UPDATE ref_macro_area SET area_key = 'top9', label = 'Bitcoin',       sort_order
 UPDATE ref_macro_area SET area_key = 'top9', label = 'Major Markets', sort_order = 70 WHERE area_key = 'crypto'    AND member_symbol = 'ETHA';
 UPDATE ref_macro_area SET area_key = 'top9', label = 'Dollar',        sort_order = 80 WHERE area_key = 'rates_duration' AND member_symbol = '$DXY';
 UPDATE ref_driver_area SET rail_area_key = 'top9', rail_symbol = '/BTC' WHERE area_key = 'bitcoin';
+
+-- 2026-10-16, user-directed: ETHA moved from Major Markets to the Cannabis panel, which is renamed "Cannabis & Crypto".
+-- Member labels carry the area name (they are not per-member overrides), so they follow the rename.
+UPDATE ref_macro_area SET area_key = 'cannabis', sort_order = 30 WHERE area_key = 'top9' AND member_symbol = 'ETHA';
+UPDATE ref_macro_area SET label = 'Cannabis & Crypto' WHERE area_key = 'cannabis';
+
+-- 2026-10-16, user-directed: QQQ, IGV, BUG, QTUM, DRAM at the top of Tech & ETFs (in that order). QQQ moves back from the
+-- (disabled) Major Markets row; DRAM was already in this panel; IGV/BUG/QTUM were not on any rail panel.
+UPDATE ref_macro_area SET area_key = 'remaining', label = 'Tech & ETFs', sort_order = 1, enabled = TRUE WHERE area_key = 'top9' AND member_symbol = 'QQQ';
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+    ('remaining', 'Tech & ETFs', 'IGV',  'dual', 2),
+    ('remaining', 'Tech & ETFs', 'BUG',  'dual', 3),
+    ('remaining', 'Tech & ETFs', 'QTUM', 'dual', 4)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE;
+UPDATE ref_macro_area SET sort_order = 5 WHERE area_key = 'remaining' AND member_symbol = 'DRAM';
+UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'remaining' AND member_symbol IN ('QQQ','IGV','BUG','QTUM','DRAM');   -- needs the pinned column (baseline.sql)

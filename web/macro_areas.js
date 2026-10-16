@@ -575,7 +575,7 @@
   // Areas that skip the 6-caret MacroNet strip entirely -- user: "for
   // country ETFs & USD&Currency no carets" (Volatility already skips it
   // via its own gauge-role branch below).
-  var _MACRO6_EXCLUDED_AREAS = { usd_currency: true, country_etfs: true };
+  var _MACRO6_EXCLUDED_AREAS = { usd_currency: true, country_etfs: true, ai_bubble: true };   // ai_bubble: no caret strip (2026-10-16)
 
   // 2026-09-24, user-directed: "display a separator row as a header for
   // account symbols start" -- the "accounts" area's members carry an
@@ -961,7 +961,11 @@
   // column headers (_railSortField[area] = the member field, default pct_change).
   var _railSortField = {};
   function _sortByMode(list, mode, field) {
-    if (!mode) return _bullishFirst(list);
+    if (!mode) {
+      // Pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest sort bullish-first.
+      var pins = list.filter(function (m) { return m.pinned; });
+      return pins.length ? pins.concat(_bullishFirst(list.filter(function (m) { return !m.pinned; }))) : _bullishFirst(list);
+    }
     field = field || 'pct_change';
     return list.slice().sort(function (a, b) {
       var av = (a && a[field] != null) ? a[field] : null;
@@ -1022,6 +1026,68 @@
     if (_lastAreasData) renderRail(_lastAreasData);
   });
 
+  // 2026-10-16, user-directed: AI Bubble panel -- a panel like Major Markets: one column per supply-chain layer
+  // (ref_ai_layer, area ai_bubble, group = layer), each member an ordinary rail row (outlook-coloured name, Td/Tn, risk range
+  // bar, candle, % change), bullish first. Everything is live data; nothing about bullish/bearish is stored.
+  var _AB_KEY = 'aiBubbleCollapsed';
+  function _abSide(m) {
+    var o = String(m.outlook || '').toLowerCase();
+    return o.indexOf('bull') >= 0 ? 'bull' : o.indexOf('bear') >= 0 ? 'bear' : o ? 'neutral' : 'none';
+  }
+  function renderAiBubble(areas) {
+    var band = document.getElementById('aiBubbleBand'), body = document.getElementById('aiBubbleBody');
+    if (!band || !body) return;
+    var area = (areas || []).filter(function (a) { return a.area_key === 'ai_bubble'; })[0];
+    if (!area || !(area.members || []).length) { band.hidden = true; return; }
+    band.hidden = false;
+    var order = [], by = {};
+    area.members.forEach(function (m) {
+      var g = m.account_group || '';
+      if (!by[g]) { by[g] = []; order.push(g); }
+      by[g].push(m);
+    });
+    var tb = 0, tr = 0, tn = 0, tx = 0;
+    // Pack the layers into columns of AB_PER_COL stocks each (a layer longer than that continues in the next column under a
+    // "(cont.)" header), so the panel takes the least height. Rows keep the rail's order: bullish first inside a layer.
+    var AB_PER_COL = 6, pcols = [[]], used = 0;
+    order.forEach(function (g) {
+      var sorted = _sortedMembers({ area_key: 'ai_bubble', members: by[g].map(function (m) { var c = Object.assign({}, m); delete c.account_group; return c; }) });
+      var nb = 0, nr = 0;
+      sorted.forEach(function (m) {
+        var sd = _abSide(m);
+        if (sd === 'bull') { nb++; tb++; } else if (sd === 'bear') { nr++; tr++; } else if (sd === 'neutral') tn++; else tx++;
+      });
+      var left = sorted.slice(), first = true;
+      while (left.length) {
+        if (used >= AB_PER_COL) { pcols.push([]); used = 0; }
+        var take = left.splice(0, AB_PER_COL - used);
+        used += take.length;
+        var rows = railAreaRow({ area_key: 'ai_bubble', label: 'AI Bubble', hot_pct: area.hot_pct, cold_pct: area.cold_pct, members: take });
+        pcols[pcols.length - 1].push('<div class="ab-colhdr"><span>' + esc(g) + (first ? '' : ' (cont.)') + '</span>' +
+          (first ? '<span class="ab-cnt"><b class="up">' + nb + '</b> | <b class="dn">' + nr + '</b></span>' : '') + '</div>' + rows);
+        first = false;
+      }
+    });
+    var cols = pcols.map(function (c) { return '<div class="ab-col">' + c.join('') + '</div>'; }).join('');
+    body.innerHTML = '<div class="ab-grid">' + cols + '</div>';
+    var tot = document.getElementById('aiBubbleTotals');
+    if (tot) tot.innerHTML = '<span class="ab-up">\u25B2 ' + tb + '</span> bullish \u00B7 <span class="ab-dn">\u25BC ' + tr + '</span> bearish \u00B7 ' + tn + ' neutral \u00B7 ' + tx + ' no data \u00B7 RR outlook';
+    var collapsed = false;
+    try { collapsed = localStorage.getItem(_AB_KEY) === '1'; } catch (e) {}
+    band.classList.toggle('ab-collapsed', collapsed);
+    var btn = document.getElementById('aiBubbleToggle');
+    if (btn && !btn._abWired) {
+      btn._abWired = true;
+      btn.addEventListener('click', function () {
+        var c = !band.classList.contains('ab-collapsed');
+        band.classList.toggle('ab-collapsed', c);
+        btn.innerHTML = c ? '&#9652;' : '&#9662;';
+        try { localStorage.setItem(_AB_KEY, c ? '1' : '0'); } catch (e) {}
+      });
+    }
+    if (btn) btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+  }
+
   function renderRail(data) {
     _lastAreasData = data;
     var areas = (data && data.areas) || [];
@@ -1043,6 +1109,7 @@
       var c = document.getElementById(_AREA_CONTAINER_ID[k]), band = c && c.closest ? c.closest('section.rail-band') : null;
       if (band) band.hidden = !byContainer[_AREA_CONTAINER_ID[k]];
     });
+    renderAiBubble(areas);   // AI Bubble cards (SS-style panel)
     var orBand = document.getElementById('macroOtherRrBand');   // Other RR hides itself when empty
     if (orBand) orBand.hidden = !byContainer.macroRailOtherRr;
     Object.keys(_PERIOD_AREAS).forEach(function (k) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261017o">
+  <link rel="stylesheet" href="/static/styles.css?v=20261018f">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -266,6 +266,42 @@
                Read). Collapse/expand state is per panel and remembered in
                localStorage (hedgeye_collapse.js). -->
           <!-- 2026-10-16, user-directed: the Macro Rail now sits ABOVE the Hedgeye panel (it used to follow the Market Read grid). -->
+          <!-- 2026-10-16, user-directed: Macro Rail, Signal Strength, Themes and Hedgeye on the left; Accounts as one vertical
+               column at the right end (.rail-split in styles.css). -->
+          <div class="rail-split">
+          <div class="rail-split-main">
+          <!-- 2026-10-16, user-directed: the Hedgeye panel now sits ABOVE the Macro Rail (top of this group). -->
+          <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
+               moved here from the Actionable screen's hedgeye_panel.js
+               panel -- user: "move HE earylook, macro commentory, hedgeye
+               top 3 things ... from actionable screen to Dashboard screen."
+               Mkt Situation and INFL split into their own panels elsewhere
+               on this page (below Risk Dial / above the Indicator grid,
+               follow-up: "move the mkt situation panel to just below risk
+               dial panel and INFL to 3rd column above Indicator grid").
+               Same shared script (loaded below) renders into this
+               container; the Accounts filter + Sector/Asset class/Style
+               grids that used to sit at the top of this column now render
+               below it instead. Populated + wired by hedgeye_panel.js
+               (unchanged module, just a second render target). -->
+          <!-- 2026-08-10 -- data-presence display (hasDashAny) stays on
+               this outer div, unchanged in hedgeye_panel.js; the new inner
+               #hedgeyeDashPanelBody is what that script now writes its
+               innerHTML into, and what the shared collapse toggle below
+               shows/hides -- keeps the two concerns (has data vs. user
+               collapsed it) from fighting over the same style.display. -->
+          <!-- 2026-09-23 -- own header restyled to the same .msr-section-hdr/
+               .msr-sort-btn chrome (small font, arrow at the end, same fixed
+               height) as every other collapsible bar in this column --
+               replaces the old .he-collapse-hdr look + the separate 📊
+               toggle button that used to live on the filter bar (see
+               hedgeye_collapse.js, now a single self-contained toggle for
+               just this one panel instead of a 3-panel broadcast). -->
+          <div id="hedgeyeDashPanel" style="display:none;">
+            <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
+            <div id="hedgeyeDashPanelBody"></div>
+          </div>
+
           <!-- TASK_145 shipped these 9 macro rail panels collapsed by
                default (Addendum G), but that hid panels the user was used
                to seeing at all times -- reverted 2026-09-21, user: "display
@@ -330,7 +366,7 @@
           </section>
 
           <section class="cockpit-band rail-band" id="macroCannabisBand">
-            <div class="msr-section-hdr">Cannabis<button class="msr-sort-btn" data-area="cannabis" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div class="msr-section-hdr">Cannabis &amp; Crypto<button class="msr-sort-btn" data-area="cannabis" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCannabis" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -426,6 +462,14 @@
             <div id="marketReadSectorStyle" data-vb="style" class="dash-macro-rail"></div>
           </section>
 
+          <!-- 2026-10-16, user-directed: AI Bubble as a panel like Sectors (Signal Strength), right under it. One column
+               per supply-chain layer (ref_ai_layer) of ordinary rail rows with risk range bars, like Major Markets; live data.
+               Rendered by web/macro_areas.js::renderAiBubble from /api/macro-areas (area ai_bubble). -->
+          <section class="cockpit-band" id="aiBubbleBand" hidden>
+            <div class="msr-section-hdr">AI Bubble<span class="mr-sect-legend" id="aiBubbleTotals"></span><button class="msr-sort-btn" id="aiBubbleToggle" type="button" title="Collapse/expand panel" aria-label="Collapse AI Bubble panel">&#9662;</button></div>
+            <div id="aiBubbleBody" class="ab-body"></div>
+          </section>
+
           <!-- Market Read panel (TASK_145, 2026-09-21) -- retired the Quad
                Rotation tiles (2026-08-31) in this same slot; their two
                computations (quad stance, price breadth) survive as grid
@@ -449,39 +493,8 @@
             <div id="quadRotationPanelBody">Loading…</div>
           </section>
 
-          <!-- 2026-10-16, user-directed: the Hedgeye panel now sits BELOW the Market Read (themes) grid. -->
-          <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
-               moved here from the Actionable screen's hedgeye_panel.js
-               panel -- user: "move HE earylook, macro commentory, hedgeye
-               top 3 things ... from actionable screen to Dashboard screen."
-               Mkt Situation and INFL split into their own panels elsewhere
-               on this page (below Risk Dial / above the Indicator grid,
-               follow-up: "move the mkt situation panel to just below risk
-               dial panel and INFL to 3rd column above Indicator grid").
-               Same shared script (loaded below) renders into this
-               container; the Accounts filter + Sector/Asset class/Style
-               grids that used to sit at the top of this column now render
-               below it instead. Populated + wired by hedgeye_panel.js
-               (unchanged module, just a second render target). -->
-          <!-- 2026-08-10 -- data-presence display (hasDashAny) stays on
-               this outer div, unchanged in hedgeye_panel.js; the new inner
-               #hedgeyeDashPanelBody is what that script now writes its
-               innerHTML into, and what the shared collapse toggle below
-               shows/hides -- keeps the two concerns (has data vs. user
-               collapsed it) from fighting over the same style.display. -->
-          <!-- 2026-09-23 -- own header restyled to the same .msr-section-hdr/
-               .msr-sort-btn chrome (small font, arrow at the end, same fixed
-               height) as every other collapsible bar in this column --
-               replaces the old .he-collapse-hdr look + the separate 📊
-               toggle button that used to live on the filter bar (see
-               hedgeye_collapse.js, now a single self-contained toggle for
-               just this one panel instead of a 3-panel broadcast). -->
-          <div id="hedgeyeDashPanel" style="display:none;">
-            <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
-            <div id="hedgeyeDashPanelBody"></div>
           </div>
-
-
+          <div class="rail-split-side">
           <!-- 2026-09-24 -- "Accounts" panel: live current holdings (all
                stocks you actually hold, not a hand-curated watchlist like
                the macro rail panels above) -- user: "similar to macro rail
@@ -517,6 +530,8 @@
             <!-- 2026-09-30 -- alt view: holdings grouped into sector cards (same look as Signal Strength); see web/macro_areas.js view toggle -->
             <div id="macroRailAccountsCards" data-vb="cards style" class="dash-macro-rail"></div>
           </section>
+          </div>
+          </div>
           </div>
           </div>
 
@@ -1076,7 +1091,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261017c" defer></script>
+  <script src="/static/macro_areas.js?v=20261018d" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

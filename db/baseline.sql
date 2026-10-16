@@ -6861,6 +6861,19 @@ CREATE TABLE IF NOT EXISTS ref_macro_area (
     enabled        BOOL    NOT NULL DEFAULT TRUE,
     PRIMARY KEY (area_key, member_symbol)
 );
+-- 2026-10-16: pinned members stay at the top of their rail panel in the default (bullish-first) order, in sort_order.
+ALTER TABLE ref_macro_area ADD COLUMN IF NOT EXISTS pinned BOOL NOT NULL DEFAULT FALSE;
+
+-- 2026-10-16: AI Bubble Macro Rail panel -- supply-chain layers and the symbols in each (api/routers/macro_areas.py, area_key ai_bubble).
+CREATE TABLE IF NOT EXISTS ref_ai_layer (
+    layer_no     INT  NOT NULL,
+    layer_name   TEXT NOT NULL,
+    symbol       TEXT NOT NULL,   -- tos_symbol (or a plain name when we have no ticker, e.g. SK Hynix)
+    display_name TEXT,            -- shown on the chip when different from the symbol (e.g. SoftBank for SFTBY)
+    sort_order   INT  NOT NULL DEFAULT 0,
+    enabled      BOOL NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (layer_no, symbol)
+);
 
 -- 2026-09-01: cross-asset rules -- multi-symbol RR-position conditions the
 -- ordinary atomic-rule engine can't express (atomic rules only evaluate a
