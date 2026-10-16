@@ -597,6 +597,31 @@
       '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button></div>';
   }
 
+  // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
+  var _PERIOD_AREAS = { top9: 1, sector_etfs: 1 };
+  function _periodCols(m, area) {
+    if (!_PERIOD_AREAS[area.area_key]) return '';
+    return [['mtd_pct', 'MTD'], ['qtd_pct', 'QTD'], ['ytd_pct', 'YTD']].map(function (c) {
+      // Same solid pill as the %chg chip (no price/$ opts, so it stays a % in every mode).
+      // Chip stays a direct flex child of the cluster so its fixed 46px width keeps the columns aligned.
+      return _chgChipHtml(m[c[0]], m.inverted)
+        .replace('<span class="msr-chg', '<span title="' + c[1] + ' % (vs last close before the period)" class="msr-chg');
+    }).join('');
+  }
+
+  // Column headers (Day / MTD / QTD / YTD) right-anchored over the pills; click = sort by that column.
+  var _PERIOD_COLS = [['pct_change', 'Day'], ['mtd_pct', 'MTD'], ['qtd_pct', 'QTD'], ['ytd_pct', 'YTD']];
+  function _periodHeader(area) {
+    if (!_PERIOD_AREAS[area.area_key]) return '';
+    var key = area.area_key, mode = _railSort[key] || 0, f = _railSortField[key] || 'pct_change';
+    return _PERIOD_COLS.map(function (c) {
+      var on = mode && f === c[0];
+      return '<button type="button" class="msr-colhdr-btn' + (on ? ' on' : '') + '" data-area="' + esc(key) +
+        '" data-field="' + c[0] + '" title="Sort by ' + c[1] + ' % (click again to reverse, third click resets)">' + c[1] +
+        '<span class="msr-colhdr-ic">' + (on ? (mode === 1 ? '↓' : '↑') : '⇅') + '</span></button>';
+    }).join('');
+  }
+
   function railAreaRow(area) {
     _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
     var members = _sortedMembers(area);
@@ -680,6 +705,7 @@
             _candleHtml(m) +
             _chgChipHtml(m.pct_change, m.inverted,
                          { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m) }) +
+            _periodCols(m, area) +
           '</div>' +
         '</div>'
       );
@@ -923,11 +949,15 @@
       .map(function (x) { return x.m; });
   }
 
-  function _sortByMode(list, mode) {
+  // 2026-10-15 -- Major Markets / Sectors also sort by any of their Day / MTD / QTD / YTD
+  // column headers (_railSortField[area] = the member field, default pct_change).
+  var _railSortField = {};
+  function _sortByMode(list, mode, field) {
     if (!mode) return _bullishFirst(list);
+    field = field || 'pct_change';
     return list.slice().sort(function (a, b) {
-      var av = (a && a.pct_change != null) ? a.pct_change : null;
-      var bv = (b && b.pct_change != null) ? b.pct_change : null;
+      var av = (a && a[field] != null) ? a[field] : null;
+      var bv = (b && b[field] != null) ? b[field] : null;
       if (av == null && bv == null) return 0;
       if (av == null) return 1;   // no-data members sink to the bottom
       if (bv == null) return -1;
@@ -958,15 +988,24 @@
       });
       return out;
     }
-    return _sortByMode(members, _railSort[area.area_key] || 0);
+    return _sortByMode(members, _railSort[area.area_key] || 0, _railSortField[area.area_key]);
   }
 
   document.addEventListener('click', function (ev) {
+    var hb = ev.target.closest && ev.target.closest('.msr-colhdr-btn');
+    if (hb) {
+      var a = hb.getAttribute('data-area'), f = hb.getAttribute('data-field');
+      if (_railSortField[a] !== f || !_railSort[a]) { _railSortField[a] = f; _railSort[a] = 1; }
+      else { _railSort[a] = (_railSort[a] + 1) % 3; }
+      if (_lastAreasData) renderRail(_lastAreasData);
+      return;
+    }
     var btn = ev.target.closest && ev.target.closest('.msr-sort-btn');
     if (!btn) return;
     var area = btn.getAttribute('data-area');
     if (!area) return;
     var group = btn.getAttribute('data-group');
+    _railSortField[area] = 'pct_change';   // the header arrow always sorts by Day %
     var key = group ? (area + ':' + group) : area;
     var mode = ((_railSort[key] || 0) + 1) % 3;
     _railSort[key] = mode;
@@ -990,6 +1029,11 @@
       var container = document.getElementById(containerId);
       if (!container) return;
       container.innerHTML = byContainer[containerId] || '<div class="msr-loading">No data.</div>';
+    });
+    Object.keys(_PERIOD_AREAS).forEach(function (k) {
+      var hdr = document.getElementById('colhdr_' + k);
+      var ar = areas.filter(function (a) { return a.area_key === k; })[0];
+      if (hdr && ar) hdr.innerHTML = _periodHeader(ar);
     });
     renderAccountsCards(areas);
     // TASK_149: area-verdict pills on the rails (web/area_verdicts.js; no-op until its data lands).

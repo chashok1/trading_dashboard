@@ -287,6 +287,24 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         """), {"d": anchor}).mappings().all()
         q_map = {r["tos_symbol"]: dict(r) for r in q_rows}
 
+        # 2026-10-15 -- MTD/QTD/YTD base closes (ref_perf_base, refreshed monthly
+        # from Yahoo by etl/fetch_perf_base.py) for the Major Markets + Sectors
+        # rail columns.
+        perf_base = {r["tos_symbol"]: r for r in s.execute(text(
+            "SELECT tos_symbol, month_base_close, quarter_base_close, year_base_close "
+            "FROM ref_perf_base")).mappings().all()}
+
+        def _period_pcts(sym, last):
+            b = perf_base.get(sym)
+            if not b or last is None:
+                return {}
+            out = {}
+            for k in ("month", "quarter", "year"):
+                bc = _maybe_float(b[k + "_base_close"])
+                out[{"month": "mtd_pct", "quarter": "qtd_pct", "year": "ytd_pct"}[k]] = (
+                    round((last / bc - 1.0) * 100.0, 2) if bc else None)
+            return out
+
         # 2026-08-31 -- final_action (post-suppression, NOT consolidated_action
         # -- see the MSFT investigation this session: consolidated_action is
         # the raw pre-suppression source label and can show a stale/wrong
@@ -648,6 +666,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
 
             wow_pct = _wow_pct(last, wow_map.get(sym))
             member_details.append({
+                **_period_pcts(sym, last),
                 "symbol": sym,
                 "role": role,
                 "label": mc.get("label"),

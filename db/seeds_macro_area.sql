@@ -546,3 +546,6 @@ INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VA
   ('commodities_ag', 'Industrial & Ag',   'WOOD', 'dual',    60)
 ON CONFLICT (area_key, member_symbol) DO UPDATE SET
   label = EXCLUDED.label, role = EXCLUDED.role, sort_order = EXCLUDED.sort_order;
+
+-- 2026-10-15: QQQ removed from Major Markets/top9 (per request).
+UPDATE ref_macro_area SET enabled = FALSE WHERE area_key = 'top9' AND member_symbol = 'QQQ';

@@ -215,6 +215,26 @@
       '</div><div class="mw-list-side"><div class="mw-side-h">Next 7 days</div>' + evs + '</div></div>';
   }
 
+  // Three Quad cards on the left column (index.html #quadCardsPanel), below MKT SIT.
+  function renderQuadCards(data) {
+    var el = document.getElementById('quadCardsPanel');
+    if (!el || !data.quad) return;
+    var q = data.quad, d = new Date((data.as_of || '') + 'T00:00:00');
+    var M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var yy = function (y) { return String(y).slice(-2); };
+    var qtr = isNaN(d) ? '' : (Math.floor(d.getMonth() / 3) + 1) + 'Q' + yy(d.getFullYear()) + 'E';
+    var mon = isNaN(d) ? '' : M[d.getMonth()] + '-' + yy(d.getFullYear());
+    var gm = /Q(\d)\s+(\d{4})/.exec(q.global_label || '');
+    var gq = gm ? gm[1] + 'Q' + yy(gm[2]) + 'E' : qtr;
+    function card(label, quad, period) {
+      var n = /(\d)/.exec(quad || '');
+      return '<div class="qc' + (n ? ' q' + n[1] : '') + '"><div class="qc-lbl">' + label + '</div>' +
+        '<div class="qc-val">' + (n ? 'Quad ' + n[1] + ' ' + period : '--') + '</div></div>';
+    }
+    el.innerHTML = card('US Quarterly', q.quarterly, qtr) + card('US Monthly', q.monthly, mon) + card('Global', q.global, gq);
+    el.hidden = false;
+  }
+
   function render(data) {
     var strip = document.getElementById('macroWeekStrip');
     var list = document.getElementById('macroWeekList');
@@ -222,13 +242,14 @@
     var open = !list.hidden;
     var c = data.chips;
     strip.innerHTML = [
-      quadChip(data.quad), dxyChip(c.dxy), c.dgs2 ? yieldChip('2Y', c.dgs2, 'drv_quote DGS2:FRED') : '', tnxChip(c.tnx),
+      dxyChip(c.dxy), c.dgs2 ? yieldChip('2Y', c.dgs2, 'drv_quote DGS2:FRED') : '', tnxChip(c.tnx),
       volChip('VIX', c.vix, 1), volChip('MOVE', c.move, 0),
       c.gold ? cmdtyChip('Gold', c.gold, '/GC') : '', c.wti ? cmdtyChip('WTI', c.wti, '/CL') : '',
       eventChip(data.events),
       data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''
     ].join('');
     strip.hidden = false;
+    renderQuadCards(data);
     list.innerHTML = open ? listHtml(data) : '';
     if (open) placeList(list);
     var btn = document.getElementById('mwBookBtn');

@@ -429,10 +429,6 @@ async function loadRiskDial() {
     // never colour alone. loadRiskDial's caller (drv_market_stat.gauges_fired)
     // already sorts `fired` by weight descending -- kept as-is.
     const firedHtml = (r.fired || []).map(g => {
-      const exp = g.exposure;
-      const expTxt = (exp && exp.dollar != null)
-        ? `$${Math.round(exp.dollar).toLocaleString()}${exp.pct != null ? ` (${exp.pct.toFixed(1)}%)` : ''}`
-        : '';
       const wt = Math.round(g.weight || 0);
       const sev = wt >= 3 ? 3 : wt <= 1 ? 1 : 2;
       // TASK_138 -- fired rows open the exposure-detail modal (the card only
@@ -443,7 +439,6 @@ async function loadRiskDial() {
         <span class="rd-rail"></span>
         <span class="rd-wt">${wt}</span>
         <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}</span>
-        <span class="rd-exp">${expTxt}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
@@ -575,10 +570,10 @@ async function loadRiskDial() {
 // palette there ever changes.
 function _quadColor(q) {
   if (!q) return '#9ca3af';
-  if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
-  if (/2/.test(q)) return '#1f7af2'; // Q2 = neutral/up
-  if (/3/.test(q)) return '#e07c1a'; // Q3 = slowing
-  if (/4/.test(q)) return '#d83a3a'; // Q4 = risk-off
+  if (/1/.test(q)) return 'var(--quad1)'; // Q1 = bullish/growth
+  if (/2/.test(q)) return 'var(--quad2)'; // Q2 = neutral/up
+  if (/3/.test(q)) return 'var(--quad3)'; // Q3 = slowing
+  if (/4/.test(q)) return 'var(--quad4)'; // Q4 = risk-off
   return '#9ca3af';
 }
 function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }

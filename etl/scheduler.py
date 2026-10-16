@@ -945,6 +945,25 @@ def maybe_run_quote_history_fetch() -> None:
             derive_usd_correlation(s, anchor)
 
 
+def maybe_run_perf_base_fetch() -> None:
+    """2026-10-15: monthly Yahoo pull of period-start closes (etl/fetch_perf_base.py)
+    behind the Macro Rail MTD/QTD/YTD columns. Once per calendar month (state file),
+    so a scheduler that was off on the 1st catches up on its next pass."""
+    state = Path(settings.etl_working_dir) / "scheduler_perf_base_last_month.txt"
+    this_month = datetime.now().strftime("%Y-%m")
+    try:
+        if state.exists() and state.read_text(encoding="utf-8").strip() == this_month:
+            return
+    except Exception:
+        pass
+    from etl.fetch_perf_base import fetch_perf_base
+    result = fetch_perf_base()
+    log.info("scheduler: perf-base (MTD/QTD/YTD) Yahoo pull: %s", result)
+    if not result.get("errors"):      # retry next pass if any ticker failed
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(this_month, encoding="utf-8")
+
+
 def maybe_run_hourly_quote_refresh() -> None:
     """Fire the lightweight intraday quote refresh at each fixed ET time in
     _INTRADAY_QUOTE_TIMES. Delegates entirely to fetch_hourly_quotes().
@@ -1303,6 +1322,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_quote_history_fetch failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_perf_base_fetch()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_perf_base_fetch failed (continuing)")
                     except Exception:
                         pass
             if tick % 60 == 0:

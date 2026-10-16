@@ -9306,3 +9306,15 @@ CREATE INDEX IF NOT EXISTS ix_hist_advice_live_day
     ON hist_advice_live(plan_date, checked_at);
 CREATE INDEX IF NOT EXISTS ix_hist_advice_live_sym
     ON hist_advice_live(tos_symbol, plan_date);
+
+-- 2026-10-15: period-start closes (last close before the 1st of the month / quarter / year) for the
+-- Macro Rail MTD% / QTD% / YTD% columns (Major Markets + Sectors). Refreshed monthly from Yahoo by
+-- etl/fetch_perf_base.py (scheduler: maybe_run_perf_base_fetch). API computes (last/base - 1) * 100.
+CREATE TABLE IF NOT EXISTS ref_perf_base (
+    tos_symbol         TEXT PRIMARY KEY,
+    y_ticker           TEXT,
+    month_base_date    DATE, month_base_close    NUMERIC,
+    quarter_base_date  DATE, quarter_base_close  NUMERIC,
+    year_base_date     DATE, year_base_close     NUMERIC,
+    fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -1051,10 +1051,10 @@ function _shortMonth(ym) {
 }
 function _quadColor(q) {
   if (!q) return '#9ca3af';
-  if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
-  if (/2/.test(q)) return '#1f7af2'; // Q2 = neutral/up
-  if (/3/.test(q)) return '#e07c1a'; // Q3 = slowing
-  if (/4/.test(q)) return '#d83a3a'; // Q4 = risk-off
+  if (/1/.test(q)) return 'var(--quad1)'; // Q1 = bullish/growth
+  if (/2/.test(q)) return 'var(--quad2)'; // Q2 = neutral/up
+  if (/3/.test(q)) return 'var(--quad3)'; // Q3 = slowing
+  if (/4/.test(q)) return 'var(--quad4)'; // Q4 = risk-off
   return '#9ca3af';
 }
 

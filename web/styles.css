@@ -3,6 +3,8 @@
 * { box-sizing: border-box; }
 
 :root {
+  /* Quad palette -- single source for every Quad1-4 color in the app (change here only) */
+  --quad1: #03af42; --quad2: #8bc53c; --quad3: #fcb142; --quad4: #eb0125;
   --bg: #f7f7f5;
   --card-bg: #ffffff;
   --border: #e5e5e2;
@@ -739,10 +741,10 @@ tbody tr:hover { background: #fafafa; }
       padding: 1px 6px; border-radius: 3px;
     }
     .quad-pill.is-current { background: #f5f3ff; }
-    .quad-q1 { color: #fff; background: #2563eb; }
-    .quad-q2 { color: #fff; background: var(--bull, #15803d); }
-    .quad-q3 { color: #fff; background: #b45309; }
-    .quad-q4 { color: #fff; background: var(--bear, #b91c1c); }
+    .quad-q1 { color: #fff; background: var(--quad1); }
+    .quad-q2 { color: #fff; background: var(--quad2); }
+    .quad-q3 { color: #fff; background: var(--quad3); }
+    .quad-q4 { color: #fff; background: var(--quad4); }
     .quad-q-unknown { color: var(--text-3, #6b7280); background: #f3f4f6; }
 
     /* .dash-grid / .sections-grid / .ticker-col / .section-block / .ticker-grid
@@ -2153,7 +2155,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* 2026-08-27 -- gap tightened 8px -> 4px -- the other "3 main columns"
    gap, between dial-changed-col and cat-col -- part of the same page-wide
    unification as .cockpit-bands above. */
-.main-col { display: grid; grid-template-columns: 0.512fr 1.66fr; gap: 4px; align-items: start; }
+.main-col { display: grid; grid-template-columns: 0.328fr 1.66fr; gap: 4px; align-items: start; }
 /* 2026-08-27 -- gap tightened 8px -> 1px, every panel in this column
    (Risk Dial, Mkt Situation, Opex, CPI, Earnings, Regime, Notes, What
    changed, Housekeeping) -- user: "Don't leave too much space between the
@@ -2221,7 +2223,16 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    column (.macro-rail-col) and the horizontal gap between the 5 columns
    themselves (.macro-rail-row), for one consistent spacing throughout. */
 .macro-rail-row { display: flex; align-items: flex-start; gap: 4px; }
+.msr-colhdr { display: flex; gap: 2px; margin-left: auto; }   /* lives in the panel's header bar, right-aligned over the pills */
+.msr-colhdr-btn { flex: 0 0 46px; box-sizing: border-box; border: none; background: none; padding: 0; cursor: pointer;
+                  font: inherit; text-transform: uppercase; text-align: center; color: var(--text-2, #666); white-space: nowrap; }
+.msr-colhdr-ic { font-size: 9px; margin-left: 1px; opacity: .7; }
+.msr-colhdr-btn:hover, .msr-colhdr-btn.on { color: #2563eb; }
+.msr-colhdr-btn.on .msr-colhdr-ic { opacity: 1; }
+.msr-per { display: inline-block; min-width: 38px; text-align: right; font-size: 10px; color: var(--text-3, #6b7280); }
+.msr-per-up { color: #15803d; } .msr-per-dn { color: #b91c1c; }
 .macro-rail-col { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 130px; }
+.macro-rail-row > .macro-rail-col:first-child { flex-grow: 1.5; }   /* 2026-10-15: col 1 (Major Markets + Sectors) 50% wider; the other columns give up the width */
 /* 2026-09-24, user-directed: "I only need one header bar 'Accounts' and
    display 5 columns and adjust the rows" -- one panel spanning the full
    row width (see index.html's inline flex:1 1 100% override on that one
@@ -3833,7 +3844,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mw-he-tag { font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 3px; color: #fff; line-height: 15px; }
 .mw-he-bull { background: var(--mr-bull); } .mw-he-bear { background: var(--mr-bear); }
 .mw-q { display: inline-block; padding: 0 5px; margin-left: 2px; border-radius: 4px; color: #fff; font-weight: 700; font-size: 10.5px; line-height: 16px; }
-.mw-q1 { background: #2f9e2f; } .mw-q2 { background: #1f7af2; } .mw-q3 { background: #e07c1a; } .mw-q4 { background: #d83a3a; } .mw-qx { background: #9ca3af; }
+.mw-q1 { background: var(--quad1); } .mw-q2 { background: var(--quad2); } .mw-q3 { background: var(--quad3); } .mw-q4 { background: var(--quad4); } .mw-qx { background: #9ca3af; }
 .mw-chip.mw-quad { background: #e0ecff; border-color: #93b4f0; color: #1e3a8a; }
 .mw-chip.mw-warn { color: var(--mr-warn); background: var(--mr-warn-bg); border-color: var(--mr-warn); }
 .mw-chip.mw-ev { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
@@ -3906,3 +3917,11 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .av-stk { padding: 0 5px; border-radius: 8px; background: var(--mr-neu-bg); border: 1px solid var(--border, #e5e5e2); font-size: 10px; }
 .av-stk-held { font-weight: 700; border-color: var(--mr-neu); }
 .av-hr { border: 0; border-top: 1px solid var(--border, #e5e5e2); margin: 8px 0; }
+
+/* Dashboard: three Quad cards (US Quarterly / US Monthly / Global) below MKT SIT */
+#quadCardsPanel { display: flex; gap: 6px; padding: 4px; }
+#quadCardsPanel .qc { flex: 1; min-width: 0; border: 1px solid var(--border); border-left: 4px solid var(--text-3, #9ca3af); border-radius: 4px; padding: 3px 8px; background: var(--card-bg); }
+#quadCardsPanel .qc-lbl { font-size: 10px; color: var(--text-3, #6b7280); }
+#quadCardsPanel .qc-val { font-size: 12px; font-weight: 700; white-space: nowrap; }
+#quadCardsPanel .qc.q1 { border-color: var(--quad1); } #quadCardsPanel .qc.q2 { border-color: var(--quad2); }
+#quadCardsPanel .qc.q3 { border-color: var(--quad3); } #quadCardsPanel .qc.q4 { border-color: var(--quad4); }

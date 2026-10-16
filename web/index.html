@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261011h">
+  <link rel="stylesheet" href="/static/styles.css?v=20261015g">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -130,6 +130,9 @@
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
             <div id="heMktSituationBody">Loading…</div>
           </section>
+
+          <!-- 2026-10-15 -- Quad cards (US Quarterly / US Monthly / Global), below MKT SIT; filled by web/macro_week.js -->
+          <section class="cockpit-band" id="quadCardsPanel" hidden></section>
 
           <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
                rules (e.g. "Bonds and USD at TRR, Gold at LRR -> buy Gold")
@@ -346,7 +349,7 @@
           <div id="macroRailsWrap">
           <div class="macro-rail-row">
           <!-- 2026-09-24 -- 5-column reorg per user-supplied layout:
-                 col1: Major Markets / USD, Rates & Duration / Credit / Crypto
+                 col1: Major Markets / Sectors (2026-10-15: now 6 columns) -- col2: USD, Rates & Duration / Credit / Crypto
                  col2: Volatility / Cannabis / Currency
                  col3: Energy / Precious Metals / Industrial & Ag (unchanged)
                  col4: Sectors / Country ETFs
@@ -358,10 +361,18 @@
                history are gone -- git history has them if ever needed.) -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroTop9Band">
-            <div class="msr-section-hdr">Major Markets<button class="msr-sort-btn" data-area="top9" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div class="msr-section-hdr">Major Markets<span class="msr-colhdr" id="colhdr_top9"></span></div>
             <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
+          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
+            <div class="msr-section-hdr">Sectors<span class="msr-colhdr" id="colhdr_sector_etfs"></span></div>
+            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          </div>
+
+          <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroRatesBand">
             <div class="msr-section-hdr">USD, Rates, &amp; Duration<button class="msr-sort-btn" data-area="rates_duration" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
@@ -426,11 +437,6 @@
                still overwrites #macroRailSectorEtfs's content with the SSS
                sector cards after web/macro_areas.js's own rail render runs --
                both target by id, so this move needed no script change. -->
-          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
-            <div class="msr-section-hdr">Sectors<button class="msr-sort-btn" data-area="sector_etfs" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
           <section class="cockpit-band rail-band" id="macroCountryBand">
             <div class="msr-section-hdr">Country ETFs<button class="msr-sort-btn" data-area="country_etfs" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
@@ -1009,7 +1015,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20261010b"></script>
+  <script src="/static/app.js?v=20261015b"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -1025,7 +1031,7 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
-  <script src="/static/macro_week.js?v=20261011b" defer></script>
+  <script src="/static/macro_week.js?v=20261015a" defer></script>
   <script src="/static/area_verdicts.js?v=20261011e" defer></script>
   <script src="/static/rr_strip.js?v=20261011e" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
@@ -1050,7 +1056,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261011a" defer></script>
+  <script src="/static/macro_areas.js?v=20261015e" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
