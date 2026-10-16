@@ -7,8 +7,7 @@
   var rank = function (o) { return SC.indexOf(o); };
   var cls = function (o) { return /bull/i.test(o) ? 'bull' : /bear/i.test(o) ? 'bear' : 'neu'; };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
-  var st = { data: null, panel: 'All', dir: 'All', sort: 'size', open: true };
-  try { st.open = localStorage.getItem('ocOpen') !== '0'; } catch (e) {}
+  var st = { data: null, open: false };
 
   function ago(s, asOf) {
     if (!s) return '';
@@ -69,29 +68,39 @@
     applyOnly();
   }
 
-  var ORDER = ['Major Markets', 'Sectors', 'Tech & ETFs', 'Currency', 'USD, Rates & Duration', 'Credit', 'Precious Metals',
-               'Industrial & Ag', 'Energy', 'Crypto', 'Volatility', 'Cannabis'];
-
+  // One line of chips (newest change first, no grouping); the rest float in an overlay under it.
+  var _ro = false;
   function render() {
     var el = document.getElementById('outlookChangesCard');
     var D = st.data;
     if (!el || !D) return;
     var all = D.changes.map(function (c) { var o = Object.assign({}, c); o.a = rank(c.from); o.b = rank(c.to); o.delta = o.b - o.a; return o; });
-    var panels = Array.from(new Set(all.map(function (d) { return d.panel; })))
-      .sort(function (x, y) { var a = ORDER.indexOf(x), b = ORDER.indexOf(y); return (a < 0 ? 99 : a) - (b < 0 ? 99 : b); });
-    if (st.panel !== 'All' && panels.indexOf(st.panel) < 0) st.panel = 'All';
-    var byMove = function (x, y) { return Math.abs(y.delta) - Math.abs(x.delta) || x.symbol.localeCompare(y.symbol); };
-    var groups = panels.filter(function (p) { return st.panel === 'All' || st.panel === p; }).map(function (p) {
-      var L = all.filter(function (d) { return d.panel === p; }).sort(byMove);
-      return '<span class="oc-grp"><span class="oc-gl">' + esc(p) + '</span>' + L.map(function (d) { return chip(d, D.as_of); }).join('') + '</span>';
-    }).join('');
-    var arrow = '<button class="oc-tog" id="ocToggle" type="button" title="Collapse/expand">' + (st.open ? '&#9662;' : '&#9656;') + '</button>';
-    el.innerHTML = '<div class="oc-body">' + arrow +
-      (st.open ? groups : '<span class="oc-gl">Outlook changes &middot; ' + all.length + '</span>') + '</div>';
-    el.querySelector('#ocToggle').onclick = function () {
-      st.open = !st.open; try { localStorage.setItem('ocOpen', st.open ? '1' : '0'); } catch (e) {} render();
-    };
+    all.sort(function (x, y) {
+      return String(y.changed_on || '').localeCompare(String(x.changed_on || '')) ||
+        Math.abs(y.delta) - Math.abs(x.delta) || x.symbol.localeCompare(y.symbol);
+    });
+    var parts = all.map(function (d) { return chip(d, D.as_of); });
+    var chips = parts.join('');
+    el.innerHTML = '<div class="oc-body"><span class="oc-line" id="ocLine">' + chips + '</span>' +
+      '<button class="oc-more" id="ocMore" type="button" title="Show all outlook changes" hidden></button></div>' +
+      '<div class="oc-pop" id="ocPop" hidden></div>';
     el.hidden = false;
+    var line = el.querySelector('#ocLine'), more = el.querySelector('#ocMore'), pop = el.querySelector('#ocPop');
+    function setOpen(v) { st.open = v; pop.hidden = !v; more.classList.toggle('on', v); }
+    // Count the chips that do not fit on the one line.
+    function fit() {
+      var lr = line.getBoundingClientRect().right, hidden = 0;
+      Array.prototype.forEach.call(line.children, function (c) { if (c.getBoundingClientRect().right > lr + 0.5) hidden++; });
+      pop.innerHTML = parts.slice(parts.length - hidden).join('');   // overlay = only the chips that do not fit on the line
+      more.hidden = !hidden;
+      more.textContent = '+' + hidden + ' more ▾';
+      if (!hidden) setOpen(false);
+    }
+    more.onclick = function (e) { e.stopPropagation(); setOpen(!st.open); };
+    document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) setOpen(false); });
+    setOpen(false);
+    fit();
+    if (!_ro && window.ResizeObserver) { _ro = true; new ResizeObserver(function () { fit(); }).observe(el); }
   }
 
   async function load() {
