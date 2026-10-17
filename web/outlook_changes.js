@@ -112,7 +112,8 @@
       more.hidden = false; more.textContent = '+99 more ▾';   // measure with the button present (it narrows the line)
       // Two static rows: size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
       var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1, nChips = 0;
-      line.style.maxHeight = (2 * h + 4) + 'px';
+      var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
+      line.style.maxHeight = (2 * h + gap) + 'px';
       var lb = line.getBoundingClientRect().bottom;
       Array.prototype.forEach.call(line.children, function (c, i) {
         if (first < 0 && c.getBoundingClientRect().bottom > lb + 0.5) first = i;

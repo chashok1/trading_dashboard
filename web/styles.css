@@ -4109,3 +4109,22 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .spxrv-click { cursor: zoom-in; }
 .spxrv-tip { position: fixed; z-index: 2000; pointer-events: none; background: #fff; color: #16181f; border: 1px solid var(--border, #d4d4d8);
   border-radius: 4px; padding: 4px 8px; font-size: 11px; line-height: 1.5; box-shadow: 0 2px 8px rgba(0,0,0,.15); white-space: nowrap; }
+
+/* 2026-10-17 -- Outlook changes card: every chip/pill is the same 20px tall with a 4px row gap, so row 2 of the symbol
+   chips lines up exactly with the Book pill row (row 1 with the US Dollar pill). */
+.oc-card .oc-chip2, .oc-card .mw-chip, .oc-card .oc-more { box-sizing: border-box; height: 20px; display: inline-flex; align-items: center; }
+.oc-card .oc-line { row-gap: 4px; }
+.oc-card .oc-line > .oc-dl { height: 20px; display: inline-flex; align-items: center; }
+/* 2026-10-17 -- more space between the rows (same value on both sides keeps the rows aligned). */
+.oc-card .oc-line { row-gap: 8px; }
+.oc-card .oc-lead { gap: 8px; }
+.oc-card .oc-pop { row-gap: 8px; }
+/* 2026-10-17 -- same 8px above the first row and below the second row as between the rows. */
+.oc-card .oc-body { padding-top: 8px; padding-bottom: 8px; }
+
+/* 2026-10-17 -- tiny "5d" over the US Dollar pill's change triangle (absolutely placed: pill size unchanged);
+   a little more horizontal space between the symbol pills. */
+.mw-usd-d { position: relative; display: inline-block; line-height: 1; }
+.mw-usd-d::before { content: "5d"; position: absolute; left: 50%; top: -5px; transform: translateX(-50%); font-size: 5.5px; line-height: 1;
+                    font-weight: 700; color: var(--text-3, #98a0b3); letter-spacing: .02em; pointer-events: none; }
+.oc-card .oc-line { column-gap: 9px; }

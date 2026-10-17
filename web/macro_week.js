@@ -99,7 +99,7 @@
       'Source: drv_quote, drv_rr ($DXY)'
     ];
     return '<span class="mw-chip mw-usd ' + olCls(c.outlook) + '" title="' + tip(t) + '"><span class="mw-usd-l">US DOLLAR</span>' +
-      '<b>' + num(c.last, 2) + '</b>' + darr(c.chg5) + bar + (has ? '<span class="mw-dim">' + pct + '%</span>' : '') +
+      '<b>' + num(c.last, 2) + '</b>' + (darr(c.chg5) ? '<span class="mw-usd-d">' + darr(c.chg5) + '</span>' : '') + bar + (has ? '<span class="mw-dim">' + pct + '%</span>' : '') +
       '<span class="mw-usd-o">' + word + '</span></span>';
   }
 
