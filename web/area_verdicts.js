@@ -196,9 +196,11 @@
     var h = '<div class="av-dh av-headwind"><b>Headwind areas</b><span class="av-dim"> $ you hold (inverse positions excluded)</span></div>';
     if (!rows.length) return h + '<div class="av-dim">None.</div>';
     rows.forEach(function (a) {
-      h += '<div class="av-sh">' + esc(a.label) + ' ▼ ' + (a.held_dollar ? usd(a.held_dollar) : '') + '</div>' +
-        '<div class="av-read">' + esc(a.read_text || '') + '</div>' +
-        stockChips({ stocks: (a.stocks || []).filter(function (s) { return s.held; }), n_stocks: (a.stocks || []).filter(function (s) { return s.held; }).length });
+      // 2026-10-17 -- compact row: area name, its reason on the same line, then held-stock chips only if there are any.
+      var held = (a.stocks || []).filter(function (s) { return s.held; });
+      h += '<div class="av-hw"><span class="av-sh">' + esc(a.label) + ' ▼ ' + (a.held_dollar ? usd(a.held_dollar) : '') + '</span> ' +
+        '<span class="av-read">' + esc(a.read_text || '') + '</span>' +
+        (held.length ? stockChips({ stocks: held, n_stocks: held.length }) : '') + '</div>';
     });
     return h;
   }

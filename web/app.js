@@ -2959,6 +2959,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // the same chart. Backdrop click (outside the card) also closes it,
   // mirroring web/portfolio-modal.js's portfolioModal pattern.
   $('tsCumPnlExpandBtn')?.addEventListener('click', openDashTrendModal);
+  // 2026-10-17 -- clicking the chart itself opens the same expanded view as the expand button.
+  const _cumCv = $('tsCumPnlChart');
+  if (_cumCv) { _cumCv.style.cursor = 'zoom-in'; _cumCv.addEventListener('click', openDashTrendModal); }
   $('dashTrendModal')?.addEventListener('click', (ev) => {
     if (ev.target.id === 'dashTrendModal') closeDashTrendModal();
   });

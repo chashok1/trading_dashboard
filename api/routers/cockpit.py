@@ -600,6 +600,29 @@ def get_risk_dial_history(days: int = Query(90, ge=1, le=365), date: Optional[st
     return {"as_of": d.isoformat(), "days": days, "history": history}
 
 
+@router.get("/api/cockpit/spx-realized-vol")
+def get_spx_realized_vol(days: int = Query(126, ge=20, le=500), date: Optional[str] = Query(None)):
+    """1-month (rv21) / 3-month (rv63) SPX realized vol + SPX daily % change, last `days` trading days."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            WITH q AS (
+                SELECT as_of_date, last_price,
+                       LAG(last_price) OVER (ORDER BY as_of_date) AS prev
+                FROM drv_quote WHERE tos_symbol = 'SPX' AND last_price IS NOT NULL AND as_of_date <= :d
+            )
+            SELECT q.as_of_date, m.rv21, m.rv63,
+                   CASE WHEN q.prev IS NULL OR q.prev = 0 OR q.last_price = q.prev THEN NULL
+                        ELSE (q.last_price / q.prev - 1) * 100 END AS pct
+            FROM q LEFT JOIN drv_market_stat m ON m.as_of_date = q.as_of_date
+            WHERE q.prev IS NOT NULL
+            ORDER BY q.as_of_date DESC LIMIT :n
+        """), {"d": d, "n": days}).mappings().all()
+    f = lambda v: None if v is None else round(float(v), 3)
+    return {"as_of": d.isoformat(), "days": days,
+            "rows": [[r["as_of_date"].isoformat(), f(r["rv21"]), f(r["rv63"]), f(r["pct"])] for r in reversed(rows)]}
+
+
 # ---------------------------------------------------------------------------
 # 6.2 GET /api/cockpit/events
 # ---------------------------------------------------------------------------

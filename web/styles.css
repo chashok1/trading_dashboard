@@ -4094,3 +4094,18 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
   background: #eeedfb; color: #3c3489; font-weight: 600;
   border: 1px solid #c9c5f0; border-left: 3px solid #534ab7; border-radius: 4px;
 }
+
+/* 2026-10-17 -- SPX realized vol panel (web/spx_rv.js), Dashboard right column. */
+#spxRvBand { padding: 4px 6px; }
+.spxrv-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 10px; margin-bottom: 2px; }
+.spxrv-ttl { font-weight: 700; font-size: 11px; }
+.spxrv-k i { display: inline-block; width: 10px; height: 3px; margin-right: 3px; vertical-align: middle; }
+.spxrv-svg { width: 100%; height: auto; display: block; }
+
+/* 2026-10-17 -- Headwind panel rows: reason sits on the same line as the area name; tighter spacing. */
+#headwindBody .av-hw { margin: 0 0 7px; line-height: 1.35; }
+#headwindBody .av-hw .av-sh, #headwindBody .av-hw .av-read { display: inline; margin: 0; }
+#headwindBody .av-hw .av-stks { margin-top: 1px; }
+.spxrv-click { cursor: zoom-in; }
+.spxrv-tip { position: fixed; z-index: 2000; pointer-events: none; background: #fff; color: #16181f; border: 1px solid var(--border, #d4d4d8);
+  border-radius: 4px; padding: 4px 8px; font-size: 11px; line-height: 1.5; box-shadow: 0 2px 8px rgba(0,0,0,.15); white-space: nowrap; }
