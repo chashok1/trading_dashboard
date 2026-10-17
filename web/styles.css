@@ -4135,3 +4135,14 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 
 /* 2026-10-17 -- the "+N more" pill sits on the second row (bottom of the card body), not the first. */
 .oc-card .oc-more { align-self: flex-end; }
+
+/* 2026-10-17 -- Dashboard collapse/expand controls (web/collapse_all.js). */
+.cc-ctl { display: inline-flex; gap: 3px; margin-right: 10px; }
+.cc-btn { border: 1px solid var(--border, #d4d4d8); background: var(--card-bg, #fff); color: var(--text-2, #5b6172); border-radius: 999px; padding: 0 8px; font-size: 10px; font-weight: 600; line-height: 16px; cursor: pointer; white-space: nowrap; }
+.cc-btn:hover { background: var(--bg-2, #f0f1f5); }
+.pc-panel { position: relative; }
+.pc-chev { position: absolute; top: 1px; right: 2px; z-index: 6; border: 0; background: var(--card-bg, #fff); color: var(--text-3, #6b7280); font-size: 10px; line-height: 12px; padding: 0 3px; border-radius: 3px; cursor: pointer; opacity: .55; }
+.pc-chev:hover { opacity: 1; }
+.pc-collapsed > *:not(.pc-chev) { display: none !important; }
+.pc-collapsed { min-height: 0 !important; padding-top: 2px !important; padding-bottom: 2px !important; }
+.pc-collapsed::before { content: attr(data-pc-name); display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3, #6b7280); padding: 1px 22px 1px 6px; }
