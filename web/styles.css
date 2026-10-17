@@ -4128,3 +4128,10 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .mw-usd-d::before { content: "5d"; position: absolute; left: 50%; top: -5px; transform: translateX(-50%); font-size: 5.5px; line-height: 1;
                     font-weight: 700; color: var(--text-3, #98a0b3); letter-spacing: .02em; pointer-events: none; }
 .oc-card .oc-line { column-gap: 9px; }
+
+/* 2026-10-17 -- the spelled-out outlook word on symbol chips ("Bullish"/"Bearish"/"Neutral") is a filled pill, same as the
+   US Dollar pill's outlook badge (.mw-usd-o): white text on the chip's own colour. */
+.oc-chip2 .oc-w { background: var(--rc); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 15px; padding: 0 7px; border-radius: 999px; }
+
+/* 2026-10-17 -- the "+N more" pill sits on the second row (bottom of the card body), not the first. */
+.oc-card .oc-more { align-self: flex-end; }

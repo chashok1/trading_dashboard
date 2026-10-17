@@ -108,10 +108,12 @@
     window.syncOcCard();
     function setOpen(v) { st.open = v; pop.hidden = !v; more.classList.toggle('on', v); }
     // Count the chips that do not fit on the one line.
-    function fit() {
-      more.hidden = false; more.textContent = '+99 more ▾';   // measure with the button present (it narrows the line)
+    // Index of the first item that wraps past the two rows, measured with the button showing `label`.
+    function firstOverflow(label) {
+      more.hidden = false; more.textContent = label;   // the button narrows the line, so measure with its real text
+      Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
       // Two static rows: size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
-      var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1, nChips = 0;
+      var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1;
       var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
       line.style.maxHeight = (2 * h + gap) + 'px';
       var lb = line.getBoundingClientRect().bottom;
@@ -119,13 +121,27 @@
         if (first < 0 && c.getBoundingClientRect().bottom > lb + 0.5) first = i;
       });
       // A date label left alone at the end of the line (its chips pushed to the overlay) moves to the overlay too.
-      Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
       if (first > 0 && !items[first].label && items[first - 1].label) { first--; line.children[first].style.visibility = 'hidden'; }
-      if (first >= 0) items.forEach(function (it, i) { if (i >= first && it.chip) nChips++; });
+      return first;
+    }
+    function countChips(first) {
+      var n = 0;
+      if (first >= 0) items.forEach(function (it, i) { if (i >= first && it.chip) n++; });
+      return n;
+    }
+    function fit() {
+      // The button's text changes the line width (+99 is wider than +1), which can pull a chip back onto row 2 and make
+      // it appear twice (row 2 and the overlay). Re-measure with the real count until it settles.
+      var first = firstOverflow('+99 more ▾'), nChips = countChips(first);
+      for (var k = 0; k < 3; k++) {
+        var f2 = firstOverflow(nChips ? '+' + nChips + ' more ▾' : '+0 more ▾'), n2 = countChips(f2);
+        first = f2;
+        if (n2 === nChips) break;
+        nChips = n2;
+      }
       // Overlay = what does not fit on the line; if it starts mid-day, repeat that day's label.
       var rest = first < 0 ? [] : items.slice(first);
       if (rest.length && rest[0].chip) rest.unshift({ html: '<span class="oc-dl">' + esc(rest[0].day || 'This week') + '</span>' });
-      // A day label left dangling at the end of the line (all its chips pushed off) is hidden too.
       pop.innerHTML = rest.map(function (i) { return i.html; }).join('');
       more.hidden = !nChips;
       more.textContent = '+' + nChips + ' more ▾';
