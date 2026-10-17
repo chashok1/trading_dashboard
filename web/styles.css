@@ -4191,3 +4191,11 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .oc-global-wrap .oc-rf { display: inline-flex; align-items: center; gap: 4px; font-size: 7.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-2, #5b6172); padding-left: 6px; border-left: 1px solid var(--border, #d4d4d8); }
 .oc-global-wrap .oc-rf label { display: inline-flex; align-items: center; gap: 1px; cursor: pointer; }
 .oc-global-wrap .oc-rf input[type="radio"] { width: 8px; height: 8px; margin: 0; cursor: pointer; }
+
+/* 2026-10-17 -- the chip-mode radios (% $ Price Act Hld) sit in the GLOBAL area, same look as the other two radio groups. */
+.oc-global-wrap > .msr-mode-toggle { margin: 0; padding-left: 6px; border-left: 1px solid var(--border, #d4d4d8); font-size: 7.5px; font-weight: 600; color: var(--text-2, #5b6172); gap: 4px; }
+
+/* 2026-10-17 -- the delta pill + collapse arrow stay at the right end of every header (they follow the title when a header has no radios). */
+.msr-section-hdr .oc-filter { margin-left: auto; }
+.msr-section-hdr .msr-mode-toggle ~ .oc-filter, .msr-section-hdr .mr-sect-total ~ .oc-filter { margin-left: 6px; }
+.msr-section-hdr .oc-filter + .msr-sort-btn { margin-left: 0; }

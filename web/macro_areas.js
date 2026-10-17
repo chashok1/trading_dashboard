@@ -138,30 +138,30 @@
   // persist in memory. Color logic is untouched by any of this -- still
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
-  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1 };   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1 };   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
   // 2026-09-30, user-directed: "radio buttons should control its own
   // panels" -- one independent mode per radio group: 'rail' (Macro Rail
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
   // _chgMode is the mode for the panel currently being rendered (set by
   // _useMode before each render).
-  var _MODE_KEYS = { rail: _CHG_MODE_KEY, accounts: 'macroRailChgMode_accounts', sss: 'macroRailChgMode_sss',
-                     ai: 'macroRailChgMode_ai', psetf: 'macroRailChgMode_psetf', call: 'macroRailChgMode_call' };
-  var _MODE_OF_AREA = { accounts: 'accounts', sss_signal: 'sss', ai_bubble: 'ai', ps_etf: 'psetf', call_list: 'call' };   // 2026-10-17: AI Bubble / PS & ETF / CALL have their own radios
+  // 2026-10-17, user-directed: ONE chip-mode radio set (% / $ / Price / Act / Hld) in the Macro Rail header now controls every rail
+  // panel ('rail'). Accounts and Signal Strength keep only a view toggle (Rows / Sect / Style): 'accounts' / 'sss'.
+  var _MODE_KEYS = { rail: _CHG_MODE_KEY, accounts: 'macroRailChgMode_accounts', sss: 'macroRailChgMode_sss' };
+  var _MODE_OF_AREA = {};   // unused now: every area follows the 'rail' chip mode
   var _modes = {};
   Object.keys(_MODE_KEYS).forEach(function (g) {
-    try {
-      var v = localStorage.getItem(_MODE_KEYS[g]);
-      _modes[g] = (_CHG_MODES[v] || (g !== 'rail' && (v === 'cards' || v === 'style'))) ? v : (g === 'sss' ? 'cards' : 'pct');
-    } catch (e) { _modes[g] = (g === 'sss' ? 'cards' : 'pct'); }
+    var v = null;
+    try { v = localStorage.getItem(_MODE_KEYS[g]); } catch (e) {}
+    if (g === 'rail') { _modes[g] = _CHG_MODES[v] ? v : 'pct'; return; }
+    // view groups: older saved values were chip modes (they meant "rows")
+    _modes[g] = (v === 'cards' || v === 'style' || v === 'rows') ? v : (_CHG_MODES[v] ? 'rows' : (g === 'sss' ? 'cards' : 'rows'));
   });
   var _chgMode = _modes.rail;
-  // 'cards' (Accounts/Signal Strength radio option) isn't a chip mode -- rows
-  // rendered while it's selected are hidden anyway, so they just use %.
-  var _macroOn = false;   // true while the panel being rendered has its 'Macro' radio selected
-  function _useMode(group) {
-    var m = _modes[group];
+  var _macroOn = false;   // true while rendering with the 'Act' radio selected
+  function _useMode() {
+    var m = _modes.rail;
     _macroOn = (m === 'macro');
-    _chgMode = (m === 'cards' || m === 'style' || m === 'macro') ? 'pct' : (m || 'pct');
+    _chgMode = (m === 'macro') ? 'pct' : (m || 'pct');
   }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
@@ -193,11 +193,14 @@
     opts = opts || {};
     var altTxt = _chgMode === 'price' ? opts.price
                : _chgMode === 'dollar' ? opts.dollarChg
+               : _chgMode === 'held' ? opts.held
                : null;
+    if (_chgMode === 'held' && altTxt == null) { altTxt = '–'; bg = '#bbb'; }   // not held: dash, grey
     var txt = altTxt != null ? altTxt
             : flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
     var cls = 'msr-chg' + (altTxt != null ? ' msr-chg-alt' : '');
-    return '<span class="' + cls + '" style="background:' + bg + ';">' + esc(txt) + '</span>';
+    var ttl = (_chgMode === 'held' && opts.heldTip) ? ' title="' + esc(opts.heldTip) + '"' : '';
+    return '<span class="' + cls + '" style="background:' + bg + ';"' + ttl + '>' + esc(txt) + '</span>';
   }
 
   // Friendly display name for a non-gauge member (2026-07-04) — ref_macro_
@@ -533,6 +536,32 @@
     var digits = Math.abs(v) >= 1000 ? 0 : 1;
     return v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
+  // Amount held in the stock, compact for the 46px chip: $850, $4.2K, $48K, $1.2M (null when the row carries no holding).
+  function _heldFullK(v) {
+    var a = Math.abs(v);
+    return '$' + (a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1000 ? (v / 1000).toFixed(1) + 'K' : Math.round(v));
+  }
+  // Hover text for the Hld pill on non-Accounts rails: the total, then the per-account split (bulleted).
+  function _heldTip(m, area) {
+    if ((area && area.area_key === 'accounts') || !m.held_accounts || !m.held_accounts.length) return null;
+    var tot = Number(m.held_total) || 0;
+    var L = [m.symbol + ': ' + _heldFullK(tot) + ' held in total'];
+    m.held_accounts.forEach(function (x) {
+      L.push('• ' + x[0] + ': ' + _heldFullK(x[1]) + (tot > 0 ? ' (' + Math.round(x[1] / tot * 100) + '%)' : ''));
+    });
+    return L.join(String.fromCharCode(10));
+  }
+  function _heldKTxt(m, area) {
+    // Accounts rows carry the per-account holding (market_value); every other rail shows the total held across all accounts.
+    var raw = (area && area.area_key === 'accounts') ? m.market_value : m.held_total;
+    var v = Number(raw);
+    if (raw == null || !isFinite(v)) return null;
+    var a = Math.abs(v);
+    if (a >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    if (a >= 10000) return '$' + Math.round(v / 1000) + 'K';
+    if (a >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
+    return '$' + Math.round(v);
+  }
   function _chipPriceTxt(m) {
     if (m.role === 'curve') return _railPriceTxt(m);
     return _chipCompactPrice(m.last);
@@ -713,7 +742,7 @@
             '<div class="msr-vol-cluster">' +
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
-                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m) }) +
+                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
             '</div>' +
           '</div>'
         );
@@ -754,7 +783,7 @@
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
             _candleHtml(m) +
             _chgChipHtml(m.pct_change, m.inverted,
-                         { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m) }) +
+                         { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
             _periodCols(m, area) +
           '</div>' +
         '</div>'
@@ -1209,6 +1238,14 @@
         (groups[g] = groups[g] || []).push(m);
       });
     });
+    // Total held across the panel (each stock/account holding counted once, even when a style puts it in several cards).
+    var holdTotal = 0, holdSeen = {};
+    if (showHolding) members.forEach(function (m) {
+      var hk = m.symbol + '|' + m.account_group;
+      if (holdSeen[hk]) return;
+      holdSeen[hk] = true;
+      holdTotal += Number(m.market_value) || 0;
+    });
     var buy = { ADD: 1, INCREASE: 1 }, sell = { REMOVE: 1, REDUCE: 1 };
     var cards = Object.keys(groups).sort().map(function (g) {
       var pills = groups[g].map(function (m) {
@@ -1228,8 +1265,15 @@
         return '<span class="mr-mem ' + cls + '" title="' + esc(m.symbol + (m.action ? ' - ' + m.action : '')) + '">' +
                symLink(esc(m.symbol), m.symbol, m.desc) + hold + pct + '</span>';
       }).join(' ');
+      // Accounts cards: also the amount held in this group ($K) and its share of everything held in the panel.
+      var gSum = groups[g].reduce(function (t, m) { return t + (Number(m.market_value) || 0); }, 0);
+      var share = '';
+      if (showHolding && holdTotal > 0) {
+        var gk = Math.abs(gSum) < 10000 ? (gSum / 1000).toFixed(1) : Math.round(gSum / 1000);
+        share = ' &middot; $' + gk + 'K &middot; ' + (gSum / holdTotal * 100).toFixed(gSum / holdTotal < 0.1 ? 1 : 0) + '%';
+      }
       return '<div class="mr-sm"><div class="mr-sm-name"><span class="mr-sm-name-left"><b>' + esc(g) +
-             '</b></span><span class="mr-tile-curmax">' + groups[g].length + '</span></div>' +
+             '</b></span><span class="mr-tile-curmax">' + groups[g].length + share + '</span></div>' +
              '<div class="mr-sm-members">' + pills + '</div></div>';
     }).join('');
     return '<div class="mr-sect">' + cards + '</div>';
@@ -1393,10 +1437,8 @@
   // per-panel sort arrows already use. Reflects the persisted _chgMode on
   // load so a refresh doesn't silently reset back to %.
   function _initChgModeToggle() {
-    // 2026-09-30 -- each radio group (name msrValueMode / ...Acct / ...Sss)
-    // controls only its own panel.
-    var GROUP_OF_NAME = { msrValueMode: 'rail', msrValueModeAcct: 'accounts', msrValueModeSss: 'sss',
-                         msrValueModeAi: 'ai', msrValueModePsEtf: 'psetf', msrValueModeCall: 'call' };
+    // msrValueMode = chip mode for every rail panel; msrValueModeAcct / msrValueModeSss = that panel's view (rows / cards / style).
+    var GROUP_OF_NAME = { msrValueMode: 'rail', msrValueModeAcct: 'accounts', msrValueModeSss: 'sss' };
     var radios = document.querySelectorAll('input[name^="msrValueMode"]');
     if (!radios.length) return;
     radios.forEach(function (r) {
@@ -1404,30 +1446,11 @@
       r.checked = (r.value === _modes[g]);
       r.addEventListener('change', function () {
         if (!r.checked) return;
-        _modes[g] = (_CHG_MODES[r.value] || (g !== 'rail' && (r.value === 'cards' || r.value === 'style'))) ? r.value : 'pct';
+        _modes[g] = r.value;
         try { localStorage.setItem(_MODE_KEYS[g], _modes[g]); } catch (e) {}
         _applyViews();
         if (_lastAreasData) renderRail(_lastAreasData);
       });
-    });
-  }
-
-  // 2026-10-17 -- collapse arrows for the PS & ETF and CALL panels (own localStorage key each; same arrow convention as the others).
-  function _wirePanelToggle(btnId, bodyId, key, title) {
-    var btn = document.getElementById(btnId), body = document.getElementById(bodyId);
-    if (!btn || !body) return;
-    function apply(c) {
-      body.style.display = c ? 'none' : '';
-      btn.innerHTML = c ? '&#9652;' : '&#9662;';
-      btn.setAttribute('aria-label', (c ? 'Expand ' : 'Collapse ') + title + ' panel');
-    }
-    var c0 = false;
-    try { c0 = localStorage.getItem(key) === '1'; } catch (e) {}
-    apply(c0);
-    btn.addEventListener('click', function () {
-      var c = body.style.display !== 'none';
-      try { localStorage.setItem(key, c ? '1' : '0'); } catch (e) {}
-      apply(c);
     });
   }
 

@@ -119,7 +119,9 @@
         api.showData(el, api.build(row));
         api.loadNotes(sym);
       } else {
-        api.notes(el, sym, row.company_name);
+        // showNotesPop is async (fetches the notes, then re-shows the popup): if the pointer has left by then, hide it again.
+        var pr = api.notes(el, sym, row.company_name);
+        if (pr && pr.then) pr.then(function () { if (hoverEl !== el) { try { api.hide(); } catch (e) { /* ignore */ } } });
       }
     } catch (e) { console.warn('popup failed for', sym, e); }
   }

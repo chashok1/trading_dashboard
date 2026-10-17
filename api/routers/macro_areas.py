@@ -600,6 +600,16 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         except Exception:
             ps_etf_cfg, call_cfg = [], []
 
+    # Total held per symbol across ALL accounts (the rails' Hld radio; the Accounts panel itself shows the per-account amount).
+    held_total_map: dict[str, float] = {}
+    for (_sn, _sym), _mv in holdings_mv.items():
+        held_total_map[_sym] = held_total_map.get(_sym, 0.0) + (_mv or 0.0)
+    held_acct_map: dict[str, list] = {}   # symbol -> [[account short name, market value], ...] largest first (hover breakdown)
+    for (_sn, _sym), _mv in holdings_mv.items():
+        held_acct_map.setdefault(_sym, []).append([_sn, round(float(_mv or 0.0), 2)])
+    for _l in held_acct_map.values():
+        _l.sort(key=lambda x: -x[1])
+
     # --- Build per-area results ---
     # Group members by area
     from collections import defaultdict
@@ -743,6 +753,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "trend_val": trend_val,
                 "action": act_map.get(sym),
                 "action_code": act_code_map.get(sym),
+                "held_total": held_total_map.get(sym),
+                "held_accounts": held_acct_map.get(sym),
                 "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
                 "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
                 "curve_lrr_pct": (curve_lrr_raw / 10.0) if curve_lrr_raw is not None else None,

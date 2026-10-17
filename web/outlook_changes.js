@@ -112,6 +112,11 @@
       }
       wrap.appendChild(grp('rfOutlook', [['all', 'All'], ['bull', 'Bullish'], ['bear', 'Bearish'], ['neu', 'Neutral']], 'ol'));
       wrap.appendChild(grp('rfAction', [['all', 'All'], ['buy', 'Buy'], ['sell', 'Sell'], ['hold', 'Hold']], 'act'));
+      // The chip-mode radios (% $ Price Act Hld, owned by macro_areas.js) live in this global area too, after the two filter groups: move the existing node
+      // (its listeners come with it).
+      var modeR = document.querySelector('input[name="msrValueMode"]');
+      var modeBox = modeR && modeR.closest('.msr-mode-toggle');
+      if (modeBox) wrap.appendChild(modeBox);
       hdr.classList.add('has-oc-global');
       hdr.appendChild(wrap);
     }
