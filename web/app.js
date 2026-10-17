@@ -1143,11 +1143,16 @@ async function loadRegimeBand() {
     // "(Q3)40%", now "(Q3) 40%" again) -- user: "add space between ) and
     // percentage". Month separator changed from " . " to a plain " " (dot
     // dropped) -- user: "remove '. ' (dot and space)".
+    // 2026-10-17 -- the line is now a row of small quad boxes (same look as the
+    // big US Quarterly/Monthly/Global cards above it, see .sq in styles.css).
+    const sqBox = (cls, quad, lbl, val, title) =>
+      `<div class="sq${quad != null ? ' q' + quad : ''} ${cls}" data-pop-title="${title}" data-pop-quad="${quad ?? ''}">`
+      + `<span class="sq-lbl">${lbl}</span><span class="sq-val">${val}</span></div>`;
     const months = (windowData.months || [])
-      .map((m, i) => `<span class="month-entry" data-month-idx="${i}">${_regimeMonAbbr(m.m)} `
-        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> `
-        + `<span style="font-size:9px;">${Math.round((m.w || 0) * 100)}%</span></span>`)
-      .join(' ');
+      .map(m => sqBox('sq-mon', m.quad, _regimeMonAbbr(m.m),
+        `Qd${m.quad ?? "?"} <small>${Math.round((m.w || 0) * 100)}%</small>`,
+        `${String(m.m).slice(5)} — Quad ${m.quad}`))
+      .join('');
     // Qtr/Next-Qtr entry -- right-justified to the card's own right edge
     // (not just trailing inline after the months) via .regime-line's flex
     // layout below. User request: "right justify quarter quad to the grid".
@@ -1161,14 +1166,12 @@ async function loadRegimeBand() {
     // changed from a bare "." to a single space -- user: "replace . with
     // space between the quarters" -- final shape "Qtr (Q4) N (Q2)".
     const qtrPart = windowData.qtr_quad != null
-      ? `<span class="qtr-cur-part">Qtr <span style="color:${_quadColor('Q' + windowData.qtr_quad)};font-weight:600;">(Q${windowData.qtr_quad})</span></span>`
+      ? sqBox('sq-qtr', windowData.qtr_quad, 'Qtr', `Qd${windowData.qtr_quad}`, `${windowData.qtr_label || 'Qtr'} — Quad ${windowData.qtr_quad}`)
       : '';
     const nextQtrPart = windowData.next_qtr_quad != null
-      ? `<span class="qtr-next-part">N <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
+      ? sqBox('sq-qtr', windowData.next_qtr_quad, 'Next', `Qd${windowData.next_qtr_quad}`, `${windowData.next_qtr_label || 'Next'} — Quad ${windowData.next_qtr_quad}`)
       : '';
-    const qtrEntry = (qtrPart || nextQtrPart)
-      ? `<span class="qtr-entry">${qtrPart}${qtrPart && nextQtrPart ? ' ' : ''}${nextQtrPart}</span>`
-      : '';
+    const qtrEntry = qtrPart + nextQtrPart;
     // 2026-08-08 -- split into 3 flex zones per user request: "remove the .
     // after 60d Win(Q1) and left align that text to the grid. monthly
     // quads -> align to center". Win-label pinned left (flex:0 0 auto),
@@ -1176,67 +1179,22 @@ async function loadRegimeBand() {
     // center), Qtr pinned right (unchanged) -- was previously one big
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
-    const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
+    const winLabel = sqBox('sq-win', windowData.dominant_quad, `${windowData.h ?? 60}d`, `Qd${windowData.dominant_quad ?? "?"}`, dominant);
     opexBody.innerHTML = _opexLineHtml(calRows, calTypes);
     earningsBody.innerHTML = _earningsLineHtml(earningsRows);
     regimeLineBody.innerHTML = `<div class="regime-line" data-quadbandpop="1">
-      ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
+      ${winLabel}${months}${qtrEntry}
     </div>`;
     const line = regimeLineBody.querySelector('.regime-line');
     if (line) {
-      // Line-level fallback: hovering the "60d (Q1)" win-label itself (not
-      // inside a specific month/Qtr entry) shows the WINDOW'S OWN dominant
-      // quad's factors. 2026-08-23 bug fix -- this used to pass the top-
-      // level factors.bull/bear arrays, but those come from the API's
-      // *current calendar month*'s effective quad (get_quad_band_factors'
-      // cur_month), not windowData.dominant_quad -- so whenever the 60d
-      // window's dominant quad differed from the current month's own quad,
-      // the win-label's popover showed the wrong quad's factors while still
-      // labelled "Quad 1" (or whatever the window's quad was). Every other
-      // Q-label on this line (months, Qtr, Next Qtr) already looks its own
-      // factors up correctly via _bullBearForQuadNum -- this makes the win-
-      // label consistent with them. User: "popover for Q1 shows different
-      // values at two different places".
-      const { bull: winBull, bear: winBear } = _bullBearForQuadNum(allFactors, windowData.dominant_quad);
-      line.addEventListener('mouseover', () => _showQuadPop(line, dominant, winBull, winBear));
-      line.addEventListener('mouseout', e => {
-        if (e.relatedTarget && e.relatedTarget.closest('.regime-line')) return;
-        _hideQuadPop();
+      // Each box shows Bull/Bear factors for ITS OWN quad.
+      line.querySelectorAll('.sq').forEach(el => {
+        const q = Number(el.dataset.popQuad);
+        if (!q) return;
+        const { bull, bear } = _bullBearForQuadNum(allFactors, q);
+        el.addEventListener('mouseover', () => _showQuadPop(el, el.dataset.popTitle, bull, bear));
+        el.addEventListener('mouseout', () => _hideQuadPop());
       });
-      // Each month entry shows Bull/Bear factors for ITS OWN quad (not the
-      // blended dominant one) -- stopPropagation so the line-level listener
-      // above doesn't override it with the generic version.
-      line.querySelectorAll('.month-entry').forEach(el => {
-        const idx = Number(el.dataset.monthIdx);
-        const mo = (windowData.months || [])[idx];
-        if (!mo || mo.quad == null) return;
-        const { bull, bear } = _bullBearForQuadNum(allFactors, mo.quad);
-        el.addEventListener('mouseover', e => {
-          e.stopPropagation();
-          _showQuadPop(el, `${String(mo.m).slice(5)} — Quad ${mo.quad}`, bull, bear);
-        });
-      });
-      // Qtr entry -- same treatment, using the current quarter's own quad.
-      // 2026-08-14 -- selector updated: qtrPart/nextQtrPart are now two
-      // inner sub-spans of ONE .qtr-entry (was two separate .qtr-entry
-      // flex children) -- see qtrEntry's own comment above for why.
-      const qtrEl = line.querySelector('.qtr-cur-part');
-      if (qtrEl && windowData.qtr_quad != null) {
-        const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.qtr_quad);
-        qtrEl.addEventListener('mouseover', e => {
-          e.stopPropagation();
-          _showQuadPop(qtrEl, `${windowData.qtr_label || 'Qtr'} — Quad ${windowData.qtr_quad}`, bull, bear);
-        });
-      }
-      // Next Qtr entry -- same treatment, using the upcoming quarter's quad.
-      const nextQtrEl = line.querySelector('.qtr-next-part');
-      if (nextQtrEl && windowData.next_qtr_quad != null) {
-        const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.next_qtr_quad);
-        nextQtrEl.addEventListener('mouseover', e => {
-          e.stopPropagation();
-          _showQuadPop(nextQtrEl, `${windowData.next_qtr_label || 'Next'} — Quad ${windowData.next_qtr_quad}`, bull, bear);
-        });
-      }
     }
   } catch (e) {
     console.error('regime band failed:', e);

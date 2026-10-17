@@ -413,16 +413,25 @@
           if (msr.gamma_throttle != null) bodyParts.push('Gamma Throttle: ' + msr.gamma_throttle.toFixed(2));
           if (msr.rvol_10day != null) bodyParts.push('Realized Vol: ' + msr.rvol_10day.toFixed(2));
           var idx = _richTip(_popBox(titleHtml, bodyParts.join('\n')));
+          // 2026-10-17 -- Quad-card style box (1px border, thicker left edge, 4px radius) around the
+          // image, green when Gamma Throttle >= 0 else red. box-sizing:border-box keeps the
+          // panel's outer width/height unchanged (the border eats into the image, not the layout).
+          var gtc = msr.gamma_throttle == null ? null : (msr.gamma_throttle >= 0 ? '#1d9e75' : '#d4537e');
+          var gtBox = gtc ? 'border:1px solid ' + gtc + '; border-left:4px solid ' + gtc + '; border-radius:4px;' : 'border-radius:4px;';
           // width:100% (not max-width/auto) -- deliberately stretches to
           // fill the section's full content width, matching its
           // .cockpit-band siblings (Risk Dial etc.) in the same column.
           // height:auto preserves the image's own aspect ratio, so it just
           // scales proportionally rather than being cropped or distorted.
-          return '<img src="' + esc(msr.image_url) + '" ' +
-            'style="width:100%; height:auto; border-radius:4px; display:block; cursor:zoom-in;" ' +
+          // 2026-10-17 -- the report image has its own baked-in outer box; the img is
+          // enlarged by 4px per side inside an overflow:hidden wrapper so that inner box is
+          // cropped away and only the colored gamma border shows (wrapper size unchanged).
+          return '<div style="overflow:hidden; box-sizing:border-box; ' + gtBox + '">' +
+            '<img src="' + esc(msr.image_url) + '" ' +
+            'style="width:calc(100% + 8px); max-width:none; margin:-4px; height:auto; display:block; cursor:zoom-in;" ' +
             'data-hetip="' + idx + '" ' +
             'onclick="window._heShowImagePopup(\'' + esc(msr.image_url) + '\')" ' +
-            'onerror="this.style.display=\'none\'">';
+            'onerror="this.parentNode.style.display=\'none\'"></div>';
         })()
       : '<span style="color:#bbb; font-size:10px;">none</span>';
     var msrLabel = (msr && msr.received_at) ? fmtRecv(msr.received_at)

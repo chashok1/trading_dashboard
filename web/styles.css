@@ -3097,24 +3097,16 @@ tr.indicator-soon, tr.indicator-soon td { background: #eab308; color: #1e293b; f
    whole width of the #regimeStrip flex-wrap row -- #regimeLineBody isn't
    a flex container, so it'd be a no-op, this card's own width already
    fills naturally). */
-#regimeLineBody .regime-line {
-  font-size: 10px; cursor: help;
-  display: flex; align-items: baseline; gap: 10px;
-  /* 2026-09-30, user-directed: boxed like the GLD/"Lists vs Quad model" cards
-     (white, 1px border + 3px left edge, 6px radius, same 5px 10px padding), no
-     dotted line below. */
-  background: #fff; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--border, #e5e5e2);
-  border-radius: 6px; padding: 2px 6px;
-}
-.regime-line .regime-win-label { flex: 0 0 auto; white-space: nowrap; text-align: left; }
-/* 2026-08-14 -- white-space:nowrap + text-overflow:ellipsis added -- the
-   month list could wrap onto a 2nd line when the column was narrow (or once
-   the Next-Qtr entry was added), making the whole Regime row 2 lines tall.
-   Truncates with "…" instead now, keeping the row (and the pinned-right
-   Qtr/N entries, which never shrink) on one line always. User: "change the
-   format so Regime text fits in one line." */
-.regime-line .regime-window-text { flex: 1 1 auto; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.regime-line .qtr-entry { flex: 0 0 auto; white-space: nowrap; }
+/* 2026-10-17 -- 60d / months / Qtr / Next as small quad boxes (same look as the big #quadCardsPanel .qc cards), right under them. */
+#quadSmallPanel { padding: 4px; }
+#regimeLineBody .regime-line { display: flex; flex-wrap: wrap; gap: 4px; }
+.regime-line .sq { flex: 1 1 0; min-width: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 4px; cursor: help; white-space: nowrap;
+  border: 1px solid var(--border); border-left: 3px solid var(--text-3, #9ca3af); border-radius: 4px; padding: 1px 5px; background: var(--card-bg); }
+.regime-line .sq-lbl { font-size: 9px; color: #374151; }
+.regime-line .sq-val { font-size: 10px; font-weight: 700; }
+.regime-line .sq-val small { font-size: 7px; font-weight: 500; color: #374151; }
+.regime-line .sq.q1 { border-color: var(--quad1); } .regime-line .sq.q2 { border-color: var(--quad2); }
+.regime-line .sq.q3 { border-color: var(--quad3); } .regime-line .sq.q4 { border-color: var(--quad4); }
 
 /* TASK_140 -- Sector/Asset class/Style scorecards, each its own full-width
    stacked band (replaces the old tabbed #factorScorecardBand + fs-row/
