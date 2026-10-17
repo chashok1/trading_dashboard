@@ -2407,3 +2407,204 @@ function _actionTagHtml(r, noOver) {
   }
   return '';
 }
+
+// Per-row decoration shared by the Actionable grid and the Dashboard popups (moved out of loadActionable, unchanged):
+// asset class, RR position and the AMT$ figure keyed off the resolved Final Call.
+function prepareActionableRow(r) {
+  r._assetClass = _normAssetClass(r.real_asset_class);
+  // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
+  // already computes for the bar's tick position, hoisted here so the RR
+  // header can sort by it (0 = at LRR, 100 = at TRR) without duplicating
+  // the formula at render time.
+  {
+    const lrrN = r.lrr != null ? Number(r.lrr) : null;
+    const trrN = r.trr != null ? Number(r.trr) : null;
+    const lastN = r.last_price != null ? Number(r.last_price) : null;
+    r._rrPos = (lrrN != null && trrN != null && lastN != null && trrN !== lrrN)
+      ? Math.round(Math.max(0, Math.min(100, (lastN - lrrN) / (trrN - lrrN) * 100)))
+      : null;
+  }
+  const act = (r.consolidated_action || '').toUpperCase();
+  // 2026-09-12: AMT$ now keys off the RESOLVED Final Call (r.final_code)
+  // when the server has computed one, not the raw Source action. A
+  // Source-vs-Technical flip or veto -- e.g. Source=INCREASE but
+  // Technical is in a sell zone (badge flips to SS), or a buy/reduce
+  // vetoed down to HOLD -- used to leave AMT$ showing the raw Source's
+  // dollar figure: a buy-direction $ under a SELL badge, or a nonzero $
+  // under a HOLD badge. See docs/actionable_logic.md. Rows without a
+  // final_code yet (pre-migration fallback) keep the original
+  // consolidated_action-based math below, unchanged.
+  const finalCode = (r.final_code || '').toUpperCase();
+  if (finalCode) {
+    if (finalCode === 'SA') {
+      r._amt = r.current_position_dollar;
+    } else if (finalCode === 'SS' || finalCode === 'STM') {
+      const pos = Number(r.current_position_dollar) || 0;
+      const tgt = Number(r.suggested_target_dollar) || 0;
+      r._amt = pos > tgt ? pos - tgt : 0;
+    } else if (finalCode === 'BMN' && act === 'ADD' && r.target_min_dollar != null) {
+      const pos = Number(r.current_position_dollar) || 0;
+      const min = Number(r.target_min_dollar);
+      r._amt = pos < min ? min - pos : 0;
+    } else if (finalCode === 'BM' || finalCode === 'BS' || finalCode === 'BMN') {
+      const pos = Number(r.current_position_dollar) || 0;
+      const tgt = Number(r.suggested_target_dollar) || 0;
+      r._amt = tgt > pos ? tgt - pos : 0;
+    } else {
+      // HOLD / N / NONE -- no suggested move; show the current holding
+      // (0 if not held), never a leftover buy/sell delta from a vetoed
+      // or flipped action.
+      r._amt = Number(r.current_position_dollar) || 0;
+    }
+  } else if (act === 'REMOVE') {
+    r._amt = r.current_position_dollar;
+  } else if (act === 'ADD' && r.target_min_dollar != null) {
+    const pos = Number(r.current_position_dollar) || 0;
+    const min = Number(r.target_min_dollar);
+    r._amt = pos < min ? min - pos : 0;
+  } else if (act === 'INCREASE') {
+    const pos = Number(r.current_position_dollar) || 0;
+    const tgt = Number(r.suggested_target_dollar) || 0;
+    r._amt = tgt > pos ? tgt - pos : 0;
+  } else if (act === 'REDUCE') {
+    const pos = Number(r.current_position_dollar) || 0;
+    const tgt = Number(r.suggested_target_dollar) || 0;
+    r._amt = pos > tgt ? pos - tgt : 0;
+  } else {
+    r._amt = r.suggested_target_dollar;
+  }
+}
+
+// Normalize real_asset_class into a small set of display/filter buckets --
+// used for r._assetClass (Asset Class filter chips/dropdown), independent
+// of the Portfolio Mix pies this was originally extracted alongside.
+// 2026-09-01 BUGFIX: got left behind in web/portfolio_mix.js when that
+// script's tag was removed from actionable.html (side panel removal,
+// "remove the side panel from actionable screen altogether") -- broke the
+// whole page load ("Failed to load actionable: _normAssetClass is not
+// defined") since this is called from the main row-normalization loop
+// below, not from anything Portfolio-Mix-specific. Restored here directly
+// rather than re-adding the whole portfolio_mix.js script tag just for
+// these two small definitions -- same "duplicate small helpers per page"
+// convention this file's own _quadColor (vs. app.js's copy) already uses.
+const _ASSET_CLASS_ALIAS = {
+  'domestic equities': 'Equities', 'global equities': 'Equities',
+  'international equities': 'Equities', 'emerging markets equities': 'Equities',
+  'equities': 'Equities',
+  'us fixed income': 'Fixed Income', 'domestic fixed income': 'Fixed Income',
+  'fixed income': 'Fixed Income',
+  'foreign currencies': 'FX', 'foreign currency': 'FX', 'fx': 'FX',
+  'commodities': 'Commodities',
+  'crypto': 'Crypto',
+  'gold': 'Gold',
+  'cash': 'Cash',
+};
+
+function _normAssetClass(raw) {
+  if (!raw) return 'Unclassified';
+  const key = String(raw).trim().toLowerCase();
+  return _ASSET_CLASS_ALIAS[key] || raw;
+}
+
+// True when a row should be parked in the Watchlist band instead of Tier 1.
+// Held rows are never gated — this only governs *initiating* new positions.
+// TASK_122: Technical decides WHEN (entry timing), Sources decide WHAT
+// (conviction) — a source listing alone (however fresh) never promotes an
+// unheld buy out of the gate. The former "new arrival" bypass (any row whose
+// winning source's snapshot_date == the row's own as_of_date skipped the
+// gate once) leaked daily-refreshing sources like RR/CALL, which re-stamp
+// snapshot_date every day, permanently out of the Watchlist band even with
+// blank Technical (confirmed case: FAB). Removed — see _isNewSnapshot() for
+// the display-only "NEW" pill that replaces it inside the band.
+// 2026-09-19 -- checks row.consolidated_action (the raw Sources-side call)
+// instead of _chipAction(row) (the reconciled Final Call). _chipAction only
+// reports 'ADD' when finalCall's code is BMN, which itself already requires
+// Technical to be in a buy state (tech_is_buy/tech_is_buy_min in
+// _compute_final_call) -- so "reconciled action is ADD" and "Technical NOT
+// yet confirming" could never both be true at once, and this gate silently
+// matched zero rows on every date. User: "actionable screen -> WL -> ...
+// why is not displaying anything?" Checking the Sources call directly (does
+// a source want to buy this unheld symbol) against Technical separately is
+// what this gate was actually meant to do.
+function _buyNoiseGated(row) {
+  if (row.held_today) return false;
+  if ((row.consolidated_action || '').toUpperCase() !== 'ADD') return false;
+  const tech = (row.rr_action || '').toUpperCase();
+  return _ENTRY_RIPE_TECH.indexOf(tech) === -1;
+}
+
+// TASK_122: display-only "NEW" pill inside the Watchlist band — never used
+// to gate/promote a row. True when the winning source's underlying
+// snapshot_date equals the current anchor date (the source data just landed
+// for the date being viewed).
+function _isNewSnapshot(row) {
+  const snap = _winningSnapshot(row);
+  const anchor = state.anchorDate || state.date;
+  return !!snap && !!anchor && snap === anchor;
+}
+
+// 2026-10-01, user: "have actioned today -- for both Buy or Sell -- and they move to
+// the bottom" + "display Bought 10/1 for all SELL actions". Display only; never
+// changes the Final Call.
+//  * Actioned today = you bought or sold the symbol on the screen's date (Schwab/
+//    Fidelity files or a share-count change; server-side api/_recent_buys.py) OR
+//    you marked the row Done. Such a row is tagged ("Bought 10/1" / "Sold 10/1" /
+//    "Traded 10/1" / "Done 10/1"), dimmed outside Trade view, and in Trade view parked
+//    in a collapsed "Actioned today (n)" band at the bottom. Over-max rows keep an
+//    "over max $X" note. Never applies to SELL ALL or a breached stop.
+//  * Every sell-signal row also shows a quiet gray "Bought <date>" tag when you
+//    bought the symbol in the last 60 days (context only; no parking).
+// Symbols the user moved back to the main list for a given session day; kept in
+// localStorage so a refresh doesn't re-park them (resets naturally on the next day).
+function _unparkedSet(day) {
+  if (!state.unparkedSyms || state.unparkedDay !== day) {
+    state.unparkedDay = day;
+    try { state.unparkedSyms = new Set(JSON.parse(localStorage.getItem('act_unparked_' + day) || '[]')); }
+    catch (e) { state.unparkedSyms = new Set(); }
+  }
+  return state.unparkedSyms;
+}
+
+function _actionedInfo(r) {
+  const code = (r.final_code || '').toUpperCase();
+  // 2026-10-02: an explicit Done click still counts on SELL ALL / breached-stop rows
+  // (the exclusion is only for auto-detected trades, not the user's own decision).
+  if ((r.stop_breached || code === 'SA') && !r.done_today) return null;
+  // "Today" = the current market session (server: r.session_day), not the screen/anchor
+  // date, which lags during the day. Null on older dates picked in the date picker.
+  const day = r.session_day;
+  if (!day) return null;
+  if (_unparkedSet(day).has(r.tos_symbol)) return null;   // user moved it back to the main list
+  const b = r.last_bought_date === day;
+  const sd = r.last_sold_date === day;
+  const done = !!r.done_today;
+  if (!b && !sd && !done) return null;
+  const mx = Number(r.target_max_dollar), cur = Number(r.current_position_dollar);
+  const over = (r.held_today && mx > 0 && cur > mx) ? cur - mx : 0;
+  // Exact wording from the server (api/_recent_buys.py::classify_today): new position vs
+  // adding, sold some vs sold all. Falls back to the plain buy/sell/done wording.
+  const KIND = { bought_new: 'Bought', bought_more: 'Bought more', sold_some: 'Sold some',
+                 sold_all: 'Sold all', traded: 'Traded' };
+  const label = KIND[r.trade_kind_today] || ((b && sd) ? 'Traded' : b ? 'Bought' : sd ? 'Sold' : 'Done');
+  return { label, date: day, over, doneOnly: !b && !sd, bq: r.bought_qty_today, sq: r.sold_qty_today };
+}
+
+// Find the winning source's entry inside the source_actions JSONB.
+// `sourceActions` may be the parsed array or a JSON string.
+function _winningSourceEntry(row) {
+  let sa = row.source_actions;
+  if (typeof sa === 'string') {
+    try { sa = JSON.parse(sa); } catch (_) { sa = []; }
+  }
+  if (!Array.isArray(sa) || !sa.length) return null;
+  const want = (row.winning_source || '').toString();
+  return sa.find(s => (s.source || s.source_code || '') === want) || sa[0];
+}
+
+// Snapshot date of the winning source's underlying record (ISO string).
+function _winningSnapshot(row) {
+  const e = _winningSourceEntry(row);
+  return (e && e.snapshot_date) ? e.snapshot_date : null;
+}
+
+const _TECH_BUY  = new Set(['BM', 'BS', 'BMN', 'BR']), _TECH_SELL = new Set(['SA', 'STM', 'SS', 'SO']);

@@ -6,6 +6,7 @@
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/styles.css?v=20261016h">
+  <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
        with the rest of the side panel ("remove the side panel from
@@ -465,361 +466,98 @@
       white-space: nowrap;
     }
     .src-cell, [data-srcpop] { cursor: help; }
-    .source-pop {
-      position: fixed; z-index: 1000; display: none;
-      background: #fff;
-      color: #1e293b;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-      padding: 10px 14px; font-size: 11px; line-height: 1.6;
-      /* 2026-08-29: 600px -> 700px -- .actpop (the Action popup's own
-         content div) grew to 662px wide over several width bumps, but this
-         SHARED popover shell (#sourcePop, reused for Vol/IV/PVV/scores
-         popups too, not just the Action popup) still capped out at 600px,
-         so its background/border/shadow box clipped below .actpop's actual
-         width instead of growing with it. 700 covers .actpop's 662px +
-         this element's own 14px*2 side padding (690px) with a little
-         headroom. */
-      min-width: 150px; max-width: 960px;  /* 2026-10-02: 700 -> 960 for the wider .actpop */
-      pointer-events: none;
-    }
-    .source-pop .sp-title { font-weight: 700; color: #0f172a; margin-bottom: 6px;
-                             border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
-    .source-pop table { border-collapse: collapse; width: 100%; }
-    .source-pop td { padding: 1px 0; vertical-align: top; }
-    .source-pop td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
-    .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
-    .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
-                          text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
+    
+    
+    
+    
+    
+    
+    
 
-    /* Action popup V2 — driver-first redesign of _buildActionPopHtml, now the
-       default (rollback escape hatch: localStorage.actionPopV2='0'). See
-       _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
-       (#sourcePop) and the app's real --act-* color tokens (styles.css
-       :root) rather than inventing a new palette. */
-    .actpop { width: 828px; padding: 6px; }  /* (2026-10-02: 662px -> 920px, header grew) 460px + 20% + 20% (2026-08-29). 2026-09-02: briefly 780px (+118px)
-      to fit the new %CHG control group, but that stretched every OTHER
-      body section too -- .actpop-rr-info/.actpop-trad/.actpop-tug etc. all
-      size relative to .actpop's own width, so widening the popup widened
-      them right along with it (user: "controls in the window down below
-      are still extended... they need to go back"). Back to the original
-      662px; the header row's 4 control groups (below) fit within it on a
-      tight but fixed gap instead. */
-    /* .actpop-sym (symbol name + Final Call badge + amount/earnings) on the
-       left; .actpop-ctrl-row -- 4 control groups (Supp/Opp tally, %CHG
-       widget, Trade/Trend boxes, RR bar) -- fills the rest.
-       2026-09-02: back to plain flex (was CSS Grid 2026-08-30 through
-       2026-09-02) -- the grid's whole reason was keeping a SECOND row's
-       middle column aligned under this row's Td/Tn column, but that
-       second-row alignment need is long gone (.actpop-rr-row is plain flex
-       -- see its own comment) and doesn't apply to the new 4-group layout
-       either.
-       2026-09-02 follow-up: tried justify-content:space-between (stretched
-       past .actpop's edge on a wide row, see above), then a fixed
-       gap:22px (still too close to the popup's 662px budget once the
-       width revert above put the squeeze back on). Settled on: the first
-       3 groups (Supp/Opp, %CHG, Trade/Trend) sit close together on a
-       small fixed gap; RR is pushed to the row's right edge via its own
-       margin-left:auto (below) instead of participating in that same
-       gap -- user: "RR controls need to be moved to the right (only
-       those controls in the header)". flex:1 1 auto so the row still
-       grows to fill .actpop-head's remaining width -- margin-left:auto
-       has no free space to consume otherwise. */
-    .actpop-head { display: flex; align-items: center; column-gap: 14px; }
-    /* 2026-10-03: the divider moved from .actpop-head to .actpop-top so the warning/notes lines sit above it */
-    .actpop-top { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    /* gap 10px -> 20px, 2026-09-02, user: "2) double it" (the %CHG<->Trade/
-       Trend group spacing) -- also the base component of the Trade/
-       Trend<->RR spacing (.actpop-rr's own extra margin-left below adds
-       to this SAME value), so its own margin-left doubled too to keep
-       item 3 doubled independently -- see .actpop-rr's own comment. */
-    .actpop-ctrl-row { display: flex; align-items: center; gap: 18px; flex: 1 1 auto; min-width: 0; }  /* gap 20 -> 12 -> 18 (2026-10-02) */
-    /* Wraps the %CHG group only (2026-09-02, user: "anchor %CHG controls &
-       td/tn to the RR controls and leave the same gap as between %CHG,Tn/
-       Td control groups") -- margin-left:auto claims all of
-       .actpop-ctrl-row's leftover space for itself, pushing this wrapper
-       (and everything after it: Trade/Trend, RR, both still on the row's
-       own gap -- auto margins only add space BEFORE the item they're
-       set on) into one tight cluster flush against the popup's right edge.
-       Supp/Opp is left behind on the near side of that auto margin, next
-       to the symbol block instead. */
-    .actpop-ctrl-anchor-rr { margin-left: auto; }
-    .actpop-ctrl-c { align-self: flex-start; margin-top: 38px; height: 61px; display: flex; align-items: center; }  /* 2026-10-02: see styles.css */
-    .actpop-sym { min-width:0; flex: 0 0 auto; align-self:flex-start; font-size:14px; font-weight:800; color:#0f172a; }  /* 2026-10-02: pinned to the top of the header (was centered against the taller right-hand controls) */
-    /* 2026-08-29: held amount/earnings moved to their own line below the
-       symbol (was an inline span next to it) -- block instead of inline. */
-    .actpop-sym .actpop-co { display:block; font-weight:400; color:#94a3b8; font-size:10px; margin:2px 0 0; }
-    /* Trade/Trend header boxes -- one of .actpop-ctrl-row's 4 groups (JS
-       order decides which box, Td or Tn, sits on top -- see
-       _actpopTdTnHtml). Boxes shortened (padding 2px->0, fixed 14px
-       line-height) per user -- were too tall next to the RR controls.
-       align-self:flex-start keeps it sharing the same coordinate-frame top
-       as .actpop-rr (both flex items of .actpop-ctrl-row) instead of
-       .actpop-ctrl-row's own align-items:center, which would otherwise
-       center it -- see .actpop-rr's own comment for the math this and its
-       margin-top:8 feed into.
-       margin-top/height are computed (not eyeballed) from .actpop-rr's own
-       geometry so the top edge lines up with the %-tag pill and the bottom
-       edge lines up with the LRR/TRR label line:
-         .actpop-rr margin-top 8 + .actpop-rr-tag top:-18 = -10 (tag top)
-         .actpop-rr margin-top 8 + track height 7 + labels margin-top 3
-           + ~11px label line-height = 29 (labels bottom)
-         => margin-top:-10px, height:39px (29 - -10).
-       2026-08-29 follow-up: +10px added to both this and .actpop-rr's own
-       margin-top (below) -- user wants the whole group moved DOWN so its
-       top (the %-tag, previously at y:-10 relative to .actpop-head's own
-       top edge -- i.e. poking 10px above it) lines up with the top of the
-       Final Call badge (.actpop-call, "BUY MORE"/"BUY TO MIN" etc., which
-       sits at roughly y:0 on the symbol line) instead. Estimated from the
-       CSS geometry, not visually confirmed (no browser access this
-       session) -- flag it if it needs a further nudge. */
-    .actpop-tdtn { display:flex; flex-direction:column; align-items:center; justify-content:space-between;
-      align-self:center; margin-top:0; height:39px; }  /* 2026-10-02: centered with the other controls */
-    .actpop-tdtn-box { font-size:10px; font-weight:700; line-height:14px; color:#334155; background:#f1f5f9;
-      border:1px solid #e2e8f0; border-radius:5px; padding:0 7px; white-space:nowrap; }
-    /* Green/red per box (2026-08-29) -- last price above that line reads
-       bullish (green), below reads bearish (red), same above/below-the-line
-       convention _isTradeModeQualifyingBuy's trade_line_value check and the
-       stop-breach banner already use. Neutral gray (no class) when
-       last_price is missing. */
-    .actpop-tdtn-box.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); border-color: transparent; }
-    .actpop-tdtn-box.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); border-color: transparent; }
-    /* Stop-proximity SD badge (2026-08-29) -- separate small button next to
-       each Td/Tn box (_tdtnSdBadge), not merged into the box's own text.
-       Same red/amber/green thresholds as the banner it replaced; color is
-       set inline per badge since it's data-driven, this rule just carries
-       the shared box shape. 2026-08-29 follow-up: fixed width (was
-       content-width, shifting box size per row) sized to fit the longest
-       possible reading, "99.9σ" (2-digit whole part, 1 decimal -- was 2
-       decimals/"99.89σ", per user -- the sigma glyph) at the new smaller
-       8px font -- text-align:center keeps shorter readings like "0.2σ"
-       centered in the same box instead of left-hugging it. Font/line-
-       height/width all shrunk together (was 9px/14px/content-width) per
-       user -- was too big next to the shrunk Td/Tn boxes.
-       2026-08-30: 24px -> 28px -- _lineProximitySd went back to signed
-       (below-the-line readings show as negative, "-1.2σ" etc.), so the
-       worst case is now "-99.9σ" (one char longer than "99.9σ"). */
-    .actpop-tdtn-row { display:flex; align-items:center; gap:4px; }
-    .actpop-tdtn-sd { font-size:8px; font-weight:700; line-height:12px; width:28px;
-      text-align:center; box-sizing:border-box; border:1px solid; border-radius:5px;
-      background:#fff; white-space:nowrap; overflow:hidden; }
-    .actpop-lv { display:inline-flex; align-items:center; gap:4px; }
-    /* 2026-08-20: weight 800->400 on both (Src/Tech/Macro labels+values);
-       background removed from the LABEL only ("Src"/"Tech"/"Macro") -- the
-       VALUE (the actual action code, e.g. "SA"/"BS") keeps its background,
-       user corrected an earlier overreach that stripped both. */
-    .actpop-lbl { font-size:8px; font-weight:400; letter-spacing:.03em; text-transform:uppercase;
-      color:#94a3b8; padding:2px 5px; }
-    .actpop-val { font-size:10px; font-weight:400; padding:2px 6px; border-radius:5px;
-      background:#f1f5f9; color:#475569; }
-    .actpop-val.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
-    .actpop-val.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
-    .actpop-val.disabled { background:#f1f5f9; color:#cbd5e1; }
-    .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
-    .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
-    .actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
-    .actpop-call.neutral { color: var(--act-neutral); background: var(--act-neutral-bg); }
-    .actpop-trad-col { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
-    .actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
-    .actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
-    /* height+centering matches .actpop-mgroup-wrap below -- see the shared
-       comment there for why (centers the score against the bar charts).
-       2026-08-20: 11px -> 16px, synced to the bar charts' own increase
-       (below) so the two stay centered against each other. */
-    .actpop-trad-score { font-size:9px; font-weight:800; height:16px; display:flex; align-items:center; justify-content:center; }
-    .actpop-trad-score.disabled { color:#cbd5e1; }
-    /* gap 2px -> 8px: was reading as glued to the Macro pill above it */
-    .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:8px; }
-    /* Wraps .actpop-mgroup at a fixed height matching .actpop-trad-score's
-       so the bar-chart cluster centers against the Tradability number next
-       to it -- .actpop-mgroup itself keeps align-items:flex-end internally
-       (bars need a common baseline to read as a real chart; centering that
-       directly would make them grow from the middle instead of up). */
-    .actpop-mgroup-wrap { height:16px; display:flex; align-items:center; }
-    .actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
-    /* 2026-08-20: bar width 2px->4px, row height 8px->16px (max bar height
-       is now 16px for the sparkline -- see _actpopMacroBarsHtml) -- were
-       too small to read the color on, per user. */
-    .actpop-mrow { display:flex; align-items:flex-end; gap:2px; cursor:help; height:16px; }
-    .actpop-mrow.member { padding-left:5px; border-left:1px solid #e2e8f0; }
-    .actpop-mbar { display:inline-block; width:4px; }
-    /* 2026-08-20: was var(--act-buy)/var(--act-sell-strong) -- the app's
-       muted badge-pill greens/reds (#3a6a4a/#9e3636), which don't read as
-       clearly "green"/"red" for a bar chart. Matched exactly to the grid's
-       own MACRO column bar colors instead (_stanceColor/sparkline in
-       macroCellHtml) so the popup's bars and the grid's bars are the same
-       color, not two different app palettes for the same signal. */
-    .actpop-mbar.buy { background: #16a34a; }
-    .actpop-mbar.sell { background: #dc2626; }
-    .actpop-mbar.neutral { background: #9ca3af; }
+      
+    
+      
+        
+      
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
-    /* Row below the header: .actpop-rr-icons (Macro, then Tradability,
-       then PVV/CALC) on the left, .actpop-rr-info (Sector ETF / VLM /
-       stop-proximity, stacked) on the right. Small top margin -- just a
-       plain gap under the header's divider line, no %-tag clearance
-       needed here (the RR bar itself lives in .actpop-head, see .actpop-rr
-       below).
-       2026-08-30: briefly went through two rounds of CSS Grid here to keep
-       Tradability aligned under .actpop-head's Td/Tn column (first nested
-       in the header itself, then its own grid column on this row) --
-       reverted to plain flex: Tradability moved back inside .actpop-rr-
-       icons per user request (between Macro and PVV/CALC, see
-       _buildActionPopHtmlV2), so nothing on this row needs to line up with
-       the header's grid columns anymore. */
-    /* 2026-08-21: bottom margin 0 -> 10px. With nothing here, whatever
-       follows (stop-breached banner, driver bullets, Opposing/Supporting)
-       started flush against this row's tallest content -- normally
-       .actpop-rr-info (3 lines) or .actpop-rr-icons' Macro stack (pill +
-       bar chart, ~39px) depending on which has data, but when the info
-       stack is short/empty (missing Sector ETF/VLM/proximity data) and
-       Macro still has its bar chart, that tallest edge sat right on top of
-       the next section with no gap at all -- read as overlapping. */
-    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 10px 0 10px; }
-    /* Tradability icon+score (2026-08-30: back inside .actpop-rr-icons,
-       between Macro and PVV/CALC -- was its own thing off to the side a
-       couple times, see .actpop-rr-row's own comment). Extra 6px margin on
-       both sides, on top of .actpop-rr-icons' own 10px flex gap (16px
-       total each side) -- user asked for "a little more space on both
-       sides" around it specifically, not just the row's normal gap. */
-    .actpop-rr-trad { margin: 0 6px; }
-    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups, and last
-       of the [%CHG, Trade/Trend, RR] cluster the auto margin on
-       .actpop-ctrl-anchor-rr pushes flush against the popup's right edge
-       (2026-09-02, user: "anchor %CHG controls & td/tn to the RR controls
-       ... leave the same gap as between %CHG,Tn/Td control groups" --
-       RR's OWN margin-left:auto, tried first, put a bigger gap before RR
-       than the one between %CHG and Trade/Trend; moving the auto margin
-       to the front of the cluster instead keeps all 3 on the row's
-       normal fixed gap). Explicit width keeps it its original 220px
-       regardless of the row's leftover space. margin-top 8px keeps the
-       %-tag (position:absolute top:-18px above the track) clear of
-       .actpop's own 6px top padding. align-self:flex-start (not
-       .actpop-ctrl-row's own align-items:center) pins it to the same
-       coordinate-frame top as .actpop-tdtn -- see that rule's own comment
-       for the math this and its margin-top:8 feed into. 2026-08-29
-       follow-up: 8px -> 18px -- same +10px group-down shift as
-       .actpop-tdtn, see its comment.
-       2026-09-02 follow-up: extra margin-left:10px (user: "stdev box and
-       text LRR" -> "double the space") -- on top of .actpop-ctrl-row's
-       gap (then 10px) this doubled the sdBadge<->LRR gap to ~20px
-       without touching the shared gap value (stayed 10px between %CHG
-       and Trade/Trend, per the same request's "leave as it is" on that
-       pairing).
-       2026-09-02 follow-up #2: margin-left 10px -> 20px, alongside
-       .actpop-ctrl-row's OWN gap 10px -> 20px (user: "2) double it 3)
-       double it", i.e. double both the %CHG<->Trade/Trend gap AND the
-       sdBadge<->LRR gap independently). Since sdBadge<->LRR =
-       ctrl-row-gap + this margin, and ctrl-row-gap just doubled to 20 on
-       its own, this margin doubling to 20 keeps sdBadge<->LRR at
-       20(gap)+20(margin)=40 -- double ITS OWN prior 20px value, not
-       double-counting the gap's own doubling. */
-    .actpop-rr { width: 150px; flex: 0 0 auto; align-self: center; margin-top: 0; margin-left: 0; }  /* 2026-10-02: 220px/20px margin -> 150px/0 so the header fits the popover */  /* 2026-10-02: centered with the other controls */
-    .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
-    /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
-       Tradability (was two of the four items side by side in
-       .actpop-rr-icons directly). gap 4px -> 7px -> 12px. */
-    .actpop-pvv-calc-col { display:inline-flex; flex-direction:column; gap:12px; }
-    /* Sector ETF / VLM / stop-proximity, stacked top to bottom, right-
-       aligned as a GROUP against the popup's true right edge via
-       margin-left:auto (shrink-to-fit width -- flex-shrink:0, no grow --
-       so the box is only as wide as its content and margin-left:auto
-       pushes that whole narrow box flush right, not spread across the
-       row). 2026-08-21: gap 4px -> 7px -- three lines this close together
-       read as cramped. 2026-08-21: briefly tried flex:1 1 auto (grow to
-       fill the row) so RVOL's space-between would reach the true right
-       edge -- wrong fix, and a regression: growing the box wide pulled
-       Sector ETF/VLM/delta's LEFT-aligned text start away from the right
-       side along with it. Reverted -- margin-left:auto on a shrink-to-fit
-       box already puts its right edge at the row's right edge (= the
-       popup's true edge) with NO grow needed; .actpop-vlm-line's
-       width:100% below just needs to match THIS box's width, which it
-       does automatically via flex-direction:column's default stretch.
-       2026-08-30: tried flex:1 1 auto a SECOND time (while chasing the
-       Tradability-alignment/grid work below) -- same regression again,
-       user: "now they expanded into the middle of the popover. They
-       should not." Reverted for real this time, back to margin-left:auto +
-       max-width:320px exactly as it was originally -- do not retry
-       flex:1 1 auto here a third time. */
-    .actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
-    /* 2026-08-21: justify-content space-between -> flex-end + gap:10px --
-       VLM and RVOL now sit next to each other (grouped, with breathing
-       room between them) at the line's right edge, instead of VLM pinned
-       left / RVOL pinned right with a big gap stretched between them. */
-    .actpop-vlm-line { display:flex; align-items:center; justify-content:flex-end; gap:10px; width:100%; }
-    /* Trad icon and Macro's label pill differ in font-size (11px vs 8px)
-       so top-aligning the columns alone leaves their actual glyphs
-       off-center from each other by a couple px -- pinning them (+ the new
-       PVV action pill between them) to the same fixed height + internal
-       centering makes their true visual centers match, not just box tops. */
-    .actpop-trad-col > .actpop-trad-icon,
-    .actpop-macro-stack > .actpop-lv,
-    .actpop-rr-icons > .actpop-lv,
-    .actpop-pvv-calc-col > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
-    .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
-    .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
-      background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
-    .actpop-rr-tick { position:absolute; top:-4px; width:3px; height:15px; border-radius:2px;
-      background:#0f172a; transform:translateX(-50%); }
-    .actpop-rr-tag { position:absolute; top:-18px; transform:translateX(-50%); font-size:9px;
-      font-weight:800; padding:1px 5px; border-radius:4px; background:#f1f5f9; white-space:nowrap; }
-    .actpop-rr-labels { display:flex; justify-content:space-between; font-size:9px; color:#94a3b8; margin-top:3px; }
+    
+    
+      
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
-    .actpop-drivers { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
-    .actpop-driver { display:flex; align-items:center; gap:6px; border-radius:7px; padding:4px 8px; background:#f8fafc; }
-    .actpop-driver.buy { background: var(--act-buy-bg); }
-    .actpop-driver.sell { background: var(--act-sell-strong-bg); }
-    .actpop-driver .dv-name { font-size:10px; font-weight:700; color:#0f172a; min-width:56px; flex-shrink:0; }
-    .actpop-driver .dv-action { font-size:11px; font-weight:800; flex-shrink:0; }
-    .actpop-driver .dv-action.buy { color: var(--act-buy-strong); }
-    .actpop-driver .dv-action.sell { color: var(--act-sell-strong); }
-    .actpop-driver .dv-note { font-size:9px; color:#64748b; flex:1; opacity:.9; }
+    
+    
+    
+    
+    
+    
+    
+    
+    
     /* Standalone (not scoped to .actpop-driver) -- 2026-08-20: reused as-is
        for the grid Sources column's winning-source indicator
        (_srcReasonsHtml), same "drove it" pill in both places. */
     .dv-tag { font-size:7px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
       background:#0f172a; color:#fff; padding:2px 5px; border-radius:4px; flex-shrink:0; }
-    .actpop-hit { font-size:8px; font-weight:800; padding:1px 4px; border-radius:4px; flex-shrink:0;
-      font-family: ui-monospace, monospace; }
+    
 
-    .actpop-tug { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; }
-    /* 2026-08-20: moved out of .actpop-tug (was grid-column:1/-1, its own row
-       above Opposing/Supporting) into .actpop-sym in the header, next to the
-       Final Call badge -- now a plain inline span, no grid positioning.
-       2026-08-20: net number (13px) sits BESIDE the Supp/Opp pair, not
-       stacked between them in one column -- three items sharing one
-       line-height had the bigger number clipping into its 8px neighbors.
-       .actpop-tug-conviction-nn is Supp/Opp's own tight little column so
-       they still read as one compact unit next to the net number.
-       2026-09-02: moved again -- out of .actpop-sym entirely, now its own
-       first group in .actpop-ctrl-row (see _buildActionPopHtmlV2). Dropped
-       margin-left:8px (was separating it from the badge it used to sit
-       right next to inline) -- .actpop-ctrl-row's own
-       justify-content:space-between now provides that spacing, an extra
-       fixed margin on top would just make its gap to the Trade/Trend group
-       unequal to the others'. */
-    .actpop-tug-conviction { display:inline-flex; align-items:center; gap:3px;
-      vertical-align:middle; font-size:10px; }
-    .actpop-tug-conviction-nn { display:inline-flex; flex-direction:column; line-height:1.1; }
-    .actpop-tug-conviction-n { font-size:8px; font-weight:700; }
-    .actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
-    .actpop-tug-col.oppose { border-left-color: var(--act-sell-strong); }
-    .actpop-tug-col.support { border-left-color: var(--act-buy); }
-    .actpop-tug-h { font-size:8px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; margin-bottom:3px; }
-    .actpop-tug-item { font-size:9.5px; padding:1px 0; }
-    .actpop-tug-col.oppose .actpop-tug-item { color: var(--act-sell-strong); }
-    .actpop-tug-col.support .actpop-tug-item { color: var(--act-buy-strong); }
-    .actpop-tug-sub { font-size:7px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; margin:4px 0 2px; opacity:.8; }
-    .actpop-tug-sub:first-child { margin-top:0; }
-    .actpop-rule-pills { display:flex; flex-wrap:wrap; gap:3px; }
-    .actpop-neutral { font-size:9.5px; color:#94a3b8; margin:4px 0; }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
-    .actpop-trad { margin:8px 0; padding:6px 8px; border-radius:7px; background:#f8fafc; border:1px solid #e2e8f0; }
-    .actpop-trad-h { font-size:9px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8;
-      display:flex; justify-content:space-between; margin-bottom:4px; }
-    .actpop-trad-item { font-size:9px; margin:1px 0; }
+    
+    
+    
 
-    .actpop-details { font-size:9.5px; color:#64748b; margin-top:6px; padding-top:6px; border-top:1px solid #e2e8f0; }
+    
 
     /* 2026-08-14: long-term conviction hold — inline quick-add popover
        (SYMBOL column button, below the trade-mode hit-rate % badge).
@@ -899,18 +637,12 @@
                           opacity: 0.6; font-size: 13px; line-height: 1; padding: 0 3px; }
     .my-pop .my-chip-x:hover { opacity: 1; }
     .my-pop .mp-status { font-size: 10px; color: #64748b; margin-top: 6px; min-height: 12px; }
-    /* PVV hover tooltip: 5-column table (label + Signal/Price/Volume/Vol) --
-       the shared .k/.v rule above has zero horizontal gap between .v cells,
-       fine for a 2-col key/value layout but cramped once there are 4 value
-       columns side by side. Fixed layout keeps every row's columns aligned,
-       including the differently-shaped 3m row (px/sma50 · sma50/200 · ivp). */
-    .source-pop table.pvv-tbl { table-layout: fixed; min-width: 300px; }
-    .source-pop table.pvv-tbl td { padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .source-pop table.pvv-tbl col.pvv-col-k { width: 15%; }
-    .source-pop table.pvv-tbl col.pvv-col-v { width: 21.25%; }
-    .source-pop table.pvv-tbl td.v { padding-left: 8px; }
-    .source-pop table.pvv-tbl tr.pvv-hdr td.v { color: #94a3b8; font-size: 9px; font-weight: 700;
-                          text-transform: uppercase; letter-spacing: 0.3px; }
+    
+    
+    
+    
+    
+    
     /* .badge-action and .badge-action-* removed — superseded by .act-badge in styles.css */
 
     .pill {
@@ -1969,8 +1701,8 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable_pops.js?v=20261017a"></script>
-  <script src="/static/actionable.js?v=20261017a"></script>
+  <script src="/static/actionable_pops.js?v=20261017b"></script>
+  <script src="/static/actionable.js?v=20261017b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261009b" defer></script>
 <script src="/static/warning_badge.js"></script>

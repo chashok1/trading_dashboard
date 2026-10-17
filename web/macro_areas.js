@@ -643,8 +643,8 @@
     // HOLD is the default for most symbols and swamps the screen: show nothing for it (the slot stays reserved so rows keep aligned).
     if (code === 'HOLD' || code === 'N') return '<span class="oc-slot ms"></span>';
     var cc = d && d.colorCls ? d.colorCls : 'act-neutral';
-    var tip = 'Final action: ' + code + (d && d.label ? ' (' + d.label + ')' : '');
-    return '<span class="oc-slot ms" title="' + esc(tip) + '"><i class="ms-tag ms-c-' + esc(cc) + '">' + esc(code) + '</i></span>';
+    // No native title here: hovering the tag shows the Actionable Action popup (web/actionable_pops_dash.js).
+    return '<span class="oc-slot ms"><i class="ms-tag ms-c-' + esc(cc) + '">' + esc(code) + '</i></span>';
   }
   function _oc(sym, act, code) { return _macroOn ? _macroSlot(sym, act, code) : (window.ocMarker ? window.ocMarker(sym) : ''); }
   async function _loadMacroMap() {
