@@ -918,14 +918,6 @@
           <div id="macroRailCorr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
-        <!-- 2026-10-16, user-directed: the "$X headwind" pill's list (areas in Headwind, what you hold in each, the
-             held stocks) shown here, between Dollar correlation and Sectors, instead of a popup. Filled by
-             web/area_verdicts.js::renderHeadwindPanel(); hidden when no area is in Headwind. -->
-        <section class="cockpit-band rail-band" id="headwindBand" hidden>
-          <div class="msr-section-hdr" title="Areas currently in Headwind and the money you hold in each (inverse positions excluded)">Headwind areas <span class="av-dim" style="font-weight:400;text-transform:none;letter-spacing:0;">&middot; you hold <b id="headwindTotal"></b></span></div>
-          <div id="headwindBody" class="av-panel"></div>
-        </section>
-
         <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
              the Actionable screen's hedgeye_panel.js panel -- user: "INFL to
              3rd column above Indicator grid" -> follow-up reorder put it
@@ -961,6 +953,26 @@
           <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
+        <!-- 2026-10-16, user-directed: the "$X headwind" pill's list (areas in Headwind, what you hold in each, the
+             held stocks) shown here, between Dollar correlation and Sectors, instead of a popup. Filled by
+             web/area_verdicts.js::renderHeadwindPanel(); hidden when no area is in Headwind. -->
+        <section class="cockpit-band rail-band" id="headwindBand" hidden>
+          <div class="msr-section-hdr" title="Areas currently in Headwind and the money you hold in each (inverse positions excluded)">Headwind areas <span class="av-dim" style="font-weight:400;text-transform:none;letter-spacing:0;">&middot; you hold <b id="headwindTotal"></b></span></div>
+          <div id="headwindBody" class="av-panel"></div>
+        </section>
+
+        <!-- 2026-10-17 -- SPX realized volatility, 1 month vs 3 month (+ SPX daily % change bars), 6 months;
+             below $ correlation (moved there 2026-10-17). Filled by web/spx_rv.js from GET /api/cockpit/spx-realized-vol. -->
+        <section id="spxRvBand" class="cockpit-band rail-band">
+          <div id="spxRvBody"><div class="msr-loading">Loading…</div></div>
+        </section>
+
+        <!-- 2026-08-24 -- INFL moved below Sectors, then (2026-10-17) below $ correlation, after SPX realized vol -- user: "move INFL
+             panel to below sectors panel". -->
+        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
+          <div id="heInflBody">Loading…</div>
+        </section>
+
         <!-- Quad Outlook -- monthly distributions + quarterly quads (+
              Global, once ref_quad_periods has a period_type='global' row).
              MOVED here from the Actionable screen's side panel (2026-09-01,
@@ -974,11 +986,6 @@
           <div id="quadOutlookBody"><div class="msr-loading">Loading…</div></div>
         </section>
 
-        <!-- 2026-10-17 -- SPX realized volatility, 1 month vs 3 month (+ SPX daily % change bars), 6 months;
-             between Quad Outlook and E.IND. Filled by web/spx_rv.js from GET /api/cockpit/spx-realized-vol. -->
-        <section id="spxRvBand" class="cockpit-band rail-band">
-          <div id="spxRvBody"><div class="msr-loading">Loading…</div></div>
-        </section>
 
         <!-- 2026-08-27 -- Indicator moved here from col 5 (macro-rail-row),
              above INFL -- user: "move the INDICATOR panel to the side panel
@@ -1016,11 +1023,6 @@
           </div>
         </section>
 
-        <!-- 2026-08-24 -- INFL moved below Sectors -- user: "move INFL
-             panel to below sectors panel". -->
-        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
-          <div id="heInflBody">Loading…</div>
-        </section>
 
         <!-- 2026-08-27 -- Symbol moved here from col 5 (macro-rail-row),
              the bottom of this side panel -- user: "Symbol to the bottom
