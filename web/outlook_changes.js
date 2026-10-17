@@ -41,8 +41,6 @@
 
   // ---- Macro Rail row markers (2026-10-16): "from -> to" in a reserved slot on each rail row. ----
   var SHAPE = { Bullish: ['bull', '▲'], Bearish: ['bear', '▼'], Neutral: ['neu', '■'] };
-  var only = false;
-  try { only = localStorage.getItem('ocOnly') === '1'; } catch (e) {}
   function shape(o) { var h = SHAPE[o] || SHAPE.Neutral; return '<i class="oc-s ' + h[0] + '">' + h[1] + '</i>'; }
   // Slot HTML for one rail row: always the fixed-width slot (empty when nothing changed) so columns stay aligned.
   window.ocMarker = function (sym) {
@@ -54,26 +52,112 @@
     return '<span class="oc-slot has" title="' + esc(tip) + '">' + shape(d.from) + '<i class="oc-ar">&rarr;</i>' + shape(d.to) + '</span>';
   };
   window.ocHas = function (sym) { return !!(window._ocMap && window._ocMap[sym]); };
-  function applyOnly() {
-    document.body.classList.toggle('oc-only', only);
-    var b = document.getElementById('ocFilter');
-    if (b) b.classList.toggle('on', only);
-  }
-  function addChip(n) {
-    var hdr = document.querySelector('.msr-section-hdr');
+  // Per-panel "Δ N" filter pills (2026-10-17, user-directed): every rail panel with a collapse arrow gets its own pill next to it.
+  // N = rows in THAT panel whose outlook changed this week; clicking hides the unchanged rows in that panel only (the Macro Rail
+  // pill covers all of its sub-columns via #macroRailsWrap). On/off is remembered per panel.
+  var SCOPES = [
+    { id: 'rail', toggle: 'macroRailToggle', scope: '#macroRailsWrap', key: 'ocOnly', name: 'Macro Rail' },
+    { id: 'sect', toggle: 'marketReadSectorsToggle', scope: '#marketReadSectorsBand', key: 'ocOnly_sect', name: 'Sectors' },
+    { id: 'psetf', toggle: 'psEtfToggle', scope: '#psEtfBand', key: 'ocOnly_psetf', name: 'PS & ETF' },
+    { id: 'call', toggle: 'callToggle', scope: '#callBand', key: 'ocOnly_call', name: 'CALL' },
+    { id: 'ai', toggle: 'aiBubbleToggle', scope: '#aiBubbleBand', key: 'ocOnly_ai', name: 'AI Bubble' },
+    { id: 'acct', toggle: 'accountsToggle', scope: '#macroAccountsBand', key: 'ocOnly_acct', name: 'Accounts' }
+  ];
+  function getOnly(sc) { try { return localStorage.getItem(sc.key) === '1'; } catch (e) { return false; } }
+  var _watched = {};
+  // Global filter (2026-10-17, user-directed): one button in the page header that turns the per-panel filters on/off together.
+  function refreshGlobal() {
+    // 2026-10-17, user-directed: the global pill lives in the Macro Rail header, centred, under a small "global" label.
+    var rt = document.getElementById('macroRailToggle');
+    var hdr = rt && rt.parentNode;
     if (!hdr) return;
-    var b = document.getElementById('ocFilter');
-    if (!b) {
-      b = document.createElement('button');
-      b.id = 'ocFilter'; b.type = 'button'; b.className = 'oc-filter';
-      b.title = 'Show only Macro Rail rows whose outlook changed in the last 7 days';
-      b.onclick = function () { only = !only; try { localStorage.setItem('ocOnly', only ? '1' : '0'); } catch (e) {} applyOnly(); };
-      var t = document.getElementById('macroRailToggle');
-      if (t && t.parentNode === hdr) hdr.insertBefore(b, t); else hdr.appendChild(b);
+    var live = SCOPES.filter(function (sc) { var p = document.getElementById('ocFilter_' + sc.id); return p && !p.hidden; });
+    var syms = {};
+    live.forEach(function (sc) {
+      document.querySelectorAll(sc.scope + ' .msr-row.has-oc').forEach(function (r) { syms[r.getAttribute('data-sym')] = 1; });
+    });
+    var wrap = document.getElementById('ocGlobalWrap');
+    if (!wrap) {
+      wrap = document.createElement('span');
+      wrap.id = 'ocGlobalWrap'; wrap.className = 'oc-global-wrap';
+      wrap.innerHTML = '<span class="oc-global-lbl">global</span>';
+      var b0 = document.createElement('button');
+      b0.id = 'ocGlobal'; b0.type = 'button'; b0.className = 'oc-global';
+      b0.title = 'Show only the rows whose outlook changed in the last 7 days, in every rail panel (click again to show all rows)';
+      b0.onclick = function () {
+        var act = SCOPES.filter(function (sc) { var p = document.getElementById('ocFilter_' + sc.id); return p && !p.hidden; });
+        var allOn = act.length > 0 && act.every(getOnly);
+        act.forEach(function (sc) { try { localStorage.setItem(sc.key, allOn ? '0' : '1'); } catch (e) {} });
+        refreshChips();
+      };
+      wrap.appendChild(b0);
+      // Radio filters (two groups, AND-combined; All = no filter): outlook and final action. CSS does the hiding.
+      function grp(name, opts, key) {
+        var cur = 'all';
+        try { cur = localStorage.getItem('rf_' + key) || 'all'; } catch (e) {}
+        document.body.setAttribute('data-rf-' + key, cur);
+        var g = document.createElement('span');
+        g.className = 'oc-rf';
+        g.setAttribute('role', 'radiogroup');
+        g.innerHTML = opts.map(function (o) {
+          return '<label><input type="radio" name="' + name + '" value="' + o[0] + '"' + (o[0] === cur ? ' checked' : '') + '> ' + o[1] + '</label>';
+        }).join('');
+        g.addEventListener('change', function (e) {
+          var v = e.target && e.target.value;
+          if (!v) return;
+          document.body.setAttribute('data-rf-' + key, v);
+          try { localStorage.setItem('rf_' + key, v); } catch (e2) {}
+        });
+        return g;
+      }
+      wrap.appendChild(grp('rfOutlook', [['all', 'All'], ['bull', 'Bullish'], ['bear', 'Bearish'], ['neu', 'Neutral']], 'ol'));
+      wrap.appendChild(grp('rfAction', [['all', 'All'], ['buy', 'Buy'], ['sell', 'Sell'], ['hold', 'Hold']], 'act'));
+      hdr.classList.add('has-oc-global');
+      hdr.appendChild(wrap);
     }
-    b.textContent = 'Δ ' + n;
-    b.hidden = !n;
-    applyOnly();
+    var b = document.getElementById('ocGlobal');
+    var txt = 'Δ ' + Object.keys(syms).length + ' changed';
+    if (b.textContent !== txt) b.textContent = txt;
+    // The radios are always shown; only the changed-count pill (and its label) hide when no panel has changes.
+    b.hidden = !live.length;
+    wrap.querySelector('.oc-global-lbl').hidden = !live.length;
+    b.classList.toggle('on', live.length > 0 && live.every(getOnly));
+  }
+  function refreshChips() {
+    SCOPES.forEach(function (sc) {
+      var root = document.querySelector(sc.scope), t = document.getElementById(sc.toggle);
+      if (!root || !t || !t.parentNode) return;
+      var n = root.querySelectorAll('.msr-row.has-oc').length;
+      var b = document.getElementById('ocFilter_' + sc.id);
+      if (!b) {
+        b = document.createElement('button');
+        b.id = 'ocFilter_' + sc.id; b.type = 'button'; b.className = 'oc-filter';
+        b.title = 'Show only ' + sc.name + ' rows whose outlook changed in the last 7 days';
+        b.onclick = function () { try { localStorage.setItem(sc.key, getOnly(sc) ? '0' : '1'); } catch (e) {} refreshChips(); };
+        // Order in every header: [title ...] [radios] [delta pill] [arrow] -- the pill sits right next to the collapse arrow.
+        t.parentNode.insertBefore(b, t);
+      }
+      var txt = 'Δ ' + n;
+      if (b.textContent !== txt) b.textContent = txt;
+      b.hidden = !n;
+      var on = getOnly(sc);
+      b.classList.toggle('on', on);
+      root.classList.toggle('oc-only-scope', on && n > 0);
+      // Rows are redrawn by other scripts: re-count when a panel's content changes (guarded so our own pill cannot loop).
+      if (!_watched[sc.id] && window.MutationObserver) {
+        _watched[sc.id] = true;
+        var timer = null;
+        new MutationObserver(function () {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            var cur = root.querySelectorAll('.msr-row.has-oc').length;
+            var pill = document.getElementById('ocFilter_' + sc.id);
+            if (!pill || pill.textContent !== 'Δ ' + cur) refreshChips();
+          }, 150);
+        }).observe(root, { childList: true, subtree: true });
+      }
+    });
+    refreshGlobal();
   }
 
   // One line of chips (newest change first, no grouping); the rest float in an overlay under it.
@@ -177,12 +261,14 @@
       var res = await fetch('/api/cockpit/outlook-changes' + d);
       if (!res.ok) throw new Error(res.status);
       st.data = await res.json();
+      // Rail glyphs cover every symbol with an RR outlook (Accounts, AI Bubble, Country...), not just Macro Rail members.
+      var allRes = await fetch('/api/cockpit/outlook-changes' + (d ? d + '&' : '?') + 'all_symbols=true').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
       // Rail markers are isolated: a failure here must never hide the top bar below.
       try {
         var m = {};
-        (st.data.changes || []).forEach(function (c) { if (!m[c.symbol]) m[c.symbol] = c; });   // rail marker = the symbol's newest change
+        ((allRes && allRes.changes) || st.data.changes || []).forEach(function (c) { if (!m[c.symbol]) m[c.symbol] = c; });   // rail marker = the symbol's newest change
         window._ocMap = m;
-        addChip(Object.keys(m).length);
+        refreshChips();
         document.dispatchEvent(new Event('oc-loaded'));
       } catch (e2) { console.warn('outlook rail markers failed', e2); }
       if (!st.data.changes || !st.data.changes.length) { hideLine(); return; }

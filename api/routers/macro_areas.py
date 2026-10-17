@@ -328,9 +328,10 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         # indices) have no drv_actionable row at all -- left as a graceful
         # gap in the tooltip, not a placeholder dash.
         act_rows = s.execute(text("""
-            SELECT tos_symbol, final_action FROM drv_actionable WHERE as_of_date = :d
+            SELECT tos_symbol, final_action, final_code FROM drv_actionable WHERE as_of_date = :d
         """), {"d": anchor}).mappings().all()
         act_map = {r["tos_symbol"]: r["final_action"] for r in act_rows}
+        act_code_map = {r["tos_symbol"]: r["final_code"] for r in act_rows}   # SA / BM / BMN / HOLD ... (what the rail Act tag shows)
 
         # OHLC (candle) at the same anchor date, and vol thresholds — shared
         # helpers, same source query /api/rr-bar uses (api/_helpers.py
@@ -563,6 +564,42 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         except Exception:
             sss_by_sector = {}
 
+        # 2026-10-17, user-directed: PS & ETF Pro (two groups, one panel) and CALL as rail panels under Signal Strength.
+        # Full lists (not Bullish-only): PS by rank, ETF Pro / CALL with Bullish first. Latest snapshot <= anchor.
+        ps_etf_cfg: list[dict] = []
+        call_cfg: list[dict] = []
+        try:
+            _orank = "CASE UPPER(COALESCE({c}, '')) WHEN 'BULLISH' THEN 0 WHEN 'NEUTRAL' THEN 1 WHEN 'BEARISH' THEN 2 ELSE 3 END"
+            psnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_ps WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            if psnap:
+                seen_ps: set[str] = set()
+                for r in s.execute(text(
+                        "SELECT COALESCE(tos_symbol, ticker) AS sym FROM hist_ps WHERE snapshot_date = :s "
+                        "ORDER BY rank ASC NULLS LAST, ticker"), {"s": psnap}).mappings().all():
+                    if r["sym"] and r["sym"] not in seen_ps:
+                        seen_ps.add(r["sym"])
+                        ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": "PS"})
+            esnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_etf WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            if esnap:
+                seen_e: set[str] = set()
+                for r in s.execute(text(
+                        "SELECT COALESCE(tos_symbol, symbol) AS sym FROM hist_etf WHERE snapshot_date = :s "
+                        "ORDER BY " + _orank.format(c="outlook") + ", symbol"), {"s": esnap}).mappings().all():
+                    if r["sym"] and r["sym"] not in seen_e:
+                        seen_e.add(r["sym"])
+                        ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": "ETF Pro"})
+            csnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            if csnap:
+                seen_c: set[str] = set()
+                for r in s.execute(text(
+                        "SELECT COALESCE(tos_symbol, symbol) AS sym FROM hist_call WHERE snapshot_date = :s "
+                        "ORDER BY " + _orank.format(c="outlook") + ", symbol"), {"s": csnap}).mappings().all():
+                    if r["sym"] and r["sym"] not in seen_c:
+                        seen_c.add(r["sym"])
+                        call_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "CALL"})
+        except Exception:
+            ps_etf_cfg, call_cfg = [], []
+
     # --- Build per-area results ---
     # Group members by area
     from collections import defaultdict
@@ -705,6 +742,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "trade_val": trade_val,
                 "trend_val": trend_val,
                 "action": act_map.get(sym),
+                "action_code": act_code_map.get(sym),
                 "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
                 "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
                 "curve_lrr_pct": (curve_lrr_raw / 10.0) if curve_lrr_raw is not None else None,
@@ -812,6 +850,11 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             for sym in sss_by_sector[sec]
         ]
         areas_out.append(_build_area_result("sss_signal", "Signal Strength", sss_cfg))
+
+    if ps_etf_cfg:
+        areas_out.append(_build_area_result("ps_etf", "PS & ETF", ps_etf_cfg))
+    if call_cfg:
+        areas_out.append(_build_area_result("call_list", "CALL", call_cfg))
 
     # --- Sectors roll-up ---
     from collections import defaultdict as _dd

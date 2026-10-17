@@ -2440,16 +2440,26 @@ def _oc_bucket(col: str) -> str:
 
 
 @router.get("/api/cockpit/outlook-changes")
-def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, ge=1, le=60)) -> dict:
+def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, ge=1, le=60),
+                        all_symbols: bool = Query(False)) -> dict:
     """Day-over-day outlook changes (Bullish/Neutral/Bearish buckets) for Macro Rail symbols over the last `days`
     days, newest first. Each row compares a symbol's reading to its previous reading (days without an outlook, e.g.
-    weekends, are skipped). One entry per symbol: its newest change plus the full path through the window. Country ETFs excluded."""
+    weekends, are skipped). One entry per symbol: its newest change plus the full path through the window. Country ETFs excluded.
+    all_symbols=true drops the Macro Rail membership filter (every symbol with an RR outlook, Country ETFs included); it
+    feeds the change glyphs on the Accounts / AI Bubble / Country / Sectors rows, not the top bar."""
     d = _resolve_date(date)
     with session_scope() as s:
         cur = s.execute(text("SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :d"), {"d": d}).scalar()
         if not cur:
             return {"as_of": str(d), "prev": None, "total": 0, "changes": []}
         start = cur - timedelta(days=days)
+        if all_symbols:
+            sym_filter = ""
+            area_join = "LEFT JOIN ref_macro_area m ON m.member_symbol = r.tos_symbol AND m.enabled"
+        else:
+            sym_filter = """AND tos_symbol IN (SELECT member_symbol FROM ref_macro_area
+                                         WHERE enabled AND area_key <> 'country_etfs')"""
+            area_join = "JOIN ref_macro_area m ON m.member_symbol = r.tos_symbol AND m.enabled AND m.area_key <> 'country_etfs'"
         rows = s.execute(text(f"""
             WITH r AS (
               SELECT tos_symbol, as_of_date, bkt,
@@ -2457,13 +2467,12 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
               FROM (SELECT tos_symbol, as_of_date, {_oc_bucket('outlook')} AS bkt
                     FROM drv_rr
                     WHERE as_of_date <= :c AND as_of_date >= :lb AND outlook IS NOT NULL
-                      AND tos_symbol IN (SELECT member_symbol FROM ref_macro_area
-                                         WHERE enabled AND area_key <> 'country_etfs')) q
+                      {sym_filter}) q
             )
             SELECT m.area_key, r.tos_symbol, r.pbkt AS frm, r.bkt AS to_o, r.as_of_date AS changed_on,
                    COALESCE((SELECT rs.description FROM ref_sector rs WHERE rs.ticker = r.tos_symbol), '') AS descr
             FROM r
-            JOIN ref_macro_area m ON m.member_symbol = r.tos_symbol AND m.enabled AND m.area_key <> 'country_etfs'
+            {area_join}
             WHERE r.as_of_date > :p AND r.pbkt IS NOT NULL AND r.bkt <> r.pbkt
             ORDER BY r.as_of_date DESC, m.area_key, r.tos_symbol"""),
             {"c": cur, "p": start, "lb": start - timedelta(days=7)}).mappings().all()
@@ -2474,7 +2483,7 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
             e = by_sym.get(r["tos_symbol"])
             if e is None:
                 by_sym[r["tos_symbol"]] = e = {"symbol": r["tos_symbol"],
-                    "panel": _OC_PANEL.get(r["area_key"], r["area_key"]),
+                    "panel": _OC_PANEL.get(r["area_key"], r["area_key"] or ""),
                     "from": r["frm"], "to": r["to_o"], "changed_on": r["changed_on"].isoformat(),
                     "desc": r["descr"] or "", "_steps": {}}
             e["_steps"].setdefault(r["changed_on"], (r["frm"], r["to_o"]))   # a symbol in two panels counts once

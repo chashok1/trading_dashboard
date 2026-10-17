@@ -144,8 +144,9 @@
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
   // _chgMode is the mode for the panel currently being rendered (set by
   // _useMode before each render).
-  var _MODE_KEYS = { rail: _CHG_MODE_KEY, accounts: 'macroRailChgMode_accounts', sss: 'macroRailChgMode_sss' };
-  var _MODE_OF_AREA = { accounts: 'accounts', sss_signal: 'sss' };
+  var _MODE_KEYS = { rail: _CHG_MODE_KEY, accounts: 'macroRailChgMode_accounts', sss: 'macroRailChgMode_sss',
+                     ai: 'macroRailChgMode_ai', psetf: 'macroRailChgMode_psetf', call: 'macroRailChgMode_call' };
+  var _MODE_OF_AREA = { accounts: 'accounts', sss_signal: 'sss', ai_bubble: 'ai', ps_etf: 'psetf', call_list: 'call' };   // 2026-10-17: AI Bubble / PS & ETF / CALL have their own radios
   var _modes = {};
   Object.keys(_MODE_KEYS).forEach(function (g) {
     try {
@@ -632,12 +633,18 @@
   // (BS / SA / BM / HOLD / STM -- same source as the Macro Stance pie, /api/portfolio/macro-map).
   var _macroMap = null;
   var _MS_NAME = { BS: 'Buy some', BM: 'Buy more', SA: 'Sell all', STM: 'Sell to min', HOLD: 'Hold' };
-  function _macroSlot(sym) {
-    var v = _macroMap && _macroMap[sym];
-    if (!v) return '<span class="oc-slot ms"></span>';
-    return '<span class="oc-slot ms" title="' + esc('Macro stance: ' + v + ' (' + (_MS_NAME[v] || v) + ')') + '"><i class="ms-tag ms-' + esc(v) + '">' + esc(v) + '</i></span>';
+  // 2026-10-17, user-directed: the 'Macro' radio (now labelled 'Action') shows the symbol's FINAL action (drv_actionable.final_action,
+  // the same call as the Actionable grid) instead of its macro stance. Symbols with no Actionable row (VIX, futures, FX, indices) stay blank.
+  function _macroSlot(sym, act, code0) {
+    if (!act && !code0) return '<span class="oc-slot ms"></span>';
+    // final_action is the label text ("BUY TO MIN"); final_code is the code (BMN) that actionDisplay understands.
+    var d = window.actionDisplay ? window.actionDisplay(code0 || act) : null;
+    var code = d && d.code ? d.code : (d && d.side === 'neutral' ? 'HOLD' : String(act));
+    var cc = d && d.colorCls ? d.colorCls : 'act-neutral';
+    var tip = 'Final action: ' + code + (d && d.label ? ' (' + d.label + ')' : '');
+    return '<span class="oc-slot ms" title="' + esc(tip) + '"><i class="ms-tag ms-c-' + esc(cc) + '">' + esc(code) + '</i></span>';
   }
-  function _oc(sym) { return _macroOn ? _macroSlot(sym) : (window.ocMarker ? window.ocMarker(sym) : ''); }
+  function _oc(sym, act, code) { return _macroOn ? _macroSlot(sym, act, code) : (window.ocMarker ? window.ocMarker(sym) : ''); }
   async function _loadMacroMap() {
     try {
       var res = await fetch('/api/portfolio/macro-map' + ((window._dateQS ? window._dateQS() : '') || ''));
@@ -647,6 +654,17 @@
     } catch (e) { _macroMap = {}; }
   }
   function _ocCls(sym) { return window.ocHas && window.ocHas(sym) ? ' has-oc' : ''; }
+  // 2026-10-17 -- row tags for the Macro Rail header filters (outlook All/Bullish/Bearish/Neutral, action All/Buy/Sell/Hold);
+  // the filtering itself is CSS on body[data-rf-ol] / body[data-rf-act] (styles.css), set by web/outlook_changes.js.
+  function _rfAttrs(m) {
+    var o = String(m.outlook || ''), ol = /bull/i.test(o) ? 'bull' : /bear/i.test(o) ? 'bear' : (o ? 'neu' : '');
+    var ac = '';
+    if (m.action_code || m.action) {
+      var d = window.actionDisplay ? window.actionDisplay(m.action_code || m.action) : null;
+      ac = d && d.side === 'buy' ? 'buy' : d && d.side === 'sell' ? 'sell' : 'hold';
+    }
+    return ' data-ol="' + ol + '" data-act="' + ac + '"';
+  }
   document.addEventListener('oc-loaded', function () { if (_lastAreasData) renderRail(_lastAreasData); });
 
   function railAreaRow(area) {
@@ -672,7 +690,7 @@
           // low/high threshold bar between the zone text and the candle/
           // %chg) dropped too -- user: "what is bar between investable
           // text and Value? Can we remove that."
-          '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m)) + '">' +
+          '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m)) + '">' +
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
               // Prefer a real per-symbol label override; when there isn't
               // one (label just repeats the area's own name, e.g. VIX's
@@ -681,7 +699,7 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
-            _oc(m.symbol) +
+            _oc(m.symbol, m.action, m.action_code) +
             // 2026-09-23, user-directed: "display the actual values in
             // small font between desc and the text Investable/Elevated" --
             // .msr-gauge-vix already existed in styles.css (9px, gray) but
@@ -713,8 +731,9 @@
       var leadCluster = isRates
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
+      var ocHtml = _oc(m.symbol, m.action, m.action_code);
       return sep + (
-        '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '" title="' + esc(_rowTitle(m, dispName)) + '">' +
+        '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m, dispName)) + '">' +
           (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             // Same fallback as the gauge row above: dispName only differs
@@ -726,7 +745,7 @@
             // to show).
             symLink(esc(dispName), m.symbol, dispName !== m.symbol ? dispName : m.desc) +
           '</span>' +
-          _oc(m.symbol) +
+          ocHtml +
           '<div class="msr-data-cluster">' +
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
@@ -926,11 +945,14 @@
     // 2026-09-30 -- Hedgeye Signal Strength list as rows (alt view of the
     // Sectors (Signal Strength) panel), one separator per SSS sector.
     sss_signal:          'marketReadSectorRows',
+    // 2026-10-17 -- PS & ETF Pro (two groups) and CALL panels under Signal Strength (full lists).
+    ps_etf:              'macroRailPsEtf',
+    call_list:           'macroRailCall',
   };
 
   // Areas whose members carry an account_group tag (separator row + per-group
   // sort) -- Accounts groups by account, Signal Strength rows by sector.
-  var _GROUPED_AREAS = { accounts: true, sss_signal: true };
+  var _GROUPED_AREAS = { accounts: true, sss_signal: true, ps_etf: true };
 
   // Per-panel member sort, toggled by each panel's header .msr-sort-btn
   // (index.html) -- keyed by area_key, in-memory only (resets on reload).
@@ -1371,7 +1393,8 @@
   function _initChgModeToggle() {
     // 2026-09-30 -- each radio group (name msrValueMode / ...Acct / ...Sss)
     // controls only its own panel.
-    var GROUP_OF_NAME = { msrValueMode: 'rail', msrValueModeAcct: 'accounts', msrValueModeSss: 'sss' };
+    var GROUP_OF_NAME = { msrValueMode: 'rail', msrValueModeAcct: 'accounts', msrValueModeSss: 'sss',
+                         msrValueModeAi: 'ai', msrValueModePsEtf: 'psetf', msrValueModeCall: 'call' };
     var radios = document.querySelectorAll('input[name^="msrValueMode"]');
     if (!radios.length) return;
     radios.forEach(function (r) {
@@ -1387,12 +1410,33 @@
     });
   }
 
+  // 2026-10-17 -- collapse arrows for the PS & ETF and CALL panels (own localStorage key each; same arrow convention as the others).
+  function _wirePanelToggle(btnId, bodyId, key, title) {
+    var btn = document.getElementById(btnId), body = document.getElementById(bodyId);
+    if (!btn || !body) return;
+    function apply(c) {
+      body.style.display = c ? 'none' : '';
+      btn.innerHTML = c ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (c ? 'Expand ' : 'Collapse ') + title + ' panel');
+    }
+    var c0 = false;
+    try { c0 = localStorage.getItem(key) === '1'; } catch (e) {}
+    apply(c0);
+    btn.addEventListener('click', function () {
+      var c = body.style.display !== 'none';
+      try { localStorage.setItem(key, c ? '1' : '0'); } catch (e) {}
+      apply(c);
+    });
+  }
+
   function init() {
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
     _loadMacroMap();
     _initChgModeToggle();
     _applyViews();
+    _wirePanelToggle('psEtfToggle', 'macroRailPsEtf', 'macroRailPsEtf_collapsed', 'PS & ETF');
+    _wirePanelToggle('callToggle', 'macroRailCall', 'macroRailCall_collapsed', 'CALL');
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var acctToggle = document.getElementById('accountsToggle');
