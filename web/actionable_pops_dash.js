@@ -90,6 +90,16 @@
     return el;
   }
 
+  // Small placeholder while the popup data is still loading.
+  function loadingNote(el) {
+    var pop = ensurePopEl();
+    pop.innerHTML = '<span style="color:#94a3b8;font-size:10px;">Loading popup data&hellip;</span>';
+    pop.style.display = 'block';
+    var r = el.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 180)) + 'px';
+  }
+
   // The row carries a native title tooltip; suppress it while a popup is up so the two do not stack.
   function muteTitle(rowEl, on) {
     if (!rowEl) return;
@@ -129,7 +139,8 @@
     if (!t || t.el === hoverEl) return;
     hoverEl = t.el;
     if (api) { show(t.el, t.kind); return; }
-    loadAll().then(function () { show(t.el, t.kind); });   // first hover: loads, then shows if the pointer is still there
+    loadingNote(t.el);   // data still loading (first hover before the background preload finished): say so, then show it
+    loadAll().then(function () { show(t.el, t.kind); });   // shows if the pointer is still there
   });
   document.addEventListener('mouseout', function (e) {
     if (!hoverEl) return;
@@ -139,9 +150,12 @@
     hoverEl = null;
     muteTitle(rowEl, false);
     if (api) { try { api.hide(); } catch (err) { /* ignore */ } }
+    else { var pe = document.getElementById('sourcePop'); if (pe) pe.style.display = 'none'; }
   });
   // New date or refresh: drop the cached rows so the next hover loads fresh ones.
-  function reset() { api = null; loading = null; rows = {}; }
+  function reset() { api = null; loading = null; rows = {}; setTimeout(loadAll, 1500); }
+  // Preload quietly a few seconds after the page opens, so the first real hover is instant.
+  setTimeout(function () { if (!loading) loadAll(); }, 3000);
   document.addEventListener('DOMContentLoaded', function () {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', reset);
