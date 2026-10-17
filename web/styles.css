@@ -4086,3 +4086,11 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .ms-tag.ms-BS { background: #1d9e75; } .ms-tag.ms-BM { background: #0f6b4d; }
 .ms-tag.ms-SA { background: #a8335c; } .ms-tag.ms-STM { background: #d4537e; }
 .ms-tag.ms-HOLD { background: #9ca3af; }
+
+/* 2026-10-17 -- OPEX / Earnings "soon" highlight in the Cross-Asset panel: soft tinted pill with a
+   coloured left edge (quad-box look) instead of the solid mustard fill. Scoped to the panel, so the
+   Indicator-table rows and Actionable screen keep the global .opex-soon. */
+#crossAssetPanel .opex-soon {
+  background: #eeedfb; color: #3c3489; font-weight: 600;
+  border: 1px solid #c9c5f0; border-left: 3px solid #534ab7; border-radius: 4px;
+}
