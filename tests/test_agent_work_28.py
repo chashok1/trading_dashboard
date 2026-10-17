@@ -38,7 +38,8 @@ HTML_FILE    = PROJECT_ROOT / "web" / "actionable.html"
 
 @pytest.fixture(scope="module")
 def js_text():
-    return JS_FILE.read_text(encoding="utf-8")
+    # popup builders moved to actionable_pops.js (2026-10-17) -- search both files
+    return JS_FILE.read_text(encoding="utf-8") + "\n" + (JS_FILE.parent / "actionable_pops.js").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")

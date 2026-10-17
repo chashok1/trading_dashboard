@@ -39,9 +39,12 @@ WEB_JS_FILES = sorted((PROJECT / "web").glob("*.js"))
 
 def _read(p: Path) -> str:
     try:
-        return p.read_text(encoding="utf-8-sig")
+        txt = p.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
-        return p.read_text(encoding="latin-1")
+        txt = p.read_text(encoding="latin-1")
+    if p.name == "actionable.js":   # popup builders moved to actionable_pops.js (2026-10-17)
+        txt += "\n" + (p.parent / "actionable_pops.js").read_text(encoding="utf-8-sig")
+    return txt
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -54,7 +54,10 @@ API_DIR         = PROJECT_ROOT / "api"
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+    txt = path.read_text(encoding="utf-8")
+    if path.name == "actionable.js":   # popup builders moved to actionable_pops.js (2026-10-17)
+        txt += "\n" + (path.parent / "actionable_pops.js").read_text(encoding="utf-8")
+    return txt
 
 
 def _func_body(src: str, func_name: str, max_len: int = None) -> str:

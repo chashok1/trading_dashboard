@@ -45,7 +45,8 @@ STYLES_CSS = WEB_DIR / "styles.css"
 
 
 def _js() -> str:
-    return ACTIONABLE_JS.read_text(encoding="utf-8")
+    # popup builders moved to actionable_pops.js (2026-10-17) -- search both files
+    return (ACTIONABLE_JS.parent / "actionable_pops.js").read_text(encoding="utf-8") + "\n" + ACTIONABLE_JS.read_text(encoding="utf-8")   # pops first: tests find the first occurrence of a definition
 
 
 def _html() -> str:
