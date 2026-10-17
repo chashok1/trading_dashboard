@@ -17,6 +17,9 @@ const state = {
   // account_number), not short_name -- that's what the backend filter
   // matches on.
   catAccounts: [],
+  // 2026-10-16, user-directed: SECOND account selection (#sideAccountFilter, top of the right column). Drives the P&L / Asset
+  // Allocation / Macro Stance / Sector / Concentration graphs and the Accounts rail; catAccounts now drives only the 3 grids.
+  sideAccounts: [],
   // account_number -> account_tag (short_name) map, populated by
   // loadCatAccountFilter() -- lets loadCumPnlSnapshot() match state.
   // catAccounts (account_number values) against /api/portfolio/summary's
@@ -2200,13 +2203,13 @@ async function loadCumPnlSnapshot() {
     const periodEl = $('tsCumPnlPeriod');
     const period = (periodEl && periodEl.value) || '30d';
     const trendsParams = new URLSearchParams({ period });
-    // 2026-08-11 -- Accounts filter (state.catAccounts) now applies here
+    // 2026-08-11 -- Accounts filter (state.sideAccounts) now applies here
     // too, via the new accounts= param on /api/portfolio/trends (mirrors
     // /api/cockpit/factor-scorecard's own accounts= the other 3 widgets
     // already used) -- user: "Move the filter bar to the top and apply
     // the filter to four graphs."
-    const filtered = state.catAccounts.length > 0;
-    if (filtered) trendsParams.set('accounts', state.catAccounts.join(','));
+    const filtered = state.sideAccounts.length > 0;
+    if (filtered) trendsParams.set('accounts', state.sideAccounts.join(','));
     // 2026-08-22 -- /api/portfolio/summary has no accounts= param of its
     // own, but it always returns the full by_account breakdown (each entry
     // already carries the same complete today_gain_dollar the unfiltered
@@ -2266,7 +2269,7 @@ async function loadCumPnlSnapshot() {
     // (their 'account' field is a composed display string for Fidelity, not
     // the raw number) -- so match via state.accountTagByNumber, the same
     // account_number -> short_name map the checkbox list itself is built
-    // from, rather than state.catAccounts directly.
+    // from, rather than state.sideAccounts directly.
     let summaryToday = null;
     // 2026-08-23 -- total CURRENT account $ (market value + cash, i.e. the
     // account balance right now -- not a gain/loss figure) shown in K
@@ -2297,7 +2300,7 @@ async function loadCumPnlSnapshot() {
     };
     if (summary) {
       if (filtered) {
-        const selectedTags = new Set(state.catAccounts.map(num => state.accountTagByNumber[num]));
+        const selectedTags = new Set(state.sideAccounts.map(num => state.accountTagByNumber[num]));
         const matched = (summary.by_account || []).filter(a => selectedTags.has(a.account_tag));
         if (matched.length) {
           summaryToday = matched.reduce((sum, a) => sum + Number(a.today_gain_dollar || 0), 0);
@@ -2373,7 +2376,7 @@ async function loadCumPnlSnapshot() {
                 return (L && i === dayArr.length - 1) ? [''].concat(L) : [];
             } } : undefined } },
         scales: {
-          x:  { display: true, ticks: { font: { size: 8 }, color: '#888', maxRotation: 0, autoSkip: true, maxTicksLimit: 5 }, grid: { display: false } },
+          x:  { display: true, ticks: { font: { size: 8 }, color: '#888', maxRotation: 0, autoSkip: true, maxTicksLimit: 3 }, grid: { display: false } },
           y:  { type: 'linear', position: 'right', display: true, ticks: { font: { size: 8 }, color: '#888', callback: yTick }, grid: { color: 'rgba(0,0,0,0.06)' } },
           y1: { type: 'linear', position: 'left', display: false },
         },
@@ -2576,7 +2579,7 @@ async function loadDashPortfolioMix() {
       fetchJson('/api/portfolio/macro-map' + dateParam).catch(() => ({})),
     ]);
     const allPositions = Array.isArray(portfolioRows) ? portfolioRows : [];
-    const accounts = state.catAccounts || [];
+    const accounts = state.sideAccounts || [];
     const bySymbol = {};
     for (const p of allPositions) {
       if (p.is_cash || !p.symbol) continue;
@@ -2679,11 +2682,29 @@ async function loadCatAccountFilter() {
     el.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
         state.catAccounts = Array.from(el.querySelectorAll('input:checked')).map(c => c.value);
-        reloadFactorScorecards();
-        loadCumPnlSnapshot();
-        loadDashPortfolioMix();
+        reloadFactorScorecards();   // this bar now filters only the 3 grids (2026-10-16)
       });
     });
+    // Second copy at the top of the right column: filters the graphs there and the Accounts rail.
+    const sideEl = $('sideAccountFilter');
+    if (sideEl) {
+      state.sideAccounts = state.sideAccounts.filter(a => validNums.has(a));
+      sideEl.innerHTML = accounts.map(a => `
+        <label class="cat-acct-chip">
+          <input type="checkbox" value="${escapeHtml(a.account_number)}"
+                 ${state.sideAccounts.includes(a.account_number) ? 'checked' : ''}>
+          ${escapeHtml(a.display_name)}
+        </label>
+      `).join('');
+      sideEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          state.sideAccounts = Array.from(sideEl.querySelectorAll('input:checked')).map(c => c.value);
+          loadCumPnlSnapshot();
+          loadDashPortfolioMix();
+          document.dispatchEvent(new Event('side-accounts-changed'));   // web/macro_areas.js re-filters the Accounts rail
+        });
+      });
+    }
   } catch (e) {
     console.error('cat account filter failed:', e);
     el.innerHTML = '';
@@ -2961,6 +2982,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // own trio below -- same self-contained show/hide-a-body-div pattern as
   // every other collapsible bar in this column (see web/market_read.js).
   _wireCollapseToggle('catScorecardToggle', 'catScorecardBody', 'catScorecard_collapsed', 'Asset Class / Sector / Style');
+  _wireCollapseToggle('sideGraphsToggle', 'dashPortfolioMixSection', 'sideGraphs_collapsed', 'Graphs');   // 2026-10-16: one arrow for all the right-column graphs
   _wireCollapseToggle('marketViewToggle', 'marketViewBody', 'marketView_collapsed', 'Market View');
   // 2026-08-10 -- Returns chart period selector (Today/Yest/MTD/QTD/YTD),
   // shared across the 3 column-2 grids -- wired once here; each grid's own

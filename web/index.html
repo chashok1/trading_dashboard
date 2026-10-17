@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261018f">
+  <link rel="stylesheet" href="/static/styles.css?v=20261018m">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -328,7 +328,7 @@
             <span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change">
               <label><input type="radio" name="msrValueMode" value="pct" checked> %</label>
               <label><input type="radio" name="msrValueMode" value="dollar"> $</label>
-              <label><input type="radio" name="msrValueMode" value="price"> Price</label>
+              <label><input type="radio" name="msrValueMode" value="price"> Price</label><label><input type="radio" name="msrValueMode" value="macro"> Macro</label>
             </span>
             <button class="msr-sort-btn" id="macroRailToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Macro Rail panel">&#9662;</button>
           </div>
@@ -455,7 +455,7 @@
                section in the middle column above the filter bar and below
                the panels (volatility/major markets/etc)." -->
           <section class="cockpit-band msr-band-views" id="marketReadSectorsBand" data-view="cards">
-            <div class="msr-section-hdr">Sectors (Signal Strength)<span class="mr-sect-legend"><span class="mr-mem-dot mr-mem-dot-ranked"></span>Ranked <span class="mr-mem-dot mr-mem-dot-bench"></span>Bench <span class="mr-mem-dot mr-mem-dot-km"></span>KM · $ held (green/red = gain/loss) · green outline = actionable</span><span class="mr-sect-total" id="marketReadSectorsTotal" title="Total rows across every sector"></span><span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeSss" value="pct"> %</label><label><input type="radio" name="msrValueModeSss" value="dollar"> $</label><label><input type="radio" name="msrValueModeSss" value="price"> Price</label><label><input type="radio" name="msrValueModeSss" value="cards" checked> Sectors</label><label><input type="radio" name="msrValueModeSss" value="style"> Style</label></span><button class="msr-sort-btn" id="marketReadSectorsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Sectors panel">&#9662;</button></div>
+            <div class="msr-section-hdr">Sectors (Signal Strength)<span class="mr-sect-legend"><span class="mr-mem-dot mr-mem-dot-ranked"></span>Ranked <span class="mr-mem-dot mr-mem-dot-bench"></span>Bench <span class="mr-mem-dot mr-mem-dot-km"></span>KM · $ held (green/red = gain/loss) · green outline = actionable</span><span class="mr-sect-total" id="marketReadSectorsTotal" title="Total rows across every sector"></span><span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeSss" value="pct"> %</label><label><input type="radio" name="msrValueModeSss" value="dollar"> $</label><label><input type="radio" name="msrValueModeSss" value="price"> Price</label><label><input type="radio" name="msrValueModeSss" value="macro"> Macro</label><label><input type="radio" name="msrValueModeSss" value="cards" checked> Sect</label><label><input type="radio" name="msrValueModeSss" value="style"> Style</label></span><button class="msr-sort-btn" id="marketReadSectorsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Sectors panel">&#9662;</button></div>
             <div id="marketReadSectorCards" data-vb="cards" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
             <!-- 2026-09-30 -- alt view: Hedgeye list stocks as rows (same look as Accounts); see web/macro_areas.js view toggle -->
             <div id="marketReadSectorRows" data-vb="rows" class="dash-macro-rail dash-macro-rail-5col"></div>
@@ -493,47 +493,7 @@
             <div id="quadRotationPanelBody">Loading…</div>
           </section>
 
-          </div>
-          <div class="rail-split-side">
-          <!-- 2026-09-24 -- "Accounts" panel: live current holdings (all
-               stocks you actually hold, not a hand-curated watchlist like
-               the macro rail panels above) -- user: "similar to macro rail
-               panel add a new panel for accounts below that -> try to save
-               space -> you can wrap the list into two panels if you need to
-               -> display all stocks in all accounts." Same row style as
-               Tech & ETFs (candle/Td/Tn/range bar/%chg), member list
-               computed fresh from holdings each request instead of a
-               ref_macro_area row -- see api/routers/macro_areas.py's own
-               comment.
-               2026-09-24 follow-up -- was briefly 2 panels side by side
-               (one per broker), then "panel widths should be same Tech &
-               ETFs panel width" (narrowed each to 1/5 of the row). User then:
-               "I only need one header bar 'Accounts' and display 5 columns
-               and adjust the rows" -- merged into ONE panel spanning the
-               full row width, its member list (still one combined,
-               de-duped holdings list, see the router) laid out in 5 CSS
-               columns instead of one, via .dash-macro-rail-5col -- same row
-               markup/content as every other panel, purely a column-flow
-               change. -->
-          <div class="macro-rail-row">
-          <div class="macro-rail-col" style="flex: 1 1 100%; max-width: none;">
-          <section class="cockpit-band rail-band msr-band-views" id="macroAccountsBand" data-view="rows">
-            <!-- 2026-09-24, user-directed: "Accounts bar should have
-                 collapsable arrow at the end and each account should have
-                 sort arrows" -- sorting moved down to each account's own
-                 separator row (web/macro_areas.js::_accountGroupSepHtml);
-                 this top-level button is now a collapse toggle instead of a
-                 sort toggle, same self-contained pattern as Macro Rail's
-                 (see web/macro_areas.js::init(), own localStorage key). -->
-            <div class="msr-section-hdr">Accounts<span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeAcct" value="pct" checked> %</label><label><input type="radio" name="msrValueModeAcct" value="dollar"> $</label><label><input type="radio" name="msrValueModeAcct" value="price"> Price</label><label><input type="radio" name="msrValueModeAcct" value="cards"> Sectors</label><label><input type="radio" name="msrValueModeAcct" value="style"> Style</label></span><button class="msr-sort-btn" id="accountsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Accounts panel">&#9662;</button></div>
-            <div id="macroRailAccounts" data-vb="rows" class="dash-macro-rail dash-macro-rail-5col"><div class="msr-loading">Loading…</div></div>
-            <!-- 2026-09-30 -- alt view: holdings grouped into sector cards (same look as Signal Strength); see web/macro_areas.js view toggle -->
-            <div id="macroRailAccountsCards" data-vb="cards style" class="dash-macro-rail"></div>
-          </section>
-          </div>
-          </div>
-          </div>
-          </div>
+          
 
 
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
@@ -595,6 +555,143 @@
                  instead, matching every other panel in this column. -->
           </div>
 
+
+
+          <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
+               Composition popup: each axis's pie/bar renders directly
+               beside its table, always visible, no click needed. Color
+               legend lives in the table's Category column (a swatch per
+               row, same color as that category's slice/bar) instead of a
+               separate chip list -- see app.js::_catColorMap. Chart is
+               filled in by loadFactorScorecard() itself (same fetch, no
+               second round-trip). -->
+          <!-- TASK_140 follow-up 4 -- axis title moved from its own row
+               above .cat-body into .cat-chart's first line, so it sits at
+               the same height as the table's own grid-header row (both are
+               top-aligned flex children of .cat-body) instead of floating
+               above the whole card. -->
+          <!-- 2026-08-10 -- Asset class moved above Sector per user
+               request (same for the Market View trio below). -->
+          <!-- 2026-09-23 -- single collapsible header added above all 3 of
+               these $-weighted cards together (own #catScorecardBody wrapper,
+               toggled by web/app.js) -- same .msr-section-hdr/.msr-sort-btn
+               chrome as every other collapsible bar in this column. -->
+          <div class="msr-section-hdr" id="catScorecardHdr">Asset Class / Sector / Style<button class="msr-sort-btn" id="catScorecardToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Asset Class / Sector / Style panel">&#9662;</button></div>
+          <div id="catScorecardBody">
+          <section class="cockpit-band cat-section" id="assetClassScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
+                <svg class="chart" id="assetChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="assetClassScorecardBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="sectorScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
+                <svg class="chart" id="sectorChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="sectorScorecardBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="styleScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
+                <svg class="chart" id="styleChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
+            </div>
+          </section>
+          </div>
+
+          <!-- 2026-08-09 -- Market View: same chart+table format as the 3
+               $ grids above (pie chart + table with the same caret
+               cluster convention), deliberately kept as separate cards
+               (not merged into the $ grids) -- pure market/quad-outlook
+               read, zero dependency on what you hold. Count replaces $
+               weight (pie slices sized by # of stocks per category);
+               benchmark ETF return replaces your TWR (bench_mtd/bench_
+               qtd/etc -- already computed independent of holdings, just
+               reused from the same /api/cockpit/factor-scorecard
+               response the $ grids already fetch). User: "how can i see
+               same graphs for sources, only market data no money is
+               involved" -> "i was envisioning the same graphs as above
+               with no money from my holdings involved." Populated by
+               app.js::loadMarketView(). -->
+          <!-- Source filter -- switches count/stance from the default
+               Hedgeye quad outlook to one of the RR/CALL/ETF/II/SSS/PS
+               per-symbol outlook sources. User: "add a filter above those
+               graphs for filtering by source." -->
+          <!-- 2026-09-23 -- collapse arrow appended to this same filter bar
+               (reuses .msr-sort-btn, whose own margin-left:auto pushes it to
+               the bar's far right automatically) instead of a separate
+               header -- toggles #marketViewBody below (web/app.js).
+               2026-09-23 follow-up -- "Market View" title added at the front
+               -- unlike every other collapsible bar in this column, this one
+               previously only said "Source:", with nothing naming the
+               section it collapses. -->
+          <div class="cat-account-filter market-view-source-filter" id="marketViewSourceFilter">
+            <span class="mv-title">Market View</span>
+            <label for="marketViewSourceSelect" style="font-weight:600;color:var(--text-2);">Source:</label>
+            <select id="marketViewSourceSelect">
+              <option value="">All (Hedgeye quad outlook)</option>
+              <option value="RR">RR — Risk Range outlook</option>
+              <option value="CALL">CALL — Manual call sheet</option>
+              <option value="ETF">ETF — ETF entries</option>
+              <option value="II">II — Investment Ideas</option>
+              <option value="SSS">SSS — Signal Strength High</option>
+              <option value="PS">PS — Price Strength Rank</option>
+              <option value="GOANY">GOANY — Hedgeye Go-Anywhere ETFs</option>
+            </select>
+            <button class="msr-sort-btn" id="marketViewToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Market View panel">&#9662;</button>
+          </div>
+          <div id="marketViewBody">
+          <section class="cockpit-band cat-section" id="marketViewAssetClassBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
+                <svg class="chart" id="marketViewAssetClassChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="marketViewAssetClassBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="marketViewSectorBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
+                <svg class="chart" id="marketViewSectorChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="marketViewSectorBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="marketViewStyleBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
+                <svg class="chart" id="marketViewStyleChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="marketViewStyleBody">Loading…</div>
+            </div>
+          </section>
+          </div>
+        
+          </div>
+          <div class="rail-split-side">
+          <!-- 2026-10-16, user-directed: second copy of the account checkboxes (#sideAccountFilter, filled by web/app.js::
+               loadCatAccountFilter). It filters the graphs below it and the Accounts panel; the original bar (above the three
+               grids) now filters only those grids. Nothing checked = all accounts. -->
+          <div class="cat-filter-bar side-acct-bar">
+            <div class="cat-account-filter" id="sideAccountFilter" style="flex:1;">Loading…</div>
+          </div>
+          <!-- 2026-10-16, user-directed: one arrow collapses / expands all the graphs below (P&L, Asset Allocation, Macro Stance, Sector, Concentration). -->
+          <div class="msr-section-hdr" id="sideGraphsHdr">Graphs<button class="msr-sort-btn" id="sideGraphsToggle" type="button" title="Collapse/expand all graphs" aria-label="Collapse Graphs panel">&#9662;</button></div>
           <!-- 2026-08-13 -- Portfolio Mix: same Asset Allocation/Beta/
                Sector/Concentration pies as the Actionable screen's sidebar
                Portfolio Mix panel (#portfolioMixSection in actionable.html),
@@ -745,133 +842,46 @@
               </div>
             </div>
           </div>
-
-
-          <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
-               Composition popup: each axis's pie/bar renders directly
-               beside its table, always visible, no click needed. Color
-               legend lives in the table's Category column (a swatch per
-               row, same color as that category's slice/bar) instead of a
-               separate chip list -- see app.js::_catColorMap. Chart is
-               filled in by loadFactorScorecard() itself (same fetch, no
-               second round-trip). -->
-          <!-- TASK_140 follow-up 4 -- axis title moved from its own row
-               above .cat-body into .cat-chart's first line, so it sits at
-               the same height as the table's own grid-header row (both are
-               top-aligned flex children of .cat-body) instead of floating
-               above the whole card. -->
-          <!-- 2026-08-10 -- Asset class moved above Sector per user
-               request (same for the Market View trio below). -->
-          <!-- 2026-09-23 -- single collapsible header added above all 3 of
-               these $-weighted cards together (own #catScorecardBody wrapper,
-               toggled by web/app.js) -- same .msr-section-hdr/.msr-sort-btn
-               chrome as every other collapsible bar in this column. -->
-          <div class="msr-section-hdr" id="catScorecardHdr">Asset Class / Sector / Style<button class="msr-sort-btn" id="catScorecardToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Asset Class / Sector / Style panel">&#9662;</button></div>
-          <div id="catScorecardBody">
-          <section class="cockpit-band cat-section" id="assetClassScorecardBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
-                <svg class="chart" id="assetChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="assetClassScorecardBody">Loading…</div>
-            </div>
-          </section>
-
-          <section class="cockpit-band cat-section" id="sectorScorecardBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
-                <svg class="chart" id="sectorChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="sectorScorecardBody">Loading…</div>
-            </div>
-          </section>
-
-          <section class="cockpit-band cat-section" id="styleScorecardBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
-                <svg class="chart" id="styleChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
-            </div>
+          <!-- 2026-09-24 -- "Accounts" panel: live current holdings (all
+               stocks you actually hold, not a hand-curated watchlist like
+               the macro rail panels above) -- user: "similar to macro rail
+               panel add a new panel for accounts below that -> try to save
+               space -> you can wrap the list into two panels if you need to
+               -> display all stocks in all accounts." Same row style as
+               Tech & ETFs (candle/Td/Tn/range bar/%chg), member list
+               computed fresh from holdings each request instead of a
+               ref_macro_area row -- see api/routers/macro_areas.py's own
+               comment.
+               2026-09-24 follow-up -- was briefly 2 panels side by side
+               (one per broker), then "panel widths should be same Tech &
+               ETFs panel width" (narrowed each to 1/5 of the row). User then:
+               "I only need one header bar 'Accounts' and display 5 columns
+               and adjust the rows" -- merged into ONE panel spanning the
+               full row width, its member list (still one combined,
+               de-duped holdings list, see the router) laid out in 5 CSS
+               columns instead of one, via .dash-macro-rail-5col -- same row
+               markup/content as every other panel, purely a column-flow
+               change. -->
+          <div class="macro-rail-row">
+          <div class="macro-rail-col" style="flex: 1 1 100%; max-width: none;">
+          <section class="cockpit-band rail-band msr-band-views" id="macroAccountsBand" data-view="rows">
+            <!-- 2026-09-24, user-directed: "Accounts bar should have
+                 collapsable arrow at the end and each account should have
+                 sort arrows" -- sorting moved down to each account's own
+                 separator row (web/macro_areas.js::_accountGroupSepHtml);
+                 this top-level button is now a collapse toggle instead of a
+                 sort toggle, same self-contained pattern as Macro Rail's
+                 (see web/macro_areas.js::init(), own localStorage key). -->
+            <div class="msr-section-hdr">Accounts<span class="msr-mode-toggle" role="radiogroup" aria-label="Show percent change, price, or dollar change"><label><input type="radio" name="msrValueModeAcct" value="pct" checked> %</label><label><input type="radio" name="msrValueModeAcct" value="dollar"> $</label><label><input type="radio" name="msrValueModeAcct" value="price"> Price</label><label><input type="radio" name="msrValueModeAcct" value="macro"> Macro</label><label><input type="radio" name="msrValueModeAcct" value="cards"> Sect</label><label><input type="radio" name="msrValueModeAcct" value="style"> Style</label></span><button class="msr-sort-btn" id="accountsToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Accounts panel">&#9662;</button></div>
+            <div id="macroRailAccounts" data-vb="rows" class="dash-macro-rail dash-macro-rail-5col"><div class="msr-loading">Loading…</div></div>
+            <!-- 2026-09-30 -- alt view: holdings grouped into sector cards (same look as Signal Strength); see web/macro_areas.js view toggle -->
+            <div id="macroRailAccountsCards" data-vb="cards style" class="dash-macro-rail"></div>
           </section>
           </div>
-
-          <!-- 2026-08-09 -- Market View: same chart+table format as the 3
-               $ grids above (pie chart + table with the same caret
-               cluster convention), deliberately kept as separate cards
-               (not merged into the $ grids) -- pure market/quad-outlook
-               read, zero dependency on what you hold. Count replaces $
-               weight (pie slices sized by # of stocks per category);
-               benchmark ETF return replaces your TWR (bench_mtd/bench_
-               qtd/etc -- already computed independent of holdings, just
-               reused from the same /api/cockpit/factor-scorecard
-               response the $ grids already fetch). User: "how can i see
-               same graphs for sources, only market data no money is
-               involved" -> "i was envisioning the same graphs as above
-               with no money from my holdings involved." Populated by
-               app.js::loadMarketView(). -->
-          <!-- Source filter -- switches count/stance from the default
-               Hedgeye quad outlook to one of the RR/CALL/ETF/II/SSS/PS
-               per-symbol outlook sources. User: "add a filter above those
-               graphs for filtering by source." -->
-          <!-- 2026-09-23 -- collapse arrow appended to this same filter bar
-               (reuses .msr-sort-btn, whose own margin-left:auto pushes it to
-               the bar's far right automatically) instead of a separate
-               header -- toggles #marketViewBody below (web/app.js).
-               2026-09-23 follow-up -- "Market View" title added at the front
-               -- unlike every other collapsible bar in this column, this one
-               previously only said "Source:", with nothing naming the
-               section it collapses. -->
-          <div class="cat-account-filter market-view-source-filter" id="marketViewSourceFilter">
-            <span class="mv-title">Market View</span>
-            <label for="marketViewSourceSelect" style="font-weight:600;color:var(--text-2);">Source:</label>
-            <select id="marketViewSourceSelect">
-              <option value="">All (Hedgeye quad outlook)</option>
-              <option value="RR">RR — Risk Range outlook</option>
-              <option value="CALL">CALL — Manual call sheet</option>
-              <option value="ETF">ETF — ETF entries</option>
-              <option value="II">II — Investment Ideas</option>
-              <option value="SSS">SSS — Signal Strength High</option>
-              <option value="PS">PS — Price Strength Rank</option>
-              <option value="GOANY">GOANY — Hedgeye Go-Anywhere ETFs</option>
-            </select>
-            <button class="msr-sort-btn" id="marketViewToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Market View panel">&#9662;</button>
           </div>
-          <div id="marketViewBody">
-          <section class="cockpit-band cat-section" id="marketViewAssetClassBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
-                <svg class="chart" id="marketViewAssetClassChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="marketViewAssetClassBody">Loading…</div>
-            </div>
-          </section>
-
-          <section class="cockpit-band cat-section" id="marketViewSectorBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
-                <svg class="chart" id="marketViewSectorChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="marketViewSectorBody">Loading…</div>
-            </div>
-          </section>
-
-          <section class="cockpit-band cat-section" id="marketViewStyleBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
-                <svg class="chart" id="marketViewStyleChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="marketViewStyleBody">Loading…</div>
-            </div>
-          </section>
+                    </div>
           </div>
-        </div>
+</div>
       </div>
 
       <div class="right-rail">
@@ -1050,7 +1060,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20261016a"></script>
+  <script src="/static/app.js?v=20261018c"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -1091,7 +1101,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261018d" defer></script>
+  <script src="/static/macro_areas.js?v=20261018f" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

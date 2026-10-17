@@ -81,14 +81,15 @@
         var o = { bull: 0, neutral: 1, bear: 2 };
         return o[a.outlook] - o[b.outlook] || (a.label < b.label ? -1 : 1);
       });
-    var prevSub = null;
-    r1.innerHTML = markets.map(function (x) {
-      var sep = (prevSub != null && x.sub !== prevSub) ? '<span class="av-sepline"></span>' : '';
-      prevSub = x.sub;
-      return sep + chipHtml(x);
-    }).join('');
-    r2.innerHTML = ranged.map(chipHtml).join('') +
-      (ranged.length && tiny.length ? '<span class="av-sepline"></span>' : '') + tiny.map(chipHtml).join('');
+    // Grouped like the Outlook changes strip: small uppercase group label, then its chips.
+    var SUB = { 0: 'Equity indices', 1: 'Currency', 2: 'Rates & Credit', 3: 'Commodities & Crypto' };
+    var grpHtml = function (label, list) {
+      return list.length ? '<span class="oc-grp"><span class="oc-gl">' + label + '</span>' + list.map(chipHtml).join('') + '</span>' : '';
+    };
+    r1.innerHTML = [0, 1, 2, 3].map(function (k) {
+      return grpHtml(SUB[k], markets.filter(function (x) { return x.sub === k; }));
+    }).join('') + grpHtml('Other', markets.filter(function (x) { return !(x.sub in SUB); }));
+    r2.innerHTML = grpHtml('ETFs & stocks', ranged) + grpHtml('Outlook only', tiny);
     card.style.display = (markets.length || ranged.length || tiny.length) ? '' : 'none';
   }
 

@@ -138,7 +138,7 @@
   // persist in memory. Color logic is untouched by any of this -- still
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
-  var _CHG_MODES = { pct: 1, price: 1, dollar: 1 };
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1 };   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
   // 2026-09-30, user-directed: "radio buttons should control its own
   // panels" -- one independent mode per radio group: 'rail' (Macro Rail
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
@@ -156,7 +156,12 @@
   var _chgMode = _modes.rail;
   // 'cards' (Accounts/Signal Strength radio option) isn't a chip mode -- rows
   // rendered while it's selected are hidden anyway, so they just use %.
-  function _useMode(group) { var m = _modes[group]; _chgMode = (m === 'cards' || m === 'style') ? 'pct' : (m || 'pct'); }
+  var _macroOn = false;   // true while the panel being rendered has its 'Macro' radio selected
+  function _useMode(group) {
+    var m = _modes[group];
+    _macroOn = (m === 'macro');
+    _chgMode = (m === 'cards' || m === 'style' || m === 'macro') ? 'pct' : (m || 'pct');
+  }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
   // 2026-09-30 -- 'style' option: same cards, grouped by equity style tag.
@@ -623,7 +628,24 @@
   }
 
   // Outlook-change slot (web/outlook_changes.js): fixed-width, empty unless this symbol's outlook changed this week.
-  function _oc(sym) { return window.ocMarker ? window.ocMarker(sym) : ''; }
+  // 2026-10-16, user-directed: with a panel's 'Macro' radio on, the change-marker slot shows the symbol's macro stance instead
+  // (BS / SA / BM / HOLD / STM -- same source as the Macro Stance pie, /api/portfolio/macro-map).
+  var _macroMap = null;
+  var _MS_NAME = { BS: 'Buy some', BM: 'Buy more', SA: 'Sell all', STM: 'Sell to min', HOLD: 'Hold' };
+  function _macroSlot(sym) {
+    var v = _macroMap && _macroMap[sym];
+    if (!v) return '<span class="oc-slot ms"></span>';
+    return '<span class="oc-slot ms" title="' + esc('Macro stance: ' + v + ' (' + (_MS_NAME[v] || v) + ')') + '"><i class="ms-tag ms-' + esc(v) + '">' + esc(v) + '</i></span>';
+  }
+  function _oc(sym) { return _macroOn ? _macroSlot(sym) : (window.ocMarker ? window.ocMarker(sym) : ''); }
+  async function _loadMacroMap() {
+    try {
+      var res = await fetch('/api/portfolio/macro-map' + ((window._dateQS ? window._dateQS() : '') || ''));
+      if (!res.ok) throw new Error(res.status);
+      _macroMap = await res.json();
+      if (_lastAreasData && Object.keys(_modes).some(function (g) { return _modes[g] === 'macro'; })) renderRail(_lastAreasData);
+    } catch (e) { _macroMap = {}; }
+  }
   function _ocCls(sym) { return window.ocHas && window.ocHas(sym) ? ' has-oc' : ''; }
   document.addEventListener('oc-loaded', function () { if (_lastAreasData) renderRail(_lastAreasData); });
 
@@ -1088,9 +1110,26 @@
     if (btn) btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
   }
 
+  // 2026-10-16, user-directed: the Accounts rail follows the right-column account checkboxes (state.sideAccounts): a group (F-A, F-M,
+  // IRA ...) shows when any of its accounts is checked; nothing checked = all. data.account_groups maps group -> account numbers.
+  function _filterAccounts(areas, data) {
+    var sel = ((window.state && window.state.sideAccounts) || []).map(String);
+    if (!sel.length) return areas;
+    var gmap = (data && data.account_groups) || {};
+    return areas.map(function (a) {
+      if (a.area_key !== 'accounts') return a;
+      var c = Object.assign({}, a);
+      c.members = (a.members || []).filter(function (m) {
+        return (gmap[m.account_group] || []).some(function (n) { return sel.indexOf(String(n)) >= 0; });
+      });
+      return c;
+    });
+  }
+  document.addEventListener('side-accounts-changed', function () { if (_lastAreasData) renderRail(_lastAreasData); });
+
   function renderRail(data) {
     _lastAreasData = data;
-    var areas = (data && data.areas) || [];
+    var areas = _filterAccounts((data && data.areas) || [], data);
     var byContainer = {};
     areas.forEach(function (area) {
       var containerId = _AREA_CONTAINER_ID[area.area_key];
@@ -1351,6 +1390,7 @@
   function init() {
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
+    _loadMacroMap();
     _initChgModeToggle();
     _applyViews();
     var dp = document.getElementById('datePicker');

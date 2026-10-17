@@ -4042,7 +4042,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 
 /* 2026-10-16, user-directed: Accounts as a single vertical column at the right end, beside Macro Rail / Signal Strength /
    Themes / Hedgeye. */
-.rail-split { display: grid; grid-template-columns: minmax(0, 1fr) 238px; gap: 4px; align-items: start; }   /* 238px (was 280px, -15%); the change-marker slot is hidden in Accounts rows to make room */
+.rail-split { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 4px; align-items: start; }   /* 238px (was 280px, -15%); the change-marker slot is hidden in Accounts rows to make room */
 .rail-split-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .rail-split-side { min-width: 0; }
 .rail-split-side .macro-rail-row, .rail-split-side .macro-rail-col, .rail-split-side .macro-rail-row > .macro-rail-col:first-child { min-width: 0; }   /* beats the 400px first-column rule */
@@ -4066,3 +4066,31 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .ab-cnt { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 9.5px; }
 .ab-cnt .up { color: #1d9e75; } .ab-cnt .dn { color: #d4537e; }
 #aiBubbleBand .oc-slot { display: none; }   /* no change-marker slot here -- keeps a row within one layer column */
+
+/* 2026-10-16, user-directed: the right column (.rail-split-side) = account checkboxes, the P&L / Asset Allocation / Macro Stance /
+   Sector / Concentration graphs stacked vertically, then Accounts; it runs alongside the Themes panel and the three grids. */
+.rail-split-side { display: flex; flex-direction: column; gap: 4px; }
+.side-acct-bar { flex-wrap: wrap; }
+.side-acct-bar .cat-account-filter { flex-wrap: wrap; }
+#dashPortfolioMixSection > div { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; justify-content: flex-start !important; gap: 8px !important; }
+#dashPortfolioMixSection > div > div { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; max-width: none !important; }
+#dashPortfolioMixSection [id$="Title"] { transform: none !important; width: auto !important; text-align: left !important; }
+
+/* 2026-10-16, user-directed: right-column P&L header -- line 1: period dropdown, the account total ($1,028K) in the middle, expand icon;
+   line 2: Today and Cum. (.ts-total-group is flattened so its three amounts can be ordered individually.) */
+#dashPortfolioMixSection .ts-title { flex-wrap: wrap; justify-content: flex-start; align-items: center; }
+#dashPortfolioMixSection .ts-total-group { display: contents; }
+#dashPortfolioMixSection #tsCumPnlPeriod { order: 1; }
+#dashPortfolioMixSection #tsCumPnlAcctTotal { order: 2; margin: 0 auto; }
+#dashPortfolioMixSection #tsCumPnlExpandBtn { order: 3; }
+#dashPortfolioMixSection .ts-title::after { content: ''; flex: 0 0 100%; order: 4; height: 0; }
+#dashPortfolioMixSection #tsCumPnlToday, #dashPortfolioMixSection #tsCumPnlTotal { order: 5; margin: 3px 10px 0 0; }
+/* 2026-10-16, user-directed: Macro Stance (with the Beta bar; its card is #dpmBetaCard) moves to the end of the graph stack. */
+#dashPortfolioMixSection #dpmBetaCard { order: 9; }
+
+/* 2026-10-16, user-directed: 'Macro' radio -- the marker slot shows the macro stance tag (BS/BM/SA/STM/HOLD) in place of the outlook-change icons. */
+.oc-slot.ms { display: inline-flex !important; }
+.ms-tag { font-style: normal; font-size: 7.5px; font-weight: 700; padding: 0 3px; border-radius: 3px; line-height: 11px; color: #fff; background: #9ca3af; }
+.ms-tag.ms-BS { background: #1d9e75; } .ms-tag.ms-BM { background: #0f6b4d; }
+.ms-tag.ms-SA { background: #a8335c; } .ms-tag.ms-STM { background: #d4537e; }
+.ms-tag.ms-HOLD { background: #9ca3af; }

@@ -464,6 +464,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         # separator row as a header for account symbols start".
         holdings_by_group: dict[str, list[str]] = {}
         holdings_mv: dict[tuple, float] = {}   # (short_name, sym) -> market value, for the Accounts cards
+        account_groups: dict[str, list[str]] = {}   # 2026-10-16: short_name -> account numbers, so the page can filter the Accounts rail
         try:
             acct_rows = s.execute(text("""
                 SELECT short_name, source, account_number FROM ref_accounts
@@ -473,6 +474,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             groups: dict[str, dict[str, list]] = {}
             for short_name, source, account_number in acct_rows:
                 groups.setdefault(short_name, {}).setdefault(source, []).append(account_number)
+                account_groups.setdefault(short_name, []).append(str(account_number))
 
             for short_name, by_source in groups.items():
                 syms: set[str] = set()
@@ -921,6 +923,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "rotate_caution": rotate_caution,
         },
         "top_down": top_down,
+        "account_groups": account_groups,
     }
 
 
