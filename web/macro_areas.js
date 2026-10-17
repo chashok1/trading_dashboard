@@ -640,6 +640,8 @@
     // final_action is the label text ("BUY TO MIN"); final_code is the code (BMN) that actionDisplay understands.
     var d = window.actionDisplay ? window.actionDisplay(code0 || act) : null;
     var code = d && d.code ? d.code : (d && d.side === 'neutral' ? 'HOLD' : String(act));
+    // HOLD is the default for most symbols and swamps the screen: show nothing for it (the slot stays reserved so rows keep aligned).
+    if (code === 'HOLD' || code === 'N') return '<span class="oc-slot ms"></span>';
     var cc = d && d.colorCls ? d.colorCls : 'act-neutral';
     var tip = 'Final action: ' + code + (d && d.label ? ' (' + d.label + ')' : '');
     return '<span class="oc-slot ms" title="' + esc(tip) + '"><i class="ms-tag ms-c-' + esc(cc) + '">' + esc(code) + '</i></span>';
