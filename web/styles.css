@@ -4218,3 +4218,10 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .yc-leg i { display: inline-block; width: 10px; height: 3px; margin-right: 3px; vertical-align: middle; }
 .yc-svg { width: 100%; height: auto; display: block; }
 .yc-click { cursor: zoom-in; }
+
+/* 2026-10-17 -- MOVE & VIX panel (web/move_vix.js): shares the .yc-* table/chart styles with the Yield curve panel; zone tags. */
+#moveVixBand { padding: 4px 6px 6px; }
+.yc-tbl td.mv-z { font-weight: 700; font-size: 9px; text-align: center; }
+.yc-tbl td.mv-ok { background: rgba(29, 158, 117, .24); }
+.yc-tbl td.mv-chop { background: rgba(245, 158, 11, .28); }
+.yc-tbl td.mv-hot { background: rgba(229, 72, 77, .26); }
