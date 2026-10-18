@@ -672,15 +672,15 @@ def get_move_vix(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Q
 
 @router.get("/api/cockpit/credit")
 def get_credit(days: int = Query(620, ge=60, le=4000), date: Optional[str] = Query(None)):
-    """Credit panel: high-yield spread (ICE BofA HY OAS), BBB spread (BBB effective yield minus the 10Y Treasury yield) and the
-    High Yield Total Return Index rebased to 100 on the first day of the window. All FRED (hist_macro); each trails by a day.
-    rows = [date, hy_oas, hy_total_return_rebased, bbb_spread]; a value is null on a day FRED has not published that series."""
+    """Credit panel: high-yield spread (ICE BofA HY OAS) and the High Yield Total Return Index rebased to 100 on the first day of the
+    window. Both FRED (hist_macro); each trails by a day. rows = [date, hy_oas, hy_total_return_rebased]; a value is null on a day
+    FRED has not published that series. (The BBB spread has its own panel, GET /api/cockpit/bbb-spread.)"""
     from datetime import timedelta as _td
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT obs_date, series_id, value FROM hist_macro
-            WHERE series_id IN ('BAMLH0A0HYM2', 'BAMLHYH0A0HYM2TRIV', 'BAMLC0A4CBBBEY', 'DGS10')
+            WHERE series_id IN ('BAMLH0A0HYM2', 'BAMLHYH0A0HYM2TRIV')
               AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
             ORDER BY obs_date
         """), {"d": d, "lo": d - _td(days=days)}).all()
@@ -692,12 +692,10 @@ def get_credit(days: int = Query(620, ge=60, le=4000), date: Optional[str] = Que
     for k, v in sorted(by.items()):
         hy = v.get("BAMLH0A0HYM2")
         tr = v.get("BAMLHYH0A0HYM2TRIV")
-        bbb = (v["BAMLC0A4CBBBEY"] - v["DGS10"]) if ("BAMLC0A4CBBBEY" in v and "DGS10" in v) else None
-        if hy is None and tr is None and bbb is None:
+        if hy is None and tr is None:
             continue
         out.append([k, None if hy is None else round(hy, 3),
-                    None if (tr is None or not first_tr) else round(tr / first_tr * 100, 3),
-                    None if bbb is None else round(bbb, 3)])
+                    None if (tr is None or not first_tr) else round(tr / first_tr * 100, 3)])
     return {"as_of": d.isoformat(), "rows": out}
 
 
@@ -728,6 +726,26 @@ def get_momentum(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Q
     dates = sorted(k for k, v in by.items() if "MTUM" in v)
     return {"as_of": d.isoformat(), "syms": syms,
             "rows": [[k] + [by[k].get(x) for x in syms] for k in dates]}
+
+
+@router.get("/api/cockpit/bbb-spread")
+def get_bbb_spread(days: int = Query(1100, ge=60, le=4000), date: Optional[str] = Query(None)):
+    """10-Year BBB Corporate Spread: ICE BofA BBB US Corporate effective yield minus the 10-year Treasury yield (both FRED, hist_macro;
+    each trails by a day). rows = [date, spread]; only days where both series exist."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT obs_date, series_id, value FROM hist_macro
+            WHERE series_id IN ('BAMLC0A4CBBBEY', 'DGS10') AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
+            ORDER BY obs_date
+        """), {"d": d, "lo": d - _td(days=days)}).all()
+    by = {}
+    for dt, sid, v in rows:
+        by.setdefault(dt.isoformat(), {})[sid] = float(v)
+    return {"as_of": d.isoformat(),
+            "rows": [[k, round(v["BAMLC0A4CBBBEY"] - v["DGS10"], 3)] for k, v in sorted(by.items())
+                     if "BAMLC0A4CBBBEY" in v and "DGS10" in v]}
 
 
 # ---------------------------------------------------------------------------

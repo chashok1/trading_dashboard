@@ -1,13 +1,13 @@
-/* Credit panel, 2026-10-17 (user-directed): high-yield spread (black), BBB spread (orange) and the High Yield Total Return Index (blue, right
- * axis, rebased to 100 at the start of the window), with a change table and a plain-English description of each line. Dashboard left column,
+/* Credit panel, 2026-10-17 (user-directed): high-yield spread (black) and the High Yield Total Return Index (blue, right axis, rebased to
+ * 100 at the start of the window), with a change table and a plain-English description of each line. (The BBB spread has its own panel.) Dashboard left column,
  * below the MOVE & VIX panel. Spread widening = red background, tightening = green; for the total return index a rise = green, a fall = red.
  * Click the chart for a large popup with the full table.
- * Data: GET /api/cockpit/credit -> rows [date, hy_oas, hy_total_return_rebased, bbb_spread] (FRED; each series trails by a day). */
+ * Data: GET /api/cockpit/credit -> rows [date, hy_oas, hy_total_return_rebased] (FRED; each series trails by a day). */
 (function () {
   'use strict';
   var L = 30, R = 30, T = 8, B = 18;
   var rowsAll = [];
-  var COL = { hy: 'currentColor', bbb: '#d9650b', tr: '#1668c4' };
+  var COL = { hy: 'currentColor', tr: '#1668c4' };
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -29,7 +29,7 @@
 
   function tableHtml(D, full) {
     // kind 'bp': a spread, change in basis points, widening = red. kind 'pct': an index, change in %, a rise = green.
-    var names = [['High-yield spread (%)', 1, 'bp'], ['BBB spread (%)', 3, 'bp'], ['HY total return index', 2, 'pct']];
+    var names = [['High-yield spread (%)', 1, 'bp'], ['HY total return index', 2, 'pct']];
     var cell = function (cur, past, kind) {
       if (cur == null || past == null) return '<td>--</td>';
       var v = kind === 'bp' ? Math.round((cur - past) * 100) : Math.round((cur / past - 1) * 1000) / 10;   // pct rounded to 0.1 so -0.04% reads as 0.0, not red
@@ -51,18 +51,16 @@
 
   function legendHtml() {
     return '<div class="yc-leg"><span><i style="background:currentColor"></i>High-yield spread (left)</span>' +
-      '<span><i style="background:' + COL.bbb + '"></i>BBB spread (left)</span>' +
       '<span><i style="background:' + COL.tr + '"></i>High Yield total return index (right)</span></div>';
   }
 
   // Plain-English description of each line; the current values are filled in from the data.
   function descHtml(D) {
-    var hy = back(D, 1, 0), bbb = back(D, 3, 0);
+    var hy = back(D, 1, 0);
     return '<div class="cr-desc">' +
       '<p><b>Black line:</b> the high-yield spread. It&#39;s the extra yield investors demand over Treasuries, currently ' + f2(hy) + '%. A higher number means more worry.</p>' +
       '<p><b style="color:' + COL.tr + '">Blue line (right axis):</b> the High Yield Total Return Index, what a holder of those bonds has actually earned (100 = the start of the chart).</p>' +
-      '<p><b style="color:' + COL.bbb + '">Orange line:</b> the BBB spread, the extra yield the lowest rung of investment-grade company bonds pays over the 10-year Treasury, currently ' + f2(bbb) +
-      '%. If it widens along with high yield, worry is spreading beyond the weakest companies.</p></div>';
+      '</div>';
   }
 
   function chartHtml(D, W, H, fs, cls) {
@@ -72,7 +70,6 @@
     var sp = [], tr = [];
     D.forEach(function (r) {
       if (r[1] != null) sp.push(r[1]);
-      if (r[3] != null) sp.push(r[3]);
       if (r[2] != null) tr.push(r[2]);
     });
     var lo = Math.floor(Math.min.apply(null, sp) * 2) / 2 - 0.25, hi = Math.ceil(Math.max.apply(null, sp) * 2) / 2 + 0.25;
@@ -95,7 +92,7 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += path(2, ty, COL.tr, 1.5) + path(3, y, COL.bbb, 1.5) + path(1, y, COL.hy, 1.8);
+    s += path(2, ty, COL.tr, 1.5) + path(1, y, COL.hy, 1.8);
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
@@ -104,7 +101,7 @@
         if ((+m.slice(5) - 1) % 3 === 1) s += '<text x="' + x(i) + '" y="' + (H - 4) + '" font-size="' + fs + '" fill="currentColor">' + MN[+m.slice(5) - 1] + " '" + m.slice(2, 4) + '</text>';
       }
     });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="High-yield spread, BBB spread and High Yield total return index">' + s + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="High-yield spread and High Yield total return index">' + s + '</svg>';
   }
 
   function attachHover(svg, D, W) {
@@ -124,8 +121,7 @@
       }
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
-      tip.innerHTML = '<b>' + row[0] + '</b><br>High-yield spread: ' + f2(row[1]) + '%<br><span style="color:' + COL.bbb + '">&#9632;</span> BBB spread: ' + f2(row[3]) +
-        '%<br><span style="color:' + COL.tr + '">&#9632;</span> HY total return: ' + f2(row[2]);
+      tip.innerHTML = '<b>' + row[0] + '</b><br>High-yield spread: ' + f2(row[1]) + '%<br><span style="color:' + COL.tr + '">&#9632;</span> HY total return: ' + f2(row[2]);
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -150,7 +146,7 @@
     var m = document.createElement('div');
     m.id = 'creditModal';
     m.className = 'modal-overlay active';
-    m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Credit: high-yield spread, BBB spread, High Yield total return</h2>' +
+    m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Credit: high-yield spread and High Yield total return</h2>' +
       '<p style="margin:0;">' + rowsAll[0][0] + ' to ' + rowsAll[rowsAll.length - 1][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
       '<div class="modal-body">' + tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(rowsAll) + '</div></div>';

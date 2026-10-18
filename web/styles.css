@@ -4234,3 +4234,6 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 /* 2026-10-17 -- Momentum panel (web/momentum_panel.js): shares the .yc-* table/chart styles. */
 #momentumBand { padding: 4px 6px 6px; }
 .mo-sw { display: inline-block; width: 8px; height: 3px; margin-right: 4px; vertical-align: middle; }
+
+/* 2026-10-17 -- 10-Year BBB Corporate Spread panel (web/bbb_panel.js): shares the .yc-* table/chart styles. */
+#bbbBand { padding: 4px 6px 6px; }
