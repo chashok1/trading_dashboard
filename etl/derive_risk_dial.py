@@ -43,6 +43,11 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 CREDIT_WIDEN_BP = 25.0     # BAMLH0A0HYM2 widened >= this over CREDIT_WIDEN_DAYS
 CREDIT_WIDEN_DAYS = 10
+# 2026-10-17, user-directed: a slower, one-month leg for the same gauge. The 10-day leg missed a +53bp/20d widening that
+# had flattened out over the last 10 days (backtest since Oct 2024: 40bp/20d fires on 8% of days in 9 episodes, the 25bp/10d
+# leg on 8% in 15 episodes -- no noisier, fewer flip-flops).
+CREDIT_WIDEN_BP_1M = 40.0
+CREDIT_WIDEN_DAYS_1M = 20
 CURVE_INVERT_BP = 15.0     # T10Y2Y fell >= this over CURVE_INVERT_DAYS
 CURVE_INVERT_DAYS = 5
 # 2026-08-14 -- IG (BAMLC0A0CM) runs far tighter/less volatile than HY --
@@ -255,7 +260,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "rvol_10day": rvol_10day,
         "vix9d": vix9d,
         "usd_corr": usd_corr_map,
-        "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
+        "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS_1M),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "dgs10": _macro_series("DGS10", 3),
         "dgs3mo": _macro_series("DGS3MO", 3),
@@ -517,16 +522,21 @@ def _g_credit_stress(ctx):
     v = _rr_pos_sym(ctx, "HYG")
     hy_widen = _series_delta(ctx.get("hy_oas"), CREDIT_WIDEN_DAYS)
     widened = hy_widen is not None and hy_widen[1] * 100 >= CREDIT_WIDEN_BP
-    if v is None and hy_widen is None:
+    hy_widen_1m = _series_delta(ctx.get("hy_oas"), CREDIT_WIDEN_DAYS_1M)
+    widened_1m = hy_widen_1m is not None and hy_widen_1m[1] * 100 >= CREDIT_WIDEN_BP_1M
+    if v is None and hy_widen is None and hy_widen_1m is None:
         return None, None, "HYG range and HY OAS unavailable"
     hyg_fired = v is not None and v <= 0.15
-    fired = hyg_fired or widened
+    fired = hyg_fired or widened or widened_1m
     legs = []
     if v is not None:
         legs.append((hyg_fired, (v - 0.15) / 0.15, f"HYG {v*100:.0f}% of range"))
     if hy_widen is not None:
         legs.append((widened, (CREDIT_WIDEN_BP - hy_widen[1] * 100) / CREDIT_WIDEN_BP,
                      f"HY OAS {hy_widen[0]:.2f}% ({hy_widen[1]*100:+.0f}bp/{CREDIT_WIDEN_DAYS}d)"))
+    if hy_widen_1m is not None:
+        legs.append((widened_1m, (CREDIT_WIDEN_BP_1M - hy_widen_1m[1] * 100) / CREDIT_WIDEN_BP_1M,
+                     f"HY OAS {hy_widen_1m[0]:.2f}% ({hy_widen_1m[1]*100:+.0f}bp/{CREDIT_WIDEN_DAYS_1M}d)"))
     return fired, v, _leg_detail(legs, fired)
 
 

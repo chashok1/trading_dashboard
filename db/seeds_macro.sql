@@ -43,6 +43,9 @@ INSERT INTO ref_macro_series (series_id, label, grp, unit, sort_order, enabled) 
     -- ::_g_ig_spread_widening. Verified free on FRED (0.79% as of
     -- 2026-08-13).
     ('BAMLC0A0CM',   'IG credit spread',    'risk',      '%',     25, TRUE),
+    -- 2026-10-17 -- ICE BofA US High Yield TOTAL RETURN index (daily, free on FRED): the "High Yield (RHS)" line of the deck's
+    -- HY spread chart. Plain HYG price drifts down with dividends, so it cannot reproduce that line.
+    ('BAMLHYH0A0HYM2TRIV', 'HY total return index', 'risk', 'index', 22, TRUE),
     ('NFCI',         'Fin conditions (NFCI)','risk',     'index', 30, TRUE),
     -- Equity indexes (EOD level; ~1 day lag) ------------------------------
     ('SP500',        'S&P 500',             'index',     'index', 10, FALSE),
