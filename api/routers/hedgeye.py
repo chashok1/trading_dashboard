@@ -502,6 +502,28 @@ def msr_image(date: Optional[str] = Query(None)):
     return FileResponse(str(img_path), media_type="image/png")
 
 
+@router.get("/api/mktsit/images")
+def mktsit_images():
+    """Charts of the latest Market Situation Report email, in email order."""
+    from etl.hedgeye import config as hcfg
+    d = Path(hcfg.get("mktsit_dir") or hcfg.DEFAULTS["mktsit_dir"])
+    files = sorted(d.glob("MktSit *")) if d.is_dir() else []
+    return {
+        "date": files[0].name[7:17] if files else None,
+        "images": [f.name for f in files],
+    }
+
+
+@router.get("/api/mktsit/image")
+def mktsit_image(name: str = Query(...)):
+    from etl.hedgeye import config as hcfg
+    d = Path(hcfg.get("mktsit_dir") or hcfg.DEFAULTS["mktsit_dir"])
+    p = d / Path(name).name          # strip any path parts
+    if not p.name.startswith("MktSit ") or not p.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(str(p))
+
+
 @router.get("/api/inflation-nowcast/image")
 def inflation_nowcast_image(date: Optional[str] = Query(None)):
     from etl.hedgeye import config as hcfg

@@ -1078,6 +1078,12 @@
           </div>
         </section>
 
+        <!-- 2026-10-18, user-directed: all charts of the latest Market Situation Report email, stacked at the bottom of the right column; web/mktsit_images.js <- GET /api/mktsit/images. -->
+        <section class="cockpit-band rail-band" id="mktSitImgBand" style="display:none;">
+          <div class="msr-section-hdr"><span id="mktSitImgTitle">Market Situation charts</span><button class="msr-sort-btn" id="mktSitImgToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Market Situation charts">&#9662;</button></div>
+          <div id="mktSitImgBody"></div>
+        </section>
+
       </div>
     </div>
   </main>
@@ -1126,6 +1132,7 @@
   <script src="/static/bbb_panel.js?v=20261017a" defer></script>
   <script src="/static/momentum_panel.js?v=20261017a" defer></script>
   <script src="/static/iv_rv_panel.js?v=20261017a" defer></script>
+  <script src="/static/mktsit_images.js?v=20261018a" defer></script>
   <script src="/static/collapse_all.js?v=20261017i" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
   <script src="/static/outlook_changes.js?v=20261017m" defer></script>

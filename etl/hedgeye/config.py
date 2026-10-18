@@ -36,6 +36,7 @@ KEYS = {
     "image_dir": "hedgeye_image_dir",              # configurable archive folder
     "hefiles_dir": "hedgeye_hefiles_dir",          # HEFiles output directory
     "msr_dir": "hedgeye_msr_dir",                  # MSR image archive (30-day rolling)
+    "mktsit_dir": "hedgeye_mktsit_dir",            # all charts of the latest MSR email (replaced each time)
     # optional LLM enrichment (off by default)
     "llm_enabled": "hedgeye_llm_enabled",
     "llm_provider": "hedgeye_llm_provider",
@@ -59,6 +60,7 @@ DEFAULTS = {
     "image_dir": "etl/working/hedgeye_charts",
     "hefiles_dir": r"C:\Ashok\Investing\Stocks\HEFiles",
     "msr_dir": r"C:\Ashok\Investing\Stocks\MSR",
+    "mktsit_dir": r"C:\Ashok\Investing\Stocks\MktSituation",
     "llm_enabled": "false",
 }
 
@@ -82,6 +84,7 @@ class Settings:
     image_dir: str
     hefiles_dir: str
     msr_dir: str
+    mktsit_dir: str
     llm_enabled: bool
 
 
@@ -121,5 +124,6 @@ def load() -> Settings:
         image_dir=get("image_dir") or DEFAULTS["image_dir"],
         hefiles_dir=get("hefiles_dir") or DEFAULTS["hefiles_dir"],
         msr_dir=get("msr_dir") or DEFAULTS["msr_dir"],
+        mktsit_dir=get("mktsit_dir") or DEFAULTS["mktsit_dir"],
         llm_enabled=(get("llm_enabled") or "false").lower() == "true",
     )

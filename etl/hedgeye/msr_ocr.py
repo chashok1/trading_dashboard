@@ -54,6 +54,47 @@ def _cleanup_old(msr_dir: str, days: int = 30) -> None:
         log.warning("msr_ocr: cleanup failed: %s", e)
 
 
+def save_mktsit_images(urls: list[str], email_date: date, out_dir: str) -> int:
+    """Save every chart of this MSR email to out_dir as 'MktSit YYYY-MM-DD NN.<ext>'.
+
+    Only the latest email is kept: an older email never replaces a newer set,
+    and a newer (or same-day) email clears the old files first. Nothing is
+    deleted unless at least one new image downloaded.
+    """
+    d = Path(out_dir)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        existing = sorted(d.glob("MktSit *"))
+        for f in existing:
+            try:
+                if date.fromisoformat(f.name[7:17]) > email_date:
+                    return 0
+            except ValueError:
+                pass
+        got: list[tuple[str, bytes]] = []
+        for url in urls:
+            try:
+                with urllib.request.urlopen(url, timeout=15) as resp:
+                    ctype = resp.headers.get_content_type()
+                    data = resp.read()
+            except Exception as e:
+                log.warning("msr_ocr: mktsit download failed %s: %s", url, e)
+                continue
+            ext = {"image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}.get(ctype, "png")
+            got.append((ext, data))
+        if not got:
+            return 0
+        for f in existing:
+            f.unlink()
+        for i, (ext, data) in enumerate(got, 1):
+            (d / f"MktSit {email_date.isoformat()} {i:02d}.{ext}").write_bytes(data)
+        log.info("msr_ocr: %d Mkt Situation images saved -> %s", len(got), d)
+        return len(got)
+    except Exception as e:
+        log.warning("msr_ocr: mktsit save failed: %s", e)
+        return 0
+
+
 def process_msr_images(
     urls: list[str], email_date: date, message_id: str, session, msr_dir: str = ""
 ) -> dict:

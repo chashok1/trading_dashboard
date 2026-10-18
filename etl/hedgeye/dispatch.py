@@ -218,6 +218,10 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 parsed.images, feed_date, email.message_id, session,
                 msr_dir=cfg.msr_dir,
             )
+            summary["mktsit"] = msr_ocr.save_mktsit_images(
+                parsed.images, feed_date,
+                cfg.mktsit_dir,
+            )
         elif email_type == "signal_strength" and parsed.images:
             _save_hefiles_image(
                 parsed.images[0], cfg.hefiles_dir,
