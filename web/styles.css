@@ -4202,3 +4202,19 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 
 /* 2026-10-17 -- "vs SPX" toggle in the Sectors panel header: sits right after the title, before the Day/MTD/QTD/YTD column headers. */
 .msr-section-hdr .oc-filter.vs-spx { margin-left: 8px; font-size: 8.5px; padding: 0 7px; line-height: 12px; }
+
+/* 2026-10-17 -- Yield curve panel (web/yield_curve.js), Dashboard left column below Breadth. Rise = red background, fall = green. */
+#yieldCurveBand { padding: 4px 6px 6px; }
+.yc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+.yc-ttl { font-weight: 700; font-size: 11px; }
+.yc-dt { font-size: 9px; color: var(--text-3, #6b7280); }
+.yc-tbl { border-collapse: collapse; width: 100%; font-size: 10px; font-variant-numeric: tabular-nums; }
+.yc-tbl th, .yc-tbl td { padding: 1px 5px; text-align: right; border-bottom: 1px solid var(--border, #e5e5e2); white-space: nowrap; }
+.yc-tbl th:first-child, .yc-tbl td:first-child { text-align: left; }
+.yc-tbl th { font-weight: 600; font-size: 9px; color: var(--text-3, #6b7280); }
+.yc-tbl td.yc-r { background: rgba(229, 72, 77, .22); font-weight: 600; }
+.yc-tbl td.yc-g { background: rgba(29, 158, 117, .24); font-weight: 600; }
+.yc-leg { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 9px; margin: 4px 0 1px; }
+.yc-leg i { display: inline-block; width: 10px; height: 3px; margin-right: 3px; vertical-align: middle; }
+.yc-svg { width: 100%; height: auto; display: block; }
+.yc-click { cursor: zoom-in; }

@@ -623,6 +623,26 @@ def get_spx_realized_vol(days: int = Query(126, ge=20, le=500), date: Optional[s
             "rows": [[r["as_of_date"].isoformat(), f(r["rv21"]), f(r["rv63"]), f(r["pct"])] for r in reversed(rows)]}
 
 
+@router.get("/api/cockpit/yield-curve")
+def get_yield_curve(days: int = Query(1100, ge=30, le=4000), date: Optional[str] = Query(None)):
+    """2Y / 10Y Treasury yields and the 10Y-2Y spread (FRED, hist_macro), last `days` calendar days up to the anchor date.
+    rows = [date, dgs2, dgs10, t10y2y]; a series is null on a day FRED has not published it yet (yields trail the spread)."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT obs_date, series_id, value FROM hist_macro
+            WHERE series_id IN ('DGS2', 'DGS10', 'T10Y2Y') AND value IS NOT NULL
+              AND obs_date <= :d AND obs_date >= :lo
+            ORDER BY obs_date
+        """), {"d": d, "lo": d - _td(days=days)}).all()
+    by = {}
+    for dt, sid, v in rows:
+        by.setdefault(dt.isoformat(), {})[sid] = round(float(v), 3)
+    return {"as_of": d.isoformat(),
+            "rows": [[k, v.get("DGS2"), v.get("DGS10"), v.get("T10Y2Y")] for k, v in sorted(by.items())]}
+
+
 # ---------------------------------------------------------------------------
 # 6.2 GET /api/cockpit/events
 # ---------------------------------------------------------------------------

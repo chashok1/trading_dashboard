@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261019t2">
+  <link rel="stylesheet" href="/static/styles.css?v=20261019t3">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -178,6 +178,9 @@
           <section class="cockpit-band" id="breadthBand" hidden>
             <div id="breadthBandBody"></div>
           </section>
+
+          <!-- 2026-10-17, user-directed: US Treasury yield curve (2Y, 10Y, 10Y-2Y spread) with change table, below Breadth; web/yield_curve.js <- GET /api/cockpit/yield-curve. -->
+          <section class="cockpit-band" id="yieldCurveBand"><div id="yieldCurveBody"><div class="msr-loading">Loading&hellip;</div></div></section>
 
           <!-- 2026-09-30, user-directed: the "What changed" events panel (#eventsBand)
                was removed entirely -- anything that matters belongs in the Risk Dial. -->
@@ -1100,7 +1103,8 @@
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
   <script src="/static/macro_week.js?v=20261017a" defer></script>
   <script src="/static/spx_rv.js?v=20261017c" defer></script>
-  <script src="/static/collapse_all.js?v=20261017a" defer></script>
+  <script src="/static/yield_curve.js?v=20261017a" defer></script>
+  <script src="/static/collapse_all.js?v=20261017b" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
   <script src="/static/outlook_changes.js?v=20261017m" defer></script>
   <script src="/static/area_verdicts.js?v=20261017c" defer></script>
