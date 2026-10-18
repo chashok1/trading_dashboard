@@ -3693,10 +3693,15 @@ function _buildIvPopHtml(r) {
   const fmtN = v => v != null ? Number(v).toFixed(1) : '—';
   const iv  = r.imp_volatility != null ? r.imp_volatility * 100 : null;
   const hv  = r.hv             != null ? r.hv             * 100 : null;
-  const dc  = r.iv_to_hv_discount;
+  // 2026-10-17: iv_to_hv_discount is empty for every symbol, so fall back to the IV/HV ratio shown in the row below
+  // (d_iv_to_hv: 2.0 = options priced at twice the actual move -> rich 100%; 0.9 -> cheap 10%).
+  const _ratio = r.d_iv_to_hv != null ? Number(r.d_iv_to_hv) : null;
+  const dc  = r.iv_to_hv_discount != null ? r.iv_to_hv_discount
+            : (_ratio != null && isFinite(_ratio) && _ratio > 0 ? (1 - _ratio) * 100 : null);
   const dcStr = dc != null
-    ? (dc > 0 ? '<span style="color:#16a34a">cheap ' : '<span style="color:#dc2626">rich ') +
-      Math.abs(dc).toFixed(1) + '%</span>'
+    ? (Math.abs(dc) < 0.5 ? '<span style="color:#64748b">fair</span>'
+      : (dc > 0 ? '<span style="color:#16a34a">cheap ' : '<span style="color:#dc2626">rich ') +
+        Math.abs(dc).toFixed(1) + '%</span>')
     : '—';
   const ivpVal = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
   const ivpColor = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#333';

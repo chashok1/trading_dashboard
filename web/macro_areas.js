@@ -195,7 +195,7 @@
                : _chgMode === 'dollar' ? opts.dollarChg
                : _chgMode === 'held' ? opts.held
                : null;
-    if (_chgMode === 'held' && altTxt == null) { altTxt = '–'; bg = '#bbb'; }   // not held: dash, grey
+    if (_chgMode === 'held' && altTxt == null && !opts.pctOnly) { altTxt = '–'; bg = '#bbb'; }   // not held: dash, grey
     var txt = altTxt != null ? altTxt
             : flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
     var cls = 'msr-chg' + (altTxt != null ? ' msr-chg-alt' : '');
@@ -634,13 +634,38 @@
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
   var _PERIOD_AREAS = { top9: 1, sector_etfs: 1 };
+  // 2026-10-17 -- "vs SPX" toggle (Sectors panel header): Day / MTD / QTD / YTD pills show the sector minus the S&P 500 over the same
+  // period (deck page 19). SPX's own numbers come from the Major Markets panel (top9) already loaded for the rails.
+  var _VSSPX_KEY = 'macroRailVsSpx';
+  var _vsSpx = false;
+  try { _vsSpx = localStorage.getItem(_VSSPX_KEY) === '1'; } catch (e) {}
+  function _spxRef() {
+    var areas = (_lastAreasData && _lastAreasData.areas) || [];
+    for (var i = 0; i < areas.length; i++) {
+      if (areas[i].area_key !== 'top9') continue;
+      var ms = areas[i].members || [];
+      for (var j = 0; j < ms.length; j++) if (ms[j].symbol === 'SPX') return ms[j];
+    }
+    return null;
+  }
+  function _relMember(m, area) {
+    if (!_vsSpx || area.area_key !== 'sector_etfs') return m;
+    var ref = _spxRef();
+    if (!ref) return m;
+    var sub = function (a, b) { return (a == null || b == null) ? null : a - b; };
+    return Object.assign({}, m, {
+      pct_change: _chgMode === 'pct' ? sub(m.pct_change, ref.pct_change) : m.pct_change,   // the Day pill only when it shows %
+      mtd_pct: sub(m.mtd_pct, ref.mtd_pct), qtd_pct: sub(m.qtd_pct, ref.qtd_pct), ytd_pct: sub(m.ytd_pct, ref.ytd_pct)
+    });
+  }
+
   function _periodCols(m, area) {
     if (!_PERIOD_AREAS[area.area_key]) return '';
     return [['mtd_pct', 'MTD'], ['qtd_pct', 'QTD'], ['ytd_pct', 'YTD']].map(function (c) {
       // Same solid pill as the %chg chip (no price/$ opts, so it stays a % in every mode).
       // Chip stays a direct flex child of the cluster so its fixed 46px width keeps the columns aligned.
-      return _chgChipHtml(m[c[0]], m.inverted)
-        .replace('<span class="msr-chg', '<span title="' + c[1] + ' % (vs last close before the period)" class="msr-chg');
+      return _chgChipHtml(m[c[0]], m.inverted, { pctOnly: true })
+        .replace('<span class="msr-chg', '<span title="' + c[1] + (_vsSpx && area.area_key === 'sector_etfs' ? ' % minus the S&P 500 (same period)' : ' % (vs last close before the period)') + '" class="msr-chg');
     }).join('');
   }
 
@@ -763,6 +788,7 @@
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
       var ocHtml = _oc(m.symbol, m.action, m.action_code);
+      var _rm = _relMember(m, area);   // sector minus SPX when the Sectors 'vs SPX' toggle is on
       return sep + (
         '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m, dispName)) + '">' +
           (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
@@ -782,9 +808,9 @@
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
             _candleHtml(m) +
-            _chgChipHtml(m.pct_change, m.inverted,
+            _chgChipHtml(_rm.pct_change, m.inverted,
                          { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
-            _periodCols(m, area) +
+            _periodCols(_rm, area) +
           '</div>' +
         '</div>'
       );
@@ -1454,6 +1480,25 @@
     });
   }
 
+  // 2026-10-17 -- collapse arrows for the PS & ETF and CALL panels (own localStorage key each; same arrow convention as the others).
+  function _wirePanelToggle(btnId, bodyId, key, title) {
+    var btn = document.getElementById(btnId), body = document.getElementById(bodyId);
+    if (!btn || !body) return;
+    function apply(c) {
+      body.style.display = c ? 'none' : '';
+      btn.innerHTML = c ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (c ? 'Expand ' : 'Collapse ') + title + ' panel');
+    }
+    var c0 = false;
+    try { c0 = localStorage.getItem(key) === '1'; } catch (e) {}
+    apply(c0);
+    btn.addEventListener('click', function () {
+      var c = body.style.display !== 'none';
+      try { localStorage.setItem(key, c ? '1' : '0'); } catch (e) {}
+      apply(c);
+    });
+  }
+
   function init() {
     if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
@@ -1462,6 +1507,16 @@
     _applyViews();
     _wirePanelToggle('psEtfToggle', 'macroRailPsEtf', 'macroRailPsEtf_collapsed', 'PS & ETF');
     _wirePanelToggle('callToggle', 'macroRailCall', 'macroRailCall_collapsed', 'CALL');
+    var vsBtn = document.getElementById('vsSpxToggle');
+    if (vsBtn) {
+      vsBtn.classList.toggle('on', _vsSpx);
+      vsBtn.addEventListener('click', function () {
+        _vsSpx = !_vsSpx;
+        try { localStorage.setItem(_VSSPX_KEY, _vsSpx ? '1' : '0'); } catch (e) {}
+        vsBtn.classList.toggle('on', _vsSpx);
+        if (_lastAreasData) renderRail(_lastAreasData);
+      });
+    }
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var acctToggle = document.getElementById('accountsToggle');

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261019t">
+  <link rel="stylesheet" href="/static/styles.css?v=20261019t2">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -354,7 +354,7 @@
           </section>
 
           <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
-            <div class="msr-section-hdr">Sectors<span class="msr-colhdr" id="colhdr_sector_etfs"></span></div>
+            <div class="msr-section-hdr">Sectors<button type="button" class="oc-filter vs-spx" id="vsSpxToggle" title="Show each sector minus the S&amp;P 500 (Day, MTD, QTD, YTD) instead of its own return">vs SPX</button><span class="msr-colhdr" id="colhdr_sector_etfs"></span></div>
             <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -1126,7 +1126,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261018u" defer></script>
+  <script src="/static/macro_areas.js?v=20261018w" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
