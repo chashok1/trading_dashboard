@@ -147,8 +147,8 @@ Per-month stances above also give, for the window:
 
 - **near** = the nearest month's own stance; **far** = the weight-renormalized
   average stance of the rest of the window (`None` if the window has only one
-  month). Feeds the Stage 4 sign-agreement override (redefined on near/far,
-  not month/quarter).
+  month). Informational only (tooltip) — the Stage 4 sign-agreement override
+  that used it was removed 2026-10-18.
 - **tracking tag**: the symbol's current technical direction — `sign(last_price
   − sma_50)` (simplest existing trend field already on `drv_ma` at this point
   in the derive cascade; `drv_actionable`/`trig_action` don't exist yet here)
@@ -192,36 +192,28 @@ weight is implicitly `1 − q`.
 |---|---|---|
 | `macro_thr_bm` | 1.25 | MacroNet ≥ → **BM** |
 | `macro_thr_bs` | 1.05 | MacroNet ≥ → **BS** |
-| `macro_thr_stm` | −0.15 | MacroNet ≤ → **STM** |
-| `macro_thr_sa` | −0.6 | MacroNet ≤ → **SA** |
+| `macro_thr_stm` | −0.6 | MacroNet ≤ → **STM** (was −0.15; changed 2026-10-18) |
+| `macro_thr_sa` | −1.0 | MacroNet ≤ → **SA** (was −0.6; changed 2026-10-18) |
 
 Recalibrated 2026-07-15 (TASK_126) by percentile against the live
 `drv_macro_score` output after the window switch (same method as
-2026-07-06; target ~3% BM, ~12% BS, ~70% HOLD, ~12% STM, ~3% SA). The
-near/far sign-agreement override puts a structural floor under SA (~6.9% on
-the live universe — any symbol whose nearest + weighted-rest both go
-negative is forced to SA regardless of the raw score threshold, same
-asymmetric-by-design rule as before). Live split achieved at these values:
+2026-07-06; target ~3% BM, ~12% BS, ~70% HOLD, ~12% STM, ~3% SA). That
+calibration was done with the (now removed) override on, so the split below
+is historical. Live split achieved at these values with it on:
 BM 2.4% / BS 17.3% / HOLD 65.0% / STM 8.3% / SA 6.9% (n=1152,
 2026-07-14) — re-check after any change to `quad_horizon_weight_qtr` or the
 window params, since re-weighting shifts the whole distribution (see
 `etl/derive_macro.py::to_action` / `api/routers/dash.py::_macronet_to_vocab`).
 
-**Sign-agreement override (2026-07-06 rule, redefined on the window by
-TASK_126, asymmetric by design):** when `near` and `far` (Stage 3) agree on
-direction, the result never lands in HOLD:
-
-- **Both positive** → floored to BS, still reaching BM if the blend clears
-  `macro_thr_bm` (score-driven, same as the disagreement case below).
-- **Both negative** → always **SA**, regardless of magnitude. Any negative
-  agreement between the near month and the rest of the window is treated as
-  a full sell signal — deliberately not scaled down to STM even when both
-  components are only mildly negative. This is an intentional asymmetry
-  (confirmed with the user 2026-07-06): the buy side stays score-gated, the
-  sell side does not.
-
-HOLD stays reachable only when near/far disagree, when `far` is `None`
-(single-month window), or when a component is exactly zero.
+**Sign-agreement override — REMOVED 2026-10-18.** The tag is now decided by
+the score cut-offs above and nothing else. The old rule (near + far agree →
+never HOLD; both positive → floor BS, both negative → force SA) was dropped
+after a replay of 49 days (2026-07-15..09-17) showed it hurt in all 6
+weight/window combinations (final-tag edge negative with it on, positive in
+5 of 6 with it off) and pushed ~36% of stocks into Buy. `near`/`far` are
+still computed and stored in `detail.near_vs_far` for the tooltip, but
+`override` is always `"none"`. Thresholds were calibrated with the rule on —
+re-check the tag mix after the next derive.
 
 ---
 
@@ -270,8 +262,8 @@ MACRO is an overlay — it never overrides the Technical action.
 | `quad_horizon_weight_qtr` | 0.05 | Quarterly weight `q` in MacroNet = (1−q)·M_window + q·Qtr |
 | `macro_thr_bm` | 1.25 | MacroNet ≥ → BM |
 | `macro_thr_bs` | 1.05 | MacroNet ≥ → BS |
-| `macro_thr_stm` | −0.15 | MacroNet ≤ → STM |
-| `macro_thr_sa` | −0.6 | MacroNet ≤ → SA |
+| `macro_thr_stm` | −0.6 | MacroNet ≤ → STM |
+| `macro_thr_sa` | −1.0 | MacroNet ≤ → SA |
 
 Retired (TASK_126, rows left in `ref_settings`, no longer read):
 `quad_month_ramp_begin_days`, `quad_month_lead_days`,

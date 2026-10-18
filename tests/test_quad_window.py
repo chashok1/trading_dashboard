@@ -154,27 +154,27 @@ def test_near_far_split_empty():
     assert near_far_split([], {}) == (None, None)
 
 
-# ─── to_action: sign-agreement override on near/far ────────────────────────
+# ─── to_action: score cut-offs only (near/far override removed 2026-10-18) ──
 
 _THR = dict(thr_bm=0.62, thr_bs=0.276, thr_stm=-0.736, thr_sa=-0.88)
 
 
-def test_to_action_both_negative_forces_sa():
+def test_to_action_both_negative_no_longer_forces_sa():
     vocab, tag = to_action(-0.1, near=-0.5, far=-0.3, **_THR)
-    assert vocab == 'SA'
-    assert tag == 'SA'
+    assert vocab == 'HOLD'
+    assert tag == 'none'
 
 
-def test_to_action_both_positive_floors_to_bs():
+def test_to_action_both_positive_no_longer_floors_to_bs():
     vocab, tag = to_action(0.05, near=0.5, far=0.3, **_THR)
-    assert vocab == 'BS'
-    assert tag == 'BS'
+    assert vocab == 'HOLD'
+    assert tag == 'none'
 
 
-def test_to_action_both_positive_still_reaches_bm_if_score_clears():
+def test_to_action_near_far_agreement_still_score_gated():
     vocab, tag = to_action(0.9, near=0.5, far=0.3, **_THR)
     assert vocab == 'BM'
-    assert tag == 'BS'
+    assert tag == 'none'
 
 
 def test_to_action_disagreement_falls_through_to_score_thresholds():

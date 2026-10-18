@@ -890,18 +890,9 @@ def _build_macro_engine(d):
         return max(0.0, min(1.0, raw))
 
     def _macronet_to_vocab(mn: float, m: float | None = None, q: float | None = None) -> str:
-        # Mirrors etl/derive_macro.py::to_action — when month (m) and quarter
-        # (q) agree on direction, never land in HOLD. Positive side floors to
-        # BS, still reaching BM if the blend clears that bar (score-driven).
-        # Negative side is asymmetric by design: any negative agreement is
-        # treated as a full sell signal (always SA), not scaled by magnitude
-        # (2026-07-06). HOLD stays possible on disagreement, a near-zero
-        # component, or when m/q aren't supplied.
-        if m is not None and q is not None:
-            if m > 0 and q > 0:
-                return "BM" if mn >= _THR_BM else "BS"
-            if m < 0 and q < 0:
-                return "SA"
+        # Mirrors etl/derive_macro.py::to_action — score cut-offs only. The
+        # month/quarter sign-agreement override was removed 2026-10-18 (m, q
+        # kept in the signature for callers, unused).
         if mn >= _THR_BM:  return "BM"
         if mn >= _THR_BS:  return "BS"
         if mn <= _THR_SA:  return "SA"

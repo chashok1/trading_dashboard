@@ -7711,8 +7711,11 @@ UPDATE ref_settings SET setting_value = '0.05'
 -- fixes into one idempotent step). See docs/quad_design.md.
 UPDATE ref_settings SET setting_value = '1.25'  WHERE setting_name = 'macro_thr_bm';
 UPDATE ref_settings SET setting_value = '1.05'  WHERE setting_name = 'macro_thr_bs';
-UPDATE ref_settings SET setting_value = '-0.15' WHERE setting_name = 'macro_thr_stm';
-UPDATE ref_settings SET setting_value = '-0.6'  WHERE setting_name = 'macro_thr_sa';
+-- 2026-10-18: Sell cut-offs tightened (STM -0.15 -> -0.6, SA -0.6 -> -1.0)
+-- after the near/far override was removed; 49-day replay showed only scores
+-- below about -1.0 lagged the market. See docs/quad_design.md Stage 4.
+UPDATE ref_settings SET setting_value = '-0.6'  WHERE setting_name = 'macro_thr_stm';
+UPDATE ref_settings SET setting_value = '-1.0'  WHERE setting_name = 'macro_thr_sa';
 
 -- Retired (TASK_126): quad_month_ramp_begin_days / quad_month_lead_days /
 -- quad_qtr_ramp_begin_days / quad_qtr_lead_days are no longer read by

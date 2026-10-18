@@ -386,14 +386,10 @@ def near_far_split(weighted: list, stance_by_month: dict):
 
 def to_action(macronet: float, near: float | None, far: float | None,
               thr_bm: float, thr_bs: float, thr_stm: float, thr_sa: float):
-    """MacroNet -> vocab, with the sign-agreement override redefined on the
-    window (near vs weighted-far). Returns (vocab, override_tag)."""
-    if near is not None and far is not None:
-        ns, fs = _sign(near), _sign(far)
-        if ns > 0 and fs > 0:
-            return ('BM' if macronet >= thr_bm else 'BS'), 'BS'
-        if ns < 0 and fs < 0:
-            return 'SA', 'SA'
+    """MacroNet -> vocab, by score cut-offs only. The near/far sign-agreement
+    override was removed (replay test 2026-10-18: it hurt in 6 of 6 setting
+    combinations). near/far are still accepted (kept for the detail JSON) but
+    no longer affect the tag; override_tag is always 'none'."""
     if macronet >= thr_bm:
         return 'BM', 'none'
     if macronet >= thr_bs:
