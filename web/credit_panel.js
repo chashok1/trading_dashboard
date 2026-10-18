@@ -77,8 +77,8 @@
   function descHtml(D) {
     var hy = back(D, 1, 0);
     return '<div class="cr-desc cr-desc-lg">' +
-      '<p><b>Black line:</b> the high-yield spread. It&#39;s the extra yield investors demand over Treasuries, currently ' + f2(hy) + '%. A higher number means more worry.</p>' +
-      '<p><b style="color:' + COL.tr + '">Blue line (right axis):</b> the High Yield Total Return Index, what a holder of those bonds has actually earned (100 = the start of the chart).</p>' +
+      '<p><b>Black line:</b> the high-yield spread. A bond&#39;s yield is the interest rate you earn on it. The yield on US Treasuries is what the government pays to borrow, the safest rate there is. High-yield bonds come from riskier companies (rated BB or lower, also called junk), so they pay more. The spread is the difference: the high-yield bond yield minus the Treasury yield, currently ' + f2(hy) + ' points. A higher spread means more worry, because investors want more extra pay and prices are falling. A lower spread means calm.</p>' +
+      '<p><b style="color:' + COL.tr + '">Blue line (right axis):</b> the High Yield Total Return Index, what a holder of those bonds has actually earned from interest and price changes (100 = the start of the chart).</p>' +
       '<p><b>When does it pay to buy?</b> In general, high-yield bonds are best bought when worry is high and starting to fade, and approached with care when worry is very low.</p>' +
       '<ul>' +
       '<li><b>Black line high and turning down:</b> worry has peaked and is fading. This is usually the best entry, because you get a high yield and prices recovering.</li>' +
@@ -87,12 +87,12 @@
       '<li><b>Black line rising fast and blue line falling:</b> worry is building. Prices usually keep falling for a while, so waiting is usually better.</li>' +
       '</ul>' +
       '<p>These are rules of thumb, not guarantees. A widening spread can keep going, and calm can last longer than expected.</p>' +
-      '<p><b>How it relates to HYG and LQD.</b> HYG is an ETF of high-yield corporate bonds, the riskier companies, so it moves with the lines on this chart. LQD is an ETF of investment-grade corporate bonds, the safer companies. When worry rises, both kinds of spread usually widen, but high yield moves roughly three to four times as much, so HYG usually falls more than LQD in a credit scare. LQD is more sensitive to interest rates because it holds longer-dated bonds, so when yields rise it tends to fall more than HYG, while HYG is driven more by credit worry.</p>' +
+      '<p><b>How it relates to HYG.</b> HYG is an ETF of high-yield corporate bonds, the riskier companies. It is the one that follows the lines on this chart most closely: when the high-yield spread widens, HYG usually falls, and the blue line is roughly what HYG holders earn. HYG also reacts to interest rates: when the 10-year yield rises, it tends to fall.</p>' +
       '<ul>' +
-      '<li><b>HYG falling while LQD holds up:</b> the worry is about risky companies.</li>' +
-      '<li><b>Both falling together with the 10-year yield rising:</b> it is an interest rate move, not a credit scare.</li>' +
+      '<li><b>HYG falling while the spread widens:</b> the worry is about risky companies.</li>' +
+      '<li><b>HYG falling while the 10-year yield rises and the spread is flat:</b> it is an interest rate move, not a credit scare.</li>' +
       '</ul>' +
-      '<p>The 10-Year BBB spread panel sits between LQD (safe companies) and HYG (risky companies): it tracks the lowest rung of investment-grade, right next to the line where bonds become high yield. The black line here usually moves with the BBB spread, but roughly three times as much. <span class="cr-key">High yield widening while BBB stays flat means the worry is still in the weak companies. Both widening means worry is spreading.</span> The BBB panel shows the two together.</p>' +
+      '<p>For the safer companies, see the 10-Year BBB spread panel. The black line here usually moves with the BBB spread, but roughly three times as much. <span class="cr-key">High yield widening while BBB stays flat means the worry is still in the weak companies. Both widening means worry is spreading.</span> The BBB panel shows the two together.</p>' +
       phaseHtml(D) +
       '</div>';
   }

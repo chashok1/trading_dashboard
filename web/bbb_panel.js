@@ -46,28 +46,54 @@
     return '<div class="yc-leg">' + it('bbb', 'BBB spread (left)') + it('hy', 'High-yield spread (right axis)') + '</div>';
   }
 
-  // Rule-of-thumb read (popup only): the BBB spread's place in the chart's range and its change over about a month, and how big the
-  // high-yield spread is compared with it.
+  // Rule-of-thumb reads (popup only): each spread's place in the chart's range and its change over about a month (same rules as the
+  // Credit popup for high yield), the high-yield/BBB ratio, and one combined read.
+  function readOf(d, pos, wide, tight) {
+    // [text, highlight]: red = worry building, green = fading or calm, amber = very low (expensive), none = no signal
+    return d >= wide ? ['worry is building' + (pos > 0.66 ? ' from an already high level' : ''), 'r']
+      : d <= -wide ? (pos > 0.5 ? ['worry is fading from a high level, which is usually the best entry', 'g'] : ['calm is returning', 'g'])
+      : pos <= 0.15 ? ['the spread is very low, so bonds are expensive', 'a']
+      : ['no strong signal', ''];
+  }
+  function tagHtml(rd) { return '<span class="cr-read ' + rd[1] + '">' + rd[0] + '</span>'; }
   function phaseHtml(D) {
-    var s = back(D, 1, 0), s1 = back(D, 1, 20), h = back(D, 2, 0);
+    var s = back(D, 1, 0), s1 = back(D, 1, 20), h = back(D, 2, 0), h1 = back(D, 2, 20);
     var vs = D.map(function (r) { return r[1]; }).filter(function (v) { return v != null; });
+    var hs = D.map(function (r) { return r[2]; }).filter(function (v) { return v != null; });
     if (s == null || s1 == null || !vs.length) return '';
-    var lo = Math.min.apply(null, vs), d = s - s1;
-    // [text, highlight]: red = widening, green = tightening
-    var rd = d >= 0.1 ? ['worry is building', 'r'] : d <= -0.1 ? ['worry is easing', 'g'] : ['no strong signal', ''];
+    var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), d = s - s1, pos = hi > lo ? (s - lo) / (hi - lo) : 0.5;
+    var out = '<p><b>Right now.</b> The BBB spread is ' + f2(s) + '%, ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(2) + ' points over the past month, and ' + (s - lo).toFixed(2) +
+      ' above its low of ' + f2(lo) + '% on this chart. Rule-of-thumb read: ' + tagHtml(readOf(d, pos, 0.1)) + '.</p>';
+    if (h == null || h1 == null || !hs.length) return out;
+    var hlo = Math.min.apply(null, hs), hhi = Math.max.apply(null, hs), hd = h - h1, hpos = hhi > hlo ? (h - hlo) / (hhi - hlo) : 0.5;
     var ratios = D.filter(function (r) { return r[1] > 0 && r[2] != null; }).map(function (r) { return r[2] / r[1]; }).sort(function (a, b) { return a - b; });
-    var ratioTxt = h != null && ratios.length
-      ? ' The high-yield spread is ' + (h / s).toFixed(1) + ' times the BBB spread (usual range ' + ratios[0].toFixed(1) + ' to ' + ratios[ratios.length - 1].toFixed(1) + ' on this chart).' : '';
-    return '<p><b>Right now.</b> The BBB spread is ' + f2(s) + '%, ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(2) + ' points over the past month, and ' + (s - lo).toFixed(2) +
-      ' above its low of ' + f2(lo) + '% on this chart.' + ratioTxt + ' Rule-of-thumb read: <span class="cr-read ' + rd[1] + '">' + rd[0] + '</span>.</p>';
+    var ratioTxt = ratios.length ? ' It is ' + (h / s).toFixed(1) + ' times the BBB spread (usual range ' + ratios[0].toFixed(1) + ' to ' + ratios[ratios.length - 1].toFixed(1) + ' on this chart).' : '';
+    out += '<p>The high-yield spread is ' + f2(h) + '%, ' + (hd >= 0 ? 'up ' : 'down ') + Math.abs(hd).toFixed(2) + ' points over the past month, and ' + (h - hlo).toFixed(2) +
+      ' above its low of ' + f2(hlo) + '% on this chart.' + ratioTxt + ' Rule-of-thumb read: ' + tagHtml(readOf(hd, hpos, 0.3)) + '.</p>';
+    var bw = d >= 0.1, bt = d <= -0.1, hw = hd >= 0.3, ht = hd <= -0.3;
+    var tg = bw && hw ? ['both spreads are widening, so worry is spreading beyond the weakest companies', 'r']
+      : hw ? ['high yield is widening but BBB is not, so the worry is still in the weak companies and has not spread to BBB yet', 'a']
+      : bw ? ['BBB is widening but high yield is not, which is unusual and worth watching', 'a']
+      : bt && ht ? ['both spreads are tightening, so calm is returning', 'g']
+      : ['no strong signal from the pair', ''];
+    return out + '<p><b>Together:</b> ' + tagHtml(tg) + '.</p>';
   }
 
   function descHtml(D) {
     return '<div class="cr-desc cr-desc-lg">' +
-      '<p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
-      f2(back(D, 1, 0)) + '%. It is the extra pay you get for taking company risk instead of lending to the government. A higher number means more worry, because investors want more extra pay and BBB bond prices are falling. A lower number means calm.</p>' +
-      '<p><b>Why BBB is the bridge.</b> Company bonds are graded on a ladder: AAA, AA, A and BBB are investment-grade (the safe companies, held by LQD), and BB and below are high yield, or junk (the risky companies, held by HYG). BBB is the last rung of the safe group, right next to the line where bonds become junk, so it sits between what LQD and HYG hold.</p>' +
-      '<p><b>BBB and high yield together.</b> The purple line is the high-yield spread, on its own axis on the right because it is much bigger. The two usually move in the same direction, but high yield moves roughly three times as much. <span class="cr-key">High yield widening while BBB stays flat means the worry is still in the weak companies. Both widening means worry is spreading beyond the weakest companies.</span></p>' +
+      '<p><b>What the black line shows.</b> The line is the BBB spread. A bond&#39;s yield is the interest rate you earn on it. The 10-year Treasury yield is what the US government pays to borrow, the safest rate there is. BBB bonds come from companies the rating agencies call safe, but only just: BBB is the lowest &quot;safe&quot; rating. Companies are riskier than the government, so their bonds pay a higher yield. The spread is the difference: the BBB yield minus the 10-year Treasury yield, currently ' +
+      f2(back(D, 1, 0)) + ' points. For example, if the Treasury pays 5.1% and BBB bonds pay 6.1%, the spread is 1.0. A higher spread means more worry, because investors want more extra pay and BBB bond prices are falling. A lower spread means calm.</p>' +
+      '<p><b>Why BBB is the bridge.</b> Company bonds are graded on a ladder: AAA, AA, A and BBB are investment-grade (the safe companies, held by LQD), and BB and below are high yield, or junk (the risky companies, held by HYG). BBB is the last rung of the safe group, right next to the line where bonds become junk, so it sits between what LQD and HYG hold. <span class="cr-key">LQD&#39;s price follows the 10-year yield much more than the BBB spread, so treat the BBB spread as a credit-worry gauge, not a forecast for LQD.</span></p>' +
+      '<p><b>BBB and high yield together.</b> The purple line is the high-yield spread: the same idea as the BBB spread, but for riskier companies (rated BB or lower, also called junk). It is much bigger, so it has its own axis on the right. The two usually move in the same direction, but high yield moves roughly three times as much. <span class="cr-key">High yield widening while BBB stays flat means the worry is still in the weak companies. Both widening means worry is spreading beyond the weakest companies.</span></p>' +
+      '<p><b>When does it pay to buy high yield?</b> In general, high-yield bonds are best bought when worry is high and starting to fade, and approached with care when worry is very low.</p>' +
+      '<ul>' +
+      '<li><b>Purple line high and turning down:</b> worry has peaked and is fading. This is usually the best entry, because you get a high yield and prices recovering.</li>' +
+      '<li><b>Purple line falling:</b> calm is returning, and the gains are already coming.</li>' +
+      '<li><b>Purple line very low:</b> everyone is comfortable. Bonds are expensive, there is little room to gain, and the risk is the spread widening.</li>' +
+      '<li><b>Purple line rising fast:</b> worry is building. Prices usually keep falling for a while, so waiting is usually better.</li>' +
+      '</ul>' +
+      '<p>These are rules of thumb, not guarantees. A widening spread can keep going, and calm can last longer than expected.</p>' +
+      '<p><b>How it relates to HYG.</b> HYG is an ETF of high-yield corporate bonds. It follows the purple line most closely: when the high-yield spread widens, HYG usually falls. HYG also reacts to interest rates: when the 10-year yield rises, it tends to fall. If HYG falls while the 10-year yield rises and the spread is flat, it is an interest rate move, not a credit scare.</p>' +
       '<p><b>Downgrade risk.</b> BBB is a large slice of investment-grade. <span class="cr-key">If companies are downgraded from BBB to junk, it can force selling</span>, because many funds are only allowed to hold investment-grade bonds.</p>' +
       phaseHtml(D) + '</div>';
   }
