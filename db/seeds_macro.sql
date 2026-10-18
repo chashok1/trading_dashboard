@@ -43,6 +43,10 @@ INSERT INTO ref_macro_series (series_id, label, grp, unit, sort_order, enabled) 
     -- ::_g_ig_spread_widening. Verified free on FRED (0.79% as of
     -- 2026-08-13).
     ('BAMLC0A0CM',   'IG credit spread',    'risk',      '%',     25, TRUE),
+    -- 2026-10-17 -- ICE BofA BBB US Corporate OAS (daily, free on FRED): the deck's "10-Year BBB Corporate Spread" chart.
+    ('BAMLC0A4CBBB', 'BBB credit spread',   'risk',      '%',     26, TRUE),
+    -- 2026-10-17 -- BBB effective yield; minus DGS10 it gives the deck's "BBB - Treasury 10 Year Spread" (differs from the OAS above).
+    ('BAMLC0A4CBBBEY', 'BBB effective yield', 'risk',    '%',     27, TRUE),
     -- 2026-10-17 -- ICE BofA US High Yield TOTAL RETURN index (daily, free on FRED): the "High Yield (RHS)" line of the deck's
     -- HY spread chart. Plain HYG price drifts down with dividends, so it cannot reproduce that line.
     ('BAMLHYH0A0HYM2TRIV', 'HY total return index', 'risk', 'index', 22, TRUE),

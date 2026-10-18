@@ -57,6 +57,11 @@ CURVE_INVERT_DAYS = 5
 # over the same CREDIT_WIDEN_DAYS window is scaled to IG's actual
 # volatility instead of reusing HY's number as-is.
 IG_WIDEN_BP = 10.0
+# 2026-10-17, user-directed: BBB (BAMLC0A4CBBB) -- the weakest investment-grade tier, so the first place credit stress shows
+# up beyond high yield. The IG gauge above fired on only 2% of days since Oct 2023 (too slow to warn); BBB >= 15bp over 20
+# trading days fires on 4% of days in 7 episodes (backtest since Oct 2023) and was quiet (+10bp) when this was added.
+BBB_WIDEN_BP = 15.0
+BBB_WIDEN_DAYS = 20
 
 # 2026-09-24, user-directed: "Generally Quad 2 is good for risk assets but
 # there is a caveat. if inflation/energy/rates all going up too much too
@@ -151,7 +156,7 @@ def _dominant_quad(session: Session, as_of_date: date) -> Optional[int]:
 
 _RR_SYMS = ["SPX", "HYG", "TNX:CGI", "TYX:CGI", "$DXY", "/CL"]
 _QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL", "VIX", "MOVE:GIF",
-               "GVZ:CGI", "OVX:CGI", "/6J"]
+               "GVZ:CGI", "OVX:CGI", "/6J", "VXN:CGI", "RVX"]
 
 
 def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
@@ -261,6 +266,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "vix9d": vix9d,
         "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS_1M),
+        "bbb_oas": _macro_series("BAMLC0A4CBBB", BBB_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "dgs10": _macro_series("DGS10", 3),
         "dgs3mo": _macro_series("DGS3MO", 3),
@@ -497,6 +503,29 @@ def _g_vix_chop(ctx):
     return th["low"] <= v <= th["high"], v, f"VIX {v:.1f} in chop {th['low']:.0f}-{th['high']:.0f}"
 
 
+# 2026-10-17, user-directed: Nasdaq (VXN) and Russell 2000 (RVX) volatility, same chop / elevated zones and weights as VIX
+# (ref_vol_threshold has their low/high lines). Tech or small caps can be stressed while the S&P still looks calm.
+def _make_vol_gauges(sym: str, name: str):
+    def chop(ctx):
+        v = _vol_value(ctx, sym)
+        th = ctx["vol"].get(sym)
+        if v is None or th is None:
+            return None, v, f"{name} unavailable"
+        return th["low"] <= v <= th["high"], v, f"{name} {v:.1f} in chop {th['low']:.0f}-{th['high']:.0f}"
+
+    def elevated(ctx):
+        v = _vol_value(ctx, sym)
+        th = ctx["vol"].get(sym)
+        if v is None or th is None:
+            return None, v, f"{name} unavailable"
+        return v > th["high"], v, f"{name} {v:.1f} vs elevated>{th['high']:.0f}"
+    return chop, elevated
+
+
+_g_vxn_chop, _g_vxn_elevated = _make_vol_gauges("VXN:CGI", "VXN")
+_g_rvx_chop, _g_rvx_elevated = _make_vol_gauges("RVX", "RVX")
+
+
 def _g_move_elevated(ctx):
     v = _vol_value(ctx, "MOVE:GIF")
     th = ctx["vol"].get("MOVE:GIF")
@@ -637,6 +666,15 @@ def _g_ig_spread_widening(ctx):
     latest, delta = d
     fired = (delta * 100) >= IG_WIDEN_BP
     return fired, latest, f"IG OAS {latest:.2f}% ({delta*100:+.0f}bp/{CREDIT_WIDEN_DAYS}d)"
+
+
+def _g_bbb_spread_widening(ctx):
+    d = _series_delta(ctx.get("bbb_oas"), BBB_WIDEN_DAYS)
+    if d is None:
+        return None, None, "BBB OAS history unavailable"
+    latest, delta = d
+    fired = (delta * 100) >= BBB_WIDEN_BP
+    return fired, latest, f"BBB OAS {latest:.2f}% ({delta*100:+.0f}bp/{BBB_WIDEN_DAYS}d)"
 
 
 # 2026-08-14 -- Sahm Rule recession indicator (economist Claudia Sahm):
@@ -1016,10 +1054,15 @@ GAUGES: list[tuple[str, Callable]] = [
     ("vix_spx_divergence", _g_vix_spx_divergence),
     ("vix_elevated", _g_vix_elevated),
     ("vix_chop", _g_vix_chop),
+    ("vxn_chop", _g_vxn_chop),
+    ("vxn_elevated", _g_vxn_elevated),
+    ("rvx_chop", _g_rvx_chop),
+    ("rvx_elevated", _g_rvx_elevated),
     ("move_elevated", _g_move_elevated),
     ("move_chop", _g_move_chop),
     ("credit_stress", _g_credit_stress),
     ("ig_spread_widening", _g_ig_spread_widening),
+    ("bbb_spread_widening", _g_bbb_spread_widening),
     ("credit_equity_divergence", _g_credit_equity_divergence),
     ("yield_level_watch", _g_yield_level_watch),
     ("curve_inverting", _g_curve_inverting),
