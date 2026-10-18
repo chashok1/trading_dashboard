@@ -667,6 +667,37 @@ def get_move_vix(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Q
             "rows": [[k, v.get("MOVE:GIF"), v.get("VIX")] for k, v in sorted(by.items())]}
 
 
+@router.get("/api/cockpit/credit")
+def get_credit(days: int = Query(620, ge=60, le=4000), date: Optional[str] = Query(None)):
+    """Credit panel: high-yield spread (ICE BofA HY OAS), BBB spread (BBB effective yield minus the 10Y Treasury yield) and the
+    High Yield Total Return Index rebased to 100 on the first day of the window. All FRED (hist_macro); each trails by a day.
+    rows = [date, hy_oas, hy_total_return_rebased, bbb_spread]; a value is null on a day FRED has not published that series."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT obs_date, series_id, value FROM hist_macro
+            WHERE series_id IN ('BAMLH0A0HYM2', 'BAMLHYH0A0HYM2TRIV', 'BAMLC0A4CBBBEY', 'DGS10')
+              AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
+            ORDER BY obs_date
+        """), {"d": d, "lo": d - _td(days=days)}).all()
+    by = {}
+    for dt, sid, v in rows:
+        by.setdefault(dt.isoformat(), {})[sid] = float(v)
+    first_tr = next((v["BAMLHYH0A0HYM2TRIV"] for k, v in sorted(by.items()) if "BAMLHYH0A0HYM2TRIV" in v), None)
+    out = []
+    for k, v in sorted(by.items()):
+        hy = v.get("BAMLH0A0HYM2")
+        tr = v.get("BAMLHYH0A0HYM2TRIV")
+        bbb = (v["BAMLC0A4CBBBEY"] - v["DGS10"]) if ("BAMLC0A4CBBBEY" in v and "DGS10" in v) else None
+        if hy is None and tr is None and bbb is None:
+            continue
+        out.append([k, None if hy is None else round(hy, 3),
+                    None if (tr is None or not first_tr) else round(tr / first_tr * 100, 3),
+                    None if bbb is None else round(bbb, 3)])
+    return {"as_of": d.isoformat(), "rows": out}
+
+
 # ---------------------------------------------------------------------------
 # 6.2 GET /api/cockpit/events
 # ---------------------------------------------------------------------------

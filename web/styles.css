@@ -4225,3 +4225,8 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .yc-tbl td.mv-ok { background: rgba(29, 158, 117, .24); }
 .yc-tbl td.mv-chop { background: rgba(245, 158, 11, .28); }
 .yc-tbl td.mv-hot { background: rgba(229, 72, 77, .26); }
+
+/* 2026-10-17 -- Credit panel (web/credit_panel.js): shares the .yc-* table/chart styles; line descriptions underneath. */
+#creditBand { padding: 4px 6px 6px; }
+.cr-desc { margin-top: 5px; font-size: 9.5px; line-height: 1.4; color: var(--text-2, #5b6172); }
+.cr-desc p { margin: 0 0 3px; }
