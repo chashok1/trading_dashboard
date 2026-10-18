@@ -29,7 +29,7 @@
   }
 
   function descHtml(D) {
-    return '<div class="cr-desc"><p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
+    return '<div class="cr-desc cr-desc-lg"><p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
       f2(at(D, 0)) + '%. A higher number means more worry. If it widens along with high yield, worry is spreading beyond the weakest companies.</p></div>';
   }
 

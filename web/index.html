@@ -194,6 +194,9 @@
           <!-- 2026-10-17, user-directed: Momentum panel (MTUM, SPX, RSP, QQQ; SMH and SPHB appear when they have daily prices), below Credit; web/momentum_panel.js <- GET /api/cockpit/momentum. -->
           <section class="cockpit-band" id="momentumBand"><div id="momentumBody"><div class="msr-loading">Loading&hellip;</div></div></section>
 
+          <!-- 2026-10-18, user-directed: Retail sentiment panel (BUZZ, MEME, GVIP; deck page 26), below Momentum; web/retail_panel.js <- GET /api/cockpit/retail-sentiment. -->
+          <section class="cockpit-band" id="retailBand"><div id="retailBody"><div class="msr-loading">Loading&hellip;</div></div></section>
+
           <!-- 2026-09-30, user-directed: the "What changed" events panel (#eventsBand)
                was removed entirely -- anything that matters belongs in the Risk Dial. -->
           <!-- 2026-08-14 -- Cumulative P&L moved OUT of this column, into
@@ -1126,14 +1129,15 @@
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
   <script src="/static/macro_week.js?v=20261017a" defer></script>
   <script src="/static/spx_rv.js?v=20261018a" defer></script>
-  <script src="/static/yield_curve.js?v=20261018f" defer></script>
-  <script src="/static/move_vix.js?v=20261018c" defer></script>
-  <script src="/static/credit_panel.js?v=20261018b" defer></script>
-  <script src="/static/bbb_panel.js?v=20261018a" defer></script>
-  <script src="/static/momentum_panel.js?v=20261018c" defer></script>
+  <script src="/static/yield_curve.js?v=20261018g" defer></script>
+  <script src="/static/move_vix.js?v=20261018d" defer></script>
+  <script src="/static/credit_panel.js?v=20261018c" defer></script>
+  <script src="/static/bbb_panel.js?v=20261018b" defer></script>
+  <script src="/static/momentum_panel.js?v=20261018d" defer></script>
+  <script src="/static/retail_panel.js?v=20261018a" defer></script>
   <script src="/static/iv_rv_panel.js?v=20261017a" defer></script>
   <script src="/static/mktsit_images.js?v=20261018a" defer></script>
-  <script src="/static/collapse_all.js?v=20261017i" defer></script>
+  <script src="/static/collapse_all.js?v=20261018a" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
   <script src="/static/outlook_changes.js?v=20261017m" defer></script>
   <script src="/static/area_verdicts.js?v=20261017c" defer></script>

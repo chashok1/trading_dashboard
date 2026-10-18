@@ -728,6 +728,35 @@ def get_momentum(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Q
             "rows": [[k] + [by[k].get(x) for x in syms] for k in dates]}
 
 
+_RETAIL_SYMS = ["BUZZ", "MEME", "GVIP"]
+_RETAIL_MIN_DAYS = 10
+
+
+@router.get("/api/cockpit/retail-sentiment")
+def get_retail_sentiment(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Query(None)):
+    """Retail sentiment panel: daily closes (hist_td) of BUZZ, MEME and GVIP. A symbol is returned once it has at least
+    `_RETAIL_MIN_DAYS` closes, so BUZZ and GVIP appear on their own as their daily TOS exports build up history. Rows start at the first
+    day every returned symbol has a close, so the lines are comparable. rows = [date, p1, p2, ...] in `syms` order."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price
+            FROM hist_td
+            WHERE tos_symbol = ANY(:syms) AND last_price IS NOT NULL AND last_price > 0
+              AND export_date <= :d AND export_date >= :lo
+            ORDER BY export_date, tos_symbol, sequence DESC
+        """), {"syms": _RETAIL_SYMS, "d": d, "lo": d - _td(days=days)}).all()
+    by, cnt = {}, {}
+    for dt, sym, v in rows:
+        by.setdefault(dt.isoformat(), {})[sym] = float(v)
+        cnt[sym] = cnt.get(sym, 0) + 1
+    syms = [x for x in _RETAIL_SYMS if cnt.get(x, 0) >= _RETAIL_MIN_DAYS]
+    dates = sorted(k for k, v in by.items() if syms and all(x in v for x in syms))
+    return {"as_of": d.isoformat(), "syms": syms, "pending": [x for x in _RETAIL_SYMS if x not in syms],
+            "rows": [[k] + [by[k][x] for x in syms] for k in dates]}
+
+
 @router.get("/api/cockpit/bbb-spread")
 def get_bbb_spread(days: int = Query(1100, ge=60, le=4000), date: Optional[str] = Query(None)):
     """10-Year BBB Corporate Spread: ICE BofA BBB US Corporate effective yield minus the 10-year Treasury yield (both FRED, hist_macro;

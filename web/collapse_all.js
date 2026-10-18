@@ -13,7 +13,7 @@
   var KEY = 'dashPanelCollapsed';
   var NAMES = {
     riskDialBand: 'Risk Dial', heMktSituationPanel: 'MKT SIT', quadCardsPanel: 'Quads', quadSmallPanel: 'Quad windows',
-    yieldCurveBand: 'Yield curve', moveVixBand: 'Volatility', creditBand: 'Credit', bbbBand: '10Y BBB spread', momentumBand: 'Momentum', crossAssetPanel: 'Cross-Asset', dashNotesBand: 'Notes', housekeepingBand: 'Housekeeping',
+    yieldCurveBand: 'Yield curve', moveVixBand: 'Volatility', creditBand: 'Credit', bbbBand: '10Y BBB spread', momentumBand: 'Momentum', retailBand: 'Retail sentiment', crossAssetPanel: 'Cross-Asset', dashNotesBand: 'Notes', housekeepingBand: 'Housekeeping',
     macroCorrBand: '$ Corln', macroSectorsBand: 'Sectors', headwindBand: 'Headwind areas', spxRvBand: 'SPX realized vol',
     heInflPanel: 'INFL', quadOutlookSection: 'Quad Outlook', indicatorBand: 'E.IND', nearEarningsBand: 'Symbol'
   };

@@ -158,7 +158,15 @@
   }
 
   function closeModal() { var m = document.getElementById('moveVixModal'); if (m) m.remove(); }
-  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, ''); }
+  // Plain-English guide, popup only.
+  function descHtml() {
+    return '<div class="cr-desc cr-desc-lg">' +
+      '<p><b>What the gauges mean.</b> MOVE is the bond market&#39;s volatility gauge. VIX is the same for the S&amp;P 500, VXN for the Nasdaq, RVX for small caps (Russell 2000), GVZ for gold and OVX for oil. A higher number means traders expect bigger swings. The dashed lines on MOVE mark the caution and elevated levels.</p>' +
+      '<p><b>PFIX, the rates hedge.</b> PFIX is a long exposure that benefits from rising bond-market volatility, so it is one way to hedge against another ramp in interest rates and bond market volatility. Hedgeye&#39;s guidance is not to buy the hedge after bond yields have already ramped back toward the top end of their risk ranges. Buy it after bond market volatility (MOVE) has come down alongside bond yields.</p>' +
+      '<p><b>How to use the chart.</b> Watch MOVE and the 10-year yield on the yield curve panel together. The setup is MOVE falling while yields fall. MOVE and yields both pushing higher means the hedge is already costly.</p>' +
+      '</div>';
+  }
+  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();

@@ -58,7 +58,7 @@
   // Plain-English description of each line; the current values are filled in from the data.
   function descHtml(D) {
     var hy = back(D, 1, 0);
-    return '<div class="cr-desc">' +
+    return '<div class="cr-desc cr-desc-lg">' +
       '<p><b>Black line:</b> the high-yield spread. It&#39;s the extra yield investors demand over Treasuries, currently ' + f2(hy) + '%. A higher number means more worry.</p>' +
       '<p><b style="color:' + COL.tr + '">Blue line (right axis):</b> the High Yield Total Return Index, what a holder of those bonds has actually earned (100 = the start of the chart).</p>' +
       '</div>';
