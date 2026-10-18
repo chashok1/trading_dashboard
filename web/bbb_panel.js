@@ -91,7 +91,7 @@
     var D = rowsAll;
     if (!D.length) { body.innerHTML = '<div class="msr-loading">BBB data unavailable.</div>'; return; }
     body.innerHTML = '<div class="yc-head"><span class="yc-ttl">10-Year BBB Corporate Spread</span><span class="yc-dt">through ' + D[D.length - 1][0] + '</span></div>' +
-      tableHtml(D, false) + chartHtml(D, 600, 200, 11, 'yc-click') + descHtml(D);
+      tableHtml(D, false) + chartHtml(D, 600, 200, 11, 'yc-click');
     attachHover(body.querySelector('svg'), D, 600);
   }
 

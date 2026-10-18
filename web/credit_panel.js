@@ -145,7 +145,7 @@
     var D = rowsAll;
     if (!D.length) { body.innerHTML = '<div class="msr-loading">Credit data unavailable.</div>'; return; }
     body.innerHTML = '<div class="yc-head"><span class="yc-ttl">Credit</span><span class="yc-dt">spread data through ' + lastDate(D, 1) + '</span></div>' +
-      tableHtml(D, false) + legendHtml() + chartHtml(D, 600, 230, 11, 'yc-click') + descHtml(D);
+      tableHtml(D, false) + legendHtml() + chartHtml(D, 600, 230, 11, 'yc-click');
     attachHover(body.querySelector('svg'), D, 600);
   }
 

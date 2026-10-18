@@ -138,7 +138,7 @@
     if (!rowsAll.length || !SYMS.length) { body.innerHTML = '<div class="msr-loading">Momentum data unavailable.</div>'; return; }
     var C = cumulative();
     body.innerHTML = '<div class="yc-head"><span class="yc-ttl">Momentum</span><span class="yc-dt">as of ' + C[C.length - 1][0] + '</span></div>' +
-      tableHtml(C, false) + chartHtml(C, 600, 230, 11, 'yc-click') + noteHtml();
+      tableHtml(C, false) + chartHtml(C, 600, 230, 11, 'yc-click');
     attachHover(body.querySelector('svg'), C, 600);
   }
 
