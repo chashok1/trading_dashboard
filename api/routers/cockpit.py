@@ -760,20 +760,21 @@ def get_retail_sentiment(days: int = Query(400, ge=30, le=4000), date: Optional[
 @router.get("/api/cockpit/bbb-spread")
 def get_bbb_spread(days: int = Query(1100, ge=60, le=4000), date: Optional[str] = Query(None)):
     """10-Year BBB Corporate Spread: ICE BofA BBB US Corporate effective yield minus the 10-year Treasury yield (both FRED, hist_macro;
-    each trails by a day). rows = [date, spread]; only days where both series exist."""
+    each trails by a day). rows = [date, bbb_spread, hy_spread]: one row per day where both BBB inputs exist; hy_spread is the ICE BofA
+    High Yield option-adjusted spread for the same day, or null when that day has none."""
     from datetime import timedelta as _td
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT obs_date, series_id, value FROM hist_macro
-            WHERE series_id IN ('BAMLC0A4CBBBEY', 'DGS10') AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
+            WHERE series_id IN ('BAMLC0A4CBBBEY', 'DGS10', 'BAMLH0A0HYM2') AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
             ORDER BY obs_date
         """), {"d": d, "lo": d - _td(days=days)}).all()
     by = {}
     for dt, sid, v in rows:
         by.setdefault(dt.isoformat(), {})[sid] = float(v)
     return {"as_of": d.isoformat(),
-            "rows": [[k, round(v["BAMLC0A4CBBBEY"] - v["DGS10"], 3)] for k, v in sorted(by.items())
+            "rows": [[k, round(v["BAMLC0A4CBBBEY"] - v["DGS10"], 3), v.get("BAMLH0A0HYM2")] for k, v in sorted(by.items())
                      if "BAMLC0A4CBBBEY" in v and "DGS10" in v]}
 
 
