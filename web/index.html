@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261019t7">
+  <link rel="stylesheet" href="/static/styles.css?v=20261019t9">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -711,6 +711,11 @@
           </section>
           </div>
         
+          <!-- 2026-10-17, user-directed: IV vs RV table (deck page 28), last panel of the middle-left column (.rail-split-main); web/iv_rv_panel.js <- GET /api/cockpit/iv-rv. -->
+          <section class="cockpit-band rail-band" id="ivRvBand">
+            <div class="msr-section-hdr">IV vs RV<button class="msr-sort-btn" id="ivRvToggle" type="button" title="Collapse/expand panel" aria-label="Collapse IV vs RV panel">&#9662;</button></div>
+            <div id="ivRvBody"><div class="msr-loading">Loading&hellip;</div></div>
+          </section>
           </div>
           <div class="rail-split-side">
           <!-- 2026-10-16, user-directed: second copy of the account checkboxes (#sideAccountFilter, filled by web/app.js::
@@ -1120,7 +1125,8 @@
   <script src="/static/credit_panel.js?v=20261017b" defer></script>
   <script src="/static/bbb_panel.js?v=20261017a" defer></script>
   <script src="/static/momentum_panel.js?v=20261017a" defer></script>
-  <script src="/static/collapse_all.js?v=20261017g" defer></script>
+  <script src="/static/iv_rv_panel.js?v=20261017a" defer></script>
+  <script src="/static/collapse_all.js?v=20261017i" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
   <script src="/static/outlook_changes.js?v=20261017m" defer></script>
   <script src="/static/area_verdicts.js?v=20261017c" defer></script>

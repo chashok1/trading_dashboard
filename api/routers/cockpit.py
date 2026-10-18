@@ -748,6 +748,60 @@ def get_bbb_spread(days: int = Query(1100, ge=60, le=4000), date: Optional[str] 
                      if "BAMLC0A4CBBBEY" in v and "DGS10" in v]}
 
 
+_IVRV_GROUPS = [
+    ("US equities", [("SPY", "S&P 500"), ("QQQ", "Nasdaq 100"), ("IWM", "Russell 2000"), ("XLB", "Materials"), ("XLC", "Communications"),
+                     ("XLE", "Energy"), ("XLF", "Financials"), ("XLI", "Industrials"), ("XLK", "Technology"), ("XLP", "Staples"),
+                     ("XLRE", "Real estate"), ("XLU", "Utilities"), ("XLV", "Health care"), ("XLY", "Discretionary"), ("XRT", "Retail")]),
+    ("International", [("EEM", "Emerging markets"), ("EWJ", "Japan")]),
+    ("Currencies", [("UUP", "US dollar"), ("FXE", "Euro"), ("FXB", "Pound"), ("FXY", "Yen")]),
+    ("Commodities", [("GLD", "Gold"), ("UNG", "Natural gas"), ("SOYB", "Soybeans"), ("CPER", "Copper")]),
+    ("Fixed income", [("TLT", "Treasury 20Y+"), ("IEF", "Treasury 7-10Y"), ("LQD", "IG corporate"), ("HYG", "High yield")]),
+    ("Mega-cap", [("AAPL", "Apple"), ("AMZN", "Amazon"), ("GOOGL", "Alphabet"), ("META", "Meta"), ("MSFT", "Microsoft"),
+                  ("NVDA", "Nvidia"), ("TSLA", "Tesla")]),
+]
+
+
+@router.get("/api/cockpit/iv-rv")
+def get_iv_rv(date: Optional[str] = Query(None)):
+    """IV vs RV table: for each symbol the options-vs-actual-volatility premium (implied vol / TOS historical vol - 1, 5-day average of the
+    daily ratio to smooth TOS's two-decimal rounding), the symbol's own median premium since 2026-04-01, the premium a week (5 trading
+    days) and a month (21) ago, the IV rank, and whether actual volatility is <= 10% (rounding noise). Banding (Rich / Fair / Cheap
+    against the symbol's own normal) is done in the panel. Symbols with fewer than 30 usable days since April are left out."""
+    from statistics import median as _median
+    d = _resolve_date(date)
+    syms = [x for _, lst in _IVRV_GROUPS for x, _n in lst]
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, imp_volatility, historical_vol, a_iv_percentile
+            FROM hist_td
+            WHERE tos_symbol = ANY(:syms) AND export_date >= DATE '2026-03-01' AND export_date <= :d
+            ORDER BY export_date, tos_symbol, sequence DESC
+        """), {"syms": syms, "d": d}).all()
+    by = {}
+    for dt, sym, iv, hv, ivp in rows:
+        by.setdefault(sym, []).append((dt, iv, hv, ivp))
+    out = []
+    for grp, lst in _IVRV_GROUPS:
+        for sym, name in lst:
+            pts = [(dt, float(iv), float(hv), ivp) for dt, iv, hv, ivp in by.get(sym, [])
+                   if iv is not None and hv is not None and float(iv) > 0 and float(hv) > 0 and dt >= __import__("datetime").date(2026, 4, 1)]
+            if len(pts) < 30:
+                continue
+            ratios = [iv / hv for _dt, iv, hv, _ivp in pts]
+            n = len(ratios)
+
+            def avg(end):
+                return None if end < 5 else sum(ratios[end - 5:end]) / 5
+
+            last = pts[-1]
+            out.append({"g": grp, "s": sym, "name": name, "iv": round(last[1] * 100, 1), "hv": round(last[2] * 100, 1),
+                        "prem": round(avg(n), 3), "w1": None if avg(n - 5) is None else round(avg(n - 5), 3),
+                        "m1": None if avg(n - 21) is None else round(avg(n - 21), 3), "med": round(_median(ratios), 3),
+                        "ivp": None if last[3] is None else int(round(float(last[3]))), "noisy": last[2] <= 0.10,
+                        "date": last[0].isoformat()})
+    return {"as_of": d.isoformat(), "rows": out}
+
+
 # ---------------------------------------------------------------------------
 # 6.2 GET /api/cockpit/events
 # ---------------------------------------------------------------------------

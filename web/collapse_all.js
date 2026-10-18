@@ -91,17 +91,18 @@
   }
 
   function items(g) {
-    var root = document.querySelector(g.sel);
+    var roots = document.querySelectorAll(g.sel);   // a group may be several containers (comma list)
     var out = [];
-    if (!root) return out;
-    arrowToggles(root).forEach(function (b) {
-      out.push({
-        collapsed: function () { return (b.textContent || '').trim() === UP; },
-        set: function (c) { if (((b.textContent || '').trim() === UP) !== c) b.click(); }
+    Array.prototype.forEach.call(roots, function (root) {
+      arrowToggles(root).forEach(function (b) {
+        out.push({
+          collapsed: function () { return (b.textContent || '').trim() === UP; },
+          set: function (c) { if (((b.textContent || '').trim() === UP) !== c) b.click(); }
+        });
       });
-    });
-    if (g.chevrons) chevronPanels(root).forEach(function (p) {
-      out.push({ collapsed: function () { return p.classList.contains('pc-collapsed'); }, set: function (c) { setPanel(p, c); } });
+      if (g.chevrons) chevronPanels(root).forEach(function (p) {
+        out.push({ collapsed: function () { return p.classList.contains('pc-collapsed'); }, set: function (c) { setPanel(p, c); } });
+      });
     });
     return out;
   }
