@@ -1675,7 +1675,7 @@ def get_actionable_source_scorecard():
 def _window_howto(macro_action: str | None, window: dict | None) -> str:
     """How-to directive for the window-based MacroNet (TASK_126). Mirrors the
     style of the old ramp-based howto text in _compute_macro(), but speaks to
-    the sliding window + near/far override instead of month/quarter ramps."""
+    the sliding window instead of month/quarter ramps."""
     parts: list[str] = []
     if macro_action in ("BM", "BS"):
         parts.append(f"Macro favors LONG ({macro_action}). Press bottom-up BUY calls.")

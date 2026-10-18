@@ -4,25 +4,22 @@ MacroNet per-symbol score: MacroNet = (1 - q)*M_window + q*Qtr
 M_window = sliding look-ahead window over the monthly quad calendar. The
 window [D, D+H) (H = quad_lookahead_days, default 60 calendar days) is
 projected onto ref_quad_periods' monthly rows; overlap-day fractions (with
-optional exponential decay) produce a normalized weight per month. Each
-month's own quad distribution feeds the standard Stage 1-2 membership
-aggregation (sector x2 + asset_class x1 + styles x0.5); the per-month
-stances are then weight-blended into one M_window per symbol. This replaces
-the old month now/next ramp blend entirely -- the window itself is the
-"days passed in month" ramp, sliding one day at a time (TASK_126).
+optional exponential decay) give a normalized weight per month. Each month's
+own quad distribution feeds the membership aggregation below, and the
+per-month stances are weight-blended into one M_window per symbol.
 
-Qtr = one-hot stance for the current quarter, blended with next-quarter's
-one-hot stance during the current quarter's LAST CALENDAR MONTH only (linear
-fade by day-of-month: day 1 of that month = 100% current/0% next, last day =
-0% current/100% next). Every other month of the quarter is 100% current
-quarter, unchanged from the old fixed-anchor design. See
-_quarter_fade_weight()/_derive_macro_impl() (2026-08-12).
+Qtr = one-hot stance for the current quarter. During the quarter's last
+calendar month only, it fades linearly into the next quarter's one-hot stance
+(see _quarter_fade_weight).
 
 Both legs use the same membership aggregation:
     net = sector×2 + asset_class×1 + Σ(style×0.5)
 
-Results written to drv_macro_score (idempotent DELETE+INSERT). Full design:
-docs/quad_design.md (Stage 3), agent-tasks/TASK_126_quad_lookahead_window.md.
+The final tag comes from score cut-offs only (to_action); the old near/far
+sign-agreement override was removed 2026-10-18.
+
+Results written to drv_macro_score (idempotent DELETE+INSERT).
+Full design: docs/quad_design.md.
 """
 
 import calendar as _cal
@@ -50,17 +47,11 @@ _CYCLICAL_SECTORS = {
     'Industrials', 'Materials', 'Energy', 'Consumer Discretionary', 'Financials',
 }
 
-# Sector/sub_asset_class tags that deliberately get NO sector membership
-# (no ref_quad_outlook lookup attempted at all) -- checked against both
-# `sector` (non-GICS pseudo-sectors) and the Fixed Income redirect's
-# `sub_asset_class` (generic/non-directional buckets). Not a data gap to
-# fill: Gold/USD already have a correct stance via the 'Asset Class'
-# category; Country ETF has no single defensible quad view spanning every
-# country; 'Fixed Income'/'Fixed Income Volatility' are catch-all/vol-gauge
-# labels, not one of the specific curated sub-categories (HY Credit, IG
-# Credit, Long Bond, ...). 2026-09-01, found via the missing_outlook_keys
-# warning (see _outlook_key) -- keeping these out of that lookup entirely
-# stops them from re-triggering the warning every single derive run.
+# Sector / sub_asset_class tags that deliberately get NO sector membership
+# (skipped before the ref_quad_outlook lookup, so they never raise the
+# missing-outlook warning). Gold/USD are already scored via 'Asset Class';
+# Country ETF has no single quad view; 'Fixed Income' and 'Fixed Income
+# Volatility' are catch-all/vol-gauge labels, not directional sub-categories.
 _NO_SECTOR_MEMBERSHIP = {
     'Country ETF', 'Gold', 'USD', 'Fixed Income', 'Fixed Income Volatility',
 }
@@ -71,30 +62,20 @@ def _stance(v):
 
 
 def _outlook_key(cat, sub):
-    """Case/whitespace-insensitive key into outlook_map. 2026-09-01: a
-    ref_quad_outlook row edited as 'Health care' (the app's canonical label
-    everywhere else is 'Health Care') silently broke that sector's quad
-    stance -- exact-match dict lookup just returned nothing, no error. This
-    exact mismatch had already bitten once before (_DEFENSIVE_SECTORS above
-    hard-codes BOTH 'Health care' and 'Health Care' as a workaround) without
-    the root cause -- the lookup itself -- ever being fixed. Normalizing
-    here means a casing/whitespace slip in ref_quad_outlook (a user-editable
-    /ref table) can't silently blank out a category's stance again; see
-    also the missing_outlook_keys warning in _derive_macro_impl for gaps
-    this normalization can't paper over (a genuinely absent category)."""
+    """Case/whitespace-insensitive key into outlook_map, so a casing slip in
+    the user-editable ref_quad_outlook table (e.g. 'Health care' vs 'Health
+    Care') can't silently blank a category's stance. Genuinely absent
+    categories are reported via the missing_outlook_keys warning."""
     if cat is None or sub is None:
         return None
     return (str(cat).strip().lower(), str(sub).strip().lower())
 
 
 def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month, missing=None):
-    """Window-weighted stance for ONE (cat, sub) membership in isolation —
-    same weighting as M_window, but not summed with a symbol's other
-    memberships, so its own bullish(+1)/bearish(-1)/neutral(0) read can be
-    shown separately (2026-08-01, MACRO column sector/asset-class/style
-    dots). Returns None if this (cat, sub) has no ref_quad_outlook row
-    (`missing`, if passed, collects the (cat, sub) pair for the caller's
-    missing-mapping warning — see _outlook_key)."""
+    """Window-weighted stance for ONE (cat, sub) membership, same weighting as
+    M_window but not summed with the symbol's other memberships (drives the
+    MACRO column's sector/asset-class/style dots). Returns None if there is
+    no ref_quad_outlook row; `missing`, if passed, collects that pair."""
     texts = outlook_map.get(_outlook_key(cat, sub))
     if not texts:
         if missing is not None and cat and sub:
@@ -108,9 +89,8 @@ def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month, missing=N
     return round(total, 4)
 
 
-
-# One-hot quad_pcts, index 0..3 = Quad 1..4 -- used by the per-quad
-# ISOLATED stance calc below (quad{N}_net), see its own comment.
+# One-hot quad_pcts, index 0..3 = Quad 1..4, for the per-quad isolated
+# stance (quad{N}_net).
 _ONEHOT_QUADS = [
     [1.0, 0.0, 0.0, 0.0],
     [0.0, 1.0, 0.0, 0.0],
@@ -250,10 +230,8 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
     if r is not None and r > 65:
         tags.append(('Equity Style', 'Momentum', 0.5))
 
-    # mc == 0 means "no market cap" (indices/futures/FX -- TOS's raw feed
-    # reports literal "0" for these instead of leaving it blank), not a
-    # real $0 market cap -- was tagging SPX, VIX, DXY, /GC, etc. (30
-    # symbols) as Small Caps. `if mc:` treats 0 the same as None/no-data.
+    # TOS reports market cap "0" for indices/futures/FX; treat it as no data
+    # (otherwise SPX, VIX, /GC, ... would be tagged Small Caps).
     if mc:
         if mc < 2e9:
             tags.append(('Equity Style', 'Small Caps', 0.5))
@@ -425,8 +403,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     h = _int('quad_lookahead_days', 60)
     decay_hl = _float('quad_lookahead_decay_hl', 0)
     q = _float('quad_horizon_weight_qtr', 0.05)
-    # Thresholds — use same setting names as API _macronet_to_vocab (macro_thr_*)
-    # with fallback to legacy macronet_threshold_* settings.
+    # Same macro_thr_* names the API uses; legacy macronet_threshold_* as fallback.
     thr_bm  = _float('macro_thr_bm',  _float('macronet_threshold_sa',  1.5))
     thr_bs  = _float('macro_thr_bs',  _float('macronet_threshold_bm',  0.5))
     thr_stm = _float('macro_thr_stm', _float('macronet_threshold_stm', -0.5))
@@ -444,12 +421,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
     ), {'y': cur_qtr_y, 'n': cur_qtr_n}).fetchone()
 
-    # Next quarter is always looked up (2026-08-12 follow-up) so the tooltip
-    # can always show what's coming ("Next Qtr (Quad N)"), not only once the
-    # last-month-of-quarter fade has actually started blending it in. Its
-    # WEIGHT (qtr_fade) still only leaves 0 during the current quarter's
-    # last calendar month -- outside that window this leg is display-only
-    # (0% contribution, per user request: "fine if all zeros").
+    # Next quarter is always loaded for the tooltip; its weight (qtr_fade) is
+    # 0 except in the current quarter's last calendar month.
     qtr_next = session.execute(text(
         "SELECT period_type, year, period_num, quad,"
         " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
@@ -458,8 +431,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     ), {'y': nxt_qtr_y, 'n': nxt_qtr_n}).fetchone()
     qtr_fade = _quarter_fade_weight(as_of_date, qtr_end) if qtr_next is not None else 0.0
 
-    # All monthly rows with distribution data — used both for the window
-    # calc and the per-month sparkline (monthly_scores_json), unchanged.
+    # Monthly rows with distribution data: feeds the window and the
+    # per-month sparkline (monthly_scores_json).
     all_monthly = session.execute(text(
         "SELECT year, period_num, quad, label,"
         " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
@@ -497,9 +470,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     qtr_now_pcts = _onehot(qtr_now.quad)
     qtr_next_pcts = _onehot(qtr_next.quad) if qtr_next is not None else None
 
-    # Outlook lookup map — keyed by _outlook_key (case/whitespace-normalized)
-    # so a ref_quad_outlook edit doesn't have to match the app's canonical
-    # sector/asset-class/style label casing exactly (see _outlook_key).
+    # Outlook lookup, keyed by the normalized _outlook_key.
     outlook_map = {
         _outlook_key(r.category, r.sub_category): [r.quad1, r.quad2, r.quad3, r.quad4]
         for r in session.execute(text(
@@ -507,18 +478,14 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             " FROM ref_quad_outlook"
         )).fetchall()
     }
-    # Collects every (cat, sub) membership actually looked up this run that
-    # had no ref_quad_outlook row at all (genuinely missing, not just a
-    # casing slip _outlook_key already absorbs) — flushed to meta_warning
-    # after the symbol loop so a real gap is visible instead of a silent
-    # blank stance. See docs/quad_design.md.
+    # (cat, sub) memberships with no ref_quad_outlook row; flushed to
+    # meta_warning after the symbol loop.
     missing_outlook_keys: set = set()
 
     if not outlook_map:
         log.info("derive_macronet: ref_quad_outlook is empty — skipping")
         return 0
 
-    # Load symbols with fundamentals + technical-direction fields via drv_ma
     sym_rows = session.execute(text("""
         SELECT tos_symbol, sector, asset_class, sub_asset_class,
                beta, pe_ratio, eps, div_yield, market_cap_str, rsi,
@@ -527,15 +494,10 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         WHERE as_of_date = :d
     """), {'d': as_of_date}).fetchall()
 
-    # drv_ma's sector/asset_class/sub_asset_class come from ref_sector via a
-    # DIRECT ticker=tos_symbol join (etl/derive.py) -- misses every index/
-    # futures/FX symbol whose tos_symbol differs from ref_sector's own
-    # (Yahoo-format) ticker, e.g. SPX vs '^SPX', TNX:CGI vs '^TNX', /GC vs
-    # 'GC=F'. Bridge via ref_rrt (tos_ticker -> y_ticker) for just those
-    # rows here, rather than touching derive.py's shared, byte-constrained
-    # join (used well beyond this one derive, don't want to risk it).
-    # DISTINCT ON guards against ref_rrt's occasional duplicate/conflicting
-    # y_ticker rows for the same tos_ticker (e.g. /BTC has two).
+    # drv_ma joins ref_sector on ticker = tos_symbol, which misses index/
+    # futures/FX symbols whose Yahoo ticker differs (SPX vs '^SPX', /GC vs
+    # 'GC=F'). Bridge those via ref_rrt (tos_ticker -> y_ticker); DISTINCT ON
+    # guards against duplicate y_ticker rows for one tos_ticker.
     bridge_rows = session.execute(text("""
         SELECT DISTINCT ON (rrt.tos_ticker)
                rrt.tos_ticker, rs.equity_sector, rs.asset_class, rs.sub_asset_class
@@ -554,53 +516,23 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         if not sector and not asset_cls:
             b = bridge_map.get(r.tos_symbol)
             if b:
-                # equity_sector deliberately NOT taken from the bridge --
-                # checked all 61 bridged rows (2026-08-27) and it's a lazy
-                # default for every one of them (FX -> Financials,
-                # commodities -> Materials/Energy, broad indices/vol gauges
-                # like SPX/VIX/RUT -> arbitrary GICS names that don't
-                # describe an index), same pattern as HYG's original bug --
-                # just for asset classes this fix doesn't special-case.
-                # asset_class/sub_asset_class ARE accurate for these, so
-                # still bridge those (drives the Fixed Income redirect
-                # below + the 'Asset Class' membership either way).
+                # equity_sector is not taken from the bridge: for these rows
+                # it is a placeholder default (FX -> Financials, indices ->
+                # arbitrary GICS names). asset_class/sub_asset_class are
+                # accurate and drive the Fixed Income redirect below.
                 asset_cls = b.asset_class or ''
                 sub_asset = b.sub_asset_class
 
-        # Fixed Income instruments (bond/credit ETFs, rate futures, etc.):
-        # ref_sector.equity_sector is a generic "Financials" default for
-        # these -- not a real GICS sector -- so scoring HYG/LQD/TLT/etc.
-        # against the 'Equity Sectors' x 'Financials' outlook makes a junk-
-        # bond ETF score identically to an actual bank-stock ETF (found
-        # 2026-08-27: HYG and XLF had bit-for-bit identical sector_stance).
-        # ref_quad_outlook already has a dedicated 'Fixed Income' category
-        # with sub-categories matching ref_sector.sub_asset_class (HY
-        # Credit, IG Credit, Long Bond, ...) -- just never wired in. Falls
-        # through to no sector membership (not the wrong Financials one)
-        # when sub_asset_class doesn't exactly match a ref_quad_outlook row
-        # (_membership_net already skips unmatched (cat, sub) pairs).
+        # Fixed Income instruments carry a placeholder "Financials" sector, so
+        # score them against the dedicated 'Fixed Income' outlook category
+        # (sub-categories match sub_asset_class: HY Credit, IG Credit, ...).
+        # An unmatched sub_asset_class gets no sector membership.
         if asset_cls == 'Fixed Income':
             sector_cat, sector_sub = 'Fixed Income', (sub_asset or '')
-            # 'Fixed Income' itself (the generic catch-all sub_asset_class,
-            # e.g. PFIX) and 'Fixed Income Volatility' (a rate-vol gauge
-            # like ^MOVE, not a directional sub-asset-class) don't have --
-            # and structurally shouldn't get -- a dedicated ref_quad_outlook
-            # row the way HY Credit/IG Credit/Long Bond/etc. do. Drop to no
-            # sector membership deliberately, same as an unmatched
-            # sub_asset_class, so _MISSING_OUTLOOK_EXPECTED below doesn't
-            # have to also carry these (2026-09-01, found via the
-            # missing_outlook_keys warning -- see _outlook_key).
             if sector_sub in _NO_SECTOR_MEMBERSHIP:
                 sector_sub = ''
         elif sector in _NO_SECTOR_MEMBERSHIP:
-            # Non-GICS pseudo-sector tags (Country ETF/Gold/USD) -- not real
-            # equity sectors, so scoring them against 'Equity Sectors' was
-            # never going to match (2026-09-01, same discovery as above).
-            # Gold and USD already get a correct asset_class_stance via the
-            # 'Asset Class' category (both have their own row there);
-            # Country ETF has no single defensible quad view as one bucket
-            # spanning every country, so it's left with no sector dot at
-            # all rather than an invented one.
+            # Non-GICS pseudo-sectors (Country ETF/Gold/USD): no sector dot.
             sector_cat, sector_sub = 'Equity Sectors', ''
         else:
             sector_cat, sector_sub = 'Equity Sectors', sector
@@ -611,7 +543,6 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                               r.rsi, r.market_cap_str, sector)
         )
 
-        # Per-month stances for every month in the window (§2)
         stance_by_month = {
             ym: _membership_net(memberships, outlook_map, pcts_by_month[ym],
                                  missing=missing_outlook_keys)
@@ -629,16 +560,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
 
         macronet = round((1.0 - q) * M_window + q * Qtr, 4)
 
-        # Per-quad ISOLATED stance -- "if Quad N were 100% certain", ignoring
-        # the real near/far window blending macronet itself uses (a one-hot
-        # quad_pcts instead of the real monthly/quarterly probability mix).
-        # Reuses the SAME memberships/outlook_map as macronet -- only the
-        # quad-probability input differs -- so a symbol's sector/asset-class/
-        # style tags never disagree between macronet and these. Feeds the
-        # Universe screen's Q1-Q4 "favorable" filter (db/baseline.sql's own
-        # migration comment has the full rationale). User: "add Q1|Q2|Q3|Q4
-        # filter -> show the stocks or factors based on quad favorable" --
-        # 2026-09-08.
+        # Per-quad isolated stance ("if Quad N were certain"): same memberships
+        # as macronet, one-hot quad input. Feeds the Universe Q1-Q4 filter.
         quad_isolated = [
             round(_membership_net(memberships, outlook_map, _ONEHOT_QUADS[i]), 4)
             for i in range(4)
@@ -647,10 +570,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         near, far = near_far_split(weighted, stance_by_month)
         vocab, override_tag = to_action(macronet, near, far, thr_bm, thr_bs, thr_stm, thr_sa)
 
-        # Technical direction: sign(last_price - sma_50) — simplest existing
-        # trend field already exposed via drv_ma at this point in the derive
-        # cascade (drv_actionable/trig_action don't exist yet here). See
-        # docs/quad_design.md / DEV_HANDOFF for the choice rationale.
+        # Technical direction = last_price - sma_50 (drv_actionable/trig_action
+        # don't exist yet at this point in the derive cascade).
         tech_dir = None
         try:
             if r.last_price is not None and r.sma_50 not in (None, 0):
@@ -662,13 +583,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         eff_frac = build_effective_distribution(weighted, pcts_by_month)
         eff_pct = {f"q{i+1}": round(eff_frac[i] * 100, 1) for i in range(4)}
 
-        # Per-month agreement flag (same sign-comparison tracking_tag() uses
-        # internally, but exposed for every month in the window instead of
-        # just the first match) -- lets the UI show a checkmark/x per month
-        # rather than only naming the single nearest confirming one.
-        # None = no technical direction to compare against at all (not a
-        # disagreement, just nothing to check); True/False = that month's
-        # stance does/doesn't share the technical direction's sign.
+        # "agrees" per window month: None = no technical direction to compare;
+        # True/False = the month's stance does/doesn't share its sign.
         tdir_sign = _sign(tech_dir)
         months_detail = [
             {
@@ -681,26 +597,15 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             for ym, w in weighted
         ]
 
-        # Tracking-vs-score conflict (2026-08-12): does the technical
-        # direction (tdir_sign, same signal months_detail[].agrees compares
-        # against) disagree with the sign of the FINAL blended macronet —
-        # not just individual window months. None = no technical direction
-        # or a flat macronet to compare (not a conflict, just nothing to
-        # check); True/False = disagree/agree. Surfaced in the MACRO column
-        # glyph + tooltip so a "score says buy, price says no" case is
-        # visible without opening the popover.
+        # Technical direction vs the sign of the final macronet. None = no
+        # direction or a flat score; True = they disagree.
         macronet_sign = _sign(macronet)
         tracking_conflict = (
             (tdir_sign != macronet_sign) if (tdir_sign != 0 and macronet_sign != 0) else None
         )
 
-        # Quarter window (2026-08-12, always-show-next follow-up): current-
-        # quarter leg always present; next-quarter leg is present whenever
-        # ref_quad_periods has a forecast for it -- its "w" is 0 outside the
-        # last-month fade, so it's visible but contributes nothing to Qtr
-        # until the fade actually starts. Mirrors the monthly `months` list
-        # shape (label/quad/w/stance) so the tooltip can render it the same
-        # way.
+        # Same shape as the monthly `months` list; the next-quarter leg has
+        # w = 0 until the last-month fade starts.
         quarter_window = {
             "cur": {
                 "label": f"{cur_qtr_y}-Q{cur_qtr_n}",
@@ -734,8 +639,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             "quarter_window": quarter_window,
         }
 
-        # Per-month scores for all available periods (sparkline data) —
-        # unchanged, still Stage 1-2 stance vs each individual month.
+        # Sparkline data: stance vs each individual month.
         monthly_scores = []
         for p, pcts in zip(all_monthly, _all_monthly_pcts):
             net_m = _membership_net(memberships, outlook_map, pcts)
@@ -754,18 +658,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                 'q4': float(p.quad4_pct or 0),
             })
 
-        # Per-membership stances for the MACRO column's sector/asset-class/
-        # style dots (2026-08-01) — same window weighting as M_window, just
-        # not summed together, so each dimension's own bullish/bearish read
-        # is visible instead of only the combined net. memberships[0] is
-        # always the sector tuple, [1] the asset-class tuple (both always
-        # appended above regardless of whether an outlook row exists for
-        # them — _window_stance_for returns None if it doesn't); [2:] are
-        # this symbol's style tags (0 to ~6, from _classify_style).
-        # sector_cat/sector_sub (Fixed Income -> 'Fixed Income'/sub_asset_class,
-        # else 'Equity Sectors'/sector) -- same swap as memberships[0] above,
-        # so this dot doesn't silently keep scoring bond ETFs against the
-        # 'Equity Sectors' outlook after macronet stopped doing so.
+        # Per-membership stances for the MACRO column dots. memberships[0] is
+        # the sector, [1] the asset class, [2:] the style tags.
         sector_stance = _window_stance_for(
             sector_cat, sector_sub, outlook_map, weighted, pcts_by_month,
             missing=missing_outlook_keys) if sector_sub else None
