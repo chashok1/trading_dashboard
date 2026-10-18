@@ -701,6 +701,35 @@ def get_credit(days: int = Query(620, ge=60, le=4000), date: Optional[str] = Que
     return {"as_of": d.isoformat(), "rows": out}
 
 
+_MOMENTUM_SYMS = ["MTUM", "SPX", "RSP", "QQQ", "SMH", "SPHB"]
+
+
+@router.get("/api/cockpit/momentum")
+def get_momentum(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Query(None)):
+    """Momentum panel: daily closes (hist_td) of MTUM, SPX, RSP, QQQ, SMH and SPHB for the last `days` calendar days. A symbol is
+    returned only if it has a close on at least 80% of the days MTUM does, so SMH / SPHB appear on their own once their daily TOS
+    export is healthy (SMH has been missing since Aug 2026; SPHB is not in the export yet). rows = [date, p1, p2, ...] in `syms` order."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price
+            FROM hist_td
+            WHERE tos_symbol = ANY(:syms) AND last_price IS NOT NULL AND last_price > 0
+              AND export_date <= :d AND export_date >= :lo
+            ORDER BY export_date, tos_symbol, sequence DESC
+        """), {"syms": _MOMENTUM_SYMS, "d": d, "lo": d - _td(days=days)}).all()
+    by, cnt = {}, {}
+    for dt, sym, v in rows:
+        by.setdefault(dt.isoformat(), {})[sym] = float(v)
+        cnt[sym] = cnt.get(sym, 0) + 1
+    ref = cnt.get("MTUM", 0)
+    syms = [x for x in _MOMENTUM_SYMS if ref and cnt.get(x, 0) >= 0.8 * ref]
+    dates = sorted(k for k, v in by.items() if "MTUM" in v)
+    return {"as_of": d.isoformat(), "syms": syms,
+            "rows": [[k] + [by[k].get(x) for x in syms] for k in dates]}
+
+
 # ---------------------------------------------------------------------------
 # 6.2 GET /api/cockpit/events
 # ---------------------------------------------------------------------------
