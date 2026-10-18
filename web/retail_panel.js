@@ -96,7 +96,7 @@
       '<p><b>What this shows.</b> How much each ETF has gained or lost since the first day on the chart. Retail sentiment is how excited or fearful everyday investors are. When it is high, popular stocks tend to run ahead of the market, and when it turns, they can fall fast.</p>' +
       '<p><b>BUZZ</b> holds stocks that get the most positive attention on social media and online. <b>MEME</b> holds the stocks retail traders have piled into. <b>GVIP</b> holds the stocks hedge funds most often hold as their biggest positions, a different kind of crowded trade.</p>' +
       '<p><b>Why these three.</b> The Macro Show deck (page 26) charts Goldman Sachs&#39; High Retail Sentiment basket, which you cannot buy as an ETF. Of the ETFs we tested, BUZZ moved most like it week to week, and MEME followed its overall shape but swung much harder. GVIP is added as a comparison.</p>' +
-      '<p><b>How to read it.</b> Lines rising together mean crowded trades are being bought. A line falling faster than the market is an early warning that the crowd is selling. Tick the boxes to show or hide a line.</p>' +
+      '<p><b>How to read it.</b> Lines rising together mean crowded trades are being bought. <span class="cr-key">A line falling faster than the market is an early warning that the crowd is selling.</span> Tick the boxes to show or hide a line.</p>' +
       pendingHtml() + '</div>';
   }
 

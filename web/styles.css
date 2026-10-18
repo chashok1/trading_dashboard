@@ -4242,6 +4242,8 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .cr-read.r { background: rgba(229, 72, 77, .22); }
 .cr-read.g { background: rgba(29, 158, 117, .24); }
 .cr-read.a { background: rgba(245, 158, 11, .28); }
+/* Neutral highlight for the key takeaway in a popup description (no good/bad colour). */
+.cr-key { font-weight: 700; padding: 0 3px; border-radius: 2px; background: rgba(120, 130, 160, .16); }
 
 /* 2026-10-17 -- Momentum panel (web/momentum_panel.js): shares the .yc-* table/chart styles. */
 #momentumBand { padding: 4px 6px 6px; }

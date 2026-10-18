@@ -108,9 +108,9 @@
     if ([n2, n10, ns, p2, p10, ps].some(function (v) { return v == null; })) return '';
     var d2 = Math.round((n2 - p2) * 100), d10 = Math.round((n10 - p10) * 100), ds = Math.round((ns - ps) * 100);
     var head = 'Over the ' + label + ' the spread went from ' + f2(ps) + ' to ' + f2(ns) + ' (' + (ds > 0 ? '+' : '') + ds + ' bp); the 2Y moved ' + (d2 > 0 ? '+' : '') + d2 + ' bp and the 10Y ' + (d10 > 0 ? '+' : '') + d10 + ' bp. ';
-    if (Math.abs(ds) < 3) return head + 'The curve is about unchanged.';
+    if (Math.abs(ds) < 3) return head + '<b>The curve is about unchanged.</b>';
     var bull = (d2 + d10) / 2 < 0;
-    return head + 'That is a <b>' + (bull ? 'bull' : 'bear') + ' ' + (ds > 0 ? 'steepener' : 'flattener') + '</b>.';
+    return head + '<b>That is a ' + (bull ? 'bull' : 'bear') + ' ' + (ds > 0 ? 'steepener' : 'flattener') + '.</b>';
   }
 
   // Plain-English guide to each line and to curve shapes, with the live read filled in from the data.
@@ -121,10 +121,10 @@
       '<p><b style="color:' + COL.sp + '">10Y - 2Y spread (blue, right axis):</b> the 10-year minus the 2-year, which shows how steep the curve is. Positive is normal. Negative means the curve is inverted (short-term rates above long-term), which has often come before recessions.</p>' +
       '<p><b>Steepener</b> = the spread is rising. <b>Flattener</b> = the spread is falling. <b>Bull</b> = yields are falling overall (bond prices rising); <b>bear</b> = yields are rising overall.</p>' +
       '<ul>' +
-      '<li><b>Bull steepener:</b> the 2Y falls faster than the 10Y. The market expects the Fed to cut rates. <i>For stocks: usually the best case if the economy is healthy; banks and small companies tend to do well. If the cuts come because the economy is breaking, stocks can fall anyway.</i></li>' +
-      '<li><b>Bear steepener:</b> the 10Y rises faster than the 2Y. Investors want more pay for holding long bonds (inflation or heavy government borrowing). <i>For stocks: usually the worst case. Higher long rates pull valuations down, hitting tech, growth and housing.</i></li>' +
-      '<li><b>Bull flattener:</b> the 10Y falls faster than the 2Y. Worry about growth is pulling long-term yields down. <i>For stocks: mixed. Defensive and big growth stocks hold up better, while cyclical stocks and banks do worse. It is a mild warning about growth.</i></li>' +
-      '<li><b>Bear flattener:</b> the 2Y rises faster than the 10Y. The market expects the Fed to raise or hold rates high. <i>For stocks: usually negative. Tighter money hurts, especially small caps and growth stocks; it is typical of the late stage of an expansion.</i></li>' +
+      '<li><b>Bull steepener:</b> the 2Y falls faster than the 10Y. The market expects the Fed to cut rates. <i>For stocks: <b>usually the best case</b> if the economy is healthy; banks and small companies tend to do well. If the cuts come because the economy is breaking, stocks can fall anyway.</i></li>' +
+      '<li><b>Bear steepener:</b> the 10Y rises faster than the 2Y. Investors want more pay for holding long bonds (inflation or heavy government borrowing). <i>For stocks: <b>usually the worst case</b>. Higher long rates pull valuations down, hitting tech, growth and housing.</i></li>' +
+      '<li><b>Bull flattener:</b> the 10Y falls faster than the 2Y. Worry about growth is pulling long-term yields down. <i>For stocks: <b>mixed</b>. Defensive and big growth stocks hold up better, while cyclical stocks and banks do worse. It is a mild warning about growth.</i></li>' +
+      '<li><b>Bear flattener:</b> the 2Y rises faster than the 10Y. The market expects the Fed to raise or hold rates high. <i>For stocks: <b>usually negative</b>. Tighter money hurts, especially small caps and growth stocks; it is typical of the late stage of an expansion.</i></li>' +
       '</ul>' +
       '<p><b>ETFs for the view.</b> <b>IVOL</b> is a steepener: it is meant to gain when the 10Y - 2Y spread widens (the blue line rises), and Hedgeye&#39;s core rates expression is long IVOL. <b>BNDD</b> is a flattener: it is meant to gain when the spread narrows (the blue line falls). Both also move with other things, such as inflation, deflation and option costs, so neither is a pure curve trade.</p>' +
       '<p><b>What it means for bond prices.</b> Bond prices move opposite to yields. When yields rise, existing bonds lose value, and when yields fall, they gain. Roughly, a 1 point change in yields moves a 2-year bond about 2%, a 10-year about 7%, and a 20+ year bond about 16%.</p>' +

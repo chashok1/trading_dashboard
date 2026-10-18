@@ -158,12 +158,26 @@
   }
 
   function closeModal() { var m = document.getElementById('moveVixModal'); if (m) m.remove(); }
+  // Rule-of-thumb read of bond volatility (popup only): MOVE and VIX with their zones, and MOVE's change over about a month.
+  function phaseHtml() {
+    var D = rowsAll, m = back(D, 1, 0), m1 = back(D, 1, 20), vx = back(D, 2, 0);
+    if (m == null || m1 == null) return '';
+    var d = m - m1, zm = zone('MOVE:GIF', m)[1], zv = zone('VIX', vx)[1];
+    // [text, highlight]: red = bond volatility rising, green = coming down
+    var rd = d <= -5 ? ['bond volatility is coming down, so the hedge setup is forming if the 10-year yield is falling too (see the yield curve panel)', 'g']
+      : d >= 5 ? ['bond volatility is rising, so the hedge is already costly', 'r']
+      : ['no strong move in bond volatility', ''];
+    return '<p><b>Right now.</b> MOVE is ' + f2(m) + (zm !== '--' ? ' (' + zm + ')' : '') + ', ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(1) +
+      ' points over the past month. VIX is ' + f2(vx) + (zv !== '--' ? ' (' + zv + ')' : '') + '. Rule-of-thumb read: <span class="cr-read ' + rd[1] + '">' + rd[0] + '</span>.</p>';
+  }
+
   // Plain-English guide, popup only.
   function descHtml() {
     return '<div class="cr-desc cr-desc-lg">' +
       '<p><b>What the gauges mean.</b> MOVE is the bond market&#39;s volatility gauge. VIX is the same for the S&amp;P 500, VXN for the Nasdaq, RVX for small caps (Russell 2000), GVZ for gold and OVX for oil. A higher number means traders expect bigger swings. The dashed lines on MOVE mark the caution and elevated levels.</p>' +
-      '<p><b>PFIX, the rates hedge.</b> PFIX is a long exposure that benefits from rising bond-market volatility, so it is one way to hedge against another ramp in interest rates and bond market volatility. Hedgeye&#39;s guidance is not to buy the hedge after bond yields have already ramped back toward the top end of their risk ranges. Buy it after bond market volatility (MOVE) has come down alongside bond yields.</p>' +
+      '<p><b>PFIX, the rates hedge.</b> PFIX is a long exposure that benefits from rising bond-market volatility, so it is one way to hedge against another ramp in interest rates and bond market volatility. Hedgeye&#39;s guidance is not to buy the hedge after bond yields have already ramped back toward the top end of their risk ranges. <span class="cr-key">Buy it after bond market volatility (MOVE) has come down alongside bond yields.</span></p>' +
       '<p><b>How to use the chart.</b> Watch MOVE and the 10-year yield on the yield curve panel together. The setup is MOVE falling while yields fall. MOVE and yields both pushing higher means the hedge is already costly.</p>' +
+      phaseHtml() +
       '</div>';
   }
   function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(); }

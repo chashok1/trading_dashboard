@@ -99,7 +99,7 @@
 
   function noteHtml() {
     var have = SYMS.indexOf('SMH') >= 0 && SYMS.indexOf('SPHB') >= 0;
-    return '<div class="cr-desc cr-desc-lg"><p>MTUM is a broad large-cap momentum fund, so it shows the timing of the momentum trade (peak and decline) but is milder than a leveraged high-beta basket. RSP is the equal-weight S&amp;P 500: a gap between RSP and SPX means a narrow market.' +
+    return '<div class="cr-desc cr-desc-lg"><p>MTUM is a broad large-cap momentum fund, so it shows the timing of the momentum trade (peak and decline) but is milder than a leveraged high-beta basket. RSP is the equal-weight S&amp;P 500: <span class="cr-key">a gap between RSP and SPX means a narrow market.</span>' +
       (have ? '' : ' SMH (semiconductors) and SPHB (high beta) appear here once they have daily prices.') + '</p></div>';
   }
 

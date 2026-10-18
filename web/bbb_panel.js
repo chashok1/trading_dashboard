@@ -28,9 +28,21 @@
       cell(v, d1) + cell(v, w1) + cell(v, m1) + '</tr></table>';
   }
 
+  // Rule-of-thumb read (popup only): the spread's place in the chart's range and its change over about a month.
+  function phaseHtml(D) {
+    var s = at(D, 0), s1 = at(D, 20);
+    var vs = D.map(function (r) { return r[1]; }).filter(function (v) { return v != null; });
+    if (s == null || s1 == null || !vs.length) return '';
+    var lo = Math.min.apply(null, vs), d = s - s1;
+    // [text, highlight]: red = widening, green = tightening
+    var rd = d >= 0.1 ? ['worry is building', 'r'] : d <= -0.1 ? ['worry is easing', 'g'] : ['no strong signal', ''];
+    return '<p><b>Right now.</b> The spread is ' + f2(s) + '%, ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(2) + ' points over the past month, and ' + (s - lo).toFixed(2) +
+      ' above its low of ' + f2(lo) + '% on this chart. Rule-of-thumb read: <span class="cr-read ' + rd[1] + '">' + rd[0] + '</span>.</p>';
+  }
+
   function descHtml(D) {
     return '<div class="cr-desc cr-desc-lg"><p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
-      f2(at(D, 0)) + '%. A higher number means more worry. If it widens along with high yield, worry is spreading beyond the weakest companies.</p></div>';
+      f2(at(D, 0)) + '%. A higher number means more worry. If it widens along with high yield, worry is spreading beyond the weakest companies.</p>' + phaseHtml(D) + '</div>';
   }
 
   function chartHtml(D, W, H, fs, cls) {
