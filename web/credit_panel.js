@@ -92,7 +92,7 @@
       '<li><b>HYG falling while LQD holds up:</b> the worry is about risky companies.</li>' +
       '<li><b>Both falling together with the 10-year yield rising:</b> it is an interest rate move, not a credit scare.</li>' +
       '</ul>' +
-      '<p>The 10-Year BBB spread panel sits between the two: it tracks the lowest rung of investment-grade.</p>' +
+      '<p>The 10-Year BBB spread panel sits between LQD (safe companies) and HYG (risky companies): it tracks the lowest rung of investment-grade, right next to the line where bonds become high yield.</p>' +
       phaseHtml(D) +
       '</div>';
   }

@@ -41,8 +41,12 @@
   }
 
   function descHtml(D) {
-    return '<div class="cr-desc cr-desc-lg"><p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
-      f2(at(D, 0)) + '%. A higher number means more worry. If it widens along with high yield, worry is spreading beyond the weakest companies.</p>' + phaseHtml(D) + '</div>';
+    return '<div class="cr-desc cr-desc-lg">' +
+      '<p><b>The line:</b> the extra yield the lowest rung of investment-grade company bonds (BBB) pays over the 10-year Treasury, currently ' +
+      f2(at(D, 0)) + '%. It is the extra pay you get for taking company risk instead of lending to the government. A higher number means more worry, because investors want more extra pay and BBB bond prices are falling. A lower number means calm.</p>' +
+      '<p><b>Why BBB is the bridge.</b> Company bonds are graded on a ladder: AAA, AA, A and BBB are investment-grade (the safe companies, held by LQD), and BB and below are high yield, or junk (the risky companies, held by HYG). BBB is the last rung of the safe group, right next to the line where bonds become junk, so it sits between what LQD and HYG hold. If the high-yield spread widens a lot while BBB barely moves, the worry is still in the riskier companies. <span class="cr-key">If BBB widens along with high yield, worry is spreading beyond the weakest companies.</span></p>' +
+      '<p><b>Downgrade risk.</b> BBB is a large slice of investment-grade. <span class="cr-key">If companies are downgraded from BBB to junk, it can force selling</span>, because many funds are only allowed to hold investment-grade bonds.</p>' +
+      phaseHtml(D) + '</div>';
   }
 
   function chartHtml(D, W, H, fs, cls) {
