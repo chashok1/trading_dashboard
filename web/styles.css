@@ -4237,6 +4237,11 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .cr-desc ul { margin: 0 0 3px; padding-left: 16px; }
 .cr-desc li { margin: 0 0 2px; }
 .cr-desc-lg { font-size: 11.5px; }
+/* Highlighted rule-of-thumb read in the Credit popup. */
+.cr-read { font-weight: 700; padding: 0 3px; border-radius: 2px; }
+.cr-read.r { background: rgba(229, 72, 77, .22); }
+.cr-read.g { background: rgba(29, 158, 117, .24); }
+.cr-read.a { background: rgba(245, 158, 11, .28); }
 
 /* 2026-10-17 -- Momentum panel (web/momentum_panel.js): shares the .yc-* table/chart styles. */
 #momentumBand { padding: 4px 6px 6px; }

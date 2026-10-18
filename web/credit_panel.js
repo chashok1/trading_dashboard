@@ -55,12 +55,45 @@
       '<span>' + SeriesToggle.item(ST, 'tr', '<i style="background:' + COL.tr + '"></i>High Yield total return index (right)') + '</span></div>';
   }
 
+  // Rule-of-thumb read of where the spread is now (popup only): its level in the chart's range and its change over about a month.
+  function phaseHtml(D) {
+    var s = back(D, 1, 0), s1 = back(D, 1, 20), tr = back(D, 2, 0);
+    var sp = [], trs = [];
+    D.forEach(function (r) { if (r[1] != null) sp.push(r[1]); if (r[2] != null) trs.push(r[2]); });
+    if (s == null || s1 == null || !sp.length) return '';
+    var lo = Math.min.apply(null, sp), hi = Math.max.apply(null, sp), d = s - s1, pos = hi > lo ? (s - lo) / (hi - lo) : 0.5;
+    // [text, highlight]: red = worry building, green = worry fading or calm, amber = expensive, none = no signal
+    var rd = d >= 0.3 ? ['worry is building' + (pos > 0.66 ? ' from an already high level' : ''), 'r']
+      : d <= -0.3 ? (pos > 0.5 ? ['worry is fading from a high level, which is usually the best entry', 'g'] : ['calm is returning', 'g'])
+      : pos <= 0.15 ? ['the spread is very low, so bonds are expensive', 'a']
+      : ['no strong signal', ''];
+    var read = '<span class="cr-read ' + rd[1] + '">' + rd[0] + '</span>';
+    var trTxt = tr != null && trs.length ? ' The total return index is ' + Math.abs((tr / Math.max.apply(null, trs) - 1) * 100).toFixed(1) + '% below its high.' : '';
+    return '<p><b>Right now.</b> The spread is ' + f2(s) + '%, ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(2) + ' points over the past month, and ' + (s - lo).toFixed(2) +
+      ' above its low of ' + f2(lo) + '% on this chart.' + trTxt + ' Rule-of-thumb read: ' + read + '.</p>';
+  }
+
   // Plain-English description of each line; the current values are filled in from the data.
   function descHtml(D) {
     var hy = back(D, 1, 0);
     return '<div class="cr-desc cr-desc-lg">' +
       '<p><b>Black line:</b> the high-yield spread. It&#39;s the extra yield investors demand over Treasuries, currently ' + f2(hy) + '%. A higher number means more worry.</p>' +
       '<p><b style="color:' + COL.tr + '">Blue line (right axis):</b> the High Yield Total Return Index, what a holder of those bonds has actually earned (100 = the start of the chart).</p>' +
+      '<p><b>When does it pay to buy?</b> In general, high-yield bonds are best bought when worry is high and starting to fade, and approached with care when worry is very low.</p>' +
+      '<ul>' +
+      '<li><b>Black line high and turning down:</b> worry has peaked and is fading. This is usually the best entry, because you get a high yield and prices recovering.</li>' +
+      '<li><b>Black line falling and blue line rising:</b> calm is returning, and the gains are already coming.</li>' +
+      '<li><b>Black line very low:</b> everyone is comfortable. Bonds are expensive, there is little room to gain, and the risk is the spread widening.</li>' +
+      '<li><b>Black line rising fast and blue line falling:</b> worry is building. Prices usually keep falling for a while, so waiting is usually better.</li>' +
+      '</ul>' +
+      '<p>These are rules of thumb, not guarantees. A widening spread can keep going, and calm can last longer than expected.</p>' +
+      '<p><b>How it relates to HYG and LQD.</b> HYG is an ETF of high-yield corporate bonds, the riskier companies, so it moves with the lines on this chart. LQD is an ETF of investment-grade corporate bonds, the safer companies. When worry rises, both kinds of spread usually widen, but high yield moves roughly three to four times as much, so HYG usually falls more than LQD in a credit scare. LQD is more sensitive to interest rates because it holds longer-dated bonds, so when yields rise it tends to fall more than HYG, while HYG is driven more by credit worry.</p>' +
+      '<ul>' +
+      '<li><b>HYG falling while LQD holds up:</b> the worry is about risky companies.</li>' +
+      '<li><b>Both falling together with the 10-year yield rising:</b> it is an interest rate move, not a credit scare.</li>' +
+      '</ul>' +
+      '<p>The 10-Year BBB spread panel sits between the two: it tracks the lowest rung of investment-grade.</p>' +
+      phaseHtml(D) +
       '</div>';
   }
 
