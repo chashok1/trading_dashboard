@@ -1,12 +1,12 @@
-/* MOVE (bond vol) and VIX panel, 2026-10-17 (user-directed): change table with zone tags (Investable / Chop / Elevated from the Risk Dial's own
- * thresholds) and a chart with MOVE on the left axis and VIX on the right, dashed lines at MOVE 100 / 120. Rising volatility = red background,
+/* Volatility panel (MOVE, VIX, VXN, RVX, GVZ, OVX), 2026-10-17 (user-directed; was the MOVE & VIX panel): change table with zone tags (Investable / Chop / Elevated from the Risk Dial's own
+ * thresholds) and a chart with MOVE on the left axis and VIX, VXN and RVX on the right (GVZ and OVX are table-only), dashed lines at MOVE 100 / 120. Rising volatility = red background,
  * falling = green. Dashboard left column, below the Yield curve panel. Click the chart for a large popup with the full table.
- * Data: GET /api/cockpit/move-vix -> rows [date, move, vix] (hist_td closes), thresholds {sym: {low, high}}. */
+ * Data: GET /api/cockpit/move-vix -> rows [date, move, vix, vxn, rvx, gvz, ovx] (hist_td closes), thresholds {sym: {low, high}}. */
 (function () {
   'use strict';
   var L = 34, R = 30, T = 8, B = 18;
   var rowsAll = [], TH = {};
-  var COL = { move: '#1668c4', vix: '#d9650b', warn: '#b7791f', hot: '#b3342b' };
+  var COL = { move: '#1668c4', vix: '#d9650b', vxn: '#0f9aa8', rvx: '#7a3fb5', warn: '#b7791f', hot: '#b3342b' };
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -28,7 +28,8 @@
   }
 
   function tableHtml(D, full) {
-    var names = [['MOVE (bond vol)', 1, 'MOVE:GIF'], ['VIX', 2, 'VIX']];
+    var names = [['MOVE (bond vol)', 1, 'MOVE:GIF'], ['VIX (S&P)', 2, 'VIX'], ['VXN (Nasdaq)', 3, 'VXN:CGI'], ['RVX (Russell)', 4, 'RVX'],
+      ['GVZ (gold)', 5, 'GVZ:CGI'], ['OVX (oil)', 6, 'OVX:CGI']];
     var cell = function (cur, past) {
       if (cur == null || past == null) return '<td>--</td>';
       var d = cur - past;
@@ -48,10 +49,10 @@
 
   function chartHtml(D, W, H, fs, cls) {
     var n = D.length;
-    if (n < 2) return '<div class="msr-loading">No MOVE / VIX data yet.</div>';
+    if (n < 2) return '<div class="msr-loading">No volatility data yet.</div>';
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
     var mv = [], vv = [];
-    D.forEach(function (r) { if (r[1] != null) mv.push(r[1]); if (r[2] != null) vv.push(r[2]); });
+    D.forEach(function (r) { if (r[1] != null) mv.push(r[1]); for (var c = 2; c <= 4; c++) if (r[c] != null) vv.push(r[c]); });
     var t = TH['MOVE:GIF'] || { low: 100, high: 120 };
     var lo = Math.floor(Math.min.apply(null, mv.concat([t.low])) / 10) * 10 - 5, hi = Math.ceil(Math.max.apply(null, mv.concat([t.high])) / 10) * 10 + 5;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
@@ -75,18 +76,18 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += path(2, vy, COL.vix, 1.4) + path(1, y, COL.move, 1.8);
+    s += path(4, vy, COL.rvx, 1.3) + path(3, vy, COL.vxn, 1.3) + path(2, vy, COL.vix, 1.5) + path(1, y, COL.move, 1.8);
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
       if (m !== pm) { pm = m; s += '<text x="' + x(i) + '" y="' + (H - 4) + '" font-size="' + fs + '" fill="currentColor">' + MN[+m.slice(5) - 1] + '</text>'; }
     });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="MOVE and VIX with the caution and elevated lines">' + s + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="MOVE, VIX, VXN and RVX with the caution and elevated lines for MOVE">' + s + '</svg>';
   }
 
   function legendHtml() {
     var t = TH['MOVE:GIF'] || { low: 100, high: 120 };
-    return '<div class="yc-leg"><span><i style="background:' + COL.move + '"></i>MOVE (left)</span><span><i style="background:' + COL.vix + '"></i>VIX (right)</span>' +
+    return '<div class="yc-leg"><span><i style="background:' + COL.move + '"></i>MOVE (left)</span><span><i style="background:' + COL.vix + '"></i>VIX</span><span><i style="background:' + COL.vxn + '"></i>VXN</span><span><i style="background:' + COL.rvx + '"></i>RVX (right axis)</span>' +
       '<span><i style="background:' + COL.warn + '"></i>MOVE ' + t.low + '</span><span><i style="background:' + COL.hot + '"></i>MOVE ' + t.high + '</span></div>';
   }
 
@@ -108,7 +109,10 @@
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
       tip.innerHTML = '<b>' + row[0] + '</b><br><span style="color:' + COL.move + '">&#9632;</span> MOVE: ' + f2(row[1]) +
-        '<br><span style="color:' + COL.vix + '">&#9632;</span> VIX: ' + f2(row[2]);
+        '<br><span style="color:' + COL.vix + '">&#9632;</span> VIX: ' + f2(row[2]) +
+        '<br><span style="color:' + COL.vxn + '">&#9632;</span> VXN: ' + f2(row[3]) +
+        '<br><span style="color:' + COL.rvx + '">&#9632;</span> RVX: ' + f2(row[4]) +
+        '<br>GVZ: ' + f2(row[5]) + '<br>OVX: ' + f2(row[6]);
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -120,8 +124,8 @@
     var body = document.getElementById('moveVixBody');
     if (!body) return;
     var D = rowsAll;
-    if (!D.length) { body.innerHTML = '<div class="msr-loading">MOVE / VIX data unavailable.</div>'; return; }
-    body.innerHTML = '<div class="yc-head"><span class="yc-ttl">MOVE &amp; VIX</span><span class="yc-dt">as of ' + D[D.length - 1][0] + '</span></div>' +
+    if (!D.length) { body.innerHTML = '<div class="msr-loading">Volatility data unavailable.</div>'; return; }
+    body.innerHTML = '<div class="yc-head"><span class="yc-ttl">Volatility</span><span class="yc-dt">as of ' + D[D.length - 1][0] + '</span></div>' +
       tableHtml(D, false) + legendHtml() + chartHtml(D, 600, 230, 11, 'yc-click');
     attachHover(body.querySelector('svg'), D, 600);
   }
@@ -133,7 +137,7 @@
     var m = document.createElement('div');
     m.id = 'moveVixModal';
     m.className = 'modal-overlay active';
-    m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">MOVE &amp; VIX</h2>' +
+    m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Volatility</h2>' +
       '<p style="margin:0;">' + rowsAll[0][0] + ' to ' + rowsAll[rowsAll.length - 1][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
       '<div class="modal-body">' + tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + '</div></div>';
@@ -153,7 +157,7 @@
       rowsAll = j.rows || []; TH = j.thresholds || {};
       render();
     } catch (e) {
-      body.innerHTML = '<div class="msr-loading">MOVE / VIX unavailable.</div>';
+      body.innerHTML = '<div class="msr-loading">Volatility unavailable.</div>';
     }
   }
 

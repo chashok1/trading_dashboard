@@ -645,26 +645,29 @@ def get_yield_curve(days: int = Query(1100, ge=30, le=4000), date: Optional[str]
 
 @router.get("/api/cockpit/move-vix")
 def get_move_vix(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Query(None)):
-    """MOVE (bond vol) and VIX daily closes from hist_td (drv_quote repeats the prior day on many days), plus the dashboard's own
-    zone lines from ref_vol_threshold. rows = [date, move, vix]; a value is null on a day that symbol was not exported."""
+    """Volatility panel: MOVE (bond vol), VIX, VXN (Nasdaq), RVX (Russell), GVZ (gold) and OVX (oil) daily closes from hist_td
+    (drv_quote repeats the prior day on many days), plus the dashboard's own zone lines from ref_vol_threshold.
+    rows = [date, move, vix, vxn, rvx, gvz, ovx]; a value is null on a day that symbol was not exported."""
     from datetime import timedelta as _td
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price
             FROM hist_td
-            WHERE tos_symbol IN ('MOVE:GIF', 'VIX') AND last_price IS NOT NULL AND last_price > 0
+            WHERE tos_symbol IN ('MOVE:GIF', 'VIX', 'VXN:CGI', 'RVX', 'GVZ:CGI', 'OVX:CGI') AND last_price IS NOT NULL AND last_price > 0
               AND export_date <= :d AND export_date >= :lo
             ORDER BY export_date, tos_symbol, sequence DESC
         """), {"d": d, "lo": d - _td(days=days)}).all()
         th = s.execute(text(
-            "SELECT tos_symbol, low, high FROM ref_vol_threshold WHERE tos_symbol IN ('MOVE:GIF', 'VIX')")).all()
+            "SELECT tos_symbol, low, high FROM ref_vol_threshold "
+            "WHERE tos_symbol IN ('MOVE:GIF', 'VIX', 'VXN:CGI', 'RVX', 'GVZ:CGI', 'OVX:CGI')")).all()
     by = {}
     for dt, sym, v in rows:
         by.setdefault(dt.isoformat(), {})[sym] = round(float(v), 3)
     return {"as_of": d.isoformat(),
             "thresholds": {t[0]: {"low": float(t[1]), "high": float(t[2])} for t in th},
-            "rows": [[k, v.get("MOVE:GIF"), v.get("VIX")] for k, v in sorted(by.items())]}
+            "rows": [[k, v.get("MOVE:GIF"), v.get("VIX"), v.get("VXN:CGI"), v.get("RVX"), v.get("GVZ:CGI"), v.get("OVX:CGI")]
+                     for k, v in sorted(by.items())]}
 
 
 @router.get("/api/cockpit/credit")
