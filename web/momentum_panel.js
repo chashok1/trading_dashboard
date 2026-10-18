@@ -9,6 +9,9 @@
   var SYMS = [], rowsAll = [];
   var NAME = { MTUM: 'MTUM (momentum)', SPX: 'SPX (S&P 500)', RSP: 'RSP (equal-weight S&P)', QQQ: 'QQQ (Nasdaq 100)', SMH: 'SMH (semiconductors)', SPHB: 'SPHB (high beta)' };
   var COL = { MTUM: 'currentColor', SPX: '#1668c4', RSP: '#2a9d3a', QQQ: '#e07a00', SMH: '#7a3fb5', SPHB: '#0f9aa8' };
+  var ST = 'mo';
+  // The chart opens with just MTUM and SPX; the other ETFs are ticked on in the table.
+  SeriesToggle.defaults(ST, { RSP: 1, QQQ: 1, SMH: 1, SPHB: 1 });
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -46,7 +49,7 @@
     var head = '<tr><th>ETF</th><th>Since ' + C[0][0].slice(5) + '</th><th>Day</th><th>Week</th><th>Month</th><th>From peak</th></tr>';
     var body = SYMS.map(function (sym, k) {
       var nm = full ? (NAME[sym] || sym) : sym;
-      return '<tr title="' + (NAME[sym] || sym) + '"><td><i class="mo-sw" style="background:' + (COL[sym] || 'currentColor') + '"></i>' + nm + '</td>' +
+      return '<tr title="' + (NAME[sym] || sym) + '"><td>' + SeriesToggle.item(ST, sym, '<i class="mo-sw" style="background:' + (COL[sym] || 'currentColor') + '"></i>' + nm) + '</td>' +
         cell(C[j][k + 1]) + cell(ret(k, 1)) + cell(ret(k, 5)) + cell(ret(k, 21)) + cell(fromPeak(k)) + '</tr>';
     }).join('');
     return '<table class="yc-tbl">' + head + body + '</table>';
@@ -56,8 +59,10 @@
     var n = C.length;
     if (n < 2) return '<div class="msr-loading">No momentum data yet.</div>';
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
+    var hid = SeriesToggle.hidden(ST);
     var all = [];
-    C.forEach(function (r) { for (var k = 1; k < r.length; k++) if (r[k] != null) all.push(r[k]); });
+    C.forEach(function (r) { for (var k = 1; k < r.length; k++) if (r[k] != null && !hid[SYMS[k - 1]]) all.push(r[k]); });
+    if (!all.length) all = [0];
     var lo = Math.floor(Math.min.apply(null, all.concat([0])) / 5) * 5 - 2, hi = Math.ceil(Math.max.apply(null, all) / 5) * 5 + 2;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     var s = '';
@@ -73,9 +78,9 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    SYMS.forEach(function (sym, k) { if (sym !== 'MTUM') s += path(k, COL[sym] || 'currentColor', 1.4); });
+    SYMS.forEach(function (sym, k) { if (sym !== 'MTUM' && !hid[sym]) s += path(k, COL[sym] || 'currentColor', 1.4); });
     var km = SYMS.indexOf('MTUM');
-    if (km >= 0) {
+    if (km >= 0 && !hid.MTUM) {
       s += path(km, COL.MTUM, 2.2);
       var pi = 0;
       C.forEach(function (r, i) { if (r[km + 1] != null && (C[pi][km + 1] == null || r[km + 1] > C[pi][km + 1])) pi = i; });
@@ -115,7 +120,9 @@
       }
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
+      var hid = SeriesToggle.hidden(ST);
       tip.innerHTML = '<b>' + row[0] + '</b>' + SYMS.map(function (sym, k) {
+        if (hid[sym]) return '';
         return '<br>' + (sym === 'MTUM' ? '' : '<span style="color:' + (COL[sym] || '#888') + '">&#9632;</span> ') + sym + ': ' + pc(row[k + 1]);
       }).join('');
       var tw = tip.offsetWidth, left = ev.clientX + 14;
@@ -136,6 +143,7 @@
   }
 
   function closeModal() { var m = document.getElementById('momentumModal'); if (m) m.remove(); }
+  function modalBodyHtml(C) { return tableHtml(C, true) + chartHtml(C, 1100, 420, 13, '') + noteHtml(); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();
@@ -146,10 +154,17 @@
     m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Momentum vs the market</h2>' +
       '<p style="margin:0;">' + C[0][0] + ' to ' + C[C.length - 1][0] + ' &middot; cumulative return from the first price</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body">' + tableHtml(C, true) + chartHtml(C, 1100, 420, 13, '') + noteHtml() + '</div></div>';
+      '<div class="modal-body">' + modalBodyHtml(C) + '</div></div>';
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), C, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
+    SeriesToggle.bind(m, ST, function () { return SYMS; }, refresh);
+  }
+  // A toggle redraws the panel and, if the popup is open, its body too.
+  function refresh() {
+    render();
+    var m = document.getElementById('momentumModal');
+    if (m) { var C = cumulative(); m.querySelector('.modal-body').innerHTML = modalBodyHtml(C); attachHover(m.querySelector('svg'), C, 1100); }
   }
 
   async function load() {
@@ -170,6 +185,7 @@
   function init() {
     var host = document.getElementById('momentumBody');
     if (host) host.addEventListener('click', function (ev) { if (ev.target.closest('.yc-svg')) openModal(); });
+    SeriesToggle.bind(host, ST, function () { return SYMS; }, refresh);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeModal(); });
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);

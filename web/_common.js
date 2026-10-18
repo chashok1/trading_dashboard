@@ -1176,3 +1176,40 @@
     renderNav();
   }
 })();
+
+/* Show/hide checkboxes for multi-line dashboard charts (2026-10-18, user-directed).
+ * Each chart panel puts SeriesToggle.item(...) checkboxes in its existing legend, bind()s one change listener, and skips hidden series
+ * when it draws. Choices are remembered per chart in localStorage; the last visible line cannot be switched off. */
+window.SeriesToggle = (function () {
+  var defs = {};
+  // Lines that start switched off for a chart (until the viewer ticks them): SeriesToggle.defaults('mv', { gvz: 1 }).
+  function defaults(key, off) { defs[key] = off; }
+  // Hidden lines as { k: truthy }. A saved choice (1 = hidden, 0 = shown) beats the chart's default.
+  function hidden(key) {
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem('st_' + key)) || {}; } catch (e) { saved = {}; }
+    return Object.assign({}, defs[key] || {}, saved);
+  }
+  function save(key, h) {
+    try { localStorage.setItem('st_' + key, JSON.stringify(h)); } catch (e) { /* storage blocked: toggles still work for this view */ }
+  }
+  // Wraps `inner` (swatch + label html) in a labelled checkbox for series k of chart `key`.
+  function item(key, k, inner) {
+    var off = hidden(key)[k];
+    return '<label class="st-i' + (off ? ' off' : '') + '"><input type="checkbox" data-st="' + key + '" data-k="' + k + '"' + (off ? '' : ' checked') + '>' + inner + '</label>';
+  }
+  // `keys` = all series keys of the chart (array, or a function returning one); `rerender` redraws the panel and any open popup.
+  function bind(host, key, keys, rerender) {
+    if (!host) return;
+    host.addEventListener('change', function (ev) {
+      var cb = ev.target;
+      if (!cb || !cb.matches || !cb.matches('input[data-st="' + key + '"]')) return;
+      var h = hidden(key), k = cb.getAttribute('data-k'), all = typeof keys === 'function' ? keys() : keys;
+      h[k] = cb.checked ? 0 : 1;
+      if (all.every(function (x) { return h[x]; })) { cb.checked = true; return; }
+      save(key, h);
+      rerender();
+    });
+  }
+  return { hidden: hidden, defaults: defaults, item: item, bind: bind };
+})();

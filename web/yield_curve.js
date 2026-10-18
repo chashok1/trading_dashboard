@@ -6,7 +6,9 @@
   'use strict';
   var L = 34, R = 34, T = 8, B = 18;
   var rowsAll = [];
-  var COL = { y2: '#1668c4', y10: '#d9650b', sp: '#2a9d3a' };
+  // Matches the Hedgeye Macro Show yield-curve chart: 2Y black, 10Y gray, spread blue.
+  var COL = { y2: '#000000', y10: '#7f7f7f', sp: '#1f6fb8' };
+  var ST = 'yc', KEYS = ['y2', 'y10', 'sp'];
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -50,9 +52,13 @@
   function chartHtml(D, W, H, fs, cls) {
     var n = D.length;
     if (n < 2) return '<div class="msr-loading">No yield data yet.</div>';
+    var hid = SeriesToggle.hidden(ST), on = function (k) { return !hid[k]; };
+    var showL = on('y2') || on('y10'), showR = on('sp');
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
+    // Axis ranges come from the lines still showing on that axis.
     var yl = [];
-    D.forEach(function (r) { if (r[1] != null) yl.push(r[1]); if (r[2] != null) yl.push(r[2]); });
+    D.forEach(function (r) { if (on('y2') && r[1] != null) yl.push(r[1]); if (on('y10') && r[2] != null) yl.push(r[2]); });
+    if (!yl.length) yl = [0, 1];
     var lo = Math.floor(Math.min.apply(null, yl) * 2) / 2 - 0.25, hi = Math.ceil(Math.max.apply(null, yl) * 2) / 2 + 0.25;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     var sl = [];
@@ -60,14 +66,19 @@
     var slo = Math.floor(Math.min.apply(null, sl) * 5) / 5 - 0.1, shi = Math.ceil(Math.max.apply(null, sl) * 5) / 5 + 0.1;
     var sy = function (v) { return T + (H - T - B) * (1 - (v - slo) / (shi - slo)); };
     var s = '';
-    for (var v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) {
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
-        '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v.toFixed(1) + '</text>';
+    if (showL) {
+      for (var v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) {
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
+          '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v.toFixed(1) + '</text>';
+      }
     }
-    for (var q = Math.ceil(slo * 5) / 5; q <= shi; q += 0.2) {
-      s += '<text x="' + (W - R + 4) + '" y="' + (sy(q) + 4) + '" font-size="' + fs + '" fill="' + COL.sp + '">' + q.toFixed(1) + '</text>';
+    if (showR) {
+      for (var q = Math.ceil(slo * 5) / 5; q <= shi; q += 0.2) {
+        if (!showL) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + sy(q) + '" y2="' + sy(q) + '" stroke="var(--border,#e5e5e2)"/>';
+        s += '<text x="' + (W - R + 4) + '" y="' + (sy(q) + 4) + '" font-size="' + fs + '" fill="' + COL.sp + '">' + q.toFixed(1) + '</text>';
+      }
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + sy(0) + '" y2="' + sy(0) + '" stroke="' + COL.sp + '" stroke-dasharray="4 4" opacity=".5"/>';
     }
-    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + sy(0) + '" y2="' + sy(0) + '" stroke="' + COL.sp + '" stroke-dasharray="4 4" opacity=".5"/>';
     var path = function (k, sc, color, w) {
       var p = '', on = false;
       D.forEach(function (r, i) {
@@ -76,7 +87,9 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += path(3, sy, COL.sp, 1.3) + path(2, y, COL.y10, 1.4) + path(1, y, COL.y2, 1.6);
+    if (on('sp')) s += path(3, sy, COL.sp, 1.3);
+    if (on('y10')) s += path(2, y, COL.y10, 1.4);
+    if (on('y2')) s += path(1, y, COL.y2, 1.6);
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
@@ -89,8 +102,8 @@
   }
 
   function legendHtml() {
-    return '<div class="yc-leg"><span><i style="background:' + COL.y2 + '"></i>2Y</span><span><i style="background:' + COL.y10 + '"></i>10Y</span>' +
-      '<span><i style="background:' + COL.sp + '"></i>10Y-2Y spread (right axis)</span></div>';
+    var it = function (k, text) { return '<span>' + SeriesToggle.item(ST, k, '<i style="background:' + COL[k] + '"></i>' + text) + '</span>'; };
+    return '<div class="yc-leg">' + it('y2', '2Y') + it('y10', '10Y') + it('sp', '10Y-2Y spread (right axis)') + '</div>';
   }
 
   // Hover: dashed guide + tooltip with the three values for the nearest day.
@@ -111,9 +124,11 @@
       }
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
-      tip.innerHTML = '<b>' + row[0] + '</b><br><span style="color:' + COL.y2 + '">&#9632;</span> 2Y: ' + f2(row[1]) +
-        '<br><span style="color:' + COL.y10 + '">&#9632;</span> 10Y: ' + f2(row[2]) +
-        '<br><span style="color:' + COL.sp + '">&#9632;</span> Spread: ' + f2(row[3]);
+      var hid = SeriesToggle.hidden(ST);
+      tip.innerHTML = '<b>' + row[0] + '</b>' +
+        (hid.y2 ? '' : '<br><span style="color:' + COL.y2 + '">&#9632;</span> 2Y: ' + f2(row[1])) +
+        (hid.y10 ? '' : '<br><span style="color:' + COL.y10 + '">&#9632;</span> 10Y: ' + f2(row[2])) +
+        (hid.sp ? '' : '<br><span style="color:' + COL.sp + '">&#9632;</span> Spread: ' + f2(row[3]));
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -133,6 +148,7 @@
   }
 
   function closeModal() { var m = document.getElementById('yieldCurveModal'); if (m) m.remove(); }
+  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, ''); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();
@@ -143,10 +159,17 @@
     m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">US Treasury Yield Curve</h2>' +
       '<p style="margin:0;">' + rowsAll[0][0] + ' to ' + rowsAll[rowsAll.length - 1][0] + ' &middot; table as of ' + rowsAll[li][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body">' + tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + '</div></div>';
+      '<div class="modal-body">' + modalBodyHtml() + '</div></div>';
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), rowsAll, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
+    SeriesToggle.bind(m, ST, KEYS, refresh);
+  }
+  // A toggle redraws the panel and, if the popup is open, its body too.
+  function refresh() {
+    render();
+    var m = document.getElementById('yieldCurveModal');
+    if (m) { m.querySelector('.modal-body').innerHTML = modalBodyHtml(); attachHover(m.querySelector('svg'), rowsAll, 1100); }
   }
 
   async function load() {
@@ -166,6 +189,7 @@
   function init() {
     var host = document.getElementById('yieldCurveBody');
     if (host) host.addEventListener('click', function (ev) { if (ev.target.closest('.yc-svg')) openModal(); });
+    SeriesToggle.bind(host, ST, KEYS, refresh);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeModal(); });
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);

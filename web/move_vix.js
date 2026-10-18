@@ -1,12 +1,16 @@
 /* Volatility panel (MOVE, VIX, VXN, RVX, GVZ, OVX), 2026-10-17 (user-directed; was the MOVE & VIX panel): change table with zone tags (Investable / Chop / Elevated from the Risk Dial's own
- * thresholds) and a chart with MOVE on the left axis and VIX, VXN and RVX on the right (GVZ and OVX are table-only), dashed lines at MOVE 100 / 120. Rising volatility = red background,
+ * thresholds) and a chart with MOVE on the left axis and VIX, VXN, RVX, GVZ and OVX on the right (checkboxes in the legend; opens with just MOVE and VIX), dashed lines at MOVE 100 / 120. Rising volatility = red background,
  * falling = green. Dashboard left column, below the Yield curve panel. Click the chart for a large popup with the full table.
  * Data: GET /api/cockpit/move-vix -> rows [date, move, vix, vxn, rvx, gvz, ovx] (hist_td closes), thresholds {sym: {low, high}}. */
 (function () {
   'use strict';
   var L = 34, R = 30, T = 8, B = 18;
   var rowsAll = [], TH = {};
-  var COL = { move: '#1668c4', vix: '#d9650b', vxn: '#0f9aa8', rvx: '#7a3fb5', warn: '#b7791f', hot: '#b3342b' };
+  var COL = { move: '#1668c4', vix: '#d9650b', vxn: '#0f9aa8', rvx: '#7a3fb5', gvz: '#a0522d', ovx: '#4d4d4d', warn: '#b7791f', hot: '#b3342b' };
+  var ST = 'mv', KEYS = ['move', 'vix', 'vxn', 'rvx', 'gvz', 'ovx'], COLN = { move: 1, vix: 2, vxn: 3, rvx: 4, gvz: 5, ovx: 6 };
+  var RIGHT = ['vix', 'vxn', 'rvx', 'gvz', 'ovx'];   // lines on the right axis
+  // The chart opens with just MOVE and VIX; the rest are ticked on from the legend.
+  SeriesToggle.defaults(ST, { vxn: 1, rvx: 1, gvz: 1, ovx: 1 });
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -50,24 +54,38 @@
   function chartHtml(D, W, H, fs, cls) {
     var n = D.length;
     if (n < 2) return '<div class="msr-loading">No volatility data yet.</div>';
+    var hid = SeriesToggle.hidden(ST), on = function (k) { return !hid[k]; };
+    var showL = on('move'), showR = RIGHT.some(on);
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
+    // The right axis range comes from the volatility lines still showing.
     var mv = [], vv = [];
-    D.forEach(function (r) { if (r[1] != null) mv.push(r[1]); for (var c = 2; c <= 4; c++) if (r[c] != null) vv.push(r[c]); });
+    D.forEach(function (r) {
+      if (r[1] != null) mv.push(r[1]);
+      RIGHT.forEach(function (k) { if (on(k) && r[COLN[k]] != null) vv.push(r[COLN[k]]); });
+    });
+    if (!vv.length) vv = [0, 1];
     var t = TH['MOVE:GIF'] || { low: 100, high: 120 };
     var lo = Math.floor(Math.min.apply(null, mv.concat([t.low])) / 10) * 10 - 5, hi = Math.ceil(Math.max.apply(null, mv.concat([t.high])) / 10) * 10 + 5;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     var vlo = Math.floor(Math.min.apply(null, vv) / 5) * 5 - 2, vhi = Math.ceil(Math.max.apply(null, vv) / 5) * 5 + 2;
     var vy = function (v) { return T + (H - T - B) * (1 - (v - vlo) / (vhi - vlo)); };
     var s = '';
-    for (var v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) {
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
-        '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="' + COL.move + '">' + v + '</text>';
+    if (showL) {
+      for (var v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) {
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
+          '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="' + COL.move + '">' + v + '</text>';
+      }
     }
-    for (var q = Math.ceil(vlo / 5) * 5; q <= vhi; q += 5) {
-      s += '<text x="' + (W - R + 4) + '" y="' + (vy(q) + 4) + '" font-size="' + fs + '" fill="' + COL.vix + '">' + q + '</text>';
+    if (showR) {
+      for (var q = Math.ceil(vlo / 5) * 5; q <= vhi; q += 5) {
+        if (!showL) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + vy(q) + '" y2="' + vy(q) + '" stroke="var(--border,#e5e5e2)"/>';
+        s += '<text x="' + (W - R + 4) + '" y="' + (vy(q) + 4) + '" font-size="' + fs + '" fill="' + COL.vix + '">' + q + '</text>';
+      }
     }
-    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.low) + '" y2="' + y(t.low) + '" stroke="' + COL.warn + '" stroke-dasharray="5 4"/>' +
-      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.high) + '" y2="' + y(t.high) + '" stroke="' + COL.hot + '" stroke-dasharray="5 4"/>';
+    if (showL) {
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.low) + '" y2="' + y(t.low) + '" stroke="' + COL.warn + '" stroke-dasharray="5 4"/>' +
+        '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.high) + '" y2="' + y(t.high) + '" stroke="' + COL.hot + '" stroke-dasharray="5 4"/>';
+    }
     var path = function (k, sc, color, w) {
       var p = '', on = false;
       D.forEach(function (r, i) {
@@ -76,19 +94,25 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += path(4, vy, COL.rvx, 1.3) + path(3, vy, COL.vxn, 1.3) + path(2, vy, COL.vix, 1.5) + path(1, y, COL.move, 1.8);
+    if (on('ovx')) s += path(6, vy, COL.ovx, 1.3);
+    if (on('gvz')) s += path(5, vy, COL.gvz, 1.3);
+    if (on('rvx')) s += path(4, vy, COL.rvx, 1.3);
+    if (on('vxn')) s += path(3, vy, COL.vxn, 1.3);
+    if (on('vix')) s += path(2, vy, COL.vix, 1.5);
+    if (on('move')) s += path(1, y, COL.move, 1.8);
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
       if (m !== pm) { pm = m; s += '<text x="' + x(i) + '" y="' + (H - 4) + '" font-size="' + fs + '" fill="currentColor">' + MN[+m.slice(5) - 1] + '</text>'; }
     });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="MOVE, VIX, VXN and RVX with the caution and elevated lines for MOVE">' + s + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="MOVE, VIX, VXN, RVX, GVZ and OVX with the caution and elevated lines for MOVE">' + s + '</svg>';
   }
 
   function legendHtml() {
     var t = TH['MOVE:GIF'] || { low: 100, high: 120 };
-    return '<div class="yc-leg"><span><i style="background:' + COL.move + '"></i>MOVE (left)</span><span><i style="background:' + COL.vix + '"></i>VIX</span><span><i style="background:' + COL.vxn + '"></i>VXN</span><span><i style="background:' + COL.rvx + '"></i>RVX (right axis)</span>' +
-      '<span><i style="background:' + COL.warn + '"></i>MOVE ' + t.low + '</span><span><i style="background:' + COL.hot + '"></i>MOVE ' + t.high + '</span></div>';
+    var it = function (k, text) { return '<span>' + SeriesToggle.item(ST, k, '<i style="background:' + COL[k] + '"></i>' + text) + '</span>'; };
+    var thr = SeriesToggle.hidden(ST).move ? '' : '<span><i style="background:none;height:0;border-top:2px dashed ' + COL.warn + '"></i>MOVE ' + t.low + '</span><span><i style="background:none;height:0;border-top:2px dashed ' + COL.hot + '"></i>MOVE ' + t.high + '</span>';
+    return '<div class="yc-leg">' + it('move', 'MOVE (left)') + it('vix', 'VIX') + it('vxn', 'VXN') + it('rvx', 'RVX') + it('gvz', 'GVZ (gold)') + it('ovx', 'OVX (oil, right axis)') + thr + '</div>';
   }
 
   function attachHover(svg, D, W) {
@@ -108,11 +132,14 @@
       }
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
-      tip.innerHTML = '<b>' + row[0] + '</b><br><span style="color:' + COL.move + '">&#9632;</span> MOVE: ' + f2(row[1]) +
-        '<br><span style="color:' + COL.vix + '">&#9632;</span> VIX: ' + f2(row[2]) +
-        '<br><span style="color:' + COL.vxn + '">&#9632;</span> VXN: ' + f2(row[3]) +
-        '<br><span style="color:' + COL.rvx + '">&#9632;</span> RVX: ' + f2(row[4]) +
-        '<br>GVZ: ' + f2(row[5]) + '<br>OVX: ' + f2(row[6]);
+      var hid = SeriesToggle.hidden(ST);
+      tip.innerHTML = '<b>' + row[0] + '</b>' +
+        (hid.move ? '' : '<br><span style="color:' + COL.move + '">&#9632;</span> MOVE: ' + f2(row[1])) +
+        (hid.vix ? '' : '<br><span style="color:' + COL.vix + '">&#9632;</span> VIX: ' + f2(row[2])) +
+        (hid.vxn ? '' : '<br><span style="color:' + COL.vxn + '">&#9632;</span> VXN: ' + f2(row[3])) +
+        (hid.rvx ? '' : '<br><span style="color:' + COL.rvx + '">&#9632;</span> RVX: ' + f2(row[4])) +
+        '<br>' + (hid.gvz ? '' : '<span style="color:' + COL.gvz + '">&#9632;</span> ') + 'GVZ: ' + f2(row[5]) +
+        '<br>' + (hid.ovx ? '' : '<span style="color:' + COL.ovx + '">&#9632;</span> ') + 'OVX: ' + f2(row[6]);
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -131,6 +158,7 @@
   }
 
   function closeModal() { var m = document.getElementById('moveVixModal'); if (m) m.remove(); }
+  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, ''); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();
@@ -140,10 +168,17 @@
     m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Volatility</h2>' +
       '<p style="margin:0;">' + rowsAll[0][0] + ' to ' + rowsAll[rowsAll.length - 1][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body">' + tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + '</div></div>';
+      '<div class="modal-body">' + modalBodyHtml() + '</div></div>';
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), rowsAll, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
+    SeriesToggle.bind(m, ST, KEYS, refresh);
+  }
+  // A toggle redraws the panel and, if the popup is open, its body too.
+  function refresh() {
+    render();
+    var m = document.getElementById('moveVixModal');
+    if (m) { m.querySelector('.modal-body').innerHTML = modalBodyHtml(); attachHover(m.querySelector('svg'), rowsAll, 1100); }
   }
 
   async function load() {
@@ -164,6 +199,7 @@
   function init() {
     var host = document.getElementById('moveVixBody');
     if (host) host.addEventListener('click', function (ev) { if (ev.target.closest('.yc-svg')) openModal(); });
+    SeriesToggle.bind(host, ST, KEYS, refresh);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeModal(); });
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);

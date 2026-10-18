@@ -5,6 +5,7 @@
   'use strict';
   var L = 28, R = 30, T = 8, B = 18;
   var lastRows = [];
+  var ST = 'rv', KEYS = ['m1', 'm3', 'bars'];
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -41,9 +42,11 @@
         tip.className = 'spxrv-tip';
         document.body.appendChild(tip);
       }
-      tip.innerHTML = '<b>' + row[0] + '</b><br><span style="color:#2b2bf0">&#9632;</span> 1-month: ' + f(row[1]) +
-        '<br><span style="color:#ff5a14">&#9632;</span> 3-month: ' + f(row[2]) +
-        '<br><span style="color:#9a9a9a">&#9632;</span> SPX day: ' + (row[3] == null ? '--' : (row[3] > 0 ? '+' : '') + row[3].toFixed(2) + '%');
+      var hid = SeriesToggle.hidden(ST);
+      tip.innerHTML = '<b>' + row[0] + '</b>' +
+        (hid.m1 ? '' : '<br><span style="color:#2b2bf0">&#9632;</span> 1-month: ' + f(row[1])) +
+        (hid.m3 ? '' : '<br><span style="color:#ff5a14">&#9632;</span> 3-month: ' + f(row[2])) +
+        (hid.bars ? '' : '<br><span style="color:#9a9a9a">&#9632;</span> SPX day: ' + (row[3] == null ? '--' : (row[3] > 0 ? '+' : '') + row[3].toFixed(2) + '%'));
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -54,8 +57,16 @@
   function draw(D, W, H, fs) {
     var n = D.length;
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
-    var vals = [];
-    D.forEach(function (r) { if (r[1] != null) vals.push(r[1]); if (r[2] != null) vals.push(r[2]); });
+    var hid = SeriesToggle.hidden(ST), on = function (k) { return !hid[k]; };
+    var showL = on('m1') || on('m3'), showR = on('bars');
+    var vals = [], all = [];
+    D.forEach(function (r) {
+      if (r[1] != null) all.push(r[1]);
+      if (r[2] != null) all.push(r[2]);
+      if (on('m1') && r[1] != null) vals.push(r[1]);
+      if (on('m3') && r[2] != null) vals.push(r[2]);
+    });
+    if (!vals.length) vals = all;   // both lines hidden: scale from the full range so the bars axis still lines up
     if (n < 2 || !vals.length) return '<div class="msr-loading">No SPX volatility history yet.</div>';
     var lo = Math.floor(Math.min.apply(null, vals) / 5) * 5 - 5, hi = Math.ceil(Math.max.apply(null, vals) / 5) * 5 + 5;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
@@ -64,16 +75,21 @@
     var rlo = -Math.ceil(ma * 1.8), rhi = Math.ceil(ma * 2.6);
     var ry = function (v) { return T + (H - T - B) * (1 - (v - rlo) / (rhi - rlo)); };
     var s = '';
-    for (var v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) {
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
-        '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v + '</text>';
+    if (showL) {
+      for (var v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) {
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
+          '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v + '</text>';
+      }
     }
-    for (var rv = Math.ceil(rlo / 2) * 2; rv <= rhi; rv += 2) {
-      s += '<text x="' + (W - R + 4) + '" y="' + (ry(rv) + 4) + '" font-size="' + fs + '" fill="#7a1fa2">' + rv + '</text>';
+    if (showR) {
+      for (var rv = Math.ceil(rlo / 2) * 2; rv <= rhi; rv += 2) {
+        if (!showL) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + ry(rv) + '" y2="' + ry(rv) + '" stroke="var(--border,#e5e5e2)"/>';
+        s += '<text x="' + (W - R + 4) + '" y="' + (ry(rv) + 4) + '" font-size="' + fs + '" fill="#7a1fa2">' + rv + '</text>';
+      }
     }
     var bw = Math.max(1, (W - L - R) / n * 0.7);
     D.forEach(function (r, i) {
-      if (r[3] == null) return;
+      if (!showR || r[3] == null) return;
       var y0 = ry(0), y1 = ry(r[3]);
       s += '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) + '" width="' + bw.toFixed(1) +
         '" height="' + Math.max(0.5, Math.abs(y1 - y0)).toFixed(1) + '" fill="#9a9a9a" opacity="0.7"/>';
@@ -86,7 +102,8 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += line(1, '#2b2bf0', 1.5) + line(2, '#ff5a14', 2.5);
+    if (on('m1')) s += line(1, '#2b2bf0', 1.5);
+    if (on('m3')) s += line(2, '#ff5a14', 2.5);
     for (var t = 0; t < 4; t++) {
       var i = Math.round((n - 1) * t / 3), pp = D[i][0].split('-');
       s += '<text x="' + x(i) + '" y="' + (H - 4) + '" text-anchor="' + (t === 0 ? 'start' : t === 3 ? 'end' : 'middle') +
@@ -95,10 +112,17 @@
     var last = D[n - 1];
     var f = function (v) { return v == null ? '--' : v.toFixed(1) + '%'; };
     var head = '<div class="spxrv-head"><span class="spxrv-ttl">SPX Realized Vol</span>' +
-      '<span class="spxrv-k"><i style="background:#2b2bf0"></i>1M ' + f(last[1]) + '</span>' +
-      '<span class="spxrv-k"><i style="background:#ff5a14"></i>3M ' + f(last[2]) + '</span>' +
-      '<span class="spxrv-k"><i style="background:#9a9a9a"></i>SPX daily %</span></div>';
+      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm1', '<i style="background:#2b2bf0"></i>1M ' + f(last[1])) + '</span>' +
+      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm3', '<i style="background:#ff5a14"></i>3M ' + f(last[2])) + '</span>' +
+      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'bars', '<i style="background:#9a9a9a"></i>SPX daily %') + '</span></div>';
     return head + '<svg viewBox="0 0 ' + W + ' ' + H + '" class="spxrv-svg' + (fs > 11 ? '' : ' spxrv-click') + '" role="img" aria-label="SPX 1-month vs 3-month realized volatility">' + s + '</svg>';
+  }
+
+  function renderPanel() {
+    var body = document.getElementById('spxRvBody');
+    if (!body) return;
+    body.innerHTML = draw(lastRows, 600, 250, 11);
+    attachHover(body.querySelector('svg'), lastRows, 600);
   }
 
   async function load() {
@@ -109,8 +133,7 @@
       var res = await fetch('/api/cockpit/spx-realized-vol' + (d ? '?date=' + encodeURIComponent(d) : ''));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       lastRows = (await res.json()).rows || [];
-      body.innerHTML = draw(lastRows, 600, 250, 11);
-      attachHover(body.querySelector('svg'), lastRows, 600);
+      renderPanel();
     } catch (e) {
       body.innerHTML = '<div class="msr-loading">SPX volatility unavailable.</div>';
     }
@@ -131,11 +154,19 @@
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), lastRows, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
+    SeriesToggle.bind(m, ST, KEYS, refresh);
+  }
+  // A toggle redraws the panel and, if the popup is open, its body too.
+  function refresh() {
+    renderPanel();
+    var m = document.getElementById('spxRvModal');
+    if (m) { m.querySelector('.modal-body').innerHTML = draw(lastRows, 1100, 440, 13); attachHover(m.querySelector('svg'), lastRows, 1100); }
   }
 
   function init() {
     var host = document.getElementById('spxRvBody');
     if (host) host.addEventListener('click', function (ev) { if (ev.target.closest('.spxrv-svg')) openModal(); });
+    SeriesToggle.bind(host, ST, KEYS, refresh);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeModal(); });
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);

@@ -4216,6 +4216,10 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .yc-tbl td.yc-g { background: rgba(29, 158, 117, .24); font-weight: 600; }
 .yc-leg { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 9px; margin: 4px 0 1px; }
 .yc-leg i { display: inline-block; width: 10px; height: 3px; margin-right: 3px; vertical-align: middle; }
+/* Show/hide checkboxes inside chart legends (SeriesToggle in _common.js). */
+.st-i { cursor: pointer; display: inline-flex; align-items: center; }
+.st-i input { margin: 0 3px 0 0; width: 10px; height: 10px; }
+.st-i.off { opacity: .45; }
 .yc-svg { width: 100%; height: auto; display: block; }
 .yc-click { cursor: zoom-in; }
 

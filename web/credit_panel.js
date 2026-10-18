@@ -8,6 +8,7 @@
   var L = 30, R = 30, T = 8, B = 18;
   var rowsAll = [];
   var COL = { hy: 'currentColor', tr: '#1668c4' };
+  var ST = 'cr', KEYS = ['hy', 'tr'];
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
@@ -50,8 +51,8 @@
   }
 
   function legendHtml() {
-    return '<div class="yc-leg"><span><i style="background:currentColor"></i>High-yield spread (left)</span>' +
-      '<span><i style="background:' + COL.tr + '"></i>High Yield total return index (right)</span></div>';
+    return '<div class="yc-leg"><span>' + SeriesToggle.item(ST, 'hy', '<i style="background:currentColor"></i>High-yield spread (left)') + '</span>' +
+      '<span>' + SeriesToggle.item(ST, 'tr', '<i style="background:' + COL.tr + '"></i>High Yield total return index (right)') + '</span></div>';
   }
 
   // Plain-English description of each line; the current values are filled in from the data.
@@ -66,6 +67,7 @@
   function chartHtml(D, W, H, fs, cls) {
     var n = D.length;
     if (n < 2) return '<div class="msr-loading">No credit data yet.</div>';
+    var hid = SeriesToggle.hidden(ST), showHy = !hid.hy, showTr = !hid.tr;
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
     var sp = [], tr = [];
     D.forEach(function (r) {
@@ -77,12 +79,17 @@
     var tlo = Math.floor(Math.min.apply(null, tr)) - 1, thi = Math.ceil(Math.max.apply(null, tr)) + 1;
     var ty = function (v) { return T + (H - T - B) * (1 - (v - tlo) / (thi - tlo)); };
     var s = '';
-    for (var v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) {
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
-        '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v.toFixed(1) + '</text>';
+    if (showHy) {
+      for (var v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) {
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--border,#e5e5e2)"/>' +
+          '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v.toFixed(1) + '</text>';
+      }
     }
-    for (var q = Math.ceil(tlo / 2) * 2; q <= thi; q += 2) {
-      s += '<text x="' + (W - R + 4) + '" y="' + (ty(q) + 4) + '" font-size="' + fs + '" fill="' + COL.tr + '">' + q + '</text>';
+    if (showTr) {
+      for (var q = Math.ceil(tlo / 2) * 2; q <= thi; q += 2) {
+        if (!showHy) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + ty(q) + '" y2="' + ty(q) + '" stroke="var(--border,#e5e5e2)"/>';
+        s += '<text x="' + (W - R + 4) + '" y="' + (ty(q) + 4) + '" font-size="' + fs + '" fill="' + COL.tr + '">' + q + '</text>';
+      }
     }
     var path = function (k, sc, color, w) {
       var p = '', on = false;
@@ -92,7 +99,8 @@
       });
       return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    s += path(2, ty, COL.tr, 1.5) + path(1, y, COL.hy, 1.8);
+    if (showTr) s += path(2, ty, COL.tr, 1.5);
+    if (showHy) s += path(1, y, COL.hy, 1.8);
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
@@ -121,7 +129,9 @@
       }
       guide.setAttribute('x1', gx); guide.setAttribute('x2', gx); guide.setAttribute('y1', T); guide.setAttribute('y2', vb.height - B);
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
-      tip.innerHTML = '<b>' + row[0] + '</b><br>High-yield spread: ' + f2(row[1]) + '%<br><span style="color:' + COL.tr + '">&#9632;</span> HY total return: ' + f2(row[2]);
+      var hid = SeriesToggle.hidden(ST);
+      tip.innerHTML = '<b>' + row[0] + '</b>' + (hid.hy ? '' : '<br>High-yield spread: ' + f2(row[1]) + '%') +
+        (hid.tr ? '' : '<br><span style="color:' + COL.tr + '">&#9632;</span> HY total return: ' + f2(row[2]));
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
       tip.style.left = Math.max(4, left) + 'px';
@@ -140,6 +150,7 @@
   }
 
   function closeModal() { var m = document.getElementById('creditModal'); if (m) m.remove(); }
+  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(rowsAll); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();
@@ -149,10 +160,17 @@
     m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">Credit: high-yield spread and High Yield total return</h2>' +
       '<p style="margin:0;">' + rowsAll[0][0] + ' to ' + rowsAll[rowsAll.length - 1][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body">' + tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(rowsAll) + '</div></div>';
+      '<div class="modal-body">' + modalBodyHtml() + '</div></div>';
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), rowsAll, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
+    SeriesToggle.bind(m, ST, KEYS, refresh);
+  }
+  // A toggle redraws the panel and, if the popup is open, its body too.
+  function refresh() {
+    render();
+    var m = document.getElementById('creditModal');
+    if (m) { m.querySelector('.modal-body').innerHTML = modalBodyHtml(); attachHover(m.querySelector('svg'), rowsAll, 1100); }
   }
 
   async function load() {
@@ -172,6 +190,7 @@
   function init() {
     var host = document.getElementById('creditBody');
     if (host) host.addEventListener('click', function (ev) { if (ev.target.closest('.yc-svg')) openModal(); });
+    SeriesToggle.bind(host, ST, KEYS, refresh);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeModal(); });
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
