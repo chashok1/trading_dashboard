@@ -125,6 +125,25 @@ def _save_hefiles_image(url: str, hefiles_dir: str, filename: str) -> None:
         log.warning("_save_hefiles_image failed %s: %s", filename, e)
 
 
+def _pick_image_by_text(urls: list[str], needle: str) -> str:
+    """Return the first image whose OCR text contains `needle` (case-insensitive).
+
+    Falls back to the last image if none match (or OCR is unavailable).
+    """
+    from etl.hedgeye import msr_ocr
+    for url in urls:
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = resp.read()
+        except Exception as e:
+            log.warning("image pick: download failed %s: %s", url, e)
+            continue
+        if needle.lower() in msr_ocr._ocr(data).lower():
+            return url
+    log.warning("image pick: %r not found by OCR in %d images; using last", needle, len(urls))
+    return urls[-1]
+
+
 def _adapt_rows(table: str, rows: list[dict]) -> list[dict]:
     """Map parser-emitted columns to live DB columns where names differ.
 
@@ -222,15 +241,12 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 parsed.images, feed_date,
                 cfg.mktsit_dir,
             )
-        elif email_type == "signal_strength" and parsed.images:
-            _save_hefiles_image(
-                parsed.images[0], cfg.hefiles_dir,
-                f"SSS {feed_date.isoformat()}.png",
-            )
-            summary["images"] = 1
+        elif email_type == "signal_strength":
+            pass    # SSS format/processing changed -- no longer saved to HEFiles
         elif email_type == "inflation_nowcast" and parsed.images:
             _save_hefiles_image(
-                parsed.images[0], cfg.hefiles_dir,
+                _pick_image_by_text(parsed.images, "Hedgeye Monthly Inflation Nowcast"),
+                cfg.hefiles_dir,
                 f"INFL_{feed_date.isoformat()}.png",
             )
             summary["images"] = 1
