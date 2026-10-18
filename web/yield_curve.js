@@ -101,6 +101,40 @@
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="2-year and 10-year Treasury yields and the 10Y-2Y spread">' + s + '</svg>';
   }
 
+  // Curve shape over `off` observations back: spread change vs how the 2Y and 10Y moved (bp). A move under 3 bp in the spread reads as unchanged.
+  function shapeRead(D, off, label) {
+    var li = lastFull(D), n2 = back(D, li, 1, 0), n10 = back(D, li, 2, 0), ns = back(D, li, 3, 0);
+    var p2 = back(D, li, 1, off), p10 = back(D, li, 2, off), ps = back(D, li, 3, off);
+    if ([n2, n10, ns, p2, p10, ps].some(function (v) { return v == null; })) return '';
+    var d2 = Math.round((n2 - p2) * 100), d10 = Math.round((n10 - p10) * 100), ds = Math.round((ns - ps) * 100);
+    var head = 'Over the ' + label + ' the spread went from ' + f2(ps) + ' to ' + f2(ns) + ' (' + (ds > 0 ? '+' : '') + ds + ' bp); the 2Y moved ' + (d2 > 0 ? '+' : '') + d2 + ' bp and the 10Y ' + (d10 > 0 ? '+' : '') + d10 + ' bp. ';
+    if (Math.abs(ds) < 3) return head + 'The curve is about unchanged.';
+    var bull = (d2 + d10) / 2 < 0;
+    return head + 'That is a <b>' + (bull ? 'bull' : 'bear') + ' ' + (ds > 0 ? 'steepener' : 'flattener') + '</b>.';
+  }
+
+  // Plain-English guide to each line and to curve shapes, with the live read filled in from the data.
+  function descHtml(D) {
+    return '<div class="cr-desc cr-desc-lg">' +
+      '<p><b>2-year yield (black):</b> what the US government pays to borrow for 2 years. It follows what traders expect the Fed to do with interest rates: it falls when cuts are expected and rises when hikes are expected.</p>' +
+      '<p><b>10-year yield (gray):</b> what the government pays to borrow for 10 years. It reflects the longer-term view on growth and inflation, and it is the rate that mortgages and corporate loans are priced off.</p>' +
+      '<p><b style="color:' + COL.sp + '">10Y - 2Y spread (blue, right axis):</b> the 10-year minus the 2-year, which shows how steep the curve is. Positive is normal. Negative means the curve is inverted (short-term rates above long-term), which has often come before recessions.</p>' +
+      '<p><b>Steepener</b> = the spread is rising. <b>Flattener</b> = the spread is falling. <b>Bull</b> = yields are falling overall (bond prices rising); <b>bear</b> = yields are rising overall.</p>' +
+      '<ul>' +
+      '<li><b>Bull steepener:</b> the 2Y falls faster than the 10Y. The market expects the Fed to cut rates. <i>For stocks: usually the best case if the economy is healthy; banks and small companies tend to do well. If the cuts come because the economy is breaking, stocks can fall anyway.</i></li>' +
+      '<li><b>Bear steepener:</b> the 10Y rises faster than the 2Y. Investors want more pay for holding long bonds (inflation or heavy government borrowing). <i>For stocks: usually the worst case. Higher long rates pull valuations down, hitting tech, growth and housing.</i></li>' +
+      '<li><b>Bull flattener:</b> the 10Y falls faster than the 2Y. Worry about growth is pulling long-term yields down. <i>For stocks: mixed. Defensive and big growth stocks hold up better, while cyclical stocks and banks do worse. It is a mild warning about growth.</i></li>' +
+      '<li><b>Bear flattener:</b> the 2Y rises faster than the 10Y. The market expects the Fed to raise or hold rates high. <i>For stocks: usually negative. Tighter money hurts, especially small caps and growth stocks; it is typical of the late stage of an expansion.</i></li>' +
+      '</ul>' +
+      '<p><b>What it means for bond prices.</b> Bond prices move opposite to yields. When yields rise, existing bonds lose value, and when yields fall, they gain. Roughly, a 1 point change in yields moves a 2-year bond about 2%, a 10-year about 7%, and a 20+ year bond about 16%.</p>' +
+      '<p><b>If you buy an ETF.</b> SHY follows the 2-year area, IEF the 10-year, and TLT the 20+ year. You receive a small cash payout every month, which is the interest on the bonds the fund holds. It can change from month to month. The fund never matures, so there is no date when you get your money back. You get the price when you sell, plus the payouts you collected.</p>' +
+      '<p>Example (numbers vary): you buy $1,000 of IEF. If the 10-year yield rises 1 point, the price falls about $70, so selling would give you about $930 plus the payouts. If it falls 1 point, the price rises about $70, so selling would give you about $1,070 plus the payouts.</p>' +
+      '<p><b>If you buy a bond directly.</b> Example (numbers vary): you buy a 10-year Treasury for $1,000 paying 4%, so $40 a year, fixed. If yields rise 1 point, the price falls about $70 on paper. If you hold to maturity, that does not matter: you collect the $40 a year and get your $1,000 back at the end. It only matters if you sell early, when you would get about $930.</p>' +
+      '<p><b>Right now.</b> ' + shapeRead(D, 5, 'past week') + '</p>' +
+      '<p>' + shapeRead(D, 20, 'past month') + '</p>' +
+      '</div>';
+  }
+
   function legendHtml() {
     var it = function (k, text) { return '<span>' + SeriesToggle.item(ST, k, '<i style="background:' + COL[k] + '"></i>' + text) + '</span>'; };
     return '<div class="yc-leg">' + it('y2', '2Y') + it('y10', '10Y') + it('sp', '10Y-2Y spread (right axis)') + '</div>';
@@ -148,7 +182,7 @@
   }
 
   function closeModal() { var m = document.getElementById('yieldCurveModal'); if (m) m.remove(); }
-  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, ''); }
+  function modalBodyHtml() { return tableHtml(rowsAll, true) + legendHtml() + chartHtml(rowsAll, 1100, 420, 13, '') + descHtml(rowsAll); }
   function openModal() {
     if (!rowsAll.length) return;
     closeModal();

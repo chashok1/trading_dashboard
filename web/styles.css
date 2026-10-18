@@ -4234,6 +4234,9 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 #creditBand { padding: 4px 6px 6px; }
 .cr-desc { margin-top: 5px; font-size: 9.5px; line-height: 1.4; color: var(--text-2, #5b6172); }
 .cr-desc p { margin: 0 0 3px; }
+.cr-desc ul { margin: 0 0 3px; padding-left: 16px; }
+.cr-desc li { margin: 0 0 2px; }
+.cr-desc-lg { font-size: 11.5px; }
 
 /* 2026-10-17 -- Momentum panel (web/momentum_panel.js): shares the .yc-* table/chart styles. */
 #momentumBand { padding: 4px 6px 6px; }
