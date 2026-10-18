@@ -53,7 +53,7 @@ I do?" It adds four things the ribbons don't:
 | Volatility (gauge only) | `VIX` (vol zones) | — |
 | Rates / curve | `DGS2`, `TNX:CGI`, `TYX:CGI` (2s/10s/30s) | `TLT`, `IEF` (tradable duration) |
 | Credit (risk-on/off) | `HYG`, `LQD` | — |
-| Commodities | `/CL`, `/BZ`, `/GC`, `/HG`, `/NG`, `/SI` | `GLD`, `SLV` |
+| Commodities | `/CL`, `/BZ`, `/GC`, `/HG`, `/NG`, `/SI`; farm group also `/ZC`, `/ZW`, `/ZS`, `/KC`, `/SB`, `/LE` (no Hedgeye risk range → price/day%/week% only; `db/seeds_commodity_ag.sql`) | `GLD`, `SLV` |
 | Crypto | `/BTC` | `IBIT`, `MSTR`, `BITO` |
 | Global equities | `$SSEC`, `GDAXI:DE`, `N225:JP` | `EEM`, `EWZ`, `EWG`, `EWM` |
 | Sectors (ranked) | `XLE…XLY` (outlook) | all 11 SPDRs ranked by TRADE/TREND |
