@@ -313,16 +313,11 @@
 
   // Market pills under the US Dollar pill (2026-10-18, user-directed): SPX / Ndq / Rus / VIX / Oil / Gld / 10Y / BTC as chips with the day % change.
   // Colour = the day % change (green up, red down, grey flat; the Hedgeye outlook is in the tooltip). Reads GET /api/cockpit/index-pills. Display only.
-  // VIX sits in its own slot (row 2); shift it right so its right edge lines up with the 10Y chip's right edge
-  // (2026-10-19, user-directed). Only the VIX slot's left margin changes -- no other pill moves or resizes.
+  // VIX sits in its own slot (row 2), flush left under the US Dollar pill (2026-10-19, user-directed; it was briefly shifted right to
+  // line up with 10Y). Kept as a function so the callers below stay valid.
   function alignVix() {
-    var vb = document.getElementById('vixPill'), ten = document.querySelector('#mktPills [data-lbl="10Y"]');
-    if (!vb) return;
-    vb.style.marginLeft = '0px';
-    var chip = vb.firstElementChild;
-    if (!chip || !ten) return;
-    var shift = ten.getBoundingClientRect().right - vb.getBoundingClientRect().left - chip.getBoundingClientRect().width;
-    vb.style.marginLeft = Math.max(0, Math.round(shift)) + 'px';
+    var vb = document.getElementById('vixPill');
+    if (vb) vb.style.marginLeft = '0px';
   }
   window.addEventListener('resize', alignVix);
   async function loadPills() {
