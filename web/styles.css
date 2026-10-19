@@ -4289,3 +4289,6 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .spxrv-sig-sell { background: #fdecec; border-color: #e5484d; color: #7a1d20; }
 .spxrv-sig-ok { background: #e6f6ee; border-color: #0f9d58; color: #17432c; }
 .spxrv-warn { margin-left: auto; padding: 0 6px; border-radius: 999px; background: #fdecec; border: 1px solid #e5484d; color: #b42318; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.oc-clear { border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2, #5b6172); border-radius: 999px; padding: 0 8px; font-size: 9.5px; font-weight: 600; line-height: 14px; cursor: pointer; white-space: nowrap; margin-left: 6px; }
+.oc-clear:hover { background: #fdecec; border-color: #e5484d; color: #b42318; }
+.oc-clear[hidden] { display: none; }

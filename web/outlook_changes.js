@@ -108,11 +108,25 @@
           if (!v) return;
           document.body.setAttribute('data-rf-' + key, v);
           try { localStorage.setItem('rf_' + key, v); } catch (e2) {}
+          syncClear();
         });
         return g;
       }
       wrap.appendChild(grp('rfOutlook', [['all', 'All'], ['bull', 'Bullish'], ['bear', 'Bearish'], ['neu', 'Neutral']], 'ol'));
       wrap.appendChild(grp('rfAction', [['all', 'All'], ['buy', 'Buy'], ['sell', 'Sell'], ['hold', 'Hold']], 'act'));
+      // Clear (2026-10-19, user-directed): resets every global filter at once -- Δ changed off in all panels, Outlook = All, Action = All.
+      var clr = document.createElement('button');
+      clr.id = 'ocClear'; clr.type = 'button'; clr.className = 'oc-clear'; clr.textContent = 'Clear filters';
+      clr.title = 'Reset the Δ changed, Outlook and Action filters (show all rows)';
+      clr.onclick = function () {
+        SCOPES.forEach(function (sc) { try { localStorage.setItem(sc.key, '0'); } catch (e) {} });
+        ['rfOutlook', 'rfAction'].forEach(function (nm) {
+          var all = document.querySelector('input[name="' + nm + '"][value="all"]');
+          if (all && !all.checked) { all.checked = true; all.dispatchEvent(new Event('change', { bubbles: true })); }
+        });
+        refreshChips();
+      };
+      wrap.appendChild(clr);
       // The chip-mode radios (% $ Price Act Hld, owned by macro_areas.js) live in this global area too, after the two filter groups: move the existing node
       // (its listeners come with it).
       var modeR = document.querySelector('input[name="msrValueMode"]');
@@ -128,6 +142,18 @@
     b.hidden = !live.length;
     wrap.querySelector('.oc-global-lbl').hidden = !live.length;
     b.classList.toggle('on', live.length > 0 && live.every(getOnly));
+    syncClear();
+  }
+  // The Clear button shows only while some global filter is active.
+  function syncClear() {
+    var c = document.getElementById('ocClear');
+    if (!c) return;
+    var radio = ['rfOutlook', 'rfAction'].some(function (nm) {
+      var r = document.querySelector('input[name="' + nm + '"]:checked');
+      return r && r.value !== 'all';
+    });
+    var delta = SCOPES.some(function (sc) { var p = document.getElementById('ocFilter_' + sc.id); return p && !p.hidden && getOnly(sc); });
+    c.hidden = !(radio || delta);
   }
   function refreshChips() {
     SCOPES.forEach(function (sc) {
