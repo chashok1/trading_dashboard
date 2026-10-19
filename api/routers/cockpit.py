@@ -2482,17 +2482,20 @@ def get_macro_week(date: Optional[str] = Query(None)):
 
         # --- market chips: last + 5-session change + RR position -------------
         qrows = s.execute(text(
-            "SELECT tos_symbol, last_price, rn FROM ("
-            " SELECT tos_symbol, last_price,"
+            "SELECT tos_symbol, last_price, pct_change, rn FROM ("
+            " SELECT tos_symbol, last_price, pct_change,"
             "  ROW_NUMBER() OVER (PARTITION BY tos_symbol ORDER BY as_of_date DESC) rn"
             " FROM drv_quote WHERE as_of_date <= :d"
             "  AND as_of_date > :d - 20"
             "  AND tos_symbol IN ('$DXY','TNX:CGI','DGS2:FRED','VIX','MOVE:GIF','/GC','/CL')"
             ") x WHERE rn IN (1, 6)"), {"d": d}).mappings().all()
         px = {}
+        day_pct = {}   # today's % change per symbol (latest row)
         for r in qrows:
             px.setdefault(r["tos_symbol"], {})[r["rn"]] = (
                 float(r["last_price"]) if r["last_price"] is not None else None)
+            if r["rn"] == 1 and r["pct_change"] is not None:
+                day_pct[r["tos_symbol"]] = float(r["pct_change"])
         rr = {r["tos_symbol"]: r for r in s.execute(text(
             "SELECT tos_symbol, lrr, trr, outlook FROM drv_rr "
             "WHERE as_of_date = :d AND tos_symbol IN ('$DXY','TNX:CGI','DGS2:FRED','VIX','MOVE:GIF','/GC','/CL')"),
@@ -2542,7 +2545,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
 
         chips = {
             "dxy": {
-                "last": dxy_last, "chg5": _chg("$DXY"),
+                "last": dxy_last, "chg5": _chg("$DXY"), "day_pct": day_pct.get("$DXY"),
                 "rr_pos": rr_pos(dxy_last, dxy_rr["lrr"], dxy_rr["trr"]) if dxy_rr else None,
                 "outlook": dxy_rr["outlook"] if dxy_rr else None,
             },

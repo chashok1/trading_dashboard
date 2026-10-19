@@ -114,13 +114,14 @@
       }
       wrap.appendChild(grp('rfOutlook', [['all', 'All'], ['bull', 'Bullish'], ['bear', 'Bearish'], ['neu', 'Neutral']], 'ol'));
       wrap.appendChild(grp('rfAction', [['all', 'All'], ['buy', 'Buy'], ['sell', 'Sell'], ['hold', 'Hold']], 'act'));
+      wrap.appendChild(grp('rfDir', [['all', 'All'], ['up', 'Up'], ['dn', 'Dn']], 'dir'));   // day %chg direction (2026-10-19, user-directed)
       // Clear (2026-10-19, user-directed): resets every global filter at once -- Δ changed off in all panels, Outlook = All, Action = All.
       var clr = document.createElement('button');
       clr.id = 'ocClear'; clr.type = 'button'; clr.className = 'oc-clear'; clr.textContent = 'Clear filters';
       clr.title = 'Reset the Δ changed, Outlook and Action filters (show all rows)';
       clr.onclick = function () {
         SCOPES.forEach(function (sc) { try { localStorage.setItem(sc.key, '0'); } catch (e) {} });
-        ['rfOutlook', 'rfAction'].forEach(function (nm) {
+        ['rfOutlook', 'rfAction', 'rfDir'].forEach(function (nm) {
           var all = document.querySelector('input[name="' + nm + '"][value="all"]');
           if (all && !all.checked) { all.checked = true; all.dispatchEvent(new Event('change', { bubbles: true })); }
         });
@@ -148,7 +149,7 @@
   function syncClear() {
     var c = document.getElementById('ocClear');
     if (!c) return;
-    var radio = ['rfOutlook', 'rfAction'].some(function (nm) {
+    var radio = ['rfOutlook', 'rfAction', 'rfDir'].some(function (nm) {
       var r = document.querySelector('input[name="' + nm + '"]:checked');
       return r && r.value !== 'all';
     });

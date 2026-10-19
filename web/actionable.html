@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20261016h">
+  <link rel="stylesheet" href="/static/styles.css?v=20261019a">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
@@ -1203,6 +1203,12 @@
                separate label), same convention as Acct/Sectors/Asset
                Classes/Styles. -->
           <select id="sourceFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:8em;" title="Source filter"><option value="">Source</option></select>
+          <!-- Long/Short radios (2026-10-19): shown only while a source with a short side is picked above; filters on that source's own side. -->
+          <span id="sideFilter" class="side-filter" hidden title="Filter by this source's own side">
+            <label><input type="radio" name="sideRadio" value="" checked> All</label>
+            <label><input type="radio" name="sideRadio" value="long"> Long</label>
+            <label><input type="radio" name="sideRadio" value="short"> Short</label>
+          </span>
           <!-- Recent-event quick-filter pills (2026-09-02: RTA/SC removed --
                review found they were byte-for-byte duplicates of picking
                "RTA"/"SSSCHG" in the Source dropdown right above, same
@@ -1702,7 +1708,7 @@
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
   <script src="/static/actionable_pops.js?v=20261017b"></script>
-  <script src="/static/actionable.js?v=20261017c"></script>
+  <script src="/static/actionable.js?v=20261019b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261009b" defer></script>
 <script src="/static/warning_badge.js"></script>

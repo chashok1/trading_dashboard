@@ -719,7 +719,8 @@
       var d = window.actionDisplay ? window.actionDisplay(m.action_code || m.action) : null;
       ac = d && d.side === 'buy' ? 'buy' : d && d.side === 'sell' ? 'sell' : 'hold';
     }
-    return ' data-ol="' + ol + '" data-act="' + ac + '"';
+    var pc = m.pct_change, dir = pc == null ? '' : pc > 0 ? 'up' : pc < 0 ? 'dn' : 'flat';   // day %chg direction (Up/Dn radios)
+    return ' data-ol="' + ol + '" data-act="' + ac + '" data-dir="' + dir + '"';
   }
   document.addEventListener('oc-loaded', function () { if (_lastAreasData) renderRail(_lastAreasData); });
 

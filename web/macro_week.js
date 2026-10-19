@@ -86,12 +86,14 @@
     var has = c.rr_pos != null;
     var pct = has ? Math.round(c.rr_pos * 100) : null;
     var tickPos = has ? 'calc(3px + (100% - 6px) * ' + Math.min(Math.max(c.rr_pos, 0), 1).toFixed(4) + ')' : '0';
+    var dp = c.day_pct, dpCls = dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu';
     var bar = has
-      ? '<span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tickPos + '"></span><span class="msr-rb-tick' +
-        (c.rr_pos >= 0.85 ? ' hot' : c.rr_pos <= 0.15 ? ' cold' : '') + '" style="left:' + tickPos + '"></span></span>'
+      ? '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tickPos + '">' + pct + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tickPos + '"></span><span class="msr-rb-tick' +
+        (c.rr_pos >= 0.85 ? ' hot' : c.rr_pos <= 0.15 ? ' cold' : '') + '" style="left:' + tickPos + '"></span></span></span>'
       : '';
     var t = [
       'US Dollar (DXY)',
+      '• Today: ' + (dp == null ? '--' : (dp > 0 ? '+' : '') + dp.toFixed(2) + '%'),
       '• Hedgeye outlook: ' + (c.outlook || '--'),
       '• Last: ' + num(c.last, 2),
       '• 5-session change: ' + (c.chg5 == null ? '--' : (c.chg5 > 0 ? '+' : '') + num(c.chg5, 2)),
@@ -99,7 +101,7 @@
       'Source: drv_quote, drv_rr ($DXY)'
     ];
     return '<span class="mw-chip mw-usd ' + olCls(c.outlook) + '" title="' + tip(t) + '"><span class="mw-usd-l">US DOLLAR</span>' +
-      '<b>' + num(c.last, 2) + '</b>' + (darr(c.chg5) ? '<span class="mw-usd-d">' + darr(c.chg5) + '</span>' : '') + bar + (has ? '<span class="mw-dim">' + pct + '%</span>' : '') +
+      '<b>' + num(c.last, 2) + '</b>' + (darr(c.chg5) ? '<span class="mw-usd-d">' + darr(c.chg5) + '</span>' : '') + bar + (dp != null ? '<span class="mw-usd-dp ' + dpCls + '">' + (dp > 0 ? '+' : '') + dp.toFixed(2) + '%</span>' : '') +
       '<span class="mw-usd-o">' + word + '</span></span>';
   }
 

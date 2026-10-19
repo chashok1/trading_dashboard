@@ -50,6 +50,7 @@ const state = {
     source: '',
     account: '',
     held_only: false,
+    side: '',            // 2026-10-19: '' | 'long' | 'short' -- the picked Source's own side (see _srcSide)
     show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
     watch_only: false,   // 2026-09-14: filter to rows with an active ref_watch entry (r.watch_id) --
                          // same set the grid's own 🔔 badge marks (see matchesBaseFilters)
@@ -2048,6 +2049,7 @@ function matchesBaseFilters(r) {
   if (_fiHidden(r)) return false;
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
+    if (state.filters.side && _srcSide(r, state.filters.source) !== state.filters.side) return false;
   }
   if (state.filters.account) {
     if (!r.held_accounts) return false;
@@ -2481,6 +2483,7 @@ function _syncTriggerSourcePills() {
   wrap.querySelectorAll('[data-src-pill]').forEach(el => {
     el.classList.toggle('active', state.filters.source === el.dataset.srcPill);
   });
+  _syncSideFilter();
   wrap.querySelectorAll('[data-flag-pill]').forEach(el => {
     el.classList.toggle('active', !!state.filters[el.dataset.flagPill]);
   });
@@ -2670,7 +2673,7 @@ function _resetToggleFiltersForLookup() {
 
 function clearAllFilters() {
   const f = state.filters;
-  f.action = ''; f.source = ''; f.account = ''; f.held_only = false;
+  f.action = ''; f.source = ''; f.side = ''; f.account = ''; f.held_only = false;
   f.show_hidden = false; f.actionable_only = true; f.watch_only = false;
   f.symbol_search = ''; f.conviction = 'any';
   f.bull_prob_min = 0;
@@ -3425,6 +3428,26 @@ function _computePriority(row) {
 }
 
 // True if `src` drove this row OR appears among its other sources.
+// Sources that carry a short side. Side = sign of that source's own weight (Bullish/Top-5 long = +, Bearish/short = -).
+// A source "has a short side" when at least one loaded row carries a negative weight for it (data-driven, no fixed list).
+function _srcHasShort(src) {
+  return !!src && (state.allRows || []).some(r => { const sa = _saFor(r, src); return sa && sa.weight < 0; });
+}
+function _srcSide(row, src) {
+  const sa = _saFor(row, src);
+  if (!sa || sa.weight == null || sa.weight === 0) return '';
+  return sa.weight > 0 ? 'long' : 'short';
+}
+// Show the Long/Short radios only for a sided source; reset to All whenever the source changes.
+function _syncSideFilter() {
+  const w = $('sideFilter');
+  if (!w) return;
+  const on = _srcHasShort(state.filters.source);
+  if (!on) state.filters.side = '';
+  w.hidden = !on;
+  const v = state.filters.side || '';
+  w.querySelectorAll('input').forEach(i => { i.checked = i.value === v; });
+}
 function _rowHasSource(row, src) {
   if (!src) return true;
   if ((row.winning_source || '') === src) return true;
@@ -6933,8 +6956,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('fcCloseBtn').addEventListener('click', () => $('focusBackdrop').classList.remove('open'));
 
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
+  const sideEl = $('sideFilter');
+  if (sideEl) sideEl.addEventListener('change', (e) => {
+    state.filters.side = (e.target && e.target.value) || '';
+    applyClientFilter();
+  });
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
+    state.filters.side = '';
     _syncTriggerSourcePills();
     if (state.filters.source) { _resetToggleFiltersForLookup(); loadActionable(); return; }
     applyClientFilter();
@@ -6958,6 +6987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!el) return;
       const src = el.dataset.srcPill;
       state.filters.source = (state.filters.source === src) ? '' : src;
+      state.filters.side = '';
       _syncTriggerSourcePills();
       const selEl = $('sourceFilter');
       if (selEl) selEl.value = state.filters.source;

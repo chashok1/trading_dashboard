@@ -4032,6 +4032,13 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .mw-usd-l { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-3, #98a0b3); }
 .mw-usd b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .mw-usd-bar { width: 38px; flex: none; }
+/* RR% sits above the bar, just right of the tick (2026-10-19, user-directed); the old RR% slot now shows today's %chg. */
+.mw-usd-barwrap { position: relative; display: inline-flex; flex: none; padding-top: 8px; }
+.mw-usd-rr { position: absolute; top: -3px; margin-left: 3px; font-size: 8px; line-height: 1; color: var(--text-3, #98a0b3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mw-usd-dp { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mw-usd-dp.bull { color: var(--green, #1a9850); }
+.mw-usd-dp.bear { color: var(--red, #d73027); }
+.mw-usd-dp.neu { color: var(--text-3, #98a0b3); }
 .mw-usd-o { font-size: 9.5px; font-weight: 700; padding: 0 7px; border-radius: 999px; background: var(--rc); color: #fff; line-height: 15px; }
 
 /* 2026-10-16 -- Headwind panel (right column): the old "$X headwind" popup content, inline. */
@@ -4205,6 +4212,8 @@ body[data-rf-ol="neu"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 body[data-rf-act="buy"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#callBand,#aiBubbleBand,#macroAccountsBand) .msr-row:not([data-act="buy"]) { display: none; }
 body[data-rf-act="sell"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#callBand,#aiBubbleBand,#macroAccountsBand) .msr-row:not([data-act="sell"]) { display: none; }
 body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#callBand,#aiBubbleBand,#macroAccountsBand) .msr-row:not([data-act="hold"]) { display: none; }
+body[data-rf-dir="up"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#callBand,#aiBubbleBand,#macroAccountsBand) .msr-row:not([data-dir="up"]) { display: none; }
+body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#callBand,#aiBubbleBand,#macroAccountsBand) .msr-row:not([data-dir="dn"]) { display: none; }
 .oc-global-wrap .oc-rf { display: inline-flex; align-items: center; gap: 4px; font-size: 7.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text-2, #5b6172); padding-left: 6px; border-left: 1px solid var(--border, #d4d4d8); }
 .oc-global-wrap .oc-rf label { display: inline-flex; align-items: center; gap: 1px; cursor: pointer; }
 .oc-global-wrap .oc-rf input[type="radio"] { width: 8px; height: 8px; margin: 0; cursor: pointer; }
@@ -4295,3 +4304,8 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .msr-sec-info { border: none; background: none; color: var(--text-3, #6b7280); padding: 0; margin-left: 4px; line-height: 0; cursor: pointer; vertical-align: middle; }
 .msr-sec-info svg { display: block; }
 .msr-sec-info:hover { color: #4f46e5; }
+
+/* Actionable Long/Short radios (2026-10-19) */
+.side-filter { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; }
+.side-filter[hidden] { display: none; }
+.side-filter label { display: inline-flex; gap: 2px; align-items: center; cursor: pointer; }
