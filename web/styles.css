@@ -4032,7 +4032,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .oc-lead .oc-grp-gap:not([title="Book"]) { margin-right: 0; }
 .oc-lead > .mw-usd-slot { display: flex; }
 .mw-chip.mw-usd { gap: 6px; padding: 1px 10px 1px 8px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-.mw-usd-l { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-3, #98a0b3); }
+.mw-usd-l { font-size: 10.5px; font-weight: 700; letter-spacing: 0; color: #16181f; }   /* 2026-10-19: same color and size as the other pills' ticker (.oc-chip2 b) */
 .mw-usd b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .mw-usd-bar { width: 38px; flex: none; }
 /* RR% sits above the bar, just right of the tick (2026-10-19, user-directed); the old RR% slot now shows today's %chg. */
@@ -4331,3 +4331,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-10-19: Perf-mode column headers inside Accounts group rows and AI Bubble layer headings -- the sort arrow stays by the name, the headers take the right edge. */
 .msr-group-sep:has(> .msr-colhdr) > .msr-sort-btn { margin-left: 6px; }
 .ab-colhdr:has(> .msr-colhdr) { justify-content: flex-start; gap: 6px; }
+/* 2026-10-19, user-directed: on the market chips the day % change is its own solid pill (green / red / gray by its sign, same fills as the rail change pills);
+   the rest of the chip is coloured by the Hedgeye outlook only. */
+.oc-pct { display: inline-block; padding: 0 5px; border-radius: 4px; color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 14px; }
+.oc-pct.bull { background: #0f9d58; } .oc-pct.bear { background: #e5484d; } .oc-pct.neu { background: #8a93a6; }   /* same green / red / gray as the Bullish / Bearish / Neutral chips (.oc-chip2) */

@@ -334,8 +334,10 @@
           'Source: drv_quote, drv_rr'].join(NL);
         // VIX shows its current level between the label and the % change (2026-10-19, user-directed).
         var lvl = p.label === 'VIX' && p.last_price != null ? '<span class="oc-lvl">' + p.last_price.toFixed(2) + '</span>' : '';
-        return '<span class="oc-chip2 ' + pcCls + '" data-lbl="' + esc(p.label) + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' + lvl +
-          '<span class="oc-ft"><span class="oc-w ' + pcCls + '">' + txt + '</span></span></span>';
+        // 2026-10-19, user-directed: the chip's own colour (border + fill) is the Hedgeye OUTLOOK; the day % change colours only its %chg text.
+        var chipCls = cls(p.outlook || 'Neutral');
+        return '<span class="oc-chip2 ' + chipCls + '" data-lbl="' + esc(p.label) + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' + lvl +
+          '<span class="oc-ft"><span class="oc-pct ' + pcCls + '">' + txt + '</span></span></span>';
       });
       // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.
       var pills = D.pills || [], STACKS = [['Oil', 'Gld', 'BTC']], out = [], seen = {}, slot = {}, vixHtml = '', tenYAt = -1;
