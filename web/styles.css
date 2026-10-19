@@ -4249,8 +4249,6 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 #momentumBand { padding: 4px 6px 6px; }
 .mo-sw { display: inline-block; width: 8px; height: 3px; margin-right: 4px; vertical-align: middle; }
 
-/* 2026-10-17 -- 10-Year BBB Corporate Spread panel (web/bbb_panel.js): shares the .yc-* table/chart styles. */
-#bbbBand { padding: 4px 6px 6px; }
 
 /* 2026-10-17 -- IV vs RV panel (web/iv_rv_panel.js), last panel of the middle column. Rich = red background, Cheap = green. */
 .ivrv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; }
