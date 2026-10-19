@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from config.settings import settings
 from etl.db import get_engine, session_scope
+from etl.market_date import add_trading_days
 
 from api.models import HealthResponse
 from api._helpers import discover_data_tables, _resolve_date, _get_ref_setting
@@ -396,8 +397,9 @@ def get_dashboard_symbol_earnings(
         else:
             join_clause = ""
             scope_clause = "EXISTS (SELECT 1 FROM ref_my_stocks m WHERE m.tos_symbol = t.tos_symbol AND m.active = 'Y')"
+        hol = {r[0] for r in s.execute(text("SELECT holiday_date FROM ref_holiday")).all()}
         rows = s.execute(text(
-            "SELECT t.tos_symbol, t.earnings_days, (:d + (t.earnings_days || ' days')::INTERVAL)::date AS event_date "
+            "SELECT t.tos_symbol, t.earnings_days, NULL AS event_date "
             "FROM drv_technicals t "
             f"{join_clause} "
             "WHERE t.as_of_date = :d AND t.earnings_days IS NOT NULL AND t.earnings_days BETWEEN 0 AND :days_ahead "
@@ -406,7 +408,7 @@ def get_dashboard_symbol_earnings(
         ), {"d": d, "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
     return [
         {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
-         "event_date": r["event_date"].isoformat()}
+         "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat()}
         for r in rows
     ]
 
@@ -508,6 +510,7 @@ def get_near_term_earnings(
             d = s.execute(text("SELECT MAX(as_of_date) FROM drv_technicals")).scalar()
         if d is None:
             return []
+        hol = {r[0] for r in s.execute(text("SELECT holiday_date FROM ref_holiday")).all()}
         rows = s.execute(text("""
             WITH universe AS (
               SELECT tos_symbol FROM hist_cs
@@ -520,7 +523,7 @@ def get_near_term_earnings(
               WHERE as_of_date = :d AND consolidated_action IS NOT NULL
             )
             SELECT t.tos_symbol, t.earnings_days,
-                   (:d + (t.earnings_days || ' days')::INTERVAL)::date AS event_date
+                   NULL AS event_date
             FROM drv_technicals t
             JOIN universe u ON u.tos_symbol = t.tos_symbol
             WHERE t.as_of_date = :d
@@ -530,7 +533,7 @@ def get_near_term_earnings(
         """), {"d": d, "days_ahead": days_ahead}).mappings().all()
     return [
         {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
-         "event_date": r["event_date"].isoformat()}
+         "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat()}
         for r in rows
     ]
 

@@ -35,6 +35,16 @@ def _is_session(d: date, holidays: set) -> bool:
     return d.weekday() < 5 and d not in holidays
 
 
+def add_trading_days(d: date, n: int, holidays: Optional[Iterable[date]] = None) -> date:
+    """`d` plus `n` trading sessions (n >= 0); TOS earnings-day counts are trading days."""
+    hol = set(holidays or ())
+    while n > 0:
+        d += timedelta(days=1)
+        if _is_session(d, hol):
+            n -= 1
+    return d
+
+
 def market_date_for(ts_et: datetime, holidays: Optional[Iterable[date]] = None,
                     open_time: time = MARKET_OPEN) -> date:
     """Market date a file downloaded at `ts_et` (ET wall clock) belongs to."""

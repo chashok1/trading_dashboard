@@ -658,11 +658,12 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             h.tos_symbol,
             h.snapshot_date AS tw_date,
             dr.a_macd_brr, dr.a_macdh_d_brr,
-            -- earnings_days: TOSW days-COUNT (no date); decrement carried-forward
-            -- weekly snapshot by elapsed days. NULL/-99(NaN) sentinels pass through.
+            -- earnings_days: TOSW TRADING-days count (no date); decrement carried-forward
+            -- snapshot by elapsed trading sessions. NULL/-99(NaN) sentinels pass through.
             CASE WHEN dr.earnings_days_d IS NULL OR dr.earnings_days_d = -99
                  THEN dr.earnings_days_d
-                 ELSE dr.earnings_days_d - (:d - h.snapshot_date)
+                 ELSE dr.earnings_days_d - (SELECT COUNT(*) FROM generate_series(h.snapshot_date + 1, CAST(:d AS date), INTERVAL '1 day') g
+                      WHERE EXTRACT(DOW FROM g) BETWEEN 1 AND 5 AND g::date NOT IN (SELECT holiday_date FROM ref_holiday))
             END                 AS earnings_days,
             dr.sma_20_d         AS sma_20,
             dr.sma_50_d         AS sma_50,
