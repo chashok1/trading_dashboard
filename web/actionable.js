@@ -2918,7 +2918,13 @@ function _hasPositiveEdge(row) {
 // hidden by the suppressed-reason or AMT$=0 checks below, which exist only
 // to silence redundant *buy* noise (ALREADY ESTABLISHED/AT CEILING) or a
 // stale $0 buy target. Confirmed cases: ILMN, TXG, OIH.
+// 2026-10-19, user-directed: a held stock whose buy signal is only suppressed because the position already meets
+// the floor / ceiling is shown dimmed with "Held, at target" instead of being hidden.
+function _heldAtTarget(r) {
+  return !!r.held_today && /^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || '') && finalCall(r).side !== 'sell';
+}
 function _hiddenReason(r) {
+  if (_heldAtTarget(r) && !r.last_user_action) return null;
   const _isSell = finalCall(r).side === 'sell';
   if (!_isSell && r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
   const ua = (r.last_user_action || '').toUpperCase();
@@ -4963,6 +4969,7 @@ function _buildRowEl(r) {
     // parked row already sits in its own band, so no dim there (user, 2026-10-01).
     if (r._actionInfo) { tr.classList.add('row-actioned-today'); if (!r._parkedActioned) tr.style.opacity = '0.6'; }
     if (r.stop_breached) tr.classList.add('row-stop-breach');
+    if (_heldAtTarget(r)) { tr.classList.add('row-at-target'); if (!tr.style.opacity) tr.style.opacity = '0.55'; }
     if (r.conviction_hold && r.conviction_direction === 'AVOID' && r._fc_side === 'buy') {
       tr.classList.add('row-lt-avoid-conflict');
     } else if (r.conviction_hold && r.conviction_direction !== 'AVOID' && r._fc_side === 'sell') {
@@ -5060,6 +5067,7 @@ function _buildRowEl(r) {
       <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
+        ${_heldAtTarget(r) ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml(r.suppressed_reason)}">Held, at target</div>` : ''}
         ${r.stop_signal ? (
           // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
           // = sell = red, TD BM/TD BMN = buy = green), not r.stop_breached --

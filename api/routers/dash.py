@@ -1118,6 +1118,8 @@ def get_actionable(
         # (Sources said ADD/INCREASE but Technical/rules flipped it).
         where.append(
             "(a.suppressed_reason IS NULL OR a.final_side = 'sell' OR "
+            " (a.held_today = TRUE AND (a.suppressed_reason LIKE 'ALREADY ESTABLISHED%' "
+            "  OR a.suppressed_reason LIKE 'AT CEILING%')) OR "   # shown dimmed as "Held, at target" (2026-10-19)
             " (a.held_today = TRUE AND a.target_max_dollar > 0 "
             "  AND a.current_position_dollar > a.target_max_dollar))"
         )
