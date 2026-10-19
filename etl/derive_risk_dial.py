@@ -255,6 +255,13 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         ), {"sid": series_id, "d": as_of_date, "n": lookback_days + 2}).all()
         return [(r[0], float(r[1])) for r in rows if r[1] is not None]
 
+    # 2026-10-19 -- SPX realized vol for _g_vol_funds_selling: newest 6 sessions of rv21 (1M) / rv63 (3M), newest first.
+    rv_rows = session.execute(text(
+        "SELECT rv21, rv63 FROM drv_market_stat WHERE as_of_date <= :d AND rv21 IS NOT NULL "
+        "ORDER BY as_of_date DESC LIMIT 6"
+    ), {"d": as_of_date}).all()
+    rv_hist = [(float(r[0]), None if r[1] is None else float(r[1])) for r in rv_rows]
+
     return {
         "rr": rr_map,
         "quote": quote_map,
@@ -263,6 +270,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
         "rvol_10day": rvol_10day,
+        "rv_hist": rv_hist,
         "vix9d": vix9d,
         "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS_1M),
@@ -813,6 +821,22 @@ def _g_vrp_gone(ctx):
     return v <= 0, v, f"VRP {v:+.1f} (VIX - RV21)"
 
 
+# 2026-10-19, user-directed: volatility-control / CTA / risk-parity funds size their stock holding to realized volatility
+# (typically the higher of the 1M and 3M readings), so they SELL when 1M is above 3M AND 1M is still rising. 1M above 3M but
+# falling = they are buying; 1M rising but still below 3M = they have not started selling. "Rising" = higher than 5 sessions
+# ago. Same rule drives the "Vol funds" line in web/spx_rv.js's popup.
+def _g_vol_funds_selling(ctx):
+    h = ctx.get("rv_hist") or []
+    if len(h) < 6 or h[0][1] is None:
+        return None, None, "SPX realized vol (1M/3M) unavailable"
+    rv1, rv3, prior = h[0][0], h[0][1], h[5][0]
+    chg = rv1 - prior
+    fired = rv1 > rv3 and chg > 0
+    state = "SELLING" if fired else "not selling"
+    return fired, chg, (f"Vol funds {state}: 1M {rv1:.1f}% vs 3M {rv3:.1f}%, 1M {'up' if chg > 0 else 'down'} "
+                        f"{abs(chg):.1f} pts over 5 sessions")
+
+
 # 2026-08-14 -- short-dated companion to _g_vrp_gone above -- same "implied
 # vol discount gone negative" shape (VIX - RV21 <= 0), but VIX9D (CBOE
 # 9-day/short-dated implied vol, etl/fetch_vix9d.py) vs rvol_10day (MSR's
@@ -1078,6 +1102,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("vrp_gone", _g_vrp_gone),
     ("short_vol_disc", _g_short_vol_disc),
     ("short_vol_low", _g_short_vol_low),
+    ("vol_funds_selling", _g_vol_funds_selling),
     ("gamma_negative", _g_gamma_negative),
     ("gamma_neutral", _g_gamma_neutral),
     ("usd_gold_decorrelation", _g_usd_gold_decorrelation),

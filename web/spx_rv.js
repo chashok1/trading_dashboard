@@ -54,6 +54,14 @@
     });
   }
 
+  // Vol-funds signal: SELLING when 1M is above 3M AND 1M is higher than 5 sessions ago (null if not enough data).
+  function signal(rows) {
+    var D = rows.filter(function (r) { return r[1] != null && r[2] != null; });
+    if (D.length < 6) return null;
+    var now = D[D.length - 1], chg = now[1] - D[D.length - 6][1];
+    return { now: now, chg: chg, sell: now[1] > now[2] && chg > 0 };
+  }
+
   function draw(D, W, H, fs) {
     var n = D.length;
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
@@ -114,7 +122,8 @@
     var head = '<div class="spxrv-head"><span class="spxrv-ttl">SPX Realized Vol</span>' +
       '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm1', '<i style="background:#2b2bf0"></i>1M ' + f(last[1])) + '</span>' +
       '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm3', '<i style="background:#ff5a14"></i>3M ' + f(last[2])) + '</span>' +
-      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'bars', '<i style="background:#9a9a9a"></i>SPX daily %') + '</span></div>';
+      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'bars', '<i style="background:#9a9a9a"></i>SPX daily %') + '</span>' +
+      (fs <= 11 && signal(D) && signal(D).sell ? '<span class="spxrv-warn" title="1M realized vol is above 3M and rising: volatility-control, CTA and risk-parity funds are selling stocks. Risk Dial gauge is ON.">&#9888; vol funds selling</span>' : '') + '</div>';
     return head + '<svg viewBox="0 0 ' + W + ' ' + H + '" class="spxrv-svg' + (fs > 11 ? '' : ' spxrv-click') + '" role="img" aria-label="SPX 1-month vs 3-month realized volatility">' + s + '</svg>';
   }
 
@@ -139,6 +148,35 @@
     }
   }
 
+  // Plain-English guide under the popup chart (generic background from the Hedgeye Market Situation Report, MSR 2.0).
+  function descHtml() {
+    return '<div class="cr-desc cr-desc-lg">' +
+      '<p><b>What the lines show.</b> <b style="color:#2b2bf0">1M (blue)</b> and <b style="color:#ff5a14">3M (orange)</b> are realized volatility: how much the S&amp;P 500 has actually moved over the last month and the last 3 months, shown as a yearly percentage. The gray bars are the index&#39;s daily % change, so a big bar is a big up or down day.</p>' +
+      '<p><b>Realized vs implied.</b> Realized volatility looks backward: what the market really did. Implied volatility (the VIX is the best known) looks forward: what option prices say the market expects. <span class="cr-key">A high realized number means the market has been moving a lot, whatever options were expecting.</span></p>' +
+      '<p><b>Why this chart matters: systematic funds.</b> A large group of funds does not pick stocks by looking at the business or the economy. They follow rules based on volatility: <b>volatility-control funds</b> (they size their stock holdings to hold the fund&#39;s risk steady), <b>CTAs</b> (trend-following funds that trade futures) and <b>risk parity funds</b> (they spread money so each asset carries equal risk, often with borrowed money). <span class="cr-key">When volatility rises they mechanically sell stocks, and when it falls they mechanically buy.</span> The rules ignore price, news and sentiment.</p>' +
+      '<p><b>Which line they use.</b> Volatility-control funds typically use the <b>higher</b> of the 1-month and 3-month readings to decide how much to hold. <span class="cr-key">So the higher of the two lines is the one that counts.</span></p>' +
+      '<ul>' +
+      '<li><b>Both lines low and flat:</b> a calm market. These funds are holding a lot of stocks and have little reason to change.</li>' +
+      '<li><b>1M climbs above 3M:</b> a recent burst of big moves. The 1M line reacts first, and once it is the higher line it sets the funds&#39; risk, so they sell as it keeps rising. <i>The selling follows the higher line going up, not the crossing itself: if 1M is above 3M but falling, the funds are buying, not selling.</i></li>' +
+      '<li><b>Both lines high:</b> the funds stay light on stocks. They cannot buy back much until the readings come down.</li>' +
+      '<li><b>Lines falling:</b> the funds can add stocks again, which can support the market. It happens gradually, as the big days age out of the window.</li>' +
+      '</ul>' +
+      '<p><b>Why a calm spell can lift the market.</b> Each day the oldest day drops out of the 1-month and 3-month windows. When that day was a big move, the reading falls even if today is quiet. <span class="cr-key">A run of quiet days lets realized volatility fall, and that frees these funds to buy.</span></p>' +
+      '<p>These are rules of thumb from the Hedgeye Market Situation Report, not results we tested. The size and timing of the fund flows depend on each fund&#39;s own rules.</p>' +
+      '</div>';
+  }
+  // The signal (2026-10-19, user-directed; same rule as the Risk Dial gauge vol_funds_selling in etl/derive_risk_dial.py):
+  // vol funds SELL when 1M is above 3M AND 1M is higher than 5 sessions ago.
+  function signalHtml() {
+    var sg = signal(lastRows);
+    if (!sg) return '';
+    var now = sg.now, chg = sg.chg, sell = sg.sell;
+    var why = '1M ' + now[1].toFixed(1) + '% vs 3M ' + now[2].toFixed(1) + '%, 1M ' + (chg > 0 ? 'up ' : 'down ') + Math.abs(chg).toFixed(1) + ' pts over 5 sessions';
+    return '<div class="spxrv-sig ' + (sell ? 'spxrv-sig-sell' : 'spxrv-sig-ok') + '"><b>Vol funds: ' + (sell ? 'SELLING' : 'not selling') + '</b> &mdash; ' + why +
+      (sell ? '. 1M is above 3M and still rising: risk-dial warning is ON.' : '. Needs 1M above 3M and rising; the risk-dial warning is off.') + '</div>';
+  }
+  function modalBodyHtml() { return signalHtml() + draw(lastRows, 1100, 440, 13) + descHtml(); }
+
   // Click the small chart -> large popup (same overlay/dialog classes as the Cumulative P&L expand modal).
   function closeModal() { var m = document.getElementById('spxRvModal'); if (m) m.remove(); }
   function openModal() {
@@ -150,7 +188,7 @@
     m.innerHTML = '<div class="modal-content" style="max-width:1100px;"><div class="modal-header"><div><h2 style="margin:0;">SPX Realized Volatility</h2>' +
       '<p style="margin:0;">1 month vs 3 month, ' + lastRows[0][0] + ' to ' + lastRows[lastRows.length - 1][0] + '</p></div>' +
       '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body">' + draw(lastRows, 1100, 440, 13) + '</div></div>';
+      '<div class="modal-body">' + modalBodyHtml() + '</div></div>';
     document.body.appendChild(m);
     attachHover(m.querySelector('svg'), lastRows, 1100);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeModal(); });
@@ -160,7 +198,7 @@
   function refresh() {
     renderPanel();
     var m = document.getElementById('spxRvModal');
-    if (m) { m.querySelector('.modal-body').innerHTML = draw(lastRows, 1100, 440, 13); attachHover(m.querySelector('svg'), lastRows, 1100); }
+    if (m) { m.querySelector('.modal-body').innerHTML = modalBodyHtml(); attachHover(m.querySelector('svg'), lastRows, 1100); }
   }
 
   function init() {

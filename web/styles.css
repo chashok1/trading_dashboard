@@ -4283,3 +4283,9 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .ivrv-tbl td.ivrv-fair { text-align: center; color: var(--text-3, #6b7280); }
 .ivrv-up { color: #c0392b; } .ivrv-dn { color: #1d7a4d; }
 .ivrv-nz { color: var(--text-3, #6b7280); font-size: 10px; }
+
+/* 2026-10-19 -- SPX realized vol popup: vol-funds signal banner (web/spx_rv.js). */
+.spxrv-sig { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; border-left: 4px solid; }
+.spxrv-sig-sell { background: #fdecec; border-color: #e5484d; color: #7a1d20; }
+.spxrv-sig-ok { background: #e6f6ee; border-color: #0f9d58; color: #17432c; }
+.spxrv-warn { margin-left: auto; padding: 0 6px; border-radius: 999px; background: #fdecec; border: 1px solid #e5484d; color: #b42318; font-size: 9.5px; font-weight: 700; white-space: nowrap; }

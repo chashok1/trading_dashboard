@@ -9025,6 +9025,12 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
      'reading.')
 ON CONFLICT (gauge_key) DO UPDATE SET notes = EXCLUDED.notes;
 
+-- 2026-10-19, user-directed: vol-control/CTA/risk-parity funds sell when SPX 1M realized vol is above 3M AND 1M is rising.
+INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
+    ('vol_funds_selling', 'Vol funds selling (1M above 3M and rising)', 2, TRUE, 'vol',
+     'Fires when SPX 1M realized vol (drv_market_stat.rv21) is above 3M (rv63) AND 1M is higher than 5 sessions ago.')
+ON CONFLICT (gauge_key) DO UPDATE SET notes = EXCLUDED.notes;
+
 DELETE FROM ref_settings WHERE setting_name IN
     ('rd_quad2_t10yie_bp', 'rd_quad2_wti_pct', 'rd_quad2_dgs10_bp');
 
