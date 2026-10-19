@@ -339,6 +339,26 @@
       '<div><b>The factor table.</b> Each row is one market series. "Says" is its effect on its meter (a widening credit spread reads down, because it is bad for growth). ' +
         '3W is the 3-week move (about Hedgeye\'s TRADE view), 3M the 3-month move (about their TREND view). A factor is up when at least two of its checks (3W, 3M, trend) agree. ' +
         '"Shown only" rows are displayed but do not count.</div>' +
+      '<div class="qm-help-h" style="margin-top:8px !important">What each row means</div><div class="qm-fl">' +
+        '<div class="qm-fl-h">1. Risk &amp; liquidity</div>' +
+        '<div><b>QQQ (growth).</b> The tech-heavy Nasdaq ETF. Rising means investors are comfortable taking risk, so growth is up.</div>' +
+        '<div><b>Bitcoin (growth).</b> A risk-appetite gauge. Hedgeye says it moves with QQQ in Quad 2, and both get hit hard in Quad 4.</div>' +
+        '<div><b>10Y yield (growth).</b> The 10-year Treasury yield. Rising means a stronger economy. Yields breaking down is a Quad 4 sign.</div>' +
+        '<div><b>2Y yield (growth).</b> The same idea for the 2-year yield, which follows the Fed and near-term growth more closely.</div>' +
+        '<div><b>US Dollar (inflation, shown only).</b> A strong dollar normally means lower inflation. It does not vote, because Hedgeye stays long the dollar in Quad 2 as well, so it cannot tell Quad 2 from Quad 4.</div>' +
+        '<div class="qm-fl-h">2. Inflation &amp; commodities</div>' +
+        '<div><b>Commodity basket.</b> An equal-weight average of oil, gas, copper, gold, silver and grains, standing in for the CRB index, which we do not track yet. Rising means inflation is up.</div>' +
+        '<div><b>WTI oil.</b> Crude oil. Rising oil pushes inflation up.</div>' +
+        '<div><b>Energy stocks (XLE).</b> The energy sector. It rises with oil and inflation, so it confirms the oil read.</div>' +
+        '<div><b>10Y breakeven.</b> The market forecast for 10-year inflation. Rising means inflation expectations are up.</div>' +
+        '<div class="qm-fl-h">3. Growth, credit &amp; cyclicals</div>' +
+        '<div><b>HY credit spread.</b> The extra yield junk bonds pay over safe ones. Widening means stress, so it votes growth down.</div>' +
+        '<div><b>Cyclicals vs defensives.</b> Industrial, consumer, financial and materials stocks against utilities, staples and health care. Cyclicals winning means the market expects growth.</div>' +
+        '<div><b>Copper vs gold.</b> Copper is an industrial metal, gold is a safe haven. Copper beating gold means growth is up.</div>' +
+        '<div><b>Small caps vs S&amp;P.</b> Small companies against large ones. Small caps winning means growth is up. Counts for half weight.</div>' +
+        '<div><b>Jobless claims.</b> New unemployment claims, 4-week average against 13-week average. Claims up 5% or more means growth is down. Counts for half weight.</div>' +
+        '<div class="qm-fl-h" style="font-weight:400">Most rows have three checks (3-week move, 3-month move, trend) and need two to agree. Rows with no trend check (breakeven, cyclicals, copper vs gold, small caps, claims) need both moves to agree.</div>' +
+      '</div>' +
       '<div><b>Watch the days.</b> "On watch N days" counts days in a row at 40 or above. Hedgeye: one bad week is a counter-trend move; weeks 2 and 3 are what matter.</div>' +
       '<div class="mw-dim"><b>Limits.</b> Thresholds and weights are guesses; there is about 8 months of price history; the CRB index is not tracked (a commodity basket stands in); ' +
         'ISM/PMI are not loaded (copper vs gold and cyclicals vs defensives stand in). Treat this as a structured checklist, not a trade signal.</div></div>';
