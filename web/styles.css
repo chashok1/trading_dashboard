@@ -4061,7 +4061,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 
 /* 2026-10-16, user-directed: Accounts as a single vertical column at the right end, beside Macro Rail / Signal Strength /
    Themes / Hedgeye. */
-.rail-split { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 4px; align-items: start; }   /* 238px (was 280px, -15%); the change-marker slot is hidden in Accounts rows to make room */
+.rail-split { display: grid; grid-template-columns: minmax(0, 1fr) 284px; gap: 4px; align-items: start; }   /* 2026-10-19, user-directed: right column (Accounts) +5% (270px -> 284px); the macro rail columns give up that width */   /* 238px (was 280px, -15%); the change-marker slot is hidden in Accounts rows to make room */
 .rail-split-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .rail-split-side { min-width: 0; }
 .rail-split-side .macro-rail-row, .rail-split-side .macro-rail-col, .rail-split-side .macro-rail-row > .macro-rail-col:first-child { min-width: 0; }   /* beats the 400px first-column rule */
@@ -4326,3 +4326,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body::after { grid-column: 2 / -1; }
 /* 2026-10-19: the old 18px right margin on the market-pill row (it spaced the pills from the chips) now only adds white space inside the left panel; the column gap carries that spacing instead. */
 .oc-lead > .oc-mkt { margin-right: 0; }
+/* 2026-10-19: Perf mode -- the injected column header sits at the right edge; the sort arrow stays beside the title. */
+.msr-section-hdr:has(> .msr-colhdr[data-perf]) > .msr-sort-btn { margin-left: 6px; }
+/* 2026-10-19: Perf-mode column headers inside Accounts group rows and AI Bubble layer headings -- the sort arrow stays by the name, the headers take the right edge. */
+.msr-group-sep:has(> .msr-colhdr) > .msr-sort-btn { margin-left: 6px; }
+.ab-colhdr:has(> .msr-colhdr) { justify-content: flex-start; gap: 6px; }

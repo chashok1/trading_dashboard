@@ -138,7 +138,7 @@
   // persist in memory. Color logic is untouched by any of this -- still
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
-  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1 };   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1, perf: 1 };   // perf (2026-10-19): every rail row shows Day / 1WK / 3W / 3M pills instead of candle + chg + Td/Tn + range bar   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
   // 2026-09-30, user-directed: "radio buttons should control its own
   // panels" -- one independent mode per radio group: 'rail' (Macro Rail
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
@@ -158,10 +158,12 @@
   });
   var _chgMode = _modes.rail;
   var _macroOn = false;   // true while rendering with the 'Act' radio selected
+  var _perfOn = false;    // true while rendering with the 'Perf' radio selected
   function _useMode() {
     var m = _modes.rail;
     _macroOn = (m === 'macro');
-    _chgMode = (m === 'macro') ? 'pct' : (m || 'pct');
+    _perfOn = (m === 'perf');
+    _chgMode = (m === 'macro' || m === 'perf') ? 'pct' : (m || 'pct');
   }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
@@ -629,7 +631,8 @@
     var mode = _railSort[areaKey + ':' + shortName] || 0;
     return '<div class="msr-group-sep">' + esc(shortName) +
       '<button class="msr-sort-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
-      '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button></div>';
+      '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button>' +
+      (_perfOn ? '<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
   }
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
@@ -660,8 +663,8 @@
     });
   }
 
-  function _periodCols(m, area) {
-    if (!_PERIOD_AREAS[area.area_key]) return '';
+  function _periodCols(m, area, force) {
+    if (!force && !_PERIOD_AREAS[area.area_key]) return '';
     return [['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']].map(function (c) {
       // Same solid pill as the %chg chip (no price/$ opts, so it stays a % in every mode).
       // Chip stays a direct flex child of the cluster so its fixed 46px width keeps the columns aligned.
@@ -670,15 +673,23 @@
     }).join('');
   }
 
+  // 'Perf' mode: the row's data cluster is just the four period pills (Day, 1WK, 3W, 3M), whatever the panel.
+  function _perfPills(m, area) {
+    var rm = _relMember(m, area);
+    var day = _chgChipHtml(rm.pct_change, m.inverted, { pctOnly: true })
+      .replace('<span class="msr-chg', '<span title="Day % (vs the last close)" class="msr-chg');
+    return day + _periodCols(rm, area, true);
+  }
+
   // Column headers (Day / 1WK / 3W / 3M) right-anchored over the pills; click = sort by that column.
   var _PERIOD_COLS = [['pct_change', 'Day'], ['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']];
-  function _periodHeader(area) {
-    if (!_PERIOD_AREAS[area.area_key]) return '';
-    var key = area.area_key, mode = _railSort[key] || 0, f = _railSortField[key] || 'pct_change';
+  function _periodHeader(area, force, group) {
+    if (!force && !_PERIOD_AREAS[area.area_key]) return '';
+    var key = area.area_key, mode = _railSort[group ? key + ':' + group : key] || 0, f = _railSortField[key] || 'pct_change';
     return _PERIOD_COLS.map(function (c) {
       var on = mode && f === c[0];
       return '<button type="button" class="msr-colhdr-btn' + (on ? ' on' : '') + '" data-area="' + esc(key) +
-        '" data-field="' + c[0] + '" title="Sort by ' + c[1] + ' % (click again to reverse, third click resets)">' + c[1] +
+        '"' + (group ? ' data-group="' + esc(group) + '"' : '') + ' data-field="' + c[0] + '" title="Sort by ' + c[1] + ' % (click again to reverse, third click resets)">' + c[1] +
         '<span class="msr-colhdr-ic">' + (on ? (mode === 1 ? '↓' : '↑') : '⇅') + '</span></button>';
     }).join('');
   }
@@ -757,7 +768,7 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
-            _oc(m.symbol, m.action, m.action_code) +
+            (_perfOn ? '' : _oc(m.symbol, m.action, m.action_code)) +
             // 2026-09-23, user-directed: "display the actual values in
             // small font between desc and the text Investable/Elevated" --
             // .msr-gauge-vix already existed in styles.css (9px, gray) but
@@ -767,9 +778,10 @@
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
+              (_perfOn ? _perfPills(m, area) :
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
-                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
+                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) })) +
             '</div>' +
           '</div>'
         );
@@ -789,7 +801,7 @@
       var leadCluster = isRates
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
-      var ocHtml = _oc(m.symbol, m.action, m.action_code);
+      var ocHtml = _perfOn ? '' : _oc(m.symbol, m.action, m.action_code);   // Perf mode gives the outlook-change slot's width to the name + pills (2026-10-19)
       var _rm = _relMember(m, area);   // sector minus SPX when the Sectors 'vs SPX' toggle is on
       return sep + (
         '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m, dispName)) + '">' +
@@ -806,13 +818,14 @@
           '</span>' +
           ocHtml +
           '<div class="msr-data-cluster">' +
+            (_perfOn ? _perfPills(m, area) :
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
             _candleHtml(m) +
             _chgChipHtml(_rm.pct_change, m.inverted,
                          { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
-            _periodCols(_rm, area) +
+            _periodCols(_rm, area)) +
           '</div>' +
         '</div>'
       );
@@ -1142,7 +1155,7 @@
       var out = [];
       order.forEach(function (g) {
         var mode = _railSort[area.area_key + ':' + g] || 0;
-        out = out.concat(_sortByMode(byGroup[g], mode));
+        out = out.concat(_sortByMode(byGroup[g], mode, _railSortField[area.area_key]));
       });
       return out;
     }
@@ -1152,9 +1165,9 @@
   document.addEventListener('click', function (ev) {
     var hb = ev.target.closest && ev.target.closest('.msr-colhdr-btn');
     if (hb) {
-      var a = hb.getAttribute('data-area'), f = hb.getAttribute('data-field');
-      if (_railSortField[a] !== f || !_railSort[a]) { _railSortField[a] = f; _railSort[a] = 1; }
-      else { _railSort[a] = (_railSort[a] + 1) % 3; }
+      var a = hb.getAttribute('data-area'), f = hb.getAttribute('data-field'), g0 = hb.getAttribute('data-group'), k0 = g0 ? a + ':' + g0 : a;
+      if (_railSortField[a] !== f || !_railSort[k0]) { _railSortField[a] = f; _railSort[k0] = 1; }
+      else { _railSort[k0] = (_railSort[k0] + 1) % 3; }
       if (_lastAreasData) renderRail(_lastAreasData);
       return;
     }
@@ -1210,7 +1223,8 @@
         used += take.length;
         var rows = railAreaRow({ area_key: 'ai_bubble', label: 'AI Bubble', hot_pct: area.hot_pct, cold_pct: area.cold_pct, members: take });
         pcols[pcols.length - 1].push('<div class="ab-colhdr"><span>' + esc(g) + (first ? '' : ' (cont.)') + '</span>' +
-          (first ? '<span class="ab-cnt"><b class="up">' + nb + '</b> | <b class="dn">' + nr + '</b></span>' : '') + '</div>' + rows);
+          (first ? '<span class="ab-cnt"><b class="up">' + nb + '</b> | <b class="dn">' + nr + '</b></span>' : '') +
+          (_modes.rail === 'perf' ? '<span class="msr-colhdr">' + _periodHeader({ area_key: 'ai_bubble' }, true) + '</span>' : '') + '</div>' + rows);
         first = false;
       }
     });
@@ -1275,6 +1289,18 @@
     renderAiBubble(areas);   // AI Bubble cards (SS-style panel)
     var orBand = document.getElementById('macroOtherRrBand');   // Other RR hides itself when empty
     if (orBand) orBand.hidden = !byContainer.macroRailOtherRr;
+    // Perf mode: every rail panel gets the Day / 1WK / 3W / 3M column header (injected here, removed in every other mode).
+    Object.keys(_AREA_CONTAINER_ID).forEach(function (k) {
+      var c = document.getElementById(_AREA_CONTAINER_ID[k]), band = c && c.closest ? c.closest('section.rail-band') : null;
+      var hh = band && band.querySelector('.msr-section-hdr');
+      if (!hh || _PERIOD_AREAS[k] || _GROUPED_AREAS[k]) return;   // grouped panels (Accounts, PS & ETF, ...) carry the header on each group row instead
+      var ex = hh.querySelector(':scope > .msr-colhdr[data-perf]');
+      var ar2 = areas.filter(function (a) { return a.area_key === k; })[0];
+      if (_modes.rail === 'perf' && ar2) {
+        if (!ex) { ex = document.createElement('span'); ex.className = 'msr-colhdr'; ex.setAttribute('data-perf', '1'); hh.appendChild(ex); }
+        ex.innerHTML = _periodHeader(ar2, true);
+      } else if (ex) { ex.remove(); }
+    });
     Object.keys(_PERIOD_AREAS).forEach(function (k) {
       var hdr = document.getElementById('colhdr_' + k);
       var ar = areas.filter(function (a) { return a.area_key === k; })[0];

@@ -320,7 +320,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     round((last / bc - 1.0) * 100.0, 2) if bc else None)
             return out
 
-        # 2026-10-19, user-directed -- trailing 1-week / 3-week / 3-month returns for EVERY rail member (the Day / 1WK / 1M / 3M
+        # 2026-10-19, user-directed -- trailing 1-week / 3-week / 3-month returns for EVERY member of every panel (rails, AI Bubble, Accounts, ...) (the Day / 1WK / 1M / 3M
         # columns on all macro rails). Base = the stored EOD close (hist_td, max sequence per day) on or before anchor - 7 days /
         # - 21 days / - 3 months; current = the live quote the Day pill already uses. Missing history -> None (pill shows a dash).
         from dateutil.relativedelta import relativedelta
@@ -330,10 +330,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             SELECT DISTINCT ON (tos_symbol, export_date) tos_symbol, export_date, last_price
               FROM hist_td
              WHERE export_date BETWEEN :lo AND :d AND last_price IS NOT NULL
-               AND (tos_symbol IN (SELECT member_symbol FROM ref_macro_area WHERE enabled = TRUE)
-                    OR tos_symbol = ANY(:oth))
+               AND tos_symbol IN (SELECT tos_symbol FROM drv_quote WHERE as_of_date = :d)
              ORDER BY tos_symbol, export_date, sequence DESC"""),
-                {"lo": _tr_lo, "d": anchor, "oth": list(rr_other_syms)}).all():
+                {"lo": _tr_lo, "d": anchor}).all():
             _tr_hist.setdefault(r[0], []).append((r[1], float(r[2])))
         _tr_targets = {"w1_pct": anchor - timedelta(days=7),
                        "w3_pct": anchor - timedelta(days=21),
