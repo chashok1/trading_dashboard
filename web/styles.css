@@ -2236,7 +2236,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .msr-per { display: inline-block; min-width: 38px; text-align: right; font-size: 10px; color: var(--text-3, #6b7280); }
 .msr-per-up { color: #15803d; } .msr-per-dn { color: #b91c1c; }
 .macro-rail-col { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 130px; }
-.macro-rail-row > .macro-rail-col:first-child { flex-grow: 1.5; min-width: 400px; }   /* 2026-10-16: never narrower than carets+name+change slot+Td/Tn+bar+candle+Day/MTD/QTD/YTD pills, or the right-anchored pills get clipped */   /* 2026-10-15: col 1 (Major Markets + Sectors) 50% wider; the other columns give up the width */
+.macro-rail-row > .macro-rail-col:first-child { flex-grow: 1.3; min-width: 360px; }   /* 2026-10-19, user-directed: column 1 (Major Markets + Sectors) 10% narrower (was grow 1.5 / min 400px) */   /* 2026-10-16: never narrower than carets+name+change slot+Td/Tn+bar+candle+Day/MTD/QTD/YTD pills, or the right-anchored pills get clipped */   /* 2026-10-15: col 1 (Major Markets + Sectors) 50% wider; the other columns give up the width */
 /* 2026-09-24, user-directed: "I only need one header bar 'Accounts' and
    display 5 columns and adjust the rows" -- one panel spanning the full
    row width (see index.html's inline flex:1 1 100% override on that one

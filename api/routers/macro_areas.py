@@ -320,6 +320,42 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     round((last / bc - 1.0) * 100.0, 2) if bc else None)
             return out
 
+        # 2026-10-19, user-directed -- trailing 1-week / 3-week / 3-month returns for EVERY rail member (the Day / 1WK / 1M / 3M
+        # columns on all macro rails). Base = the stored EOD close (hist_td, max sequence per day) on or before anchor - 7 days /
+        # - 21 days / - 3 months; current = the live quote the Day pill already uses. Missing history -> None (pill shows a dash).
+        from dateutil.relativedelta import relativedelta
+        _tr_lo = anchor - relativedelta(months=3) - timedelta(days=10)
+        _tr_hist: dict = {}   # symbol -> [(export_date, close)] ascending
+        for r in s.execute(text("""
+            SELECT DISTINCT ON (tos_symbol, export_date) tos_symbol, export_date, last_price
+              FROM hist_td
+             WHERE export_date BETWEEN :lo AND :d AND last_price IS NOT NULL
+               AND (tos_symbol IN (SELECT member_symbol FROM ref_macro_area WHERE enabled = TRUE)
+                    OR tos_symbol = ANY(:oth))
+             ORDER BY tos_symbol, export_date, sequence DESC"""),
+                {"lo": _tr_lo, "d": anchor, "oth": list(rr_other_syms)}).all():
+            _tr_hist.setdefault(r[0], []).append((r[1], float(r[2])))
+        _tr_targets = {"w1_pct": anchor - timedelta(days=7),
+                       "w3_pct": anchor - timedelta(days=21),
+                       "m3_pct": anchor - relativedelta(months=3)}
+
+        def _trail_pcts(sym, last):
+            hist = _tr_hist.get(sym)
+            last_f = _maybe_float(last)
+            if not hist or last_f is None:
+                return {}
+            scale = (lambda v: v / 10.0 if v >= 15 else v) if sym in ("DGS2:FRED", "TNX:CGI", "TYX:CGI") else (lambda v: v)   # yields are x10 on some days
+            out = {}
+            for key, tgt in _tr_targets.items():
+                base = None
+                for dte, px in hist:                       # ascending: keep the latest close on/before the target
+                    if dte <= tgt and dte < anchor:
+                        base = px
+                    else:
+                        break
+                out[key] = round((scale(last_f) / scale(base) - 1.0) * 100.0, 2) if base else None
+            return out
+
         # 2026-08-31 -- final_action (post-suppression, NOT consolidated_action
         # -- see the MSFT investigation this session: consolidated_action is
         # the raw pre-suppression source label and can show a stale/wrong
@@ -658,6 +694,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 if last is not None and vt:
                     zone = vol_zone(last, vt.get("low") or 0, vt.get("high") or 0)
                 member_details.append({
+                    **_trail_pcts(sym, last),
                     "symbol": sym,
                     "role": role,
                     "label": mc.get("label"),
@@ -731,6 +768,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             wow_pct = _wow_pct(last, wow_map.get(sym))
             member_details.append({
                 **_period_pcts(sym, last),
+                **_trail_pcts(sym, last),
                 "symbol": sym,
                 "role": role,
                 "label": mc.get("label"),

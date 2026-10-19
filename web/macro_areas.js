@@ -633,8 +633,9 @@
   }
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
+  // 2026-10-19, user-directed: Day / 1WK / 3W / 3M columns on Major Markets + Sectors only (the other panels have no room).
   var _PERIOD_AREAS = { top9: 1, sector_etfs: 1 };
-  // 2026-10-17 -- "vs SPX" toggle (Sectors panel header): Day / MTD / QTD / YTD pills show the sector minus the S&P 500 over the same
+  // 2026-10-17 -- "vs SPX" toggle (Sectors panel header): Day / 1WK / 3W / 3M pills show the sector minus the S&P 500 over the same
   // period (deck page 19). SPX's own numbers come from the Major Markets panel (top9) already loaded for the rails.
   var _VSSPX_KEY = 'macroRailVsSpx';
   var _vsSpx = false;
@@ -655,22 +656,22 @@
     var sub = function (a, b) { return (a == null || b == null) ? null : a - b; };
     return Object.assign({}, m, {
       pct_change: _chgMode === 'pct' ? sub(m.pct_change, ref.pct_change) : m.pct_change,   // the Day pill only when it shows %
-      mtd_pct: sub(m.mtd_pct, ref.mtd_pct), qtd_pct: sub(m.qtd_pct, ref.qtd_pct), ytd_pct: sub(m.ytd_pct, ref.ytd_pct)
+      w1_pct: sub(m.w1_pct, ref.w1_pct), w3_pct: sub(m.w3_pct, ref.w3_pct), m3_pct: sub(m.m3_pct, ref.m3_pct)
     });
   }
 
   function _periodCols(m, area) {
     if (!_PERIOD_AREAS[area.area_key]) return '';
-    return [['mtd_pct', 'MTD'], ['qtd_pct', 'QTD'], ['ytd_pct', 'YTD']].map(function (c) {
+    return [['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']].map(function (c) {
       // Same solid pill as the %chg chip (no price/$ opts, so it stays a % in every mode).
       // Chip stays a direct flex child of the cluster so its fixed 46px width keeps the columns aligned.
       return _chgChipHtml(m[c[0]], m.inverted, { pctOnly: true })
-        .replace('<span class="msr-chg', '<span title="' + c[1] + (_vsSpx && area.area_key === 'sector_etfs' ? ' % minus the S&P 500 (same period)' : ' % (vs last close before the period)') + '" class="msr-chg');
+        .replace('<span class="msr-chg', '<span title="' + c[1] + (_vsSpx && area.area_key === 'sector_etfs' ? ' % minus the S&P 500 (same period)' : ' % (vs the close that long ago)') + '" class="msr-chg');
     }).join('');
   }
 
-  // Column headers (Day / MTD / QTD / YTD) right-anchored over the pills; click = sort by that column.
-  var _PERIOD_COLS = [['pct_change', 'Day'], ['mtd_pct', 'MTD'], ['qtd_pct', 'QTD'], ['ytd_pct', 'YTD']];
+  // Column headers (Day / 1WK / 3W / 3M) right-anchored over the pills; click = sort by that column.
+  var _PERIOD_COLS = [['pct_change', 'Day'], ['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']];
   function _periodHeader(area) {
     if (!_PERIOD_AREAS[area.area_key]) return '';
     var key = area.area_key, mode = _railSort[key] || 0, f = _railSortField[key] || 'pct_change';
