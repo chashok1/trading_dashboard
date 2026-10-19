@@ -859,6 +859,9 @@
     if (etf.symbol) {
       // Caution (Rotate-in sector whose ETF outlook is Bearish) sits right next to
       // the outlook word, coloured, instead of in its own row.
+      if (etf.wow_pct != null) {
+        rows.push([esc(etf.symbol) + ' price, 5 days', (etf.wow_pct >= 0 ? '+' : '') + etf.wow_pct.toFixed(1) + '%']);
+      }
       if (etf.outlook) {
         var bearish = String(etf.outlook).trim().toLowerCase() === 'bearish';
         rows.push([esc(etf.symbol) + ' RR Outlook',
@@ -959,8 +962,48 @@
 
     if (!subrows) subrows = '<span class="mra-muted">—</span>';
 
-    container.innerHTML = '<div class="msr-sec-block">' + subrows + '</div>';
+    _sectorsInfoData = sectors;
+    container.innerHTML = '<div class="msr-sec-block"><div class="msr-section-hdr msr-sec-hdr">Leaders &amp; rotation <button type="button" class="msr-sec-info" title="What are Leaders, Laggards and Rotate in?" aria-label="Explain Leaders, Laggards and Rotate in"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7" width="1.6" height="5" rx=".6" fill="currentColor"/><circle cx="8" cy="4.6" r="1" fill="currentColor"/></svg></button></div>' + subrows + '</div>';
+    if (!container._infoBound) {
+      container._infoBound = true;
+      container.addEventListener('click', function (ev) { if (ev.target.closest('.msr-sec-info')) openSectorsInfo(); });
+    }
   }
+
+  // 2026-10-19, user-directed: plain-English popup for the Leaders / Laggards / Rotate in summary (same modal + .cr-desc look as the
+  // Credit and Yield curve popups). Rules mirror api/routers/macro_areas.py (sectors block).
+  var _sectorsInfoData = null;
+  function closeSectorsInfo() { var m = document.getElementById('sectorsInfoModal'); if (m) m.remove(); }
+  function sectorsInfoHtml(sc) {
+    var names = function (a) { return a && a.length ? a.map(esc).join(', ') : 'none'; };
+    var live = sc ? '<p><b>Right now.</b> Leaders: ' + names(sc.leaders) + '. Laggards: ' + names(sc.laggards) + '. Rotate in: ' + names(sc.rotate_in) +
+      (sc.rotate_caution && sc.rotate_caution.length ? ' (caution on ' + names(sc.rotate_caution) + ': the ETF outlook is Bearish)' : '') + '.</p>' : '';
+    return '<div class="cr-desc cr-desc-lg">' +
+      '<p><b>What this panel does.</b> It looks at each sector (such as Technology or Energy) and asks what share of its stocks are in an uptrend. <b>Td</b> is the short-term Trade line and <b>Tn</b> is the longer Trend line. <b>Breadth</b> means the percentage of the sector&#39;s stocks trading above that line. The stocks counted are the ones in your tracked universe.</p>' +
+      '<ul>' +
+      '<li><b>&#9650; Leaders</b> (up to 3): sectors where at least half the stocks are above <i>both</i> lines. They are strong now, ranked by Trade breadth. <span class="cr-key">This is a snapshot of today, not a forecast.</span></li>' +
+      '<li><b>&#9660; Laggards</b> (up to 2): sectors where fewer than 30% of the stocks are above the Trade line. They are weak right now, weakest first.</li>' +
+      '<li><b>&#8635; Rotate in</b> (up to 3): sectors that are still weak or middling but turning up. The rule is Trade breadth still under 60%, up 10 points or more over about 5 market days, <i>and</i> the sector ETF itself up at least 1% over the same days. <span class="cr-key">It is an early-turn flag, and the ETF check stops a sector from qualifying just because a few stocks nudged over a flat line.</span></li>' +
+      '</ul>' +
+      '<p><b>Why Rotate in looks the way it does.</b> In your own history test (153 days of sector ETF returns against the other sectors), sectors that were already strong and rising did worse than the rest. The turning-up bucket did best: about +1.0% over the next 10 days, with a 55% hit rate. <span class="cr-key">That sample is small, so treat it as a lean, not a rule.</span></p>' +
+      '<p><b>The table under each Rotate-in sector</b> shows the sector&#39;s breadth now (stocks counted in brackets), how Trade breadth moved over 5 days (for example 40% &rarr; 52%), the ETF&#39;s own price change over the same 5 days, and its outlook with its Td/Tn arrows and risk-range bar.</p>' +
+      '<p><b>&#9888; Caution</b> appears when a sector is rotating in but its ETF outlook is Bearish. The stocks say &quot;turning up&quot; while the ETF disagrees, so be careful.</p>' +
+      '<p><b>The dollar amounts</b> next to a sector name are your own holdings in that sector.</p>' +
+      live + '</div>';
+  }
+  function openSectorsInfo() {
+    closeSectorsInfo();
+    var m = document.createElement('div');
+    m.id = 'sectorsInfoModal';
+    m.className = 'modal-overlay active';
+    m.innerHTML = '<div class="modal-content" style="max-width:760px;"><div class="modal-header"><div><h2 style="margin:0;">Sectors: Leaders, Laggards and Rotate in</h2>' +
+      '<p style="margin:0;">How the sector summary is built</p></div>' +
+      '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body">' + sectorsInfoHtml(_sectorsInfoData) + '</div></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeSectorsInfo(); });
+  }
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeSectorsInfo(); });
 
   /* ── render into side rail ──────────────────────────────────────────── */
   // Each area_key now has its own side-panel section/container (was one

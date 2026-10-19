@@ -4292,3 +4292,6 @@ body[data-rf-act="hold"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#
 .oc-clear { border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2, #5b6172); border-radius: 999px; padding: 0 8px; font-size: 9.5px; font-weight: 600; line-height: 14px; cursor: pointer; white-space: nowrap; margin-left: 6px; }
 .oc-clear:hover { background: #fdecec; border-color: #e5484d; color: #b42318; }
 .oc-clear[hidden] { display: none; }
+.msr-sec-info { border: none; background: none; color: var(--text-3, #6b7280); padding: 0; margin-left: 4px; line-height: 0; cursor: pointer; vertical-align: middle; }
+.msr-sec-info svg { display: block; }
+.msr-sec-info:hover { color: #4f46e5; }

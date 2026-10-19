@@ -921,6 +921,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             # sector ETF, same data the rail rows carry (web/macro_areas.js
             # _macro6CaretsHtml), shown next to the ETF in the Rotate-in detail.
             etf["macro6"] = ms_map.get(etf_symbol, {}).get("macro6")
+            # 2026-10-19 -- ETF's own price change over the same ~5 market days (price confirmation for Rotate in).
+            etf["wow_pct"] = _wow_pct(etf["last"], wow_map.get(etf_symbol))
             etf["drivers"] = _category_drivers_for(etf_symbol, fund_map, bridge_map, quad_lookup)
         prev = prev_trade.get(sec)
         sector_scores.append({
@@ -954,9 +956,13 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             (x for x in sector_scores if x["pct_above_trade"] < 0.3),
             key=lambda x: x["pct_above_trade"])
     ][:2]
+    # 2026-10-19, user-directed: XLI qualified on breadth alone (stocks nudging over a flat Trade line) while the ETF itself
+    # was flat/down -- Rotate in now also needs the sector ETF up at least ROTATE_MIN_ETF_PCT % over the same ~5 market days.
+    ROTATE_MIN_ETF_PCT = 1.0
     rotate_cands = sorted(
         (x for x in sector_scores
-         if x["pct_above_trade"] < 0.6 and x["td_change"] is not None and x["td_change"] >= 0.10),
+         if x["pct_above_trade"] < 0.6 and x["td_change"] is not None and x["td_change"] >= 0.10
+         and (x.get("etf") or {}).get("wow_pct") is not None and x["etf"]["wow_pct"] >= ROTATE_MIN_ETF_PCT),
         key=lambda x: -x["td_change"])[:3]
     rotate_in = [x["sector"] for x in rotate_cands]
     # Caution flag: sector ETF's RR outlook is Bearish (breadth and ETF disagree).
