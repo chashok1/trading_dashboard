@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -3634,6 +3635,27 @@ def get_table_stats(date: Optional[str] = Query(None)):
 # Portfolio
 # -----------------------------------------------------------------------------
 
+# 2026-10-19, user-directed (F parity with CS): realized gain on Fidelity shares SOLD on the latest F snapshot date, per
+# (account, symbol). Real FIFO rows from CST/FT (drv_realized_gain) first; the provisional estimate
+# (drv_realized_gain_estimate) only where no real row covers the same account/symbol/date. Same role as drv_cs_realized_gain
+# plays for CS in /api/portfolio: added to the held row's Today's gain, and fully-sold positions get their own row.
+_F_SOLD_SQL = """(
+    SELECT account AS account_number, tos_symbol, SUM(realized_gain) AS realized_gain,
+           SUM(shares_sold) AS shares_sold,
+           CASE WHEN SUM(shares_sold) > 0 THEN SUM(cost_basis) / SUM(shares_sold) END AS avg_cost
+      FROM drv_realized_gain
+     WHERE source = 'F' AND sell_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+     GROUP BY account, tos_symbol
+    UNION ALL
+    SELECT e.account, e.tos_symbol, e.realized_gain_est, e.shares_sold_est, e.cost_per_share_prev
+      FROM drv_realized_gain_estimate e
+     WHERE e.source = 'F' AND e.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+       AND NOT EXISTS (SELECT 1 FROM drv_realized_gain g
+                        WHERE g.source = 'F' AND g.account = e.account AND g.tos_symbol = e.tos_symbol
+                          AND g.sell_date = e.snapshot_date)
+)"""
+
+
 @router.get("/api/portfolio")
 def get_portfolio(
     date: Optional[str] = Query(None),
@@ -3664,14 +3686,14 @@ def get_portfolio(
                                                         AS account,
             hist_f.account_number                     AS account_id,
             ra.short_name                              AS account_tag,
-            tos_symbol                                AS symbol,
+            hist_f.tos_symbol                         AS symbol,
             description,
             type                                      AS security_type,
             qty,
             avg_cost_basis                            AS avg_cost,
             last_price,
             current_value                             AS market_value,
-            today_gl_dollar                           AS today_gain_dollar,
+            today_gl_dollar + COALESCE(frg.realized_gain, 0) AS today_gain_dollar,
             today_gl_pct                              AS today_gain_pct,
             {F_TOTAL_GAIN_DOLLAR}                     AS total_gain_dollar,
             {F_TOTAL_GAIN_PCT}                        AS total_gain_pct,
@@ -3681,9 +3703,11 @@ def get_portfolio(
             FALSE                                     AS is_cash
           FROM hist_f
           LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+          LEFT JOIN {_F_SOLD_SQL} frg
+                 ON frg.account_number = hist_f.account_number AND frg.tos_symbol = hist_f.tos_symbol
           WHERE TRUE
             AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
-            AND NOT is_cash(tos_symbol, type, description)
+            AND NOT is_cash(hist_f.tos_symbol, type, description)
             AND COALESCE(ra.is_active, TRUE) = TRUE
           )
           UNION ALL
@@ -3726,6 +3750,44 @@ def get_portfolio(
             AND is_cash(tos_symbol, type, description)
             AND COALESCE(ra.is_active, TRUE) = TRUE
           GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
+          )
+          UNION ALL
+          (
+          -- Sold positions: Fidelity shares sold on this snapshot date that are no longer held (CS parity)
+          SELECT
+            'F'                                       AS source,
+            COALESCE(fa.account_name, rg.account_number)
+              || COALESCE(' (' || ra.short_name || ')', ' (' || rg.account_number || ')')
+                                                        AS account,
+            rg.account_number                         AS account_id,
+            ra.short_name                              AS account_tag,
+            rg.tos_symbol                              AS symbol,
+            NULL::TEXT                                AS description,
+            NULL::TEXT                                AS security_type,
+            rg.shares_sold                             AS qty,
+            rg.avg_cost                                AS avg_cost,
+            NULL::NUMERIC                             AS last_price,
+            NULL::NUMERIC                             AS market_value,
+            rg.realized_gain                           AS today_gain_dollar,
+            NULL::NUMERIC                             AS today_gain_pct,
+            NULL::NUMERIC                             AS total_gain_dollar,
+            NULL::NUMERIC                             AS total_gain_pct,
+            NULL::NUMERIC                             AS cost_basis,
+            NULL::NUMERIC                             AS pct_of_account,
+            (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d) AS snapshot_date,
+            FALSE                                     AS is_cash
+          FROM {_F_SOLD_SQL} rg
+          LEFT JOIN ref_accounts ra ON ra.account_number = rg.account_number
+          LEFT JOIN LATERAL (SELECT h.account_name FROM hist_f h
+                              WHERE h.account_number = rg.account_number
+                              ORDER BY h.snapshot_date DESC LIMIT 1) fa ON TRUE
+          WHERE COALESCE(ra.is_active, TRUE) = TRUE
+            AND NOT EXISTS (
+              SELECT 1 FROM hist_f h2
+              WHERE h2.account_number = rg.account_number
+                AND h2.tos_symbol = rg.tos_symbol
+                AND h2.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            )
           )
         """)
     if src_cs:
@@ -3859,49 +3921,44 @@ def get_portfolio(
         # prev_close = hist_cs.price / hist_f.last_price at the snapshot
         # immediately preceding the latest drv_quote.as_of_date. (A2.)
         if latest_prices and out:
-            syms_held = list({r["symbol"] for r in out if r.get("symbol") and r.get("qty")})
+            # 2026-10-19 rewrite, user-directed: a row is re-priced only when its
+            # snapshot is OLDER than its symbol's latest quote date, and the
+            # baseline is the snapshot's own close (the row's last_price as
+            # exported), not drv_quote's previous date row. Today = qty x
+            # (live - snapshot close). Sold-position rows (no market value) and
+            # rows whose snapshot is already as new as the quote are left alone.
+            syms_held = list({r["symbol"] for r in out
+                              if r.get("symbol") and r.get("qty") and r.get("market_value") is not None
+                              and r.get("last_price") is not None})
             if syms_held:
-                # 2026-09-21: capped at the real anchor -- see
-                # api/routers/marketbar.py's identical fix for why a bare
-                # MAX(as_of_date) is unsafe (a stray non-trading-day row can
-                # shadow the correct anchor row).
-                qrow = s.execute(text(
+                # Capped at the real anchor -- see api/routers/marketbar.py's
+                # identical fix (a stray non-trading-day row can shadow it).
+                latest_dq_date = s.execute(text(
                     "SELECT MAX(as_of_date) FROM drv_quote "
                     "WHERE as_of_date <= (SELECT MAX(export_date) FROM hist_td)"
-                )).first()
-                latest_dq_date = qrow[0] if qrow else None
-                latest_price_map = {}
-                if latest_dq_date:
+                )).scalar()
+                qmap = {}
+                if latest_dq_date and d >= latest_dq_date:
                     for r in s.execute(text("""
-                        SELECT tos_symbol, last_price FROM drv_quote
+                        SELECT tos_symbol, last_price, export_date FROM drv_quote
                          WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
+                           AND last_price IS NOT NULL AND export_date IS NOT NULL
                     """), {"d": latest_dq_date, "syms": syms_held}).all():
-                        if r[1] is not None:
-                            latest_price_map[r[0]] = float(r[1])
-                # prev_close: hist_td.last_price at the snapshot immediately
-                # preceding latest_dq_date. (DISTINCT ON picks one row per symbol
-                # since hist_td PK is (snapshot_date, symbol, sequence).)
-                prev_close_map: dict = {}
-                if latest_dq_date:
-                    for r in s.execute(text("""
-                        SELECT tos_symbol, last_price FROM drv_quote
-                         WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote
-                                              WHERE as_of_date < :d)
-                           AND tos_symbol = ANY(:syms)
-                    """), {"d": latest_dq_date, "syms": syms_held}).all():
-                        if r[1] is not None:
-                            prev_close_map[r[0]] = float(r[1])
+                        qmap[r[0]] = (float(r[1]), r[2])
                 for r in out:
                     sym = r.get("symbol")
-                    qty = r.get("qty")
-                    if not sym or qty is None: continue
-                    lp = latest_price_map.get(sym)
-                    if lp is None: continue
-                    pc = prev_close_map.get(sym)
+                    q = qmap.get(sym)
+                    if not q or not r.get("qty") or r.get("market_value") is None or r.get("last_price") is None:
+                        continue
+                    snap = r.get("snapshot_date")
+                    if snap is not None and q[1] <= snap:
+                        continue
+                    lp, pc, qty = q[0], float(r["last_price"]), float(r["qty"])
                     r["last_price"]    = lp
-                    r["market_value"]  = float(qty) * lp
-                    if pc is not None and pc != 0:
-                        r["today_gain_dollar"] = (lp - pc) * float(qty)
+                    r["market_value"]  = qty * lp
+                    r["live_date"]     = q[1].isoformat()
+                    if pc:
+                        r["today_gain_dollar"] = (lp - pc) * qty
                         r["today_gain_pct"]    = (lp - pc) / pc * 100.0
                     # Total Gain re-derives from the new market value. Cost
                     # basis is the purchase cost and doesn't move with price.
@@ -3911,6 +3968,13 @@ def get_portfolio(
                         r["total_gain_dollar"] = r["market_value"] - cb_f
                         if cb_f != 0:
                             r["total_gain_pct"] = (r["market_value"] - cb_f) / cb_f * 100.0
+                # Live mode shows the live day only: a row with no newer quote has no known move
+                # today, so it must not keep the snapshot day's figure (sold-position rows included).
+                if any(r.get("live_date") for r in out):
+                    for r in out:
+                        if not r.get("live_date") and not r.get("is_cash") and r.get("today_gain_dollar") is not None:
+                            r["today_gain_dollar"] = 0.0
+                            r["today_gain_pct"] = 0.0
 
         # Decorate with sector + current actionable + in_my_list
         if out:
@@ -5042,6 +5106,84 @@ def get_portfolio_trends(
     for d, acct, catchup in catchup_rows:
         by_date[d]["catchup"] += float(catchup or 0)
 
+    # 2026-10-19, user-directed: the plain broker day change covers only shares STILL HELD at the close. Fold in, per
+    # snapshot date, the move on shares sold that day (sell price minus the prior snapshot's close) and dividends/interest
+    # from the transaction files (CS: hist_cst, F: hist_ft); where those files do not cover the day yet, the provisional
+    # estimate (drv_realized_gain_estimate, purged automatically once the real data lands). Same definitions as
+    # /api/portfolio/summary's Today's gain. Dates that are not snapshot dates are ignored.
+    _extra_sql = []
+    _cs_acct = cs_acct_clause.replace(" account ", " cst.account ")
+    _cs_sym = cs_sym_clause.replace("tos_symbol", "cst.tos_symbol")
+    _f_acct = f_acct_clause
+    _f_sym = f_sym_clause.replace("hist_f.tos_symbol", "ft.tos_symbol")
+    if inc_cs:
+        _extra_sql.append(f"""
+            SELECT cst.trade_date AS d,
+                   SUM((cst.price - pc.price) * ABS(COALESCE(cst.quantity, 0))) AS amt
+              FROM hist_cst cst
+              JOIN LATERAL (SELECT MAX(snapshot_date) AS pd FROM hist_cs
+                             WHERE snapshot_date < cst.trade_date) p ON TRUE
+              JOIN hist_cs pc ON pc.account = cst.account AND pc.tos_symbol = cst.tos_symbol
+                             AND pc.snapshot_date = p.pd
+             WHERE cst.trade_date BETWEEN :start AND :end
+               AND UPPER(COALESCE(cst.action, '')) LIKE '%SELL%'
+               AND cst.quantity IS NOT NULL AND cst.price IS NOT NULL {_cs_acct} {_cs_sym}
+             GROUP BY cst.trade_date
+            UNION ALL
+            SELECT cst.trade_date, SUM(COALESCE(cst.amount, 0))
+              FROM hist_cst cst
+             WHERE cst.trade_date BETWEEN :start AND :end
+               AND (UPPER(COALESCE(cst.action, '')) LIKE '%DIVIDEND%'
+                    OR UPPER(COALESCE(cst.action, '')) LIKE '%INTEREST%'
+                    OR UPPER(COALESCE(cst.action, '')) LIKE '%REINV%') {_cs_acct} {_cs_sym}
+             GROUP BY cst.trade_date
+            UNION ALL
+            SELECT e.snapshot_date, SUM(COALESCE(e.sold_move_est, 0))
+              FROM drv_realized_gain_estimate e
+             WHERE e.source = 'CS' AND e.snapshot_date BETWEEN :start AND :end
+               {_cs_acct.replace("cst.account", "e.account")} {_cs_sym.replace("cst.tos_symbol", "e.tos_symbol")}
+             GROUP BY e.snapshot_date
+        """)
+    if inc_f:
+        _ft_acct = _f_acct.replace("hist_f.account_number", "ft.account_number")
+        if account:
+            _ft_acct = " AND ft.account_number IN (SELECT account_number FROM hist_f h WHERE (COALESCE(h.account_name, h.account_number) || COALESCE(' (' || (SELECT short_name FROM ref_accounts r WHERE r.account_number = h.account_number) || ')', ' (' || h.account_number || ')')) = :acct)"
+        _extra_sql.append(f"""
+            SELECT ft.trade_date AS d,
+                   SUM((ft.price - pf.lp) * ABS(COALESCE(ft.quantity, 0))) AS amt
+              FROM hist_ft ft
+              JOIN LATERAL (SELECT MAX(snapshot_date) AS pd FROM hist_f
+                             WHERE snapshot_date < ft.trade_date) p ON TRUE
+              JOIN (SELECT account_number, tos_symbol, snapshot_date, MAX(last_price) AS lp
+                      FROM hist_f GROUP BY 1, 2, 3) pf
+                ON pf.account_number = ft.account_number AND pf.tos_symbol = ft.tos_symbol
+               AND pf.snapshot_date = p.pd
+             WHERE ft.trade_date BETWEEN :start AND :end AND ft.action_kind = 'SELL'
+               AND ft.price IS NOT NULL AND ft.quantity IS NOT NULL {_ft_acct} {_f_sym}
+             GROUP BY ft.trade_date
+            UNION ALL
+            SELECT ft.trade_date, SUM(COALESCE(ft.amount, 0))
+              FROM hist_ft ft
+             WHERE ft.trade_date BETWEEN :start AND :end AND ft.action_kind = 'DIV'
+               AND NOT (UPPER(COALESCE(ft.symbol, '')) LIKE 'SPAXX%'
+                        OR UPPER(COALESCE(ft.description, '')) LIKE '%MONEY MARKET%') {_ft_acct} {_f_sym}
+             GROUP BY ft.trade_date
+            UNION ALL
+            SELECT e.snapshot_date, SUM(COALESCE(e.sold_move_est, 0))
+              FROM drv_realized_gain_estimate e
+             WHERE e.source = 'F' AND e.snapshot_date BETWEEN :start AND :end
+               {_ft_acct.replace("ft.account_number", "e.account")} {_f_sym.replace("ft.tos_symbol", "e.tos_symbol")}
+             GROUP BY e.snapshot_date
+        """)
+    if _extra_sql:
+        try:
+            with session_scope() as s3:
+                for d, amt in s3.execute(text("SELECT d, SUM(amt) FROM (" + " UNION ALL ".join(_extra_sql) + ") x GROUP BY d"), params).all():
+                    if d in by_date and amt is not None:
+                        by_date[d]["dc"] += float(amt)
+        except Exception as _e:   # never let this enrichment break the trends endpoint
+            logging.getLogger("api.portfolio").warning("trends sold-move/dividend enrichment skipped: %s", _e)
+
     # Extend account_value/per_account with cashflow-derived starting points
     # (ref_account_cashflow) for dates BEFORE any real snapshot exists — e.g.
     # a $2,500 deposit recorded months before our first tracked snapshot.
@@ -5974,135 +6116,128 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
     d2["total_gain_dollar"] = sum(a["total_gain_dollar"] for a in d2["by_account"])
     d2["total_gain_pct"] = (d2["total_gain_dollar"] / global_cb * 100) if global_cb else None
 
-    # ── Optional: intraday reprice using drv_quote.last_price ──────────────
-    # By default this endpoint reflects only the last-loaded CS/F snapshot --
-    # frozen until the next file load, whether that was this morning or last
-    # night. latest_prices=True overlays a live delta from drv_quote on top,
-    # same idea as /api/portfolio's own latest_prices option (see its comment
-    # above) but computed as a delta and applied at the account-aggregate
-    # level, since this endpoint only returns per-account sums, not
-    # per-position rows like /api/portfolio does.
-    # Only actually applied when the held symbols' latest drv_quote batch is
-    # flagged is_intraday=TRUE -- once the market's closed and drv_quote
-    # holds the same settled close hist_cs/hist_f already used, there's
-    # nothing live to add, so we leave the snapshot numbers untouched rather
-    # than layering a redundant (usually ~0, but not always exactly so)
-    # delta on top. pricing='live'|'eod' tells the caller which case this is
-    # (user: "add some indicator to indicate intraday or clean day").
+    # ── Live layer (2026-10-19 rewrite, user-directed) ─────────────────────
+    # Positions come from the last CS/F snapshot; quotes (TOSL / Yahoo / TOSD)
+    # can be NEWER. For every held row whose snapshot is older than its
+    # symbol's latest quote date:  Today = qty x (live price - snapshot close).
+    # That REPLACES the account's snapshot-day figure (kept below as
+    # snapshot_today_gain_dollar so the chart can leave that day's bar alone
+    # and add a separate provisional bar for the live day). The baseline is the
+    # snapshot's own close (hist_cs.price / hist_f.last_price), not drv_quote's
+    # previous date row. Sold-move and dividends for the live day are unknown
+    # until the transaction files load, so they count as 0 here. Stops applying
+    # per account as soon as that account's CS/F snapshot catches up.
     d2["pricing"] = "eod"
     d2["pricing_as_of"] = None
+    d2["live_date"] = None
+    _snaps = [x for x in (latest_cs_d, latest_f_d) if x]
+    d2["snapshot_date"] = max(_snaps).isoformat() if _snaps else None
+    d2["snapshot_today_gain_dollar"] = float(d2.get("today_gain_dollar") or 0)
+    for a in d2["by_account"]:
+        a["snapshot_today_gain_dollar"] = float(a["today_gain_dollar"] or 0)
     if latest_prices:
         with session_scope() as s2:
             held = s2.execute(text(f"""
-                SELECT c.account AS acct_key, ra.short_name AS account_tag,
-                       c.tos_symbol AS symbol, c.qty,
-                       COALESCE(c.market_value, 0) AS old_mv,
-                       COALESCE(c.day_chng_dollar, 0) AS old_day_chg
+                SELECT ra.short_name AS account_tag, c.tos_symbol AS symbol, c.qty,
+                       COALESCE(c.market_value, 0) AS old_mv, c.price AS pc,
+                       c.snapshot_date AS snap
                   FROM hist_cs c
                   LEFT JOIN ref_accounts ra ON ra.account_number = c.account
-                 WHERE c.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                 WHERE c.snapshot_date = :csd
                    AND {CS_IS_NOT_CASH_C}
                    AND COALESCE(ra.is_active, TRUE) = TRUE
                 UNION ALL
-                SELECT hist_f.account_number AS acct_key, ra.short_name AS account_tag,
-                       tos_symbol AS symbol, qty,
-                       COALESCE(current_value, 0) AS old_mv,
-                       COALESCE(today_gl_dollar, 0) AS old_day_chg
+                SELECT ra.short_name, tos_symbol, qty,
+                       COALESCE(current_value, 0), last_price, snapshot_date
                   FROM hist_f
                   LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
-                 WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                 WHERE snapshot_date = :fsd
                    AND {F_IS_NOT_CASH}
                    AND COALESCE(ra.is_active, TRUE) = TRUE
-            """), {"d": d}).mappings().all()
-
+            """), {"csd": latest_cs_d, "fsd": latest_f_d}).mappings().all()
             syms_held = list({h["symbol"] for h in held if h["symbol"] and h["qty"] is not None})
-            deltas_by_tag: dict = {}
-            mv_delta_total = 0.0
-            day_delta_total = 0.0
-            is_live = False
-            as_of_ts = None
+            live_by_tag: dict = {}
+            live_dates, live_ts = [], []
             if syms_held:
-                # 2026-09-21: capped at the real anchor -- see
-                # api/routers/marketbar.py's identical fix for why a bare
-                # MAX(as_of_date) is unsafe (a stray non-trading-day row can
-                # shadow the correct anchor row).
-                qrow = s2.execute(text(
+                # Capped at the real anchor -- see api/routers/marketbar.py's
+                # identical fix (a stray non-trading-day row can shadow it).
+                latest_dq_date = s2.execute(text(
                     "SELECT MAX(as_of_date) FROM drv_quote "
                     "WHERE as_of_date <= (SELECT MAX(export_date) FROM hist_td)"
-                )).first()
-                latest_dq_date = qrow[0] if qrow else None
-                latest_price_map, prev_close_map = {}, {}
-                if latest_dq_date:
-                    for r in s2.execute(text("""
-                        SELECT tos_symbol, last_price FROM drv_quote
-                         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
-                    """), {"d": latest_dq_date, "syms": syms_held}).all():
-                        if r[1] is not None:
-                            latest_price_map[r[0]] = float(r[1])
-                    for r in s2.execute(text("""
-                        SELECT tos_symbol, last_price FROM drv_quote
-                         WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote
-                                              WHERE as_of_date < :d)
-                           AND tos_symbol = ANY(:syms)
-                    """), {"d": latest_dq_date, "syms": syms_held}).all():
-                        if r[1] is not None:
-                            prev_close_map[r[0]] = float(r[1])
-                    live_row = s2.execute(text("""
-                        SELECT BOOL_OR(is_intraday), MAX(derived_at) FROM drv_quote
-                         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
-                    """), {"d": latest_dq_date, "syms": syms_held}).first()
-                    if live_row:
-                        is_live = bool(live_row[0])
-                        as_of_ts = live_row[1]
-
-                if is_live:
+                )).scalar()
+                if latest_dq_date and d >= latest_dq_date:
+                    qmap = {r[0]: (float(r[1]), r[2], r[3]) for r in s2.execute(text("""
+                        SELECT tos_symbol, last_price, export_date, derived_at FROM drv_quote
+                         WHERE as_of_date = :qd AND tos_symbol = ANY(:syms)
+                           AND last_price IS NOT NULL
+                    """), {"qd": latest_dq_date, "syms": syms_held}).all()}
                     for h in held:
-                        sym, qty = h["symbol"], h["qty"]
-                        if not sym or qty is None:
+                        q = qmap.get(h["symbol"])
+                        if not q or h["qty"] is None or h["pc"] is None or q[1] is None:
                             continue
-                        lp = latest_price_map.get(sym)
-                        if lp is None:
-                            continue
-                        qty_f = float(qty)
-                        mv_delta = qty_f * lp - float(h["old_mv"] or 0)
-                        pc = prev_close_map.get(sym)
-                        day_delta = ((lp - pc) * qty_f - float(h["old_day_chg"] or 0)) if pc is not None else 0.0
-                        mv_delta_total += mv_delta
-                        day_delta_total += day_delta
-                        tag = h["account_tag"]
-                        bucket = deltas_by_tag.setdefault(tag, {"mv": 0.0, "day": 0.0})
-                        bucket["mv"]  += mv_delta
-                        bucket["day"] += day_delta
-
-            if is_live:
-                d2["market_value"]      = float(d2.get("market_value") or 0) + mv_delta_total
-                d2["day_change_dollar"] = float(d2.get("day_change_dollar") or 0) + day_delta_total
-                d2["today_gain_dollar"] = float(d2.get("today_gain_dollar") or 0) + day_delta_total
-                mv_denom = d2["market_value"] - d2["today_gain_dollar"]
-                d2["today_gain_pct"] = (d2["today_gain_dollar"] / mv_denom * 100) if mv_denom else None
+                        if q[1] <= h["snap"]:
+                            continue            # this row's snapshot is already as new as the quote
+                        qty_f = float(h["qty"])
+                        b = live_by_tag.setdefault(h["account_tag"], {"mv": 0.0, "gain": 0.0})
+                        b["mv"]   += qty_f * q[0] - float(h["old_mv"] or 0)
+                        b["gain"] += qty_f * (q[0] - float(h["pc"]))
+                        live_dates.append(q[1])
+                        if q[2]:
+                            live_ts.append(q[2])
+            if live_by_tag:
+                d_today = d_day = d_mv = d_real = 0.0
                 for a in d2["by_account"]:
-                    bucket = deltas_by_tag.get(a["account_tag"])
-                    if not bucket:
+                    b = live_by_tag.get(a["account_tag"])
+                    if not b:
                         continue
-                    a["market_value"]      += bucket["mv"]
-                    a["day_change_dollar"] += bucket["day"]
-                    a["today_gain_dollar"] += bucket["day"]
-                    denom = a["market_value"] - a["today_gain_dollar"]
-                    a["today_gain_pct"] = (a["today_gain_dollar"] / denom * 100) if denom else None
-                if d2.get("value_change_dollar") is not None:
-                    d2["value_change_dollar"] += mv_delta_total
-                    d2["held_gain_dollar"] += day_delta_total
-                    d2["flow_diff_dollar"] = d2["value_change_dollar"] - d2["today_gain_dollar"]
-                    d2["value_change_pct"] = (d2["value_change_dollar"] / d2["prev_total_value"] * 100) if d2["prev_total_value"] else None
-                for a in d2["by_account"]:
-                    bucket = deltas_by_tag.get(a["account_tag"])
-                    if bucket and a.get("value_change_dollar") is not None:
-                        a["value_change_dollar"] += bucket["mv"]
-                        a["held_gain_dollar"] += bucket["day"]
-                        a["flow_diff_dollar"] = a["value_change_dollar"] - a["today_gain_dollar"]
-                        a["value_change_pct"] = (a["value_change_dollar"] / a["prev_total_value"] * 100) if a["prev_total_value"] else None
+                    old_total = a["market_value"] + a["cash_value"]
+                    d_today += b["gain"] - a["today_gain_dollar"]
+                    d_day   += b["gain"] - a["day_change_dollar"]
+                    d_mv    += b["mv"]
+                    d_real  += a["realized_today_dollar"]
+                    a["market_value"]       += b["mv"]
+                    a["today_gain_dollar"]   = b["gain"]
+                    a["day_change_dollar"]   = b["gain"]
+                    a["held_gain_dollar"]    = b["gain"]
+                    a["sold_move_dollar"]    = 0.0
+                    a["div_int_dollar"]      = 0.0
+                    a["today_gain_estimate_dollar"]  = 0.0
+                    a["realized_today_dollar"]       = 0.0
+                    a["realized_today_estimate_dollar"] = 0.0
+                    den = a["market_value"] - b["gain"]
+                    a["today_gain_pct"]      = (b["gain"] / den * 100) if den else None
+                    a["prev_total_value"]    = old_total
+                    a["value_change_dollar"] = b["mv"]
+                    a["value_change_pct"]    = (b["mv"] / old_total * 100) if old_total else None
+                    a["flow_diff_dollar"]    = b["mv"] - b["gain"]
+                    a["txn_loaded"]          = False
+                    if a.get("total_gain_dollar") is not None:
+                        a["total_gain_dollar"] += b["mv"]       # cost basis does not move with price
+                        a["total_gain_pct"] = (a["total_gain_dollar"] / a["cost_basis"] * 100) if a["cost_basis"] else None
+                d2["market_value"]        = float(d2.get("market_value") or 0) + d_mv
+                d2["today_gain_dollar"]   = float(d2.get("today_gain_dollar") or 0) + d_today
+                d2["day_change_dollar"]   = float(d2.get("day_change_dollar") or 0) + d_day
+                d2["realized_today_dollar"] = float(d2.get("realized_today_dollar") or 0) - d_real
+                d2["today_gain_estimate_dollar"] = sum(a["today_gain_estimate_dollar"] for a in d2["by_account"])
+                d2["realized_today_estimate_dollar"] = sum(a["realized_today_estimate_dollar"] for a in d2["by_account"])
+                den = d2["market_value"] - d2["today_gain_dollar"]
+                d2["today_gain_pct"] = (d2["today_gain_dollar"] / den * 100) if den else None
+                d2["total_gain_dollar"] = sum(a["total_gain_dollar"] for a in d2["by_account"])
+                _gcb = float(d2.get("cost_basis") or 0)
+                d2["total_gain_pct"] = (d2["total_gain_dollar"] / _gcb * 100) if _gcb else None
+                _vc = [a for a in d2["by_account"] if a["value_change_dollar"] is not None]
+                d2["value_change_dollar"] = sum(a["value_change_dollar"] for a in _vc) if _vc else None
+                d2["prev_total_value"]    = sum(a["prev_total_value"] for a in _vc) if _vc else None
+                d2["value_change_pct"]    = (d2["value_change_dollar"] / d2["prev_total_value"] * 100) \
+                    if (_vc and d2["prev_total_value"]) else None
+                d2["held_gain_dollar"]    = sum(a["held_gain_dollar"] for a in _vc) if _vc else None
+                d2["sold_move_dollar"]    = sum(a["sold_move_dollar"] for a in _vc) if _vc else None
+                d2["div_int_dollar"]      = sum(a["div_int_dollar"] for a in _vc) if _vc else None
+                d2["flow_diff_dollar"]    = sum(a["flow_diff_dollar"] for a in _vc) if _vc else None
+                d2["txn_loaded"]          = False
                 d2["pricing"] = "live"
-                d2["pricing_as_of"] = as_of_ts.isoformat() if as_of_ts else None
+                d2["live_date"] = max(live_dates).isoformat()
+                d2["pricing_as_of"] = max(live_ts).isoformat() if live_ts else None
 
     return d2
 

@@ -2725,7 +2725,7 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
         if not anchor:
             return {"as_of": str(d), "pills": []}
         rows = s.execute(text(
-            "SELECT q.tos_symbol, q.pct_change, r.outlook FROM drv_quote q "
+            "SELECT q.tos_symbol, q.pct_change, q.last_price, r.outlook FROM drv_quote q "
             "LEFT JOIN drv_rr r ON r.tos_symbol = q.tos_symbol AND r.as_of_date = q.as_of_date "
             "WHERE q.as_of_date = :a AND q.tos_symbol = ANY(:syms)"), {"a": anchor, "syms": syms}).mappings().all()
     by = {r["tos_symbol"]: r for r in rows}
@@ -2736,5 +2736,6 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
         ol = "Bullish" if "bull" in o.lower() else "Bearish" if "bear" in o.lower() else ("Neutral" if o else None)
         pills.append({"label": label, "symbol": sym,
                       "pct_change": float(r["pct_change"]) if r and r["pct_change"] is not None else None,
+                      "last_price": float(r["last_price"]) if r and r["last_price"] is not None else None,
                       "outlook": ol})
     return {"as_of": anchor.isoformat(), "pills": pills}

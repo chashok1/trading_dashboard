@@ -2279,7 +2279,17 @@ async function loadCumPnlSnapshot() {
       }
     }
     let estBarIdx = -1;   // index of the rightmost bar when it's a pending CST/FT estimate
-    if (summaryToday != null && dayArr.length && cumRaw.length) {
+    // 2026-10-19, user-directed: with live prices on and quotes newer than the last CS/F snapshot, the live day is its
+    // OWN provisional bar (dated the quote day); the snapshot day's bar stays as it is. Replaced by the real day once CS/F load.
+    const liveDate = (summary && summary.pricing === 'live' && summary.live_date) ? summary.live_date : null;
+    let liveBarIdx = -1;
+    if (liveDate && summaryToday != null && dayArr.length && cumRaw.length) {
+      const liveDay = summaryChg ? summaryChg.val : summaryToday;
+      dates.push(liveDate); dayArr.push(liveDay);
+      cum.push(Math.round((cum[cum.length - 1] + liveDay) * 100) / 100);
+      if (dates.length > N) { dates.shift(); dayArr.shift(); cum.shift(); }
+      liveBarIdx = estBarIdx = dayArr.length - 1;
+    } else if (summaryToday != null && dayArr.length && cumRaw.length) {
       const origLastDay = Number(dayArr[dayArr.length - 1] || 0);
       // 2026-10-10: last bar = Today's CHANGE (account value change) when the
       // summary carries it; earlier bars stay profit-only.
@@ -2293,7 +2303,7 @@ async function loadCumPnlSnapshot() {
     // override figures, so the expand view can show the whole selected
     // period with the identical last-bar treatment instead of just 10 days.
     _lastDashTrendData = r;
-    _lastDashSummaryToday = { today: summaryChg ? summaryChg.val : summaryToday, todayEst: summaryTodayEst, period, chg: summaryChg };
+    _lastDashSummaryToday = { today: summaryChg ? summaryChg.val : summaryToday, todayEst: summaryTodayEst, period, chg: summaryChg, liveDate };
     if (_cumPnlChart) { _cumPnlChart.destroy(); _cumPnlChart = null; }
     if (!dates.length) {
       if (totalEl) totalEl.textContent = '';
@@ -2326,7 +2336,7 @@ async function loadCumPnlSnapshot() {
                 const y = ctx.parsed.y;
                 const v = _fsCompactUsd(y) || ('$' + Number(y).toFixed(2));
                 const isEst = ctx.dataIndex === estBarIdx && ctx.dataset.label === 'Day Change';
-                return (ctx.dataset.label || 'Cumulative P&L') + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                return (ctx.dataset.label || 'Cumulative P&L') + ': ' + v + (isEst ? (liveBarIdx >= 0 ? ' (live, provisional)' : ' (pending CST/FT estimate)') : '');
             },
             afterBody(items) {
                 const i = items && items[0] ? items[0].dataIndex : -1;
@@ -2404,12 +2414,16 @@ let _dashTrendModalChart = null;
 function openDashTrendModal() {
   if (typeof Chart === 'undefined' || !_lastDashTrendData) return;
   const r = _lastDashTrendData;
-  const labels = r.dates || [];
+  const labels = (r.dates || []).slice();
   const dayArr = (r.day_change || []).slice();
   const cum = (r.cumulative_pl || []).slice();
   let estBarIdx = -1;
   const ov = _lastDashSummaryToday;
-  if (ov && ov.today != null && dayArr.length && cum.length) {
+  if (ov && ov.liveDate && ov.today != null && dayArr.length && cum.length) {
+    labels.push(ov.liveDate); dayArr.push(ov.today);   // live day = its own provisional bar (snapshot day untouched)
+    cum.push(Math.round((cum[cum.length - 1] + ov.today) * 100) / 100);
+    estBarIdx = dayArr.length - 1;
+  } else if (ov && ov.today != null && dayArr.length && cum.length) {
     const lastIdx = dayArr.length - 1;
     const origLastDay = Number(dayArr[lastIdx] || 0);
     const delta = ov.today - origLastDay;

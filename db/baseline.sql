@@ -1817,7 +1817,7 @@ CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_acct ON drv_realized_gain(accoun
 -- drv_realized_gain_estimate  <- PROVISIONAL partial-sale gain/loss,
 -- computed from CS/F snapshot qty diffs (etl/mark_sales.py) for the gap
 -- between "position size dropped" and "the real CST/FT transaction file
--- confirms the sale". NOT FIFO — avg cost basis x that day's LOW price
+-- confirms the sale". NOT FIFO — avg cost basis x that day's last price (was LOW until 2026-10-19)
 -- (conservative fill proxy), so this number will NOT exactly match the
 -- real drv_realized_gain figure. Auto-purged (etl/derive_realized.py) once
 -- a real drv_realized_gain row covers the same account/symbol/date gap —
@@ -1840,7 +1840,7 @@ CREATE TABLE IF NOT EXISTS drv_realized_gain_estimate (
 
     cost_per_share_prev    NUMERIC,                  -- prior snapshot's avg cost basis per share
 
-    low_price              NUMERIC,                  -- day's low on snapshot_date
+    low_price              NUMERIC,                  -- sale price used (day's last price; was low)
 
     proceeds_est           NUMERIC,                  -- shares_sold_est * low_price
 

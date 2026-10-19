@@ -11,7 +11,7 @@ Two provisional layers, both superseded by the real thing:
   - estimate_cs_partial_sale / estimate_f_partial_sale / estimate_cs_full_sale /
     estimate_f_full_sale (this module's actual provisional layer): BOTH
     partial and full exits, written into drv_realized_gain_estimate using
-    one consistent formula (avg cost basis x that day's LOW price). This is
+    one consistent formula (avg cost basis x that day's last price). This is
     the table other screens should read "pending realized gain" from — it's
     auto-purged by derive_realized_gain() (etl/derive_realized.py) the
     moment the real CST/FT-derived FIFO number covers the same
@@ -85,21 +85,24 @@ def mark_cs_sales(snapshot_date):
         return total_marked
 
 
-def _low_price(s, tos_symbol, d):
-    """Day's low for tos_symbol on date d — hist_td first (EOD), falling
-    back to drv_quote (covers dates a slower/weekly symbol hasn't hit TD
-    for yet). Returns None if neither has it."""
-    low = s.execute(text("""
-        SELECT low_price FROM hist_td
+def _est_sale_price(s, tos_symbol, d):
+    """Price used to value a pending (not yet in CST/FT) sale on date d: the
+    day's last price -- hist_td first (EOD), falling back to drv_quote.
+    2026-10-19, user-directed: was the day's LOW, which made every pending
+    sale read worse than it really was. (The drv_realized_gain_estimate
+    column is still named low_price; it now stores this price.)
+    Returns None if neither has it."""
+    px = s.execute(text("""
+        SELECT last_price FROM hist_td
         WHERE tos_symbol = :sym AND export_date = :d
         ORDER BY sequence DESC LIMIT 1
     """), {"sym": tos_symbol, "d": d}).scalar()
-    if low is None:
-        low = s.execute(text("""
-            SELECT low_price FROM drv_quote
+    if px is None:
+        px = s.execute(text("""
+            SELECT last_price FROM drv_quote
             WHERE tos_symbol = :sym AND as_of_date = :d
         """), {"sym": tos_symbol, "d": d}).scalar()
-    return float(low) if low is not None else None
+    return float(px) if px is not None else None
 
 
 def _upsert_estimate(s, source, account, tos_symbol, snapshot_date, prev_date,
@@ -191,7 +194,7 @@ def estimate_cs_partial_sale(snapshot_date):
             if shares_sold_est <= 0:
                 continue
             cost_per_share_prev = float(cost_basis_prev) / float(qty_prev)
-            low = _low_price(s, tos_symbol, snapshot_date)
+            low = _est_sale_price(s, tos_symbol, snapshot_date)
             if low is None:
                 continue
             _upsert_estimate(s, "CS", account, tos_symbol, snapshot_date, prev_date,
@@ -235,7 +238,7 @@ def estimate_f_partial_sale(snapshot_date):
             shares_sold_est = float(qty_prev) - float(qty_curr)
             if shares_sold_est <= 0:
                 continue
-            low = _low_price(s, tos_symbol, snapshot_date)
+            low = _est_sale_price(s, tos_symbol, snapshot_date)
             if low is None:
                 continue
             _upsert_estimate(s, "F", account_number, tos_symbol, snapshot_date, prev_date,
@@ -280,7 +283,7 @@ def estimate_cs_full_sale(snapshot_date):
                 continue
             shares_sold_est = float(qty_prev)
             cost_per_share_prev = float(cost_basis_prev) / shares_sold_est
-            low = _low_price(s, tos_symbol, snapshot_date)
+            low = _est_sale_price(s, tos_symbol, snapshot_date)
             if low is None:
                 continue
             _upsert_estimate(s, "CS", account, tos_symbol, snapshot_date, prev_date,
@@ -324,7 +327,7 @@ def estimate_f_full_sale(snapshot_date):
         for account_number, tos_symbol, qty_prev, cost_per_share_prev, prev_mark_price in rows:
             if not tos_symbol or not qty_prev or not cost_per_share_prev:
                 continue
-            low = _low_price(s, tos_symbol, snapshot_date)
+            low = _est_sale_price(s, tos_symbol, snapshot_date)
             if low is None:
                 continue
             _upsert_estimate(s, "F", account_number, tos_symbol, snapshot_date, prev_date,

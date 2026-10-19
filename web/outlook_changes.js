@@ -301,6 +301,7 @@
     var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
     var mk = document.getElementById('mktPills');
     el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
+    if (!el.hidden) alignVix();   // the VIX offset can only be measured once the card is visible
   };
   function hideLine() {
     var line = document.getElementById('ocLine'), more = document.getElementById('ocMore'), pop = document.getElementById('ocPop');
@@ -312,6 +313,18 @@
 
   // Market pills under the US Dollar pill (2026-10-18, user-directed): SPX / Ndq / Rus / VIX / Oil / Gld / 10Y / BTC as chips with the day % change.
   // Colour = the day % change (green up, red down, grey flat; the Hedgeye outlook is in the tooltip). Reads GET /api/cockpit/index-pills. Display only.
+  // VIX sits in its own slot (row 2); shift it right so its right edge lines up with the 10Y chip's right edge
+  // (2026-10-19, user-directed). Only the VIX slot's left margin changes -- no other pill moves or resizes.
+  function alignVix() {
+    var vb = document.getElementById('vixPill'), ten = document.querySelector('#mktPills [data-lbl="10Y"]');
+    if (!vb) return;
+    vb.style.marginLeft = '0px';
+    var chip = vb.firstElementChild;
+    if (!chip || !ten) return;
+    var shift = ten.getBoundingClientRect().right - vb.getBoundingClientRect().left - chip.getBoundingClientRect().width;
+    vb.style.marginLeft = Math.max(0, Math.round(shift)) + 'px';
+  }
+  window.addEventListener('resize', alignVix);
   async function loadPills() {
     var box = document.getElementById('mktPills');
     if (!box) return;
@@ -324,14 +337,18 @@
         var pc = p.pct_change, pcCls = pc > 0 ? 'bull' : pc < 0 ? 'bear' : 'neu', txt = pc == null ? '--' : (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
         var tip = [p.label + ' (' + p.symbol + ')', '• Day change: ' + txt, '• Hedgeye outlook: ' + (p.outlook || '--'),
           'Source: drv_quote, drv_rr'].join(NL);
-        return '<span class="oc-chip2 ' + pcCls + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' +
+        // VIX shows its current level between the label and the % change (2026-10-19, user-directed).
+        var lvl = p.label === 'VIX' && p.last_price != null ? '<span class="oc-lvl">' + p.last_price.toFixed(2) + '</span>' : '';
+        return '<span class="oc-chip2 ' + pcCls + '" data-lbl="' + esc(p.label) + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' + lvl +
           '<span class="oc-ft"><span class="oc-w ' + pcCls + '">' + txt + '</span></span></span>';
       });
       // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.
-      var pills = D.pills || [], STACKS = [['10Y', 'VIX'], ['Oil', 'Gld', 'BTC']], out = [], seen = {}, slot = {};
+      var pills = D.pills || [], STACKS = [['Oil', 'Gld', 'BTC']], out = [], seen = {}, slot = {}, vixHtml = '', tenYAt = -1;
       pills.forEach(function (p, i) {
         var k = -1;
         STACKS.forEach(function (st, j) { if (st.indexOf(p.label) >= 0) k = j; });
+        if (p.label === 'VIX') { vixHtml = html[i]; tenYAt = out.length; out.push(null); return; }   // VIX lives in its own slot (#vixPill), left, below the US Dollar pill; 10Y keeps VIX's old place in the row
+        if (p.label === '10Y' && tenYAt >= 0) { out[tenYAt] = html[i]; return; }
         if (k < 0) { out.push(html[i]); return; }
         if (!slot[k]) { slot[k] = { at: out.length, items: [] }; out.push(null); }
         slot[k].items[STACKS[k].indexOf(p.label)] = html[i];
@@ -341,7 +358,9 @@
       });
       out = out.filter(Boolean);
       box.innerHTML = out.join('');
-    } catch (e) { box.innerHTML = ''; }
+      var vb = document.getElementById('vixPill'); if (vb) vb.innerHTML = vixHtml;
+      alignVix();
+    } catch (e) { box.innerHTML = ''; var vb2 = document.getElementById('vixPill'); if (vb2) vb2.innerHTML = ''; }
     window.syncOcCard();
   }
 

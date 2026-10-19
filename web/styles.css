@@ -4015,7 +4015,10 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .oc-lead { display: contents; }
 .oc-lead > .mw-usd-slot { grid-row: 1; grid-column: 1; justify-self: start; }
 .oc-lead > .mw-strip { display: contents; }
-.oc-lead .oc-grp[title="Next event"] { grid-row: 2; grid-column: 1; justify-self: start; }
+/* 2026-10-19, user-directed: the VIX chip sits left in row 2 (below the US Dollar pill, above SPX); the event pill moves to the right end of that cell. */
+.oc-lead > .oc-vix { grid-row: 2; grid-column: 1; justify-self: start; display: flex; }
+.oc-vix:empty { display: none; }
+.oc-lead .oc-grp[title="Next event"] { grid-row: 2; grid-column: 1; justify-self: end; }
 .oc-lead .oc-grp[title="Book"] { grid-row: 3; grid-column: 3; justify-self: end; margin-right: -12px; position: relative; z-index: 1; }
 .oc-line { grid-row: 1 / span 3; grid-column: 2 / -1; }
 /* Market pills (SPX/Nas/Oil/Gld/2Y/10Y) on row 3, under the US Dollar / event pills. */
@@ -4309,3 +4312,17 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .side-filter { display: inline-flex; gap: 6px; align-items: center; font-size: 11px; }
 .side-filter[hidden] { display: none; }
 .side-filter label { display: inline-flex; gap: 2px; align-items: center; cursor: pointer; }
+
+.oc-lvl { font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 0 4px 0 6px; opacity: .85; }
+/* 2026-10-19, user-directed: the top card is two separate panels -- US Dollar + major markets (left) and the stock outlook chips (right) --
+   with the page background showing between them, so the card's own box is removed. The panels are pseudo-elements placed in the grid:
+   nothing is resized or moved. */
+.cockpit-band.oc-card { border: 0; background: transparent; box-shadow: none; }
+/* 2026-10-19, user-directed: more white space inside each panel -- top/bottom, the left side of both and the right side of the second. The card padding and
+   the column gap grow by the same amounts so the panels still fit inside the card and keep ~12px of gray between them. */
+.cockpit-band.oc-card .oc-body { padding: 14px; column-gap: 36px; }
+.oc-card .oc-body::before, .oc-card .oc-body::after { content: ""; grid-row: 1 / span 3; align-self: stretch; justify-self: stretch; margin: -12px; border: 1px solid var(--border, #e5e5e2); border-radius: 6px; background: var(--card-bg, #fff); pointer-events: none; z-index: -1; }
+.oc-card .oc-body::before { grid-column: 1; }
+.oc-card .oc-body::after { grid-column: 2 / -1; }
+/* 2026-10-19: the old 18px right margin on the market-pill row (it spaced the pills from the chips) now only adds white space inside the left panel; the column gap carries that spacing instead. */
+.oc-lead > .oc-mkt { margin-right: 0; }

@@ -63,8 +63,11 @@ const ESTIMATE_BAR_COLOR = 'rgba(90,62,168,0.85)';
 function _applyTodayOverride(data) {
     const dayArr = (data.day_change || []).slice();
     const cum    = (data.cumulative_pl || []).slice();
-    let estBarIdx = -1;
-    // 2026-10-10, user-directed: the rightmost bar is Today's CHANGE (account
+    let dates    = (data.dates || []).slice();
+    let estBarIdx = -1, liveIdx = -1;
+    // 2026-10-19, user-directed: when "Use latest prices" is on and quotes are newer than the last CS/F snapshot,
+    // the live day is its OWN provisional bar (dated the quote day); the snapshot day's bar is left as it is.
+    // 2026-10-10, user-directed: otherwise the rightmost bar is Today's CHANGE (account
     // value change, same number as the header / account table), with its
     // breakdown in the hover. Earlier bars stay profit-only (the trends
     // endpoint has no per-day flow data), so the cum line = history of profit
@@ -76,31 +79,53 @@ function _applyTodayOverride(data) {
         // Skip entirely when the user has selected a Portfolio snapshot date
         // older than this trends series -- examining history, not "today".
         const userInPast = state.date && lastTrendsDate && state.date < lastTrendsDate;
-        if (!userInPast) {
+        const live = (state.filters && state.filters.latestPrices && state.latestSummary && state.latestSummary.live_date)
+            ? { date: state.latestSummary.live_date, today: Number(state.latestSummary.today_gain_dollar || 0) }
+            : (state.liveTrend || null);
+        if (!userInPast && live) {
+            const newDay = live.today;
+            dates.push(live.date);
+            dayArr.push(newDay);
+            cum.push((cum[lastIdx] || 0) + newDay);
+            liveIdx = dayArr.length - 1;
+            estBarIdx = liveIdx;
+            tipLines = ['Live: shares held at the last CS/F snapshot x (current price minus that snapshot close)',
+                        'Sold shares and dividends for this day are not included until the transaction files load.'];
+        } else if (!userInPast) {
             const entry = getEffectiveSummaryEntry();
             if (entry && entry.today_gain_dollar != null) {
                 const _t = todayChange(entry);
                 const newDay = _t.val;
-                if (_t.has) tipLines = todayTip(entry).split('\n').concat(['Earlier bars show profit only (no deposits/trades).']);
+                if (_t.has) tipLines = todayTip(entry).split(String.fromCharCode(10)).concat(['Earlier bars show profit only (no deposits/trades).']);
                 const origDay = Number(dayArr[lastIdx] || 0);
                 dayArr[lastIdx] = newDay;
                 cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
                 if (Number(entry.today_gain_estimate_dollar || 0) !== 0) estBarIdx = lastIdx;
             }
-            if (state.filters && state.filters.latestPrices && state.latestSummary) {
-                estBarIdx = -1;
-                tipLines = null;
-                const newDay = Number(state.latestSummary.today_gain_dollar || 0);
-                const origDay = Number(dayArr[lastIdx] || 0);
-                dayArr[lastIdx] = newDay;
-                cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
-            }
         }
     }
-    return { dayArr, cum, estBarIdx, tipLines };
+    return { dayArr, cum, estBarIdx, tipLines, dates, liveIdx };
 }
 
 let _lastTrendData = null;
+
+// 2026-10-19, user-directed: the P/L graph shows today's live P/L whenever quotes are newer than the last CS/F snapshot,
+// whether or not "Use latest prices" is on (the Dashboard widget works the same way). Uses /api/portfolio/summary's
+// live layer, narrowed to the Account / Source / Group filters; skipped under a Category filter (the summary cannot split by symbol).
+async function computeLiveTrend() {
+    try {
+        if (state.filters.catValue || (state.categorySymbols && state.categorySymbols.size)) return null;
+        const sm = await fetchJson('/api/portfolio/summary?latest_prices=true' + (state.date ? '&date=' + encodeURIComponent(state.date) : ''));
+        if (!sm || sm.pricing !== 'live' || !sm.live_date) return null;
+        let rows = sm.by_account || [];
+        const f = state.filters;
+        if (f.account) rows = rows.filter(a => a.account === f.account);
+        if (f.source)  rows = rows.filter(a => a.source === f.source);
+        if (f.group && !f.account) { const tags = state.groups[f.group] || []; rows = rows.filter(a => tags.includes(a.account_tag)); }
+        if (!rows.length) return null;
+        return { date: sm.live_date, today: rows.reduce((t, a) => t + Number(a.today_gain_dollar || 0), 0) };
+    } catch (e) { return null; }
+}
 
 async function loadTrends() {
     const periodEl = $('trendsPeriod');
@@ -125,6 +150,7 @@ async function loadTrends() {
         return;
     }
     _lastTrendData = data;
+    state.liveTrend = await computeLiveTrend();
     renderTrendCharts(data);
     renderSparklines(data);
     const rngEl = $('trendsRange');
@@ -190,7 +216,7 @@ function renderTrendCharts(data) {
     // Combined Cumulative P&L (line) + Day Change (thin bars overlay)
     if (_trendCharts.daily) _trendCharts.daily.destroy();
     if (_trendCharts.cum)   _trendCharts.cum.destroy();
-    const { dayArr, cum, estBarIdx, tipLines } = _applyTodayOverride(data);
+    const { dayArr, cum, estBarIdx, tipLines, dates: ovDates, liveIdx } = _applyTodayOverride(data);
     const ovCumEstFlag = estBarIdx >= 0;
     // lastCum / cumColor computed AFTER the override so the line color and
     // overlay label both reflect the new rightmost value.
@@ -206,7 +232,7 @@ function renderTrendCharts(data) {
                     const v = fmtUsd(ctx.parsed.y);
                     const isEst = estBarIdx >= 0 && ctx.dataIndex === estBarIdx
                         && ctx.dataset.label === 'Day Change';
-                    return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                    return ctx.dataset.label + ': ' + v + (isEst ? (liveIdx >= 0 ? ' (live, provisional)' : ' (pending CST/FT estimate)') : '');
                 },
                 afterBody(items) {
                     const i = items && items[0] ? items[0].dataIndex : -1;
@@ -229,7 +255,7 @@ function renderTrendCharts(data) {
     };
     _trendCharts.cum = new Chart($('chTrendCum'), {
         type: 'bar',
-        data: { labels, datasets: [
+        data: { labels: ovDates, datasets: [
             // Thin Day Change bars on the secondary axis (left).
             // order:0 puts bars on top so they're never hidden by the line stroke.
             { type: 'bar', label: 'Day Change', data: dayArr,
@@ -319,7 +345,7 @@ function openTrendModal(key, title) {
     const colorPos = '#1c6c30', colorNeg = '#b21f1f', colorAcc = '#7F77DD';
     const labels = _lastTrendData.dates || [];
 
-    let dataset, type, yPos = 'right', combined = null, modalEstBarIdx = -1, modalTip = null, modalLastIdx = -1;
+    let modalLabels = null, modalLiveIdx = -1, dataset, type, yPos = 'right', combined = null, modalEstBarIdx = -1, modalTip = null, modalLastIdx = -1;
     if (key === 'value') {
         dataset = { type: 'line',
                     data: _lastTrendData.account_value || [], borderColor: colorAcc,
@@ -336,6 +362,8 @@ function openTrendModal(key, title) {
         const _ov = _applyTodayOverride(_lastTrendData);
         const arr = _ov.dayArr, cum = _ov.cum;
         modalEstBarIdx = _ov.estBarIdx;
+        modalLiveIdx = _ov.liveIdx;
+        modalLabels = _ov.dates;
         modalTip = _ov.tipLines;
         modalLastIdx = arr.length - 1;
         const lastCum = cum.length ? cum[cum.length - 1] : 0;
@@ -407,7 +435,7 @@ function openTrendModal(key, title) {
           };
     _trendModalChart = new Chart($('trendModalCanvas'), {
         type,
-        data: { labels, datasets: combined ? combined : [dataset] },
+        data: { labels: modalLabels || labels, datasets: combined ? combined : [dataset] },
         options: {
             responsive: true, maintainAspectRatio: false,
             plugins: {
@@ -416,7 +444,7 @@ function openTrendModal(key, title) {
                     callbacks: (modalEstBarIdx >= 0 || modalTip) ? { label(ctx) {
                         const v = fmtUsd(ctx.parsed.y);
                         const isEst = ctx.dataIndex === modalEstBarIdx && ctx.dataset.label === 'Day Change';
-                        return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                        return ctx.dataset.label + ': ' + v + (isEst ? (modalLiveIdx >= 0 ? ' (live, provisional)' : ' (pending CST/FT estimate)') : '');
                     },
                     afterBody(items) {
                         const i = items && items[0] ? items[0].dataIndex : -1;
@@ -597,7 +625,7 @@ function isCashRow(r) {
 // cash tile would still add cash again on top — inflating Total.
 function recomputeLatestSummary() {
   if (!state.filters.latestPrices) { state.latestSummary = null; return; }
-  let mv = 0, tg = 0, cb = 0, cash = 0;
+  let mv = 0, tg = 0, cb = 0, cash = 0, liveDate = null;
   // Sum from state.filtered (what the grid is actually showing) so the
   // tile and the grid always match. Fall back to state.rows for the
   // brief moment before applyClientFilter() has populated filtered.
@@ -610,8 +638,10 @@ function recomputeLatestSummary() {
     if (r.market_value     != null) mv += Number(r.market_value);
     if (r.today_gain_dollar!= null) tg += Number(r.today_gain_dollar);
     if (r.cost_basis       != null) cb += Number(r.cost_basis);
+    if (r.live_date && (!liveDate || r.live_date > liveDate)) liveDate = r.live_date;
   }
   state.latestSummary = {
+    live_date:         liveDate,
     market_value:      mv,
     today_gain_dollar: tg,
     cost_basis:        cb,
@@ -2020,7 +2050,7 @@ async function loadRealized() {
       <th class="num">Realized</th>
       <th class="num">%</th><th class="num">Hold (d)</th><th>LT?</th>
     </tr>`;
-    body.innerHTML = rows.map(r => `<tr${r.is_estimate ? ' class="real-est-row" title="Estimated: qty-diff vs. prior snapshot x that day\'s low price — provisional until the CST/FT transaction file confirms the real sale."' : ''}>
+    body.innerHTML = rows.map(r => `<tr${r.is_estimate ? ' class="real-est-row" title="Estimated: qty-diff vs. prior snapshot x that day\'s last price — provisional until the CST/FT transaction file confirms the real sale."' : ''}>
       <td>${escapeHtml(r.sell_date||'')}${r.is_estimate ? ' <span class="pill pill-est">est.</span>' : ''}</td>
       <td><span class="pill pill-${(r.source||'').toLowerCase()}">${escapeHtml(r.source||'')}</span></td>
       <td title="${escapeHtml(r.account||'')}">${escapeHtml((r.account||'').slice(0,28))}</td>
