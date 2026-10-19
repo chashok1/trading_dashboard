@@ -3,6 +3,9 @@
 * { box-sizing: border-box; }
 
 :root {
+  /* 2026-10-19, user-directed: ONE palette for every %chg pill (top-panel market chips + every macro rail pill). Edit here to change them all.
+     To revert to the old rail colors: --pct-up #1d9e75, --pct-down #d4537e, --pct-flat #888. */
+  --pct-up: #0f9d58; --pct-down: #e5484d; --pct-flat: #8a93a6;
   /* Quad palette -- single source for every Quad1-4 color in the app (change here only) */
   --quad1: #03af42; --quad2: #8bc53c; --quad3: #fcb142; --quad4: #eb0125;
   --bg: #f7f7f5;
@@ -4334,4 +4337,4 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-10-19, user-directed: on the market chips the day % change is its own solid pill (green / red / gray by its sign, same fills as the rail change pills);
    the rest of the chip is coloured by the Hedgeye outlook only. */
 .oc-pct { display: inline-block; padding: 0 5px; border-radius: 4px; color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 14px; }
-.oc-pct.bull { background: #0f9d58; } .oc-pct.bear { background: #e5484d; } .oc-pct.neu { background: #8a93a6; }   /* same green / red / gray as the Bullish / Bearish / Neutral chips (.oc-chip2) */
+.oc-pct.bull { background: var(--pct-up, #0f9d58); } .oc-pct.bear { background: var(--pct-down, #e5484d); } .oc-pct.neu { background: var(--pct-flat, #8a93a6); }   /* same green / red / gray as the Bullish / Bearish / Neutral chips (.oc-chip2) */

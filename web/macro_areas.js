@@ -191,7 +191,7 @@
     var flat = Math.abs(n) < 0.001;
     var up = !flat && (inverted ? n < 0 : n > 0);
     var down = !flat && (inverted ? n > 0 : n < 0);
-    var bg = up ? '#1d9e75' : down ? '#d4537e' : '#888';
+    var bg = up ? 'var(--pct-up,#0f9d58)' : down ? 'var(--pct-down,#e5484d)' : 'var(--pct-flat,#8a93a6)';   // global %chg pill palette (:root in styles.css) -- 2026-10-19
     opts = opts || {};
     var altTxt = _chgMode === 'price' ? opts.price
                : _chgMode === 'dollar' ? opts.dollarChg
@@ -738,6 +738,8 @@
 
   function railAreaRow(area) {
     _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
+    // Perf mode does not apply to Major Markets / Sectors: they already carry the Day / 1WK / 3W / 3M columns, always on (2026-10-19, user-directed).
+    var perf = _perfOn && !_PERIOD_AREAS[area.area_key];
     var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     var prevGroup;
@@ -768,7 +770,7 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
-            (_perfOn ? '' : _oc(m.symbol, m.action, m.action_code)) +
+            (perf ? '' : _oc(m.symbol, m.action, m.action_code)) +
             // 2026-09-23, user-directed: "display the actual values in
             // small font between desc and the text Investable/Elevated" --
             // .msr-gauge-vix already existed in styles.css (9px, gray) but
@@ -778,7 +780,7 @@
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
-              (_perfOn ? _perfPills(m, area) :
+              (perf ? _perfPills(m, area) :
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
                            { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) })) +
@@ -801,7 +803,7 @@
       var leadCluster = isRates
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
-      var ocHtml = _perfOn ? '' : _oc(m.symbol, m.action, m.action_code);   // Perf mode gives the outlook-change slot's width to the name + pills (2026-10-19)
+      var ocHtml = perf ? '' : _oc(m.symbol, m.action, m.action_code);   // Perf mode gives the outlook-change slot's width to the name + pills (2026-10-19)
       var _rm = _relMember(m, area);   // sector minus SPX when the Sectors 'vs SPX' toggle is on
       return sep + (
         '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m, dispName)) + '">' +
@@ -818,7 +820,7 @@
           '</span>' +
           ocHtml +
           '<div class="msr-data-cluster">' +
-            (_perfOn ? _perfPills(m, area) :
+            (perf ? _perfPills(m, area) :
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
