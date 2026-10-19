@@ -299,3 +299,37 @@ After changing the window, quarterly weight or cut-offs, re-check the tag mix:
 | `web/actionable.js` | `macroCellHtml()`, `loadMacroBand()`, `_macroTooltip()` / `_buildMacroPopHtml()` |
 | `tests/test_quad_window.py` | Unit tests for the pure functions |
 | `docs/diagrams/macronet_formula.svg` | Pipeline picture (predates the window — not redrawn) |
+
+---
+
+## Market check — what the DATA says the Quad is (2026-10-19)
+
+The sections above are the *calendar* view (the declared Quad). This is the *market-confirmation* view: two meters, **growth** and
+**inflation** (each -100..+100), built from market factors, say which Quad prices are pointing to, independent of Hedgeye's declaration.
+Design: `DESIGN_SPEC_8.md`; source note: Hedgeye Early Look 2026-10-19 ("Macro Grind": in Quad 2 Bitcoin and QQQ are long together, in
+Quad 4 both get killed and bond yields break TRADE and TREND; commodities do not crash in Quad 2).
+
+- **Quad from two arrows:** 1 = growth up / inflation down, 2 = up / up, 3 = down / up, 4 = down / down.
+- **Factors** (`ref_quad_factor`, seeds `db/seeds_quad_factor.sql`): 14 rows in Hedgeye's three groups (risk & liquidity, inflation &
+  commodities, growth/credit/cyclicals). Each reads up to three checks: 3-week move (~Hedgeye TRADE), 3-month move (~TREND) and the
+  trend state (price vs `a_trend_value`, or the Hedgeye RR outlook). Up when 2+ checks agree up, down when 2+ agree down, else mixed;
+  fewer than 2 checks = missing. Two straight closes through the risk range = breakdown (down). `weight` 0 = shown, does not vote
+  (the dollar: Hedgeye is long USD *in* Quad 2). Every band and weight is a **guess**, tunable in the table.
+- **Meters:** weighted share of up minus down, x100; under 60% weight coverage = "not enough data". +/-20 = clear (with / against).
+- **Reference Quad** = the dashboard's 60-day Quad (`derive_risk_dial._dominant_quad`). **Transition risk** = the larger of the two
+  meters' distance from agreeing with it (0-100): under 40 HOLDING, 40-59 WATCH, 60+ TRANSITION. **Leaning toward** = flip every meter
+  that is not "with". **Market read** = one Quad when both meters are clear, two when one is unclear. The four **fit** bars (indicative,
+  `quad_check_fit_scale`) give every Quad a share. A new label shows only after `quad_check_confirm_days` (2) derive dates.
+- **Tables:** `drv_quad_factor` (one row per factor per date), `drv_quad_check` (one row per date). Idempotent per `as_of_date`.
+  Derive: `etl/derive_quad_check.py`, run in `derive_all` after the EOD-source warning step. Stale inputs post one `meta_warning`
+  (screen `dashboard`, code `QUAD_CHECK_STALE`).
+- **Screen:** "Market reads" card under the three Quad cards (left column) with the four bars and a check/cross on each declared card;
+  click = factor popover. `GET /api/cockpit/macro-week` carries `quad_check`; `GET /api/cockpit/quad-check` has the factors and history.
+  Code: `web/macro_week.js` (`marketBlock`, `popHtml`).
+- **Risk Dial:** gauge `quad_growth_break` (Quad 1/2 expected, growth meter <= -20 for 2 dates). Seeded **inactive** until the
+  forward-return test is run. Also fixed `_g_quad2_overheat` to compare outlooks case-insensitively (`drv_rr.outlook` mixes
+  BULLISH / Bullish).
+- **Limits:** ~8 months of daily closes; the monthly-Quad reference only exists from 2026-09, so the 60-day version cannot be replayed
+  yet. CRB is not tracked (equal-weight futures basket stands in); ISM/PMI are not loaded (copper vs gold, cyclicals vs defensives).
+  Re-test when there are 6+ months of monthly Quad rows (about 2027-03). Tests: `tests/test_quad_check.py`.
+

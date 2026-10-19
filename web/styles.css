@@ -4338,3 +4338,44 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    the rest of the chip is coloured by the Hedgeye outlook only. */
 .oc-pct { display: inline-block; padding: 0 5px; border-radius: 4px; color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 14px; }
 .oc-pct.bull { background: var(--pct-up, #0f9d58); } .oc-pct.bear { background: var(--pct-down, #e5484d); } .oc-pct.neu { background: var(--pct-flat, #8a93a6); }   /* same green / red / gray as the Bullish / Bearish / Neutral chips (.oc-chip2) */
+
+/* 2026-10-19 -- Quad market check: "Market reads" card under the three declared Quad cards (four small bars) + factor popover. */
+#quadCardsPanel { flex-wrap: wrap; }
+#quadCardsPanel .qc-ck { margin-left: 5px; font-size: 11px; font-weight: 700; }
+#quadCardsPanel .qc-ck.yes { color: #0f9d58; } #quadCardsPanel .qc-ck.no { color: #e5484d; }
+.qm { flex: 0 0 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px 4px; background: var(--card-bg); cursor: pointer; }
+.qm:hover { background: var(--bg-2, #f6f7fb); }
+.qm-head { font-size: 11px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.qm-read { font-weight: 700; }
+.qm-go { margin-left: auto; color: var(--text-3, #9ca3af); }
+.qm-tag { font-size: 9.5px; font-weight: 700; padding: 0 6px; border-radius: 999px; line-height: 15px; background: #eef0f5; color: #4b5563; }
+.qm-tag.qm-watch { background: #fef3c7; color: #92400e; } .qm-tag.qm-transition { background: #ffedd5; color: #c2410c; }
+.qm-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 3px; }
+.qm-bar { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--text-3, #6b7280); opacity: .75; }
+.qm-bar.lead { opacity: 1; font-weight: 700; color: var(--text-2, #374151); }
+.qm-bt { flex: 1; height: 4px; background: var(--border, #e5e7eb); border-radius: 2px; overflow: hidden; display: block; }
+.qm-bt i { display: block; height: 100%; background: var(--text-3, #9ca3af); }
+.qm-bar.q1 .qm-bt i { background: var(--quad1, #4f7cff); } .qm-bar.q2 .qm-bt i { background: var(--quad2, #1d9e75); }
+.qm-bar.q3 .qm-bt i { background: var(--quad3, #e08a1a); } .qm-bar.q4 .qm-bt i { background: var(--quad4, #d4537e); }
+.qm-pop { position: fixed; z-index: 400; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(680px, 94vw); background: var(--card-bg, #fff); border: 1px solid var(--border, #d6d9e0); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.18); font-size: 11px; max-height: 86vh; overflow: auto; }
+.qm-pop[hidden] { display: none; }
+.qm-pop .mw-tbl th:nth-child(n+2), .qm-pop .mw-tbl td:nth-child(n+2) { text-align: center; }
+.qm-pop-h { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.qm-m { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+.qm-mn { width: 62px; font-weight: 600; }
+.qm-mt { position: relative; flex: 0 0 180px; height: 8px; background: var(--border, #e5e7eb); border-radius: 4px; }
+.qm-mt::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text-3, #9ca3af); }
+.qm-mt i { position: absolute; top: 0; bottom: 0; border-radius: 4px; } .qm-mt i.pos { background: #0f9d58; } .qm-mt i.neg { background: #e5484d; }
+.qm-mv { width: 34px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.qm-risk { margin: 6px 0 8px; display: flex; align-items: flex-end; gap: 8px; }
+.qm-spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 22px; margin-left: auto; }
+.qm-spark i { display: block; width: 4px; background: #f59e0b; border-radius: 1px; }
+.qm-fam td { font-weight: 700; background: var(--bg-2, #f4f5f9); }
+.qm-conf { margin-top: 8px; color: var(--text-2, #4b5563); line-height: 1.5; }
+
+.qm-help { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border, #e5e7eb); font-size: 10.5px; line-height: 1.5; color: var(--text-2, #4b5563); }
+.qm-help > div { margin-top: 4px; }
+.qm-help-h { font-weight: 700; font-size: 11px; color: var(--text-1, #111827); margin-top: 0 !important; }
+.qm-pop-h { position: relative; padding-right: 26px; }
+.qm-x { position: absolute; right: 0; top: -2px; border: none; background: none; font-size: 14px; line-height: 1; cursor: pointer; color: var(--text-3, #6b7280); }
+.qm-x:hover { color: var(--text-1, #111827); }

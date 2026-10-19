@@ -3685,6 +3685,16 @@ def _derive_all_impl(session: Session, as_of_date: date,
         log.exception("warn_missing_eod_sources failed (continuing)")
         try: session.rollback()
         except Exception: pass
+    # 2026-10-19: Quad market check (growth + inflation meters from market factors -> which Quad the DATA points to; see
+    # etl/derive_quad_check.py, DESIGN_SPEC_8.md). Needs hist_td / hist_macro / drv_rr / drv_technicals. Advisory, non-critical.
+    try:
+        from etl.derive_quad_check import derive_quad_check
+        counts["drv_quad_check"] = _safe("drv_quad_check", derive_quad_check)
+    except Exception:
+        log.exception("derive_quad_check import failed (non-fatal)")
+        counts["drv_quad_check"] = 0
+        try: session.rollback()
+        except Exception: pass
     # drv_ma is now a VIEW — no direct write needed
     # drv_cat_atomic_input — Python deriver (JF..NP + QH/QI).
     # Must run AFTER drv_quote (Step-1 SELECT pulls last_price from there).

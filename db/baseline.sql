@@ -9340,3 +9340,75 @@ CREATE TABLE IF NOT EXISTS ref_perf_base (
     year_base_date     DATE, year_base_close     NUMERIC,
     fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- =====================================================
+-- 2026-10-19 -- Quad market check (design: DESIGN_SPEC_8.md; docs/quad_design.md "Market check").
+-- Two meters (growth, inflation) built from market factors say which Quad the DATA points to, independent of Hedgeye's
+-- declared Quad. ref_quad_factor = the factor list (all thresholds / weights tunable); drv_quad_factor = one row per factor per
+-- date; drv_quad_check = one row per date (meters, reads, 4-Quad fit, label). Idempotent: DELETE WHERE as_of_date = D, INSERT.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_quad_factor (
+    factor_key       TEXT PRIMARY KEY,
+    label            TEXT NOT NULL,
+    family           INT  NOT NULL,            -- 1 risk & liquidity | 2 inflation & commodities | 3 growth, credit & cyclicals
+    meter            TEXT NOT NULL,            -- growth | inflation
+    direction        INT  NOT NULL DEFAULT 1,  -- sign applied to the 3W / 3M move checks (-1 = upside down)
+    trend_direction  INT  NOT NULL DEFAULT 1,  -- sign applied to the trend check
+    kind             TEXT NOT NULL,            -- price | relative | basket | fred_change | claims
+    symbols          TEXT,                     -- comma list (tos_symbol or FRED series id)
+    minus_symbols    TEXT,                     -- relative: the symbols subtracted
+    band_3w          NUMERIC,                  -- flat band for the 3-week move (% / pts / bp)
+    band_3m          NUMERIC,                  -- flat band for the 3-month move
+    trend_source     TEXT NOT NULL DEFAULT 'none',   -- technicals | rr_outlook | none
+    trend_symbol     TEXT,
+    weight           NUMERIC NOT NULL DEFAULT 1,     -- 0 = shown, does not vote
+    min_checks       INT NOT NULL DEFAULT 2,
+    enabled          BOOL NOT NULL DEFAULT TRUE,
+    sort_order       INT NOT NULL DEFAULT 0,
+    notes            TEXT
+);
+
+CREATE TABLE IF NOT EXISTS drv_quad_factor (
+    as_of_date   DATE NOT NULL,
+    factor_key   TEXT NOT NULL,
+    family       INT,
+    meter        TEXT,
+    state        INT,            -- +1 / 0 / -1 effect on its meter; NULL = missing or stale
+    ret_3w       NUMERIC,
+    ret_3m       NUMERIC,
+    trend_state  INT,
+    breakdown    BOOL NOT NULL DEFAULT FALSE,
+    stale_since  DATE,
+    weight       NUMERIC,
+    note         TEXT,
+    derived_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, factor_key)
+);
+
+CREATE TABLE IF NOT EXISTS drv_quad_check (
+    as_of_date      DATE PRIMARY KEY,
+    ref_quad        INT,
+    growth_score    NUMERIC,
+    inflation_score NUMERIC,
+    growth_cov      NUMERIC,
+    inflation_cov   NUMERIC,
+    growth_read     TEXT,           -- with | unclear | against (vs the reference Quad) | NULL
+    inflation_read  TEXT,
+    risk            NUMERIC,        -- 0-100 transition risk
+    label_raw       TEXT,           -- HOLDING | WATCH | TRANSITION | NO_DATA | NO_REF
+    label_shown     TEXT,           -- after the confirm days
+    target_quad     INT,
+    market_quads    INT[],
+    quad_fit        JSONB,          -- {"1": pct, "2": pct, "3": pct, "4": pct}, indicative
+    watch_days      INT,            -- consecutive derive dates with risk >= 40, today included
+    detail          JSONB,
+    derived_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('quad_check_unclear_band',  '20', 'Quad market check: a meter within +/- this is "unclear"'),
+    ('quad_check_min_coverage',  '0.6', 'Quad market check: share of a meter''s weight that must have data, else "not enough data"'),
+    ('quad_check_confirm_days',  '2', 'Quad market check: a changed label must hold this many derive dates before it shows; 0 = off'),
+    ('quad_check_fit_scale',     '40', 'Quad market check: meter points at which a Quad-fit leg reaches about 73% (indicative bars)')
+ON CONFLICT (setting_name) DO NOTHING;

@@ -242,6 +242,127 @@
       '</div><div class="mw-list-side"><div class="mw-side-h">Next 7 days</div>' + evs + '</div></div>';
   }
 
+  // ---- Quad market check (2026-10-19): what the market DATA says the Quad is, as four small bars + a click-through factor list.
+  // Reads quad_check from /api/cockpit/macro-week and /api/cockpit/quad-check (etl/derive_quad_check.py, DESIGN_SPEC_8.md). Display only.
+  var QM_WORD = { HOLDING: 'holding', WATCH: 'watch', TRANSITION: 'transition likely', NO_DATA: 'not enough data', NO_REF: '' };
+  function marketBlock(data) {
+    var m = data.quad_check;
+    if (!m) return '';
+    if (m.fit == null) return '<div class="qm" id="qmBlock"><b>Market reads</b> <span class="mw-dim">not enough data</span></div>';
+    var qs = m.market_quads || [];
+    var read = qs.length === 1 ? 'Quad ' + qs[0] : qs.length >= 4 ? 'unclear' : 'Quad ' + qs.join(' or ');
+    var word = QM_WORD[m.label] || '';
+    var cap = word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+    var tag = word ? '<span class="qm-tag qm-' + String(m.label).toLowerCase() + '" title="Transition risk 0-100 and its label: under 40 Holding, 40-59 Watch, 60 and over Transition likely">' +
+      (m.risk != null ? Math.round(m.risk) + ' - ' : '') + cap + '</span>' : '';
+    var bars = [1, 2, 3, 4].map(function (k) {
+      var pct = Number((m.fit || {})[String(k)] || 0);
+      return '<span class="qm-bar q' + k + (qs.indexOf(k) >= 0 ? ' lead' : '') + '"><span class="qm-bl">Q' + k + '</span><span class="qm-bt"><i style="width:' +
+        Math.max(2, Math.min(100, pct)) + '%"></i></span><span class="qm-bp">' + pct + '</span></span>';
+    }).join('');
+    var lines = ['Market check -- what the data says the Quad is (indicative)'].concat((m.lines || []).map(function (l) { return '• ' + l; }));
+    lines.push('• Bars: fit of each Quad to the growth and inflation meters');
+    if (m.target_quad && m.ref_quad && m.target_quad !== m.ref_quad) lines.push('• Leaning from Quad ' + m.ref_quad + ' toward Quad ' + m.target_quad);
+    lines.push('Click for the factor list');
+    return '<div class="qm" id="qmBlock" title="' + tip(lines) + '"><div class="qm-head"><b>Market reads</b> <span class="qm-read">' + read + '</span> ' + tag +
+      '<span class="qm-go">▸</span></div><div class="qm-bars">' + bars + '</div></div>';
+  }
+
+  function fmtMove(v, unit) {
+    if (v == null) return '–';
+    var sg = v > 0 ? '+' : '';
+    return unit === 'bp' ? sg + Math.round(v) + ' bp' : unit === 'pts' ? sg + v.toFixed(1) + ' pts' : sg + v.toFixed(1) + '%';
+  }
+  // Colors a check by the vote it casts (same band + direction rule as the Says column), not by the raw sign of the move.
+  function voteCls(v) { return v == null ? '' : v > 0 ? 'mw-bull' : v < 0 ? 'mw-bear' : 'mw-amber'; }
+  function moveCls(mv, band, dirn) {
+    if (mv == null || band == null) return '';
+    return voteCls((mv > band ? 1 : mv < -band ? -1 : 0) * (dirn || 1));
+  }
+  function saysCell(f) {
+    if (f.stale_since) return '<span class="mw-dim" title="stale since ' + esc(f.stale_since) + '">– stale</span>';
+    if (f.state == null) return '<span class="mw-dim">–</span>';
+    return f.state > 0 ? '<span class="mw-bull">▲ up</span>' : f.state < 0 ? '<span class="mw-bear">▼ down</span>' : '<span class="mw-amber">◆ mixed</span>';
+  }
+  var FAMILIES = { 1: 'Risk & liquidity', 2: 'Inflation & commodities', 3: 'Growth, credit & cyclicals' };
+  function popHtml(d) {
+    var m = d.summary;
+    if (!m) return '<div class="mw-dim">No Quad market check yet.</div>';
+    var meterRow = function (name, v, rd) {
+      var w = v == null ? 0 : Math.min(50, Math.abs(v) / 2);
+      return '<div class="qm-m"><span class="qm-mn">' + name + '</span><span class="qm-mt"><i class="' + (v != null && v < 0 ? 'neg' : 'pos') + '" style="' +
+        (v != null && v < 0 ? 'right:50%;' : 'left:50%;') + 'width:' + w + '%"></i></span><span class="qm-mv">' + (v == null ? 'n/a' : (v > 0 ? '+' : '') + v) +
+        '</span><span class="mw-dim">' + (rd || '') + '</span></div>';
+    };
+    var hist = (d.history || []).map(function (h) { return h.risk; });
+    var spark = hist.length > 1 ? '<span class="qm-spark">' + hist.map(function (r) {
+      return '<i style="height:' + Math.max(2, Math.round((r == null ? 0 : r) / 100 * 22)) + 'px"></i>'; }).join('') + '</span>' : '';
+    var body = '';
+    [1, 2, 3].forEach(function (fam) {
+      var rows = (d.factors || []).filter(function (f) { return f.family === fam; });
+      if (!rows.length) return;
+      body += '<tr class="qm-fam"><td colspan="5">' + fam + '. ' + FAMILIES[fam] + '</td></tr>' + rows.map(function (f) {
+        var tr = f.trend_state == null ? 'n/a' : f.trend_state > 0 ? 'above / bullish' : f.trend_state < 0 ? 'below / bearish' : 'flat';
+        var t = [f.label, f.note ? '• ' + f.note : '', f.breakdown ? '• Broke through its risk range two days in a row' : ''].filter(Boolean);
+        return '<tr title="' + tip(t) + '"><td>' + esc(f.label) + '</td><td>' + saysCell(f) + '</td><td class="mw-num ' + moveCls(f.ret_3w, f.band_3w, f.direction) + '">' + fmtMove(f.ret_3w, f.unit) +
+          '</td><td class="mw-num ' + moveCls(f.ret_3m, f.band_3m, f.direction) + '">' + fmtMove(f.ret_3m, f.unit) + '</td><td><span class="' + voteCls(f.trend_state == null ? null : f.trend_state * (f.trend_direction || 1)) + '">' + tr + '</span> <span class="mw-dim">· ' + (f.weight === 0 ? 'shown only' : f.meter) + '</span></td></tr>';
+      }).join('');
+    });
+    var rq = m.ref_quad;
+    return '<div class="qm-pop-h"><button type="button" class="qm-x" title="Close (Esc)" onclick="document.getElementById(\'qmPop\').hidden = true;">\u2715</button><b>Market check' + (rq ? ' vs Quad ' + rq + ' (dashboard 60-day Quad)' : '') + '</b><span class="mw-dim">as of ' + esc(d.as_of) + ' · indicative, thresholds are guesses</span></div>' +
+      meterRow('Growth', m.growth, m.growth_read) + meterRow('Inflation', m.inflation, m.inflation_read) +
+      '<div class="qm-risk">Transition risk <b>' + (m.risk == null ? 'n/a' : Math.round(m.risk) + ' / 100') + '</b>' +
+        (m.target_quad && rq && m.target_quad !== rq ? ' — leaning toward Quad ' + m.target_quad : '') +
+        (m.watch_days >= 2 ? ' — on watch ' + m.watch_days + ' days' : '') + spark + '</div>' +
+      '<table class="mw-tbl"><thead><tr><th title="The market series behind the read, grouped like Hedgeye\'s note">Factor</th>' +
+      '<th title="Effect on its meter: up, down or mixed. Credit spread widening reads down because it is bad for growth">Says</th>' +
+      '<th title="Move over the last 3 weeks (about Hedgeye TRADE duration)">3W</th><th title="Move over the last 3 months (about Hedgeye TREND duration)">3M</th>' +
+      '<th title="Is it above or below its trend line, and which meter it feeds. Shown only = displayed, does not vote">Trend · counts for</th></tr></thead><tbody>' + body + '</tbody></table>' +
+      '<div class="qm-conf"><b>What would confirm a move from Quad ' + (rq || '?') + '</b>' +
+      '<div>• Growth turning down: growth meter at or below -20 while inflation stays up (credit, cyclicals, copper/gold, QQQ, yields rolling over)</div>' +
+      '<div>• To Quad 4: both meters at or below -20 (commodities, oil and energy falling; Bitcoin and QQQ breaking down; yields breaking TRADE and TREND)</div>' +
+      '<div>• Inflation turning down: inflation meter at or below -20 while growth stays up</div></div>' + helpHtml();
+  }
+  // Plain-English guide shown at the bottom of the popup.
+  function helpHtml() {
+    return '<div class="qm-help"><div class="qm-help-h">How to read this</div>' +
+      '<div><b>What it is.</b> A Quad is two arrows: is growth speeding up or slowing down, and is inflation speeding up or slowing down. ' +
+        'Quad 1 = growth up, inflation down. Quad 2 = both up. Quad 3 = growth down, inflation up. Quad 4 = both down. This card reads those two arrows from market prices, ' +
+        'independent of the Quad Hedgeye has declared.</div>' +
+      '<div><b>Growth and Inflation meters.</b> Each runs from -100 to +100 (center tick = 0). Right/green = rising, left/red = falling. Between -20 and +20 is "unclear". ' +
+        '"With" means the meter supports the Quad we are in, "against" means it contradicts it.</div>' +
+      '<div><b>The number and label (e.g. 47 - Watch).</b> Transition risk, 0 to 100: how far the meters are from supporting the current Quad. ' +
+        'Under 40 = Holding. 40 to 59 = Watch (nothing has broken, something is wobbling). 60 or more = Transition likely (a meter has turned against the Quad). ' +
+        '"Leaning toward" is the Quad you would land in if the unclear or against meters flipped.</div>' +
+      '<div><b>The four bars.</b> How well each Quad fits the two meters; they add up to about 100. Bold = the leading Quad(s). Indicative only.</div>' +
+      '<div><b>Check / cross on the Quad cards.</b> ✓ = the market read fits that declared Quad, ✗ = it does not. Shown on US Quarterly and US Monthly only (the read is built from US prices, so it does not apply to the Global Quad).</div>' +
+      '<div><b>The factor table.</b> Each row is one market series. "Says" is its effect on its meter (a widening credit spread reads down, because it is bad for growth). ' +
+        '3W is the 3-week move (about Hedgeye\'s TRADE view), 3M the 3-month move (about their TREND view). A factor is up when at least two of its checks (3W, 3M, trend) agree. ' +
+        '"Shown only" rows are displayed but do not count.</div>' +
+      '<div><b>Watch the days.</b> "On watch N days" counts days in a row at 40 or above. Hedgeye: one bad week is a counter-trend move; weeks 2 and 3 are what matter.</div>' +
+      '<div class="mw-dim"><b>Limits.</b> Thresholds and weights are guesses; there is about 8 months of price history; the CRB index is not tracked (a commodity basket stands in); ' +
+        'ISM/PMI are not loaded (copper vs gold and cyclicals vs defensives stand in). Treat this as a structured checklist, not a trade signal.</div></div>';
+  }
+  function toggleQuadPop() {
+    var pop = document.getElementById('qmPop');
+    if (pop && !pop.hidden) { pop.hidden = true; return; }
+    fetch('/api/cockpit/quad-check' + (currentDate() ? '?date=' + encodeURIComponent(currentDate()) : '')).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (d) {
+      if (!pop) {
+        pop = document.createElement('div'); pop.id = 'qmPop'; pop.className = 'qm-pop'; document.body.appendChild(pop);
+        // Closes when the mouse moves out of it (2026-10-19, user-directed); moving back onto the card keeps it open.
+        pop.addEventListener('mouseleave', function (e) {
+          if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('#qmBlock')) return;
+          pop.hidden = true;
+        });
+      }
+      pop.innerHTML = popHtml(d);
+      pop.hidden = false;   // centered on the screen by CSS (.qm-pop)
+    }).catch(function () {});
+  }
+
   // Three Quad cards on the left column (index.html #quadCardsPanel), below MKT SIT.
   function renderQuadCards(data) {
     var el = document.getElementById('quadCardsPanel');
@@ -253,13 +374,21 @@
     var mon = isNaN(d) ? '' : M[d.getMonth()] + '-' + yy(d.getFullYear());
     var gm = /Q(\d)\s+(\d{4})/.exec(q.global_label || '');
     var gq = gm ? gm[1] + 'Q' + yy(gm[2]) + 'E' : qtr;
-    function card(label, quad, period) {
+    var ag = (data.quad_check && data.quad_check.agree) || {};
+    function mark(k) {   // does the market's own read fit this declared Quad?
+      var v = ag[k];
+      return v == null ? '' : '<span class="qc-ck ' + (v ? 'yes' : 'no') + '" title="' + esc(v ? 'The market read fits this Quad' : 'The market read does not fit this Quad') + '">' + (v ? '\u2713' : '\u2717') + '</span>';
+    }
+    function card(label, quad, period, key) {
       var n = /(\d)/.exec(quad || '');
       return '<div class="qc' + (n ? ' q' + n[1] : '') + '"><div class="qc-lbl">' + label + '</div>' +
-        '<div class="qc-val">' + (n ? 'Quad ' + n[1] + ' ' + period : '--') + '</div></div>';
+        '<div class="qc-val">' + (n ? 'Quad ' + n[1] + ' ' + period : '--') + mark(key) + '</div></div>';
     }
-    el.innerHTML = card('US Quarterly', q.quarterly, qtr) + card('US Monthly', q.monthly, mon) + card('Global', q.global, gq);
+    el.innerHTML = card('US Quarterly', q.quarterly, qtr, 'quarterly') + card('US Monthly', q.monthly, mon, 'monthly') +
+      card('Global', q.global, gq, '')   /* no check/cross: the market read is built from US prices, so it does not apply to the Global Quad */ + marketBlock(data);
     el.hidden = false;
+    var qm = document.getElementById('qmBlock');
+    if (qm) qm.addEventListener('click', toggleQuadPop);
   }
 
   function render(data) {
@@ -334,7 +463,13 @@
   function init() {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeList(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closeList(); var qp = document.getElementById('qmPop'); if (qp) qp.hidden = true; }
+    });
+    document.addEventListener('mousedown', function (e) {
+      var qp = document.getElementById('qmPop');
+      if (qp && !qp.hidden && !e.target.closest('#qmPop') && !e.target.closest('#qmBlock')) qp.hidden = true;
+    });
     document.addEventListener('mousedown', function (e) {
       if (!e.target.closest('#macroWeekList') && !e.target.closest('#mwBookBtn')) closeList();
     });

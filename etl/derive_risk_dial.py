@@ -293,6 +293,10 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "pct_above_sma50": extra.get("pct_above_sma50"),
         "pct_above_sma50_5d_chg": extra.get("pct_above_sma50_5d_chg"),
         "market_read": _build_market_read_context(session, as_of_date),
+        # 2026-10-19 -- Quad market check (etl/derive_quad_check.py): newest 3 rows up to D, for _g_quad_growth_break.
+        "quad_check_hist": [dict(r) for r in session.execute(text(
+            "SELECT as_of_date, ref_quad, growth_score FROM drv_quad_check WHERE as_of_date <= :d "
+            "ORDER BY as_of_date DESC LIMIT 3"), {"d": as_of_date}).mappings().all()],
     }
 
 
@@ -1056,8 +1060,8 @@ def _g_quad2_overheat(ctx):
     (latest_date, latest_val), (_prior_date, prior_val) = nowcast[0], nowcast[1]
     inflation_hot = latest_val > prior_val
 
-    rates_hot = tnx_outlook == "BULLISH" and tyx_outlook == "BULLISH"
-    energy_hot = wti_outlook == "BULLISH"
+    rates_hot = str(tnx_outlook).upper() == "BULLISH" and str(tyx_outlook).upper() == "BULLISH"   # drv_rr.outlook mixes BULLISH / Bullish
+    energy_hot = str(wti_outlook).upper() == "BULLISH"
 
     fired = rates_hot and energy_hot and inflation_hot
     parts = (f"10Y {tnx_outlook or 'n/a'}/30Y {tyx_outlook or 'n/a'}, "
@@ -1072,7 +1076,26 @@ def _g_quad2_overheat(ctx):
     return fired, latest_val, detail
 
 
+def _g_quad_growth_break(ctx):
+    """2026-10-19 -- Growth signals breaking the Quad: the reference (60-day) Quad expects growth UP (Quad 1 or 2) but the market
+    growth meter (drv_quad_check) is at or below -20 for the confirm days. The risk-off half of a Quad transition only; other
+    directions are not risk for sizing. Ships inactive (ref_risk_gauge.is_active = FALSE) until the forward-return test is run."""
+    hist = ctx.get("quad_check_hist") or []
+    if not hist or hist[0].get("growth_score") is None or hist[0].get("ref_quad") is None:
+        return None, None, "Quad market check unavailable"
+    ref = hist[0]["ref_quad"]
+    if ref not in (1, 2):
+        return False, float(hist[0]["growth_score"]), f"Quad {ref}: growth is already expected down"
+    need = 2   # confirm days (quad_check_confirm_days default)
+    recent = [float(h["growth_score"]) for h in hist[:need] if h.get("growth_score") is not None]
+    fired = len(recent) >= need and all(v <= -20 for v in recent)
+    g = float(hist[0]["growth_score"])
+    return fired, g, (f"Quad {ref} expects growth up; market growth meter {g:+.0f}" +
+                      (" (at or below -20 for 2 dates)" if fired else " (not broken)"))
+
+
 GAUGES: list[tuple[str, Callable]] = [
+    ("quad_growth_break", _g_quad_growth_break),
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),
     ("vix_spx_divergence", _g_vix_spx_divergence),

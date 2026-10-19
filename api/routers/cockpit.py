@@ -2472,6 +2472,40 @@ def _mw_he_state(by_source: dict) -> tuple:
     return glyphs, bull, cov, state
 
 
+# 2026-10-19 -- Quad market check (etl/derive_quad_check.py, DESIGN_SPEC_8.md): what the market data says the Quad is, next to the
+# declared Quad chips. Display only.
+def _quad_num(label) -> Optional[int]:
+    import re as _re
+    m = _re.search(r"(\d)", str(label or ""))
+    return int(m.group(1)) if m else None
+
+
+def _quad_check_summary(d, chips: dict) -> Optional[dict]:
+    with session_scope() as s:
+        r = s.execute(text(
+            "SELECT * FROM drv_quad_check WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quad_check WHERE as_of_date <= :d)"),
+            {"d": d}).mappings().first()
+    if not r:
+        return None
+    mq = list(r["market_quads"] or [])
+    agree = {}
+    for k in ("monthly", "quarterly", "global"):
+        n = _quad_num((chips or {}).get(k))
+        agree[k] = (n in mq) if (n and mq) else None
+    det = r["detail"] or {}
+    return {
+        "as_of": r["as_of_date"].isoformat(),
+        "label": r["label_shown"] or r["label_raw"], "label_raw": r["label_raw"],
+        "risk": float(r["risk"]) if r["risk"] is not None else None,
+        "ref_quad": r["ref_quad"], "target_quad": r["target_quad"], "market_quads": mq,
+        "growth": float(r["growth_score"]) if r["growth_score"] is not None else None,
+        "inflation": float(r["inflation_score"]) if r["inflation_score"] is not None else None,
+        "growth_read": r["growth_read"], "inflation_read": r["inflation_read"],
+        "fit": r["quad_fit"], "watch_days": r["watch_days"], "lines": det.get("lines") or [],
+        "stale": det.get("stale") or [], "agree": agree,
+    }
+
+
 @router.get("/api/cockpit/macro-week")
 def get_macro_week(date: Optional[str] = Query(None)):
     from api._helpers import _get_ref_setting, rr_pos
@@ -2629,6 +2663,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
                                  -(h["value"] or 0)))
     return {
         "as_of": d.isoformat(), "quad": quad, "chips": chips, "events": events,
+        "quad_check": _quad_check_summary(d, quad),
         "holdings": holdings, "hot_pct": hot_pct,
         "counts": {k: sum(1 for h in holdings if h["verdict"] == k) for k in order},
         "hot_count": sum(1 for h in holdings if h["hot"]),
@@ -2725,7 +2760,7 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
         if not anchor:
             return {"as_of": str(d), "pills": []}
         rows = s.execute(text(
-            "SELECT q.tos_symbol, q.pct_change, q.last_price, r.outlook FROM drv_quote q "
+            "SELECT q.tos_symbol, q.pct_change, q.last_price, q.open_price, q.high_price, q.low_price, r.outlook FROM drv_quote q "
             "LEFT JOIN drv_rr r ON r.tos_symbol = q.tos_symbol AND r.as_of_date = q.as_of_date "
             "WHERE q.as_of_date = :a AND q.tos_symbol = ANY(:syms)"), {"a": anchor, "syms": syms}).mappings().all()
     by = {r["tos_symbol"]: r for r in rows}
@@ -2737,5 +2772,49 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
         pills.append({"label": label, "symbol": sym,
                       "pct_change": float(r["pct_change"]) if r and r["pct_change"] is not None else None,
                       "last_price": float(r["last_price"]) if r and r["last_price"] is not None else None,
+                      "open_price": float(r["open_price"]) if r and r["open_price"] is not None else None,
+                      "high_price": float(r["high_price"]) if r and r["high_price"] is not None else None,
+                      "low_price": float(r["low_price"]) if r and r["low_price"] is not None else None,
                       "outlook": ol})
     return {"as_of": anchor.isoformat(), "pills": pills}
+
+
+@router.get("/api/cockpit/quad-check")
+def get_quad_check(date: Optional[str] = Query(None)) -> dict:
+    """Quad market check detail: the summary, every factor row (grouped by family in the UI) and the last 20 days of risk."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        chips = _mw_quad_chips(s, d)
+        dd = s.execute(text("SELECT MAX(as_of_date) FROM drv_quad_check WHERE as_of_date <= :d"), {"d": d}).scalar()
+        if not dd:
+            return {"as_of": d.isoformat(), "summary": None, "factors": [], "history": []}
+        facs = s.execute(text("""
+            SELECT f.factor_key, f.label, f.family, f.meter, f.kind, f.notes, f.sort_order,
+                   f.band_3w, f.band_3m, f.direction, f.trend_direction,
+                   x.state, x.ret_3w, x.ret_3m, x.trend_state, x.breakdown, x.stale_since, x.weight, x.note
+              FROM ref_quad_factor f LEFT JOIN drv_quad_factor x
+                ON x.factor_key = f.factor_key AND x.as_of_date = :d
+             WHERE f.enabled ORDER BY f.family, f.sort_order"""), {"d": dd}).mappings().all()
+        hist = s.execute(text(
+            "SELECT as_of_date, risk, growth_score, inflation_score FROM drv_quad_check WHERE as_of_date <= :d "
+            "ORDER BY as_of_date DESC LIMIT 20"), {"d": dd}).mappings().all()
+    unit = {"fred_change": "bp", "relative": "pts", "claims": "%"}
+    return {
+        "as_of": dd.isoformat(),
+        "summary": _quad_check_summary(d, chips),
+        "factors": [{
+            "key": f["factor_key"], "label": f["label"], "family": f["family"], "meter": f["meter"],
+            "unit": unit.get(f["kind"], "%"), "kind": f["kind"], "weight": float(f["weight"]) if f["weight"] is not None else None,
+            "state": f["state"], "ret_3w": float(f["ret_3w"]) if f["ret_3w"] is not None else None,
+            "ret_3m": float(f["ret_3m"]) if f["ret_3m"] is not None else None,
+            "trend_state": f["trend_state"], "breakdown": bool(f["breakdown"]),
+            "band_3w": float(f["band_3w"]) if f["band_3w"] is not None else None,
+            "band_3m": float(f["band_3m"]) if f["band_3m"] is not None else None,
+            "direction": f["direction"], "trend_direction": f["trend_direction"],
+            "stale_since": f["stale_since"].isoformat() if f["stale_since"] else None,
+            "note": f["note"] or f["notes"],
+        } for f in facs],
+        "history": [{"d": h["as_of_date"].isoformat(), "risk": float(h["risk"]) if h["risk"] is not None else None,
+                     "g": float(h["growth_score"]) if h["growth_score"] is not None else None,
+                     "i": float(h["inflation_score"]) if h["inflation_score"] is not None else None} for h in reversed(hist)],
+    }
