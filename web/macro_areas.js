@@ -201,7 +201,8 @@
     var txt = altTxt != null ? altTxt
             : flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
     var cls = 'msr-chg' + (altTxt != null ? ' msr-chg-alt' : '');
-    var ttl = (_chgMode === 'held' && opts.heldTip) ? ' title="' + esc(opts.heldTip) + '"' : '';
+    var ttl = (_chgMode === 'held' && opts.heldTip) ? ' title="' + esc(opts.heldTip) + '"'
+            : (opts.tip ? ' title="' + esc(opts.tip) + '"' : '');
     return '<span class="' + cls + '" style="background:' + bg + ';"' + ttl + '>' + esc(txt) + '</span>';
   }
 
@@ -221,6 +222,26 @@
   // convention: price lives in the hover, only %chg is a visible chip).
   // Includes both the friendly name (if the row is showing one) and the raw
   // symbol, so a renamed row like "Gold" doesn't lose its "/GC" identity.
+  // 2026-10-19, user-directed: hovering a %chg pill lists the day's Open / High / Low / Current (plus the change and the prior close).
+  // Curve members (10Y / 30Y) are stored x10 -- shown as a real yield %.
+  function _ohlcTip(m, displayName) {
+    var NL = String.fromCharCode(10), curve = m.role === 'curve';
+    var f = function (v) {
+      if (v === null || v === undefined || !isFinite(v)) return '--';
+      var x = curve ? v / 10 : v;
+      return curve ? x.toFixed(3) + '%' : x.toLocaleString('en-US', { minimumFractionDigits: Math.abs(x) >= 1000 ? 1 : 2, maximumFractionDigits: Math.abs(x) >= 1000 ? 1 : 2 });
+    };
+    var L = [(displayName && m.symbol && displayName !== m.symbol) ? displayName + ' (' + m.symbol + ')' : (m.symbol || '')];
+    var pc = m.pct_change;
+    L.push('• Day change: ' + (pc == null ? '--' : (pc > 0 ? '+' : '') + Number(pc).toFixed(2) + '%') +
+           (m.net_chng != null ? ' (' + (m.net_chng > 0 ? '+' : '') + f(m.net_chng) + ')' : ''));
+    L.push('• Open: ' + f(m.open));
+    L.push('• High: ' + f(m.high));
+    L.push('• Low: ' + f(m.low));
+    L.push('• Current: ' + f(m.last));
+    if (m.last != null && m.net_chng != null) L.push('• Prev close: ' + f(m.last - m.net_chng));
+    return L.join(NL);
+  }
   function _rowTitle(m, displayName) {
     var parts = [];
     if (displayName && m.symbol && displayName !== m.symbol) {
@@ -676,8 +697,7 @@
   // 'Perf' mode: the row's data cluster is just the four period pills (Day, 1WK, 3W, 3M), whatever the panel.
   function _perfPills(m, area) {
     var rm = _relMember(m, area);
-    var day = _chgChipHtml(rm.pct_change, m.inverted, { pctOnly: true })
-      .replace('<span class="msr-chg', '<span title="Day % (vs the last close)" class="msr-chg');
+    var day = _chgChipHtml(rm.pct_change, m.inverted, { pctOnly: true, tip: _ohlcTip(m) });
     return day + _periodCols(rm, area, true);
   }
 
@@ -783,7 +803,7 @@
               (perf ? _perfPills(m, area) :
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
-                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) })) +
+                           { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area), tip: _ohlcTip(m) })) +
             '</div>' +
           '</div>'
         );
@@ -826,7 +846,7 @@
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
             _candleHtml(m) +
             _chgChipHtml(_rm.pct_change, m.inverted,
-                         { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area) }) +
+                         { price: _chipPriceTxt(m), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area), tip: _ohlcTip(m, dispName) }) +
             _periodCols(_rm, area)) +
           '</div>' +
         '</div>'

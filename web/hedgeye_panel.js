@@ -241,6 +241,11 @@
 
   function earlyLookHtml(el) {
     if (!el || !el.takeaways) return '';
+    // 2026-10-19: the email's "suggested follow-up" buttons ("Make the Quad2 thesis more direct", "Clarify the positioning takeaway")
+    // get glued onto the end of the stored text -- not part of the note, so drop them.
+    el = Object.assign({}, el, { takeaways: String(el.takeaways)
+      .replace(/\s*Make the .{0,80}?direct\s*Clarify the positioning takeaway\s*$/i, '')
+      .replace(/\s*Clarify the positioning takeaway\s*$/i, '') });
     // Current parser joins takeaway paragraphs with "\n• "; older stored
     // notes instead used a bare bullet/replacement-char between items with no
     // newline. Split on either convention.
@@ -252,7 +257,9 @@
     // Split that into one bullet per sentence so it still reads as a list.
     if (bullets.length <= 1) {
       var whole = (bullets[0] || el.takeaways).replace(/\s+/g, ' ').trim();
-      var sentences = (whole.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [whole])
+      // 2026-10-19: the old matcher needed whitespace right after EVERY '.', so a sentence containing a decimal ("+11.7%") or
+      // "U.S." lost everything before it. Split between sentences instead: after . ! ? when a capital / # / quote follows (not after "U.S.").
+      var sentences = whole.split(/(?<!U\.S\.)(?<=[.!?])\s+(?=[A-Z#"“(])/)
         .map(function (s) { return s.trim(); })
         .filter(function (s) { return s.length > 10; });
       bullets = sentences.length ? sentences : [whole];

@@ -330,7 +330,10 @@
       var D = await res.json(), NL = String.fromCharCode(10);
       var html = (D.pills || []).map(function (p) {
         var pc = p.pct_change, pcCls = pc > 0 ? 'bull' : pc < 0 ? 'bear' : 'neu', txt = pc == null ? '--' : (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
-        var tip = [p.label + ' (' + p.symbol + ')', '• Day change: ' + txt, '• Hedgeye outlook: ' + (p.outlook || '--'),
+        // Open / High / Low / Current on hover (2026-10-19, user-directed); the 10Y is stored x10 -- shown as a yield %.
+        var yld = p.label === '10Y', q = function (v) { return v == null ? '--' : yld ? (v / 10).toFixed(3) + '%' : Number(v).toLocaleString('en-US', { minimumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2, maximumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2 }); };
+        var tip = [p.label + ' (' + p.symbol + ')', '• Day change: ' + txt, '• Open: ' + q(p.open_price), '• High: ' + q(p.high_price),
+          '• Low: ' + q(p.low_price), '• Current: ' + q(p.last_price), '• Hedgeye outlook: ' + (p.outlook || '--'),
           'Source: drv_quote, drv_rr'].join(NL);
         // VIX shows its current level between the label and the % change (2026-10-19, user-directed).
         var lvl = p.label === 'VIX' && p.last_price != null ? '<span class="oc-lvl">' + p.last_price.toFixed(2) + '</span>' : '';

@@ -578,3 +578,17 @@ INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VA
 ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE;
 UPDATE ref_macro_area SET sort_order = 5 WHERE area_key = 'remaining' AND member_symbol = 'DRAM';
 UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'remaining' AND member_symbol IN ('QQQ','IGV','BUG','QTUM','DRAM');   -- needs the pinned column (baseline.sql)
+
+-- 2026-10-19, user-directed: the CRB index itself (TOS symbol TRCCRBTR = Thomson Reuters / CoreCommodity CRB Total Return). Hedgeye quotes it in
+-- the Quad calls; it feeds the Quad market check (ref_quad_factor 'crb'). Joins the TOS watchlist files as a dashboard-dependency symbol.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled, pinned)
+VALUES ('commodities_ag', 'CRB Index', 'TRCCRBTR', 'rr_only', 5, TRUE, FALSE)
+ON CONFLICT DO NOTHING;
+
+-- 2026-10-19, user-directed: Yahoo ticker for the CRB index, so the Yahoo price refresh covers TRCCRBTR between TOS exports.
+-- ^TRCCRB (Yahoo labels it "Northern Trust ESG & Climate" -- a wrong name; the prices are the CRB: +11.67 percent Jul 16 -> Oct 16 and
+-- +1.23 percent last week, matching Hedgeye's "CRB +11.7 percent over three months, +1.2 percent last week"). ^TRCCRBHS is the EUR version
+-- with almost no history, not used.
+INSERT INTO ref_rrt (rr_name, y_ticker, tos_ticker, reverse, preferred_display)
+VALUES ('CRB', '^TRCCRB', 'TRCCRBTR', 'N', FALSE)
+ON CONFLICT (rr_name) DO NOTHING;

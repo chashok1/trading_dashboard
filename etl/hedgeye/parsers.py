@@ -1260,6 +1260,10 @@ def parse_early_look(email: Email) -> Parsed:
         paras = [re.sub(r"\s+", " ", para).strip()
                  for para in re.split(r"\n\s*\n", m.group(1).strip())]
         take = "\n• ".join(para for para in paras if para)[:2000]
+        # The email ends with "suggested follow-up" buttons ("Make the Quad2 thesis more direct" / "Clarify the positioning takeaway")
+        # that get glued onto the last paragraph; they are not part of the note.
+        take = re.sub(r"\s*Make the .{0,80}?direct\s*Clarify the positioning takeaway\s*$", "", take, flags=re.I)
+        take = re.sub(r"\s*Clarify the positioning takeaway\s*$", "", take, flags=re.I)
     tickers = sorted(set(_TICKER_PAREN.findall(text)))[:20] or email.meta_symbols
     q = _quad(email.subject + " " + text)
     p.notes.append(_note(email, "early_look", take or email.subject, tickers=tickers, quad=q))
