@@ -1307,10 +1307,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # alert, not a periodic snapshot). RTA (side='long') and
                 # RTAINFO (side='short') are two ref_outlook_source rows
                 # over the same hist_rta table, split by side. Window =
-                # lookback_days calendar days; the most recent
+                # today + previous weekday (see rta_start below); the most recent
                 # non-corrected, non-superseded alert per symbol wins.
                 side_filter = "long" if sc == "RTA" else "short"
-                lb = int(s.get("lookback_days") or 5)
                 # On the LIVE anchor, ceiling is real "today" so an RTA alert
                 # that landed intraday (before today's TOSD/EOD load has
                 # advanced the anchor) is still visible same-day — RTA's
@@ -1319,6 +1318,11 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # as_of_date and no look-ahead is introduced. Same pattern as
                 # position_ceiling() for F/CS carry-forward.
                 rta_ceil = position_ceiling(session, as_of_date)
+                # 2026-10-19, user-directed: RTA counts only today + the previous weekday (not lookback_days);
+                # Monday reaches back to Friday. Weekday-based, so exchange holidays are not skipped.
+                rta_start = as_of_date - timedelta(days=1)
+                while rta_start.weekday() >= 5:
+                    rta_start -= timedelta(days=1)
                 rta_rows = session.execute(text(f"""
                     WITH ranked AS (
                         SELECT COALESCE(tos_symbol, symbol) AS sym,
@@ -1333,7 +1337,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                                ) AS rk
                           FROM hist_rta
                          WHERE snapshot_date <= '{rta_ceil}'
-                           AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
+                           AND snapshot_date >= '{rta_start}'
                            AND side = '{side_filter}'
                            AND is_correction = FALSE
                            AND superseded = FALSE
