@@ -2706,3 +2706,32 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
         out.sort(key=lambda e: e["symbol"])
         out.sort(key=lambda e: e["changed_on"], reverse=True)
     return {"as_of": cur.isoformat(), "prev": start.isoformat(), "total": len(out), "changes": out}
+
+
+# 2026-10-18 -- Market pills under the US Dollar pill (top of the centre column): day % change + Hedgeye outlook for
+# SPX / Ndq / Rus / VIX / Oil / Gold / 10Y / BTC. Display only. Symbols are the Macro Rail's own members (ref_macro_area).
+_INDEX_PILLS = [("SPX", "SPX"), ("Ndq", "$COMP"), ("Rus", "RUT"), ("VIX", "VIX"), ("Oil", "/CL"), ("Gld", "/GC"), ("10Y", "TNX:CGI"), ("BTC", "/BTC")]
+
+
+@router.get("/api/cockpit/index-pills")
+def get_index_pills(date: Optional[str] = Query(None)) -> dict:
+    d = _resolve_date(date)
+    syms = [s for _, s in _INDEX_PILLS]
+    with session_scope() as s:
+        anchor = s.execute(text("SELECT MAX(as_of_date) FROM drv_quote WHERE as_of_date <= :d"), {"d": d}).scalar()
+        if not anchor:
+            return {"as_of": str(d), "pills": []}
+        rows = s.execute(text(
+            "SELECT q.tos_symbol, q.pct_change, r.outlook FROM drv_quote q "
+            "LEFT JOIN drv_rr r ON r.tos_symbol = q.tos_symbol AND r.as_of_date = q.as_of_date "
+            "WHERE q.as_of_date = :a AND q.tos_symbol = ANY(:syms)"), {"a": anchor, "syms": syms}).mappings().all()
+    by = {r["tos_symbol"]: r for r in rows}
+    pills = []
+    for label, sym in _INDEX_PILLS:
+        r = by.get(sym)
+        o = (r["outlook"] or "") if r else ""
+        ol = "Bullish" if "bull" in o.lower() else "Bearish" if "bear" in o.lower() else ("Neutral" if o else None)
+        pills.append({"label": label, "symbol": sym,
+                      "pct_change": float(r["pct_change"]) if r and r["pct_change"] is not None else None,
+                      "outlook": ol})
+    return {"as_of": anchor.isoformat(), "pills": pills}

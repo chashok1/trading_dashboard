@@ -4007,9 +4007,26 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .oc-card .mw-chip.mw-book { background: var(--card-bg, #fff); --rc: #6b7280; }
 
 /* 2026-10-16 -- US Dollar outlook pill, right end of the area-verdict card. */
-.oc-lead { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 4px; align-self: flex-start; margin-right: 12px; }
-.oc-lead > .mw-strip { justify-content: space-between; flex-wrap: nowrap; }   /* event pill left, Book pill flush with the dollar pill's right edge */
-.oc-lead .oc-grp-gap { margin-right: 0; }
+.oc-lead { flex: none; align-items: stretch; align-self: flex-start; margin-right: 12px; }
+/* 2026-10-18, user-directed: Book pill sits in the right corner of row 3 (the last chip row), just before the +N button; the event pill stays under the dollar pill.
+   Card body grid: [US Dollar / event] [symbol chips, full width, 3 rows] with Book + [+N] overlaid on the third row's right end
+   (outlook_changes.js keeps chips out from under them). */
+.oc-card .oc-body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-rows: 20px 20px 20px; gap: 8px 18px; align-items: start; }
+.oc-lead { display: contents; }
+.oc-lead > .mw-usd-slot { grid-row: 1; grid-column: 1; justify-self: start; }
+.oc-lead > .mw-strip { display: contents; }
+.oc-lead .oc-grp[title="Next event"] { grid-row: 2; grid-column: 1; justify-self: start; }
+.oc-lead .oc-grp[title="Book"] { grid-row: 3; grid-column: 3; justify-self: end; margin-right: -12px; position: relative; z-index: 1; }
+.oc-line { grid-row: 1 / span 3; grid-column: 2 / -1; }
+/* Market pills (SPX/Nas/Oil/Gld/2Y/10Y) on row 3, under the US Dollar / event pills. */
+.oc-lead > .oc-mkt { grid-row: 3; grid-column: 1; display: flex; gap: 6px; justify-self: start; align-items: center; margin-right: 18px; }   /* +18px: doubles the 18px gap between the Oil stack and the symbol chips (first chip SPMO) */
+.oc-mkt:empty { display: none; }
+.oc-stack { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }   /* margin-top pulls the stack up so its bottom edge sits on the third line: (n x 20px + gaps) - 20px */
+.oc-stack2 { margin-top: -28px; }
+.oc-stack3 { margin-top: -56px; }
+.oc-stack .oc-chip2 { justify-content: space-between; }
+.oc-more { grid-row: 3; grid-column: 4; justify-self: end; position: relative; z-index: 1; }
+.oc-lead .oc-grp-gap:not([title="Book"]) { margin-right: 0; }
 .oc-lead > .mw-usd-slot { display: flex; }
 .mw-chip.mw-usd { gap: 6px; padding: 1px 10px 1px 8px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .mw-usd-l { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; color: var(--text-3, #98a0b3); }

@@ -280,6 +280,7 @@
     if (usdEl) usdEl.innerHTML = usdPill(c.dxy);
     strip.hidden = !strip.innerHTML;
     if (window.syncOcCard) window.syncOcCard();
+    if (window.ocFit) window.ocFit();
     renderQuadCards(data);
     list.innerHTML = open ? listHtml(data) : '';
     if (open) placeList(list);

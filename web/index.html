@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261019t9">
+  <link rel="stylesheet" href="/static/styles.css?v=20261019t28">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -269,6 +269,7 @@
               <div class="oc-lead">
                 <div id="usdPill" class="mw-usd-slot"></div>
                 <div id="macroWeekStrip" class="mw-strip" hidden></div>
+                <div id="mktPills" class="oc-mkt"></div>
               </div>
               <span class="oc-line" id="ocLine"></span>
               <button class="oc-more" id="ocMore" type="button" title="Show all outlook changes" hidden></button>
@@ -1124,7 +1125,7 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
-  <script src="/static/macro_week.js?v=20261017a" defer></script>
+  <script src="/static/macro_week.js?v=20261018a" defer></script>
   <script src="/static/spx_rv.js?v=20261018a" defer></script>
   <script src="/static/yield_curve.js?v=20261018i" defer></script>
   <script src="/static/move_vix.js?v=20261018e" defer></script>
@@ -1135,7 +1136,7 @@
   <script src="/static/mktsit_images.js?v=20261018a" defer></script>
   <script src="/static/collapse_all.js?v=20261018a" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
-  <script src="/static/outlook_changes.js?v=20261017m" defer></script>
+  <script src="/static/outlook_changes.js?v=20261018p" defer></script>
   <script src="/static/area_verdicts.js?v=20261017c" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script

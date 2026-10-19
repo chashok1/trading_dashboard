@@ -22,7 +22,7 @@
   }
   // One chip per symbol: its path through the window as icons ("RSP  up -> down -> Bullish"); the last step is spelled
   // out for the newest two days. Paths longer than 4 states keep the last 4 behind an ellipsis; details in the tooltip.
-  function chip(d, asOf, wordy) {
+  function chip(d, asOf, wordy, showDate) {
     var path = d.path && d.path.length > 1 ? d.path : [d.from, d.to];
     var flips = [];
     for (var i = 0; i + 1 < path.length; i++) {
@@ -36,6 +36,7 @@
         (i === last && wordy ? '<span class="oc-w ' + cls(st) + '">' + esc(st) + '</span>' : shape(st));
     }).join('');
     return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + esc(d.symbol) + '</b>' +
+      (showDate && d.changed_on ? '<span class="oc-dt">' + d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) + '</span>' : '') +
       '<span class="oc-ft">' + (path.length > shown.length ? '<i class="oc-ar">&hellip;</i>' : '') + steps + '</span></span>';
   }
 
@@ -172,8 +173,16 @@
     var D = st.data;
     if (!el || !D) return;
     var all = D.changes.map(function (c) { var o = Object.assign({}, c); o.a = rank(c.from); o.b = rank(c.to); o.delta = o.b - o.a; return o; });
+    // 2026-10-18, user-directed: Major Markets first, then Sectors, then everything else; newest change first inside each group.
+    var grpOf = function (c) { return c.panel === 'Major Markets' ? 0 : c.panel === 'Sectors' ? 1 : 2; };
+    // Inside a group: Bearish, then Bullish, then Neutral (by the new outlook); Major Markets / Sectors order by that first,
+    // the other chips order by it within each date.
+    var olOrd = function (c) { return c.to === 'Bearish' ? 0 : c.to === 'Bullish' ? 1 : 2; };
     all.sort(function (x, y) {
-      return String(y.changed_on || '').localeCompare(String(x.changed_on || '')) ||
+      return grpOf(x) - grpOf(y) ||
+        (grpOf(x) < 2 ? olOrd(x) - olOrd(y) : 0) ||
+        String(y.changed_on || '').localeCompare(String(x.changed_on || '')) ||
+        olOrd(x) - olOrd(y) ||
         Math.abs(y.delta) - Math.abs(x.delta) || x.symbol.localeCompare(y.symbol);
     });
     // Flat list, newest first: a date label ("10/15") ahead of each day's chips.
@@ -181,11 +190,19 @@
     var recent = {};
     all.map(function (d) { return d.changed_on || ''; }).filter(function (v, i, a) { return a.indexOf(v) === i; })
       .sort().reverse().slice(0, 2).forEach(function (v) { recent[v] = 1; });
-    var items = [], lastDay = null;
+    // Major Markets / Sectors chips carry their date inside the pill (mm/dd) and get no date labels; the rest keep date labels.
+    var items = [], lastDay = null, lastGrp = null;
     all.forEach(function (d) {
       var day = d.changed_on ? d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) : '';
-      if (day !== lastDay) { if (lastDay !== null) items.push({ label: day || 'This week', html: '<span class="oc-dl">' + esc(day || 'This week') + '</span>' }); lastDay = day; }   // the newest day's label is left off (user-directed)
-      items.push({ chip: true, day: day, html: chip(d, D.as_of, !!recent[d.changed_on || '']) });
+      var g = grpOf(d), newGrp = g !== lastGrp, first = lastGrp === null;
+      lastGrp = g;
+      if (g < 2) {
+        lastDay = null;
+      } else if (day !== lastDay || newGrp) {
+        if (!first || lastDay !== null) items.push({ label: day || 'This week', html: '<span class="oc-dl">' + esc(day || 'This week') + '</span>' });   // the very first label is left off (user-directed)
+        lastDay = day;
+      }
+      items.push({ chip: true, day: day, grp: g, html: chip(d, D.as_of, true, g < 2) });
     });
     var chips = items.map(function (i) { return i.html; }).join('');
     // The skeleton (#ocLine, #ocMore, #ocPop, and #macroWeekStrip ahead of them) lives in index.html so the Macro Week
@@ -201,13 +218,19 @@
     function firstOverflow(label) {
       more.hidden = false; more.textContent = label;   // the button narrows the line, so measure with its real text
       Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
-      // Two static rows: size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
+      // Three static rows (2026-10-18, user-directed: one more line): size the line to three chip-rows; anything that wraps onto a third row goes to the overlay.
       var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1;
       var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
-      line.style.maxHeight = (2 * h + gap) + 'px';
-      var lb = line.getBoundingClientRect().bottom;
+      line.style.maxHeight = (3 * h + 2 * gap) + 'px';
+      var lr = line.getBoundingClientRect(), lb = lr.bottom;
+      // Book + the button sit over the third row's right end: chips there must stop short of them.
+      var stopX = Infinity, row3Top = lr.top + 2 * (h + gap) - 1;
+      [document.querySelector('#outlookChangesCard .oc-grp[title="Book"]'), more].forEach(function (b) {
+        if (b && !b.hidden && b.offsetParent) stopX = Math.min(stopX, b.getBoundingClientRect().left - 8);
+      });
       Array.prototype.forEach.call(line.children, function (c, i) {
-        if (first < 0 && c.getBoundingClientRect().bottom > lb + 0.5) first = i;
+        var r = c.getBoundingClientRect();
+        if (first < 0 && (r.bottom > lb + 0.5 || (r.top >= row3Top && r.right > stopX))) first = i;
       });
       // A date label left alone at the end of the line (its chips pushed to the overlay) moves to the overlay too.
       if (first > 0 && !items[first].label && items[first - 1].label) { first--; line.children[first].style.visibility = 'hidden'; }
@@ -230,12 +253,13 @@
       }
       // Overlay = what does not fit on the line; if it starts mid-day, repeat that day's label.
       var rest = first < 0 ? [] : items.slice(first);
-      if (rest.length && rest[0].chip) rest.unshift({ html: '<span class="oc-dl">' + esc(rest[0].day || 'This week') + '</span>' });
+      if (rest.length && rest[0].chip && rest[0].grp > 1) rest.unshift({ html: '<span class="oc-dl">' + esc(rest[0].day || 'This week') + '</span>' });
       pop.innerHTML = rest.map(function (i) { return i.html; }).join('');
       more.hidden = !nChips;
       more.textContent = '+' + nChips + ' more ▾';
       if (!nChips) setOpen(false);
     }
+    window.ocFit = fit;   // macro_week.js re-fits once the Book chip is drawn (it reserves room on the third row)
     more.onclick = function (e) { e.stopPropagation(); setOpen(!st.open); };
     if (!_docClick) { _docClick = true; document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) { var p2 = document.getElementById('ocPop'), m2 = document.getElementById('ocMore'); if (p2) p2.hidden = true; if (m2) m2.classList.remove('on'); st.open = false; } }); }
     setOpen(false);
@@ -248,7 +272,8 @@
     var el = document.getElementById('outlookChangesCard');
     if (!el) return;
     var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
-    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (line && !line.hidden && line.children.length));
+    var mk = document.getElementById('mktPills');
+    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
   };
   function hideLine() {
     var line = document.getElementById('ocLine'), more = document.getElementById('ocMore'), pop = document.getElementById('ocPop');
@@ -258,7 +283,43 @@
     window.syncOcCard();
   }
 
+  // Market pills under the US Dollar pill (2026-10-18, user-directed): SPX / Ndq / Rus / VIX / Oil / Gld / 10Y / BTC as chips with the day % change.
+  // Colour = the day % change (green up, red down, grey flat; the Hedgeye outlook is in the tooltip). Reads GET /api/cockpit/index-pills. Display only.
+  async function loadPills() {
+    var box = document.getElementById('mktPills');
+    if (!box) return;
+    try {
+      var d = (window._dateQS ? window._dateQS() : '') || '';
+      var res = await fetch('/api/cockpit/index-pills' + d);
+      if (!res.ok) throw new Error(res.status);
+      var D = await res.json(), NL = String.fromCharCode(10);
+      var html = (D.pills || []).map(function (p) {
+        var pc = p.pct_change, pcCls = pc > 0 ? 'bull' : pc < 0 ? 'bear' : 'neu', txt = pc == null ? '--' : (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
+        var tip = [p.label + ' (' + p.symbol + ')', '• Day change: ' + txt, '• Hedgeye outlook: ' + (p.outlook || '--'),
+          'Source: drv_quote, drv_rr'].join(NL);
+        return '<span class="oc-chip2 ' + pcCls + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' +
+          '<span class="oc-ft"><span class="oc-w ' + pcCls + '">' + txt + '</span></span></span>';
+      });
+      // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.
+      var pills = D.pills || [], STACKS = [['10Y', 'VIX'], ['Oil', 'Gld', 'BTC']], out = [], seen = {}, slot = {};
+      pills.forEach(function (p, i) {
+        var k = -1;
+        STACKS.forEach(function (st, j) { if (st.indexOf(p.label) >= 0) k = j; });
+        if (k < 0) { out.push(html[i]); return; }
+        if (!slot[k]) { slot[k] = { at: out.length, items: [] }; out.push(null); }
+        slot[k].items[STACKS[k].indexOf(p.label)] = html[i];
+      });
+      STACKS.forEach(function (st, k) {
+        if (slot[k]) out[slot[k].at] = '<span class="oc-stack oc-stack' + st.length + '">' + slot[k].items.filter(Boolean).join('') + '</span>';
+      });
+      out = out.filter(Boolean);
+      box.innerHTML = out.join('');
+    } catch (e) { box.innerHTML = ''; }
+    window.syncOcCard();
+  }
+
   async function load() {
+    loadPills();
     var el = document.getElementById('outlookChangesCard');
     if (!el) return;
     try {
