@@ -876,3 +876,6 @@ rule's own threshold and the current price).
 
 ### SSS "weight fell" is a warning only (2026-10-20)
 An SSS REDUCE (pct_delta below zero, or falling week over week) no longer competes for `consolidated_action` or counts as sell evidence. It stays in `drv_actionable.source_actions` with `warning_only: true`, shows under the Action column's warning symbol and in the Action popup (`web/actionable_pops.js::_signalReasons`), and the Why card lists it as "Warning only, not counted". An SSS "dropped from list" REMOVE is unchanged. Code: `etl/derive_actionable.py` (`src_all` vs `src_actions`).
+
+### Flagged drop softens SELL ALL to HOLD (2026-10-20)
+A held stock whose winning source dropped it (REMOVE -> SELL ALL) becomes HOLD when that drop is flagged `drop_conflict` (price up more than `ref_settings.premature_drop_up_pct`, default 4%, since the drop, or a fresh 3-day up-streak while up overall). A breached stop is never softened. Only the Final Call changes: `source_actions`, Technical and the Why card (which explains it) stay visible. Code: the "soften SELL ALL" block after the premature-drop enrichment in `etl/derive_actionable.py`.

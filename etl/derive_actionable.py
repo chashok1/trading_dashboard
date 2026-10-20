@@ -1635,6 +1635,32 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             if changed:
                 b["srca"] = json.dumps(srca_list)
 
+    # ─── 2026-10-20, user: soften SELL ALL to HOLD when the drop is flagged ───
+    # A held stock whose winning source dropped it (REMOVE) would be SELL ALL; if that drop is flagged (up more than
+    # premature_drop_up_pct since the drop, or a fresh 3-day up-streak while up overall) the exit is softened to HOLD.
+    # A breached stop is a separate sell signal and is never softened. Sources/Technical stay visible; only the Final Call changes.
+    for b in batch:
+        if not (b["held"] and b["ca"] == "REMOVE" and b["f_code"] == "SA" and not b["stop_breached"]):
+            continue
+        _w = next((a for a in json.loads(b["srca"] or "[]")
+                   if a.get("source") == b["ws"] and a.get("action") == "REMOVE" and a.get("drop_conflict")), None)
+        if not _w:
+            continue
+        _lbl, _code, _side = _action_display("HOLD")
+        _amt = abs(float(b["stgt"]) - float(b["curr"])) if b["stgt"] is not None and b["curr"] is not None else 0.0
+        b.update({"f_action": _lbl, "f_code": _code, "f_side": _side, "f_strength": 0, "f_confidence": "none",
+                  "f_feasible": False, "f_priority": -1e6 + _amt})
+        try:
+            _c = json.loads(b["why_card"]) if b.get("why_card") else None
+            if _c:
+                _c.update({"verdict": _lbl, "side": _side,
+                           "result": f"{_w.get('source')} dropped it, but the price is up {_w.get('pct_since_drop')}% since the drop "
+                                     "(or rising 3 days in a row) - the sell may have been premature, so SELL ALL is softened to HOLD.",
+                           "flip": [f"SELL ALL comes back if the gain since the drop falls to {_drop_up_pct:g}% or less (and there is no 3-day up-streak), or on a stop breach"]})
+                b["why_card"] = json.dumps(_c)
+        except Exception:
+            log.warning("why_card soften patch failed for %s", b["sym"], exc_info=True)
+
     # Single executemany — previous version did one INSERT per symbol.
     if batch:
         session.execute(insert_sql, batch)
