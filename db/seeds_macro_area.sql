@@ -491,7 +491,7 @@ WHERE area_key = 'rates_duration' AND label = 'Rates & Duration';
 -- 2026-09-23 follow-up 2: user request -- "remove TLT & IEF". Both were the
 -- only 2 members carrying the old "Rates & Duration" generic label (just
 -- renamed above) -- dropped entirely, not relabeled.
-DELETE FROM ref_macro_area WHERE area_key = 'rates_duration' AND member_symbol IN ('TLT', 'IEF');
+DELETE FROM ref_macro_area WHERE area_key = 'rates_duration' AND member_symbol IN ('TLT');   -- 2026-10-19: IEF is back (see the end of this file)
 
 -- 2026-09-23 follow-up 3: user request -- "add 2Yr from FRED, use RR for
 -- riskrange". DGS2:FRED already carries real, live Hedgeye Risk Range data
@@ -575,7 +575,7 @@ INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VA
     ('remaining', 'Tech & ETFs', 'IGV',  'dual', 2),
     ('remaining', 'Tech & ETFs', 'BUG',  'dual', 3),
     ('remaining', 'Tech & ETFs', 'QTUM', 'dual', 4)
-ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE;
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE, label = EXCLUDED.label;   -- label = the area's own display name, so the rail shows the symbol (the earlier relabel above would otherwise stick)
 UPDATE ref_macro_area SET sort_order = 5 WHERE area_key = 'remaining' AND member_symbol = 'DRAM';
 UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'remaining' AND member_symbol IN ('QQQ','IGV','BUG','QTUM','DRAM');   -- needs the pinned column (baseline.sql)
 
@@ -592,3 +592,12 @@ ON CONFLICT DO NOTHING;
 INSERT INTO ref_rrt (rr_name, y_ticker, tos_ticker, reverse, preferred_display)
 VALUES ('CRB', '^TRCCRB', 'TRCCRBTR', 'N', FALSE)
 ON CONFLICT (rr_name) DO NOTHING;
+
+-- 2026-10-19, user-directed: the symbols the IV vs RV table covered that no rail had, so the new 'Vol' rail mode (Prem / vs / Wk / M / Rk) shows them:
+-- XRT -> Sectors, EWJ -> top of Country ETFs, CPER -> Precious Metals, IEF -> Rates & Duration (IEF was removed on 2026-09-23; wanted back now).
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
+  ('sector_etfs',        'Sectors',           'XRT',  'dual', 120, TRUE),
+  ('country_etfs',       'Country ETFs',      'EWJ',  'dual', 5,   TRUE),
+  ('commodities_metals', 'Precious Metals',   'CPER', 'dual', 70,  TRUE),
+  ('rates_duration',     'Rates & Duration',  'IEF',  'dual', 40,  TRUE)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE, label = EXCLUDED.label;   -- label = the area's own display name, so the rail shows the symbol (the earlier relabel above would otherwise stick)

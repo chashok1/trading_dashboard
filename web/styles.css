@@ -2235,6 +2235,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
                   font: inherit; text-transform: uppercase; text-align: center; color: var(--text-2, #666); white-space: nowrap; }
 .msr-colhdr-ic { font-size: 9px; margin-left: 1px; opacity: .7; }
 .msr-colhdr-btn:hover, .msr-colhdr-btn.on { color: #2563eb; }
+/* 2026-10-19, user-directed: 'Vol' rail mode -- five narrow columns (Prem / vs / Wk / M / Rk); header buttons and row cells share one width so they line up. */
+.msr-colhdr-btn.vol { flex: 0 0 34px; }
+.msr-volc { flex: 0 0 34px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 14px; border-radius: 3px; font-variant-numeric: tabular-nums; color: var(--text-1, #1c1917); white-space: nowrap; }
+.msr-volc.na { color: var(--text-3, #a8a29e); }
+.msr-vtri { font-style: normal; font-size: 7px; margin-left: 1px; vertical-align: 1px; }
+.msr-vtri.up { color: #c0392b; } .msr-vtri.dn { color: #1d7a4d; }
+.msr-volc.rich { background: rgba(229, 72, 77, .26); font-weight: 700; }
+.msr-volc.cheap { background: rgba(15, 157, 88, .26); font-weight: 700; }
 .msr-colhdr-btn.on .msr-colhdr-ic { opacity: 1; }
 .msr-per { display: inline-block; min-width: 38px; text-align: right; font-size: 10px; color: var(--text-3, #6b7280); }
 .msr-per-up { color: #15803d; } .msr-per-dn { color: #b91c1c; }
@@ -4283,22 +4291,6 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .mo-sw { display: inline-block; width: 8px; height: 3px; margin-right: 4px; vertical-align: middle; }
 
 
-/* 2026-10-17 -- IV vs RV panel (web/iv_rv_panel.js), last panel of the middle column. Rich = red background, Cheap = green. */
-.ivrv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; }
-.ivrv-sum { margin-right: auto; color: var(--text-2, #5b6172); }
-.ivrv-btn { border: 1px solid var(--border, #d4d4d8); background: var(--card-bg, #fff); color: var(--text-2, #5b6172); border-radius: 999px; padding: 0 9px; font-size: 9.5px; line-height: 14px; cursor: pointer; }
-.ivrv-btn.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
-.ivrv-tblwrap { overflow-x: auto; padding: 0 8px 4px; }
-.ivrv-tbl { border-collapse: collapse; width: 100%; font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.ivrv-tbl th, .ivrv-tbl td { padding: 2px 8px; text-align: right; border-bottom: 1px solid var(--border, #e5e5e2); white-space: nowrap; }
-.ivrv-tbl th:nth-child(1), .ivrv-tbl td:nth-child(1), .ivrv-tbl th:nth-child(2), .ivrv-tbl td:nth-child(2) { text-align: left; }
-.ivrv-tbl th { font-size: 9.5px; font-weight: 600; color: var(--text-3, #6b7280); background: #f4f4f8; }
-.ivrv-tbl tr.ivrv-grp td { background: #f4f4f8; font-weight: 700; font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3, #6b7280); text-align: left; }
-.ivrv-tbl td.ivrv-rich { background: rgba(229, 72, 77, .26); font-weight: 700; text-align: center; }
-.ivrv-tbl td.ivrv-cheap { background: rgba(29, 158, 117, .28); font-weight: 700; text-align: center; }
-.ivrv-tbl td.ivrv-fair { text-align: center; color: var(--text-3, #6b7280); }
-.ivrv-up { color: #c0392b; } .ivrv-dn { color: #1d7a4d; }
-.ivrv-nz { color: var(--text-3, #6b7280); font-size: 10px; }
 
 /* 2026-10-19 -- SPX realized vol popup: vol-funds signal banner (web/spx_rv.js). */
 .spxrv-sig { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; border-left: 4px solid; }

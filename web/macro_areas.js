@@ -138,7 +138,7 @@
   // persist in memory. Color logic is untouched by any of this -- still
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
-  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1, perf: 1 };   // perf (2026-10-19): every rail row shows Day / 1WK / 3W / 3M pills instead of candle + chg + Td/Tn + range bar   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1, perf: 1, vol: 1 };   // vol (2026-10-19): every rail row shows Prem / vs / Wk / M / Rk (options vol vs actual vol) instead of the usual cluster   // perf (2026-10-19): every rail row shows Day / 1WK / 3W / 3M pills instead of candle + chg + Td/Tn + range bar   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
   // 2026-09-30, user-directed: "radio buttons should control its own
   // panels" -- one independent mode per radio group: 'rail' (Macro Rail
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
@@ -159,11 +159,13 @@
   var _chgMode = _modes.rail;
   var _macroOn = false;   // true while rendering with the 'Act' radio selected
   var _perfOn = false;    // true while rendering with the 'Perf' radio selected
+  var _volOn = false;     // true while rendering with the 'Vol' radio selected
   function _useMode() {
     var m = _modes.rail;
     _macroOn = (m === 'macro');
     _perfOn = (m === 'perf');
-    _chgMode = (m === 'macro' || m === 'perf') ? 'pct' : (m || 'pct');
+    _volOn = (m === 'vol');
+    _chgMode = (m === 'macro' || m === 'perf' || m === 'vol') ? 'pct' : (m || 'pct');
   }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
@@ -653,7 +655,7 @@
     return '<div class="msr-group-sep">' + esc(shortName) +
       '<button class="msr-sort-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
       '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button>' +
-      (_perfOn ? '<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
+      ((_perfOn || _volOn) ? '<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
   }
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
@@ -702,16 +704,80 @@
   }
 
   // Column headers (Day / 1WK / 3W / 3M) right-anchored over the pills; click = sort by that column.
+  // In 'Vol' mode (2026-10-19) the same header carries the five options-vol columns instead, on every panel.
   var _PERIOD_COLS = [['pct_change', 'Day'], ['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']];
+  var _VOL_COLS = [['v_prem', 'Prem', 'Premium: implied volatility vs actual volatility, 5-day average, in %'],
+                   ['v_vs', 'vs', "Premium vs the symbol's own normal (its median premium since April), in %. Red = Rich (over 15% above its normal), green = Cheap (over 15% below)"],
+                   ['v_w1', 'Wk', 'Premium 1 week ago, in %'], ['v_m1', 'M', 'Premium 1 month ago, in %'],
+                   ['v_rk', 'Rk', 'IV rank: where implied volatility sits in its own range (from TOS)']];
   function _periodHeader(area, force, group) {
-    if (!force && !_PERIOD_AREAS[area.area_key]) return '';
+    if (!force && !_volOn && !_PERIOD_AREAS[area.area_key]) return '';
     var key = area.area_key, mode = _railSort[group ? key + ':' + group : key] || 0, f = _railSortField[key] || 'pct_change';
-    return _PERIOD_COLS.map(function (c) {
+    return (_volOn ? _VOL_COLS : _PERIOD_COLS).map(function (c) {
       var on = mode && f === c[0];
-      return '<button type="button" class="msr-colhdr-btn' + (on ? ' on' : '') + '" data-area="' + esc(key) +
-        '"' + (group ? ' data-group="' + esc(group) + '"' : '') + ' data-field="' + c[0] + '" title="Sort by ' + c[1] + ' % (click again to reverse, third click resets)">' + c[1] +
+      return '<button type="button" class="msr-colhdr-btn' + (_volOn ? ' vol' : '') + (on ? ' on' : '') + '" data-area="' + esc(key) +
+        '"' + (group ? ' data-group="' + esc(group) + '"' : '') + ' data-field="' + c[0] + '" title="' + (_volOn ? esc(c[2]) + ' (click to sort; again to reverse; third click resets)' : 'Sort by ' + c[1] + ' % (click again to reverse, third click resets)') + '">' + c[1] +
         '<span class="msr-colhdr-ic">' + (on ? (mode === 1 ? '↓' : '↑') : '⇅') + '</span></button>';
     }).join('');
+  }
+
+
+  // 2026-10-19, user-directed: 'Vol' radio (next to Perf) -- the IV vs RV table folded into the rails. Each row with options data shows
+  // Prem / vs / Wk / M / Rk; hovering the symbol lists everything (IV, HV, premium, its normal, vs normal, band, Wk, M, IV rank).
+  // Data: GET /api/cockpit/iv-rv (hist_td, TOS exports), keyed by symbol; SPY's numbers stand in for the S&P 500 (SPX) row.
+  var _volMap = null;
+  function _volNum(v) { return v == null ? null : Math.round((v - 1) * 100); }
+  function _volOf(m) { return (_volMap && m && _volMap[m.symbol]) || null; }
+  function _volAttach(m) {
+    var v = _volOf(m), r = v && v.r;
+    m.v_prem = r ? _volNum(r.prem) : null;
+    m.v_vs = v && v.rel != null ? Math.round((v.rel - 1) * 100) : null;
+    m.v_w1 = r ? _volNum(r.w1) : null;
+    m.v_m1 = r ? _volNum(r.m1) : null;
+    m.v_rk = r && r.ivp != null ? r.ivp : null;
+  }
+  // The hover (every value, from _volTip) sits on the five number cells, not on the symbol (whose own hover stays the name + Yahoo link).
+  // Prem carries a triangle against a week ago (more than 2 points): red up = options got pricier, green down = cheaper.
+  function _volCells(m, dispName) {
+    var v = _volOf(m);
+    var tip = v ? ' title="' + esc(_volTip(m, dispName)).split(String.fromCharCode(10)).join('&#10;') + '"' : '';
+    var cell = function (txt, cls) { return '<span class="msr-volc' + (cls ? ' ' + cls : '') + '"' + tip + '>' + txt + '</span>'; };
+    var f = function (x) { return x == null ? '–' : String(x); };
+    if (!v) return cell('–', 'na') + cell('', 'na') + cell('', 'na') + cell('', 'na') + cell('', 'na');
+    var r = v.r, tri = r.w1 == null ? '' : (r.prem > r.w1 + 0.02 ? '<i class="msr-vtri up">&#9650;</i>' : r.prem < r.w1 - 0.02 ? '<i class="msr-vtri dn">&#9660;</i>' : '');
+    return cell(f(m.v_prem) + tri) + cell(f(m.v_vs), v.band === 'Rich' ? 'rich' : v.band === 'Cheap' ? 'cheap' : '') +
+           cell(f(m.v_w1)) + cell(f(m.v_m1)) + cell(f(m.v_rk));
+  }
+  // Hover text for the symbol: name plus every value, one bullet each.
+  function _volTip(m, dispName) {
+    var v = _volOf(m);
+    if (!v) return null;
+    var r = v.r, sg = function (x) { return x == null ? '--' : (x > 0 ? '+' : '') + x + '%'; };
+    var head = (dispName && dispName !== m.symbol ? dispName + ' (' + m.symbol + ')' : m.symbol) + (v.alias ? ' - options data from ' + v.alias : '');
+    return [head,
+      '• Implied vol: ' + r.iv.toFixed(1) + '%',
+      '• Actual vol: ' + r.hv.toFixed(1) + '%' + (r.noisy ? ' (rough: 10% or lower)' : ''),
+      '• Premium: ' + sg(m.v_prem),
+      '• Its normal: ' + sg(_volNum(r.med)),
+      '• vs normal: ' + sg(m.v_vs),
+      '• Band: ' + v.band,
+      '• 1 week ago: ' + sg(m.v_w1),
+      '• 1 month ago: ' + sg(m.v_m1),
+      '• IV rank: ' + (r.ivp == null ? '--' : r.ivp)].join(String.fromCharCode(10));
+  }
+  async function _loadVolMap() {
+    try {
+      var res = await fetch('/api/cockpit/iv-rv' + ((window._dateQS ? window._dateQS() : '') || ''));
+      if (!res.ok) throw new Error(res.status);
+      var map = {};
+      ((await res.json()).rows || []).forEach(function (r) {
+        var rel = r.med ? r.prem / r.med : null;
+        map[r.s] = { r: r, rel: rel, band: rel == null ? '' : rel > 1.15 ? 'Rich' : rel < 0.85 ? 'Cheap' : 'Fair' };
+      });
+      if (map.SPY && !map.SPX) map.SPX = Object.assign({}, map.SPY, { alias: 'SPY' });
+      _volMap = map;
+      if (_lastAreasData && _modes.rail === 'vol') renderRail(_lastAreasData);
+    } catch (e) { _volMap = {}; }
   }
 
   // Outlook-change slot (web/outlook_changes.js): fixed-width, empty unless this symbol's outlook changed this week.
@@ -760,6 +826,7 @@
     _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
     // Perf mode does not apply to Major Markets / Sectors: they already carry the Day / 1WK / 3W / 3M columns, always on (2026-10-19, user-directed).
     var perf = _perfOn && !_PERIOD_AREAS[area.area_key];
+    var vol = _volOn;   // Vol mode applies to every panel, Major Markets and Sectors included (2026-10-19)
     var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     var prevGroup;
@@ -790,7 +857,7 @@
               symLink(esc(m.label || area.label), m.symbol,
                       (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
-            (perf ? '' : _oc(m.symbol, m.action, m.action_code)) +
+            ((perf || vol) ? '' : _oc(m.symbol, m.action, m.action_code)) +
             // 2026-09-23, user-directed: "display the actual values in
             // small font between desc and the text Investable/Elevated" --
             // .msr-gauge-vix already existed in styles.css (9px, gray) but
@@ -800,7 +867,7 @@
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
-              (perf ? _perfPills(m, area) :
+              (vol ? _volCells(m, m.label) : perf ? _perfPills(m, area) :
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
                            { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area), tip: _ohlcTip(m) })) +
@@ -823,7 +890,7 @@
       var leadCluster = isRates
         ? '<span class="msr-price msr-price-fit">' + esc(_railPriceTxt(m) || '') + '</span>'
         : durArrow(m.trade, 'Td') + durArrow(m.trend, 'Tn');
-      var ocHtml = perf ? '' : _oc(m.symbol, m.action, m.action_code);   // Perf mode gives the outlook-change slot's width to the name + pills (2026-10-19)
+      var ocHtml = (perf || vol) ? '' : _oc(m.symbol, m.action, m.action_code);   // Perf mode gives the outlook-change slot's width to the name + pills (2026-10-19)
       var _rm = _relMember(m, area);   // sector minus SPX when the Sectors 'vs SPX' toggle is on
       return sep + (
         '<div class="msr-row' + _ocCls(m.symbol) + '" data-sym="' + esc(m.symbol) + '"' + _rfAttrs(m) + ' title="' + esc(_rowTitle(m, dispName)) + '">' +
@@ -840,7 +907,7 @@
           '</span>' +
           ocHtml +
           '<div class="msr-data-cluster">' +
-            (perf ? _perfPills(m, area) :
+            (vol ? _volCells(m, dispName) : perf ? _perfPills(m, area) :
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
@@ -1167,6 +1234,7 @@
   // one flat list, unchanged.
   function _sortedMembers(area) {
     var members = area.members || [];
+    if (_modes.rail === 'vol') members.forEach(_volAttach);   // Vol mode: numbers on the members so the column headers can sort by them
     if (_GROUPED_AREAS[area.area_key]) {
       var order = [], byGroup = {};
       members.forEach(function (m) {
@@ -1246,7 +1314,7 @@
         var rows = railAreaRow({ area_key: 'ai_bubble', label: 'AI Bubble', hot_pct: area.hot_pct, cold_pct: area.cold_pct, members: take });
         pcols[pcols.length - 1].push('<div class="ab-colhdr"><span>' + esc(g) + (first ? '' : ' (cont.)') + '</span>' +
           (first ? '<span class="ab-cnt"><b class="up">' + nb + '</b> | <b class="dn">' + nr + '</b></span>' : '') +
-          (_modes.rail === 'perf' ? '<span class="msr-colhdr">' + _periodHeader({ area_key: 'ai_bubble' }, true) + '</span>' : '') + '</div>' + rows);
+          ((_modes.rail === 'perf' || _modes.rail === 'vol') ? '<span class="msr-colhdr">' + _periodHeader({ area_key: 'ai_bubble' }, true) + '</span>' : '') + '</div>' + rows);
         first = false;
       }
     });
@@ -1318,7 +1386,7 @@
       if (!hh || _PERIOD_AREAS[k] || _GROUPED_AREAS[k]) return;   // grouped panels (Accounts, PS & ETF, ...) carry the header on each group row instead
       var ex = hh.querySelector(':scope > .msr-colhdr[data-perf]');
       var ar2 = areas.filter(function (a) { return a.area_key === k; })[0];
-      if (_modes.rail === 'perf' && ar2) {
+      if ((_modes.rail === 'perf' || _modes.rail === 'vol') && ar2) {
         if (!ex) { ex = document.createElement('span'); ex.className = 'msr-colhdr'; ex.setAttribute('data-perf', '1'); hh.appendChild(ex); }
         ex.innerHTML = _periodHeader(ar2, true);
       } else if (ex) { ex.remove(); }
@@ -1510,6 +1578,7 @@
     var dateEl    = document.getElementById('datePicker');
     var dateParam = dateEl && dateEl.value ? '?date=' + dateEl.value : '';
     try {
+      _loadVolMap();   // options-vol numbers for the 'Vol' radio (re-renders the rails itself when they land and Vol is on)
       var resp = await fetch('/api/macro-areas' + dateParam);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var data = await resp.json();
