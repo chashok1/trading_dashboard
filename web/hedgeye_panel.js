@@ -696,6 +696,10 @@
     // situation panel to just below risk dial panel and INFL to 3rd column
     // above Indicator grid."
     var actEl = document.getElementById('hedgeyePanel');
+    // 2026-10-20, user-directed: the Actionable screen's Hedgeye tiles (Top-5 / Macro Show / RTA / ETF / II / SSS / Call / Risk Range /
+    // Movers / Watching) also render on the Dashboard, just below the Early Look panel (#hedgeyeActDashPanel in index.html).
+    var actDashEl = document.getElementById('hedgeyeActDashPanel');
+    var actDashBodyEl = document.getElementById('hedgeyeActDashPanelBody');
     var dashEl = document.getElementById('hedgeyeDashPanel');
     // 2026-08-10 -- innerHTML now targets this inner wrapper, not dashEl
     // itself -- dashEl's own display:block/none (data-presence) and the
@@ -707,7 +711,7 @@
     var mktBodyEl = document.getElementById('heMktSituationBody');
     var inflPanelEl = document.getElementById('heInflPanel');
     var inflBodyEl = document.getElementById('heInflBody');
-    if (!actEl && !dashEl && !mktPanelEl && !inflPanelEl) return;
+    if (!actEl && !actDashEl && !dashEl && !mktPanelEl && !inflPanelEl) return;
     _tipHtml = [];  // reset so data-hetip indices match this render's DOM
 
     var hasMktAny = !!data.msr;
@@ -729,6 +733,7 @@
 
     if (dashEl && !hasDashAny) dashEl.style.display = 'none';
     if (actEl && !hasActAny) actEl.style.display = 'none';
+    if (actDashEl && !hasActAny) actDashEl.style.display = 'none';
     if (mktPanelEl && !hasMktAny) mktPanelEl.style.display = 'none';
     if (inflPanelEl && !hasInflAny) inflPanelEl.style.display = 'none';
     if (!hasDashAny && !hasActAny && !hasMktAny && !hasInflAny) return;
@@ -953,16 +958,15 @@
     // is the row's only flexible (1fr) track, so it automatically absorbs
     // whatever's left after that -- same "rest goes to Call" mechanic
     // every prior resize above relied on, not something hand-tuned here.
-    if (actEl) {
+    if (actEl || actDashEl) {
       if (hasActAny) {
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
           'minmax(111px, calc(13.9ch + 20px)) minmax(182px, calc(24ch + 46px)) minmax(182px, calc(24ch + 46px)) ' +
           'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
           'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)) minmax(93px, calc(11.9ch + 25px)); ' +
           'gap:3px; align-items:stretch;';
-        var row2 =
-          '<div style="' + GRID_ROW2 + '">' +
-          _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
+        var _tiles = function (gridCss, cls, top5DateOnly) { return '<div' + (cls ? ' class="' + cls + '"' : '') + ' style="' + gridCss + '">' +
+          _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(top5DateOnly ? null : data.top5_received_at, data.top5_date)) +
           _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), td(data.stance_received_at, data.stance_date)) +
           _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          td(data.rta_received_at, data.rta_date)) +
           _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
@@ -972,7 +976,8 @@
           _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
           _card('Movers',                                moversHtml(data.movers),          td(null, data.movers_date)) +
           _card('Watching',                              watchingHtml(data.watching),      '') +
-          '</div>';
+          '</div>'; };
+        var row2 = _tiles(GRID_ROW2);
 
         // 2026-09-15, user: "make tiles panel collapsible, don't take any
         // extra space" -- collapse used to only hide the inner grid
@@ -981,6 +986,7 @@
         // still reserving a thin strip. Collapsed now hides/zeroes BOTH, so
         // the panel truly takes 0px -- #hePanelToggle lives in the toolbar
         // below (not inside this element), so it stays reachable either way.
+        if (actEl) {
         actEl.innerHTML =
           '<div id="hePanelWrap" style="display:' + (collapsed ? 'none' : 'block') + '; ' +
           'padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
@@ -996,8 +1002,18 @@
           toggleBtn.classList.toggle('icon-on', !collapsed);
           toggleBtn.classList.toggle('icon-off', collapsed);
         }
+        }
+        // Dashboard copy: same tiles, but the column is much narrower than the Actionable toolbar row, so the 10 tiles wrap
+        // into as many rows as fit (flex-wrap; widths in styles.css .he-act-tiles) instead of one long scrolling row. Its own collapse toggle: hedgeye_collapse.js.
+        if (actDashEl) {
+          if (actDashBodyEl) actDashBodyEl.innerHTML =
+            '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; border-radius:6px;">' +
+            _tiles('display:flex; flex-wrap:wrap; gap:3px; align-items:stretch;', 'he-act-tiles', true) + '</div>';
+          actDashEl.style.display = 'block';
+        }
       } else {
-        actEl.style.display = 'none';
+        if (actEl) actEl.style.display = 'none';
+        if (actDashEl) actDashEl.style.display = 'none';
       }
     }
 
@@ -1069,7 +1085,7 @@
       data.watching = watching;
       render(data, fmtLoadedAt());
     } catch (e) {
-      ['hedgeyePanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
+      ['hedgeyePanel', 'hedgeyeActDashPanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
@@ -1105,7 +1121,7 @@
   // exists.
   function _wireRichTips() {
     if (typeof _showDataPop !== 'function') return;
-    ['hedgeyePanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
+    ['hedgeyePanel', 'hedgeyeActDashPanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
       var panel = document.getElementById(id);
       if (!panel) return;
       panel.addEventListener('mouseover', function (e) {

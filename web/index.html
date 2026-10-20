@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261020a">
+  <link rel="stylesheet" href="/static/styles.css?v=20261020f">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -328,6 +328,14 @@
           <div id="hedgeyeDashPanel" style="display:none;">
             <div class="msr-section-hdr" id="hedgeyeDashHdr">Hedgeye<button class="msr-sort-btn" id="hedgeyeDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye panel">&#9662;</button></div>
             <div id="hedgeyeDashPanelBody"></div>
+          </div>
+
+          <!-- 2026-10-20, user-directed: the Actionable screen's Hedgeye tiles (Top-5 / Macro Show / RTA / ETF CHG / II CHG / SSS CHG / Call /
+               Risk Range / Movers / Watching), just below the Hedgeye (Early Look) panel. Rendered by hedgeye_panel.js from the same
+               /api/actionable/hedgeye fetch; collapse toggle wired by hedgeye_collapse.js. -->
+          <div id="hedgeyeActDashPanel" style="display:none;">
+            <div class="msr-section-hdr" id="hedgeyeActDashHdr">Hedgeye signals<button class="msr-sort-btn" id="hedgeyeActDashToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Hedgeye signals panel">&#9662;</button></div>
+            <div id="hedgeyeActDashPanelBody"></div>
           </div>
 
           <!-- TASK_145 shipped these 9 macro rail panels collapsed by
@@ -1142,13 +1150,13 @@
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
        #hedgeyeDashPanel exist in the current page's DOM. -->
-  <script src="/static/hedgeye_panel.js?v=20261020f" defer></script>
+  <script src="/static/hedgeye_panel.js?v=20261020j" defer></script>
   <!-- 2026-08-10 -- shared collapse/expand toggle across the 3 Hedgeye
        dashboard panels above (Mkt Situation/center/INFL) -- user: "make
        hedgeye panels (together) ... collapable and expandable." Loaded
        after hedgeye_panel.js (not that hooks into it -- purely reads/
        writes the .he-collapse-body elements' display + localStorage). -->
-  <script src="/static/hedgeye_collapse.js?v=20260930aa" defer></script>
+  <script src="/static/hedgeye_collapse.js?v=20261020a" defer></script>
   <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

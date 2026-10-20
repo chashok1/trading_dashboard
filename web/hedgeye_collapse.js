@@ -39,13 +39,13 @@
     return window.location.pathname.replace(/\/+$/, '') === '' || window.location.pathname === '/';
   }
 
-  function _applyState(collapsed) {
-    var body = document.getElementById('hedgeyeDashPanelBody');
-    var btn = document.getElementById('hedgeyeDashToggle');
+  function _applyState(collapsed, bodyId, btnId, label) {
+    var body = document.getElementById(bodyId || 'hedgeyeDashPanelBody');
+    var btn = document.getElementById(btnId || 'hedgeyeDashToggle');
     if (body) body.style.display = collapsed ? 'none' : '';
     if (btn) {
       btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
-      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Hedgeye panel');
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' ' + (label || 'Hedgeye panel'));
     }
   }
 
@@ -82,6 +82,17 @@
       _dailyStore(KEY, collapsed);
       _applyState(collapsed);
     });
+    // 2026-10-20: second panel below it (Actionable's Hedgeye tiles), own daily collapse state.
+    var KEY2 = 'heActDashPanel_collapsed';
+    var btn2 = document.getElementById('hedgeyeActDashToggle');
+    if (btn2) {
+      _applyState(_dailyCollapsed(KEY2), 'hedgeyeActDashPanelBody', 'hedgeyeActDashToggle', 'Hedgeye signals panel');
+      btn2.addEventListener('click', function () {
+        var c2 = !_dailyCollapsed(KEY2);
+        _dailyStore(KEY2, c2);
+        _applyState(c2, 'hedgeyeActDashPanelBody', 'hedgeyeActDashToggle', 'Hedgeye signals panel');
+      });
+    }
   }
 
   if (document.readyState === 'loading') {
