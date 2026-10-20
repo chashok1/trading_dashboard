@@ -321,6 +321,103 @@
   }
   window._heShowImagePopup = _showImagePopup;
 
+  // 2026-10-20, user-directed: MKT SIT click opens ONE window like the Jobless / Quad popups (.modal-overlay):
+  // header line (title + report date + close), the report image, today's readings (what the hover box shows),
+  // then a plain-English "How to read this" guide at the end. Strike / PV-band wording is our reading of the
+  // Hedgeye report, not a published Hedgeye definition.
+  var _msrForPopup = null;
+  function _closeMktSitWindow() { var m = document.getElementById('mktSitWindow'); if (m) m.remove(); }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') _closeMktSitWindow(); });
+
+  // Colour helpers for the MKT SIT window's "Today's readings" only (global %chg palette --pct-up / --pct-down).
+  var _MS_GREEN = 'var(--pct-up,#0f9d58)', _MS_RED = 'var(--pct-down,#e5484d)', _MS_AMBER = '#d97706';
+  function _msPill(text, color) {
+    return '<span style="display:inline-block; padding:0 6px; border-radius:9px; font-weight:700; font-size:11px; ' +
+      'color:' + color + '; border:1px solid ' + color + '; background:rgba(127,127,127,0.08);">' + text + '</span>';
+  }
+
+  function _mktSitReadingsHtml(msr) {
+    if (!msr) return '';
+    var row = function (h, valHtml, color, body) {
+      return '<div style="margin:0 0 8px; padding:4px 0 4px 10px; border-left:4px solid ' + (color || '#9ca3af') + ';">' +
+        '<b style="color:var(--text-1,#111827);">' + h + '</b> ' + (valHtml || '') +
+        (body ? '<div style="white-space:pre-wrap; margin-top:2px;">' + esc(body) + '</div>' : '') + '</div>';
+    };
+    var out = '';
+    // Top-box lights (read from the report image server-side, etl/hedgeye/msr_lights.py). Colour follows the cell:
+    // left = green, middle = amber, right = red -- the same as the lit colour in the report.
+    var L = msr.lights;
+    if (L) {
+      var LIGHTS = [
+        ['SPX Gamma Exposure', L.gamma, { Positive: 'dealers calm the market', Neutral: 'dealers have little effect', Negative: 'dealers make moves bigger' }],
+        ['Systematic Flow Risk', L.flow, { Bullish: 'funds have room to buy', Neutral: 'no big push either way', Bearish: 'funds may have to sell' }],
+        ['PV Band Risk/Reward', L.pv, { Long: 'more room up than down', Neutral: 'room is balanced', Short: 'more room down than up' }],
+        ['Strategic Allocation', L.alloc, { 'Risk On': 'favors stocks', Neutral: 'no strong stance', 'Risk Off': 'defensive' }]
+      ];
+      var lightColor = function (v) {
+        return /^(Positive|Bullish|Long|Risk On)$/.test(v) ? _MS_GREEN : (v === 'Neutral' ? _MS_AMBER : _MS_RED);
+      };
+      LIGHTS.forEach(function (x) {
+        if (!x[1]) return;
+        var c = lightColor(x[1]);
+        out += row(x[0] + ':', _msPill(esc(x[1]), c) + ' <span style="color:var(--text-2,#4b5563);">&middot; ' + esc(x[2][x[1]] || '') + '</span>', c);
+      });
+    }
+    if (msr.received_at) out += row('Received:', '<b>' + esc(fmtRecv(msr.received_at)) + '</b>', '#9ca3af');
+    if (msr.gamma_throttle != null) {
+      var gc = msr.gamma_throttle >= 0 ? _MS_GREEN : _MS_RED;
+      out += row('Gamma Throttle:', _msPill(esc(msr.gamma_throttle.toFixed(2)) + (msr.gamma_throttle >= 0 ? ' &middot; calm' : ' &middot; jumpy'), gc),
+        gc, _gammaThrottleTip(msr.gamma_throttle));
+    }
+    if (msr.rvol_10day != null) {
+      var rc = msr.vix == null ? '#9ca3af' : (msr.vix - msr.rvol_10day >= 0 ? _MS_GREEN : _MS_RED);
+      out += row('Realized Vol:', '<b style="color:' + rc + ';">' + esc(msr.rvol_10day.toFixed(2)) + '</b>', rc, _rvolTip(msr.rvol_10day, msr.vix));
+    }
+    return out ? '<div class="qm-help"><div class="qm-help-h">Today&rsquo;s readings</div>' + out + '</div>' : '';
+  }
+
+  // Help text is deliberately plain (no colours / highlights) -- only "Today's readings" above it is coloured.
+  function _mktSitHelpHtml() {
+    var p = function (h, t) { return '<div><b style="color:var(--text-1,#111827);">' + h + '</b> ' + t + '</div>'; };
+    return '<div class="qm-help"><div class="qm-help-h">How to read this</div>' +
+      p('What it is.', 'A daily Hedgeye snapshot of how the market is likely to behave today: calm or jumpy. It is not a buy or sell signal.') +
+      p('Panel header.', 'Gamma Throttle above 0 = dealers calm the market; below 0 (red badge) = they make moves bigger. ' +
+        'Realized Vol is how much the market actually moved over the last 10 days. A VIX above it means options are expensive, which usually goes with calm. ' +
+        'The border is green when Gamma Throttle is 0 or more, red below 0.') +
+      p('Calm or jumpy? (Gamma Exposure light, GEX Throttle, GEX Flip).', 'Light: Positive / Neutral / Negative. ' +
+        'Calmer = dealers sell into rallies and buy dips. Jumpier = they buy into rallies and sell into drops. ' +
+        'GEX Flip is the price where they switch: above it is steadier, below it is jumpier. Neutral usually means price is sitting close to the flip.') +
+      p('Funds buying or selling? (Systematic Flow light).', 'Light: Bullish / Neutral / Bearish. Rule-based funds (vol-control, CTA, risk parity) ' +
+        'buy when volatility falls and sell when it rises. Bullish = room to buy, Bearish = they may have to sell.') +
+      p('Where is the range? (PV Band light and the levels).', 'Light: Long / Neutral / Short. ' +
+        'The Upper and Lower PV Band are the expected high and low. Upside and Downside Risk are how far price is from each band, in %. ' +
+        'Spread is the total width. Implied Move is what options traders expect today, in %. The light turns room-up versus room-down into Long, Neutral or Short.') +
+      p('Big picture (Strategic Allocation light).', 'Light: Risk On / Neutral / Risk Off. Hedgeye&rsquo;s longer-term stance. Risk On has meant calmer, better days for stocks.') +
+      p('Option strikes.', 'Resistance (above price) tends to slow rallies. Support (below) tends to cushion drops. ' +
+        'Focal is the busiest strike, and price often drifts toward it. These are estimates, not hard walls.') +
+      p('Charts.', 'Return Distribution: a tall, narrow hump means calm days. The donut is the suggested Core vs High Beta split. ' +
+        'The regime chart shows the S&amp;P 500 with green Risk On, yellow Neutral and red Risk Off dots.') +
+      '</div>';
+  }
+
+  function _showMktSitWindow(url) {
+    _closeMktSitWindow();
+    var msr = _msrForPopup || {};
+    var sub = 'Market Situation Report' + (msr.date ? ' &middot; ' + esc(msr.date) : '');
+    var m = document.createElement('div');
+    m.id = 'mktSitWindow';
+    m.className = 'modal-overlay active';
+    m.innerHTML = '<div class="modal-content" style="max-width:900px;"><div class="modal-header"><div>' +
+      '<h2 style="margin:0;">MKT SIT</h2><p style="margin:0;">' + sub + '</p></div>' +
+      '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><img src="' + esc(url) + '" alt="Market Situation Report" ' +
+      'style="display:block; width:100%; max-width:780px; height:auto; margin:0 auto 4px; border-radius:4px;">' +
+      _mktSitReadingsHtml(msr) + _mktSitHelpHtml() + '</div></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) _closeMktSitWindow(); });
+  }
+  window._heShowMktSitWindow = _showMktSitWindow;
+
   // 2026-08-10 -- moved out of the purple Hedgeye card grid into its own
   // standalone .cockpit-band section (#heMktSituationPanel, just below Risk
   // Dial in index.html's left column) -- no nested white/shadow box of its
@@ -381,6 +478,7 @@
   }
 
   function msrCardHtml(msr, loadedAt) {
+    _msrForPopup = msr;
     var msrMetricsHtml = '';
     if (msr) {
       var metricParts = [];
@@ -438,7 +536,7 @@
             '<img src="' + esc(msr.image_url) + '" ' +
             'style="width:calc(100% + 8px); max-width:none; margin:-4px; height:auto; display:block; cursor:zoom-in;" ' +
             'data-hetip="' + idx + '" ' +
-            'onclick="window._heShowImagePopup(\'' + esc(msr.image_url) + '\')" ' +
+            'onclick="window._heShowMktSitWindow(\'' + esc(msr.image_url) + '\')" ' +
             'onerror="this.parentNode.style.display=\'none\'"></div>';
         })()
       : '<span style="color:#bbb; font-size:10px;">none</span>';

@@ -1,5 +1,5 @@
 /* 2026-10-17 -- SPX realized volatility panel (1 month vs 3 month + SPX daily % change bars), 6 months.
- * Right column of the Dashboard (#spxRvBand), between Quad Outlook and E.IND.
+ * Left column of the Dashboard (#spxRvBand), directly below the MKT SIT graph (moved from the right column 2026-10-20).
  * Data: GET /api/cockpit/spx-realized-vol -> rows [date, rv21, rv63, pct]. */
 (function () {
   'use strict';

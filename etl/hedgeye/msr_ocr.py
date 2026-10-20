@@ -4,6 +4,7 @@ MSR chart OCR — process MARKET SITUATION REPORT chart images in-memory.
 Downloads each chart URL, runs Tesseract OCR, applies two rules:
   1. "SPX Gamma Exposure" found → save image to msr_dir/MSR YYYY-MM-DD.png
   2. "Gamma Throttle" found → parse Gamma Throttle + 10-Day rVol → hist_msr
+  3. The saved SPX Gamma image's 4 top-box lights → hist_msr.*_light (msr_lights.py)
 
 Rolling 30-day archive: images older than 30 days are deleted automatically.
 No images written to hedgeye_charts; no hist_media entries created.
@@ -18,6 +19,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import text
+
+from etl.hedgeye.msr_lights import detect_lights, save_lights
 
 log = logging.getLogger("hedgeye.msr_ocr")
 
@@ -100,6 +103,7 @@ def process_msr_images(
 ) -> dict:
     """OCR each chart in-memory; apply SPX Gamma and Gamma Throttle rules."""
     spx_saved = False
+    spx_bytes = b""
     gt_done = False
     summary: dict = {"spx_gamma_saved": False, "gamma_throttle": None, "rvol_10day": None}
 
@@ -120,6 +124,7 @@ def process_msr_images(
                 dest = out_dir / f"MSR {email_date.isoformat()}.png"
                 dest.write_bytes(img_bytes)
                 spx_saved = True
+                spx_bytes = img_bytes
                 summary["spx_gamma_saved"] = True
                 log.info("msr_ocr: SPX Gamma chart saved -> %s", dest)
                 _cleanup_old(str(out_dir))
@@ -182,5 +187,20 @@ def process_msr_images(
             )
         except Exception as e:
             log.warning("msr_ocr: hist_msr stub insert failed: %s", e)
+
+    # Top-box lights (Gamma / Systematic Flow / PV Band / Strategic Allocation):
+    # read from the same SPX Gamma image by colour (etl/hedgeye/msr_lights.py).
+    # Upserts only the 4 light columns, so it composes with either row above.
+    if spx_bytes:
+        lights = detect_lights(spx_bytes)
+        summary["lights"] = lights
+        if lights:
+            try:
+                save_lights(session, email_date, lights, message_id)
+                log.info("msr_ocr: hist_msr lights date=%s %s", email_date, lights)
+            except Exception as e:
+                log.warning("msr_ocr: hist_msr lights save failed: %s", e)
+        else:
+            log.warning("msr_ocr: top-box lights not readable for %s", email_date)
 
     return summary

@@ -7385,6 +7385,11 @@ CREATE TABLE IF NOT EXISTS hist_msr (
     rvol_10day      NUMERIC(10,4),
     message_id      TEXT
 );
+-- 2026-10-20: the 4 top-box lights of the MSR image (etl/hedgeye/msr_lights.py), e.g. 'Negative' / 'Bearish' / 'Long' / 'Risk On'.
+ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS gamma_light TEXT;
+ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS flow_light  TEXT;
+ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS pv_light    TEXT;
+ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS alloc_light TEXT;
 
 -- =====================================================
 -- 2026-07-12 TASK_119: stop_breached flag on drv_actionable.

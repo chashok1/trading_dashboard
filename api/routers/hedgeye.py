@@ -418,7 +418,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         ), {"eff": effective_date}).scalar()
         if msr_date is not None:
             msr_row = s.execute(text(
-                "SELECT gamma_throttle, rvol_10day FROM hist_msr"
+                "SELECT gamma_throttle, rvol_10day, gamma_light, flow_light, pv_light, alloc_light FROM hist_msr"
                 " WHERE snapshot_date = :md"
             ), {"md": msr_date}).first()
             if msr_row:
@@ -439,6 +439,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                         float(msr_row[1]) if msr_row[1] is not None else None
                     ),
                     "vix": float(vix_val) if vix_val is not None else None,
+                    # top-box lights read from the image (etl/hedgeye/msr_lights.py); None when unreadable
+                    "lights": ({"gamma": msr_row[2], "flow": msr_row[3], "pv": msr_row[4], "alloc": msr_row[5]}
+                               if msr_row[2] else None),
                     "image_url": f"/api/msr/image?date={msr_date.isoformat()}",
                 }
 

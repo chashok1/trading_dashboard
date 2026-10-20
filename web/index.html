@@ -132,6 +132,12 @@
             <div id="heMktSituationBody">Loading…</div>
           </section>
 
+          <!-- 2026-10-20, user-directed: SPX realized volatility (1 month vs 3 month + SPX daily % change bars, 6 months) moved
+               here from the right column, directly below the MKT SIT graph. Filled by web/spx_rv.js from GET /api/cockpit/spx-realized-vol. -->
+          <section id="spxRvBand" class="cockpit-band">
+            <div id="spxRvBody"><div class="msr-loading">Loading…</div></div>
+          </section>
+
           <!-- 2026-10-15 -- Quad cards (US Quarterly / US Monthly / Global), below MKT SIT; filled by web/macro_week.js -->
           <section class="cockpit-band" id="quadCardsPanel" hidden></section>
           <!-- 2026-10-17 -- 60d / monthly / quarterly quads as small boxes right under the big ones; filled by web/app.js::loadRegimeBand() -->
@@ -995,12 +1001,6 @@
           <div id="headwindBody" class="av-panel"></div>
         </section>
 
-        <!-- 2026-10-17 -- SPX realized volatility, 1 month vs 3 month (+ SPX daily % change bars), 6 months;
-             below $ correlation (moved there 2026-10-17). Filled by web/spx_rv.js from GET /api/cockpit/spx-realized-vol. -->
-        <section id="spxRvBand" class="cockpit-band rail-band">
-          <div id="spxRvBody"><div class="msr-loading">Loading…</div></div>
-        </section>
-
         <!-- 2026-08-24 -- INFL moved below Sectors, then (2026-10-17) below $ correlation, after SPX realized vol -- user: "move INFL
              panel to below sectors panel". -->
         <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
@@ -1126,7 +1126,7 @@
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
   <script src="/static/macro_week.js?v=20261019k" defer></script>
-  <script src="/static/spx_rv.js?v=20261019b" defer></script>
+  <script src="/static/spx_rv.js?v=20261020a" defer></script>
   <script src="/static/yield_curve.js?v=20261018i" defer></script>
   <script src="/static/move_vix.js?v=20261018e" defer></script>
   <script src="/static/credit_panel.js?v=20261018m" defer></script>
@@ -1142,7 +1142,7 @@
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
        #hedgeyeDashPanel exist in the current page's DOM. -->
-  <script src="/static/hedgeye_panel.js?v=20261019b" defer></script>
+  <script src="/static/hedgeye_panel.js?v=20261020f" defer></script>
   <!-- 2026-08-10 -- shared collapse/expand toggle across the 3 Hedgeye
        dashboard panels above (Mkt Situation/center/INFL) -- user: "make
        hedgeye panels (together) ... collapable and expandable." Loaded
