@@ -3482,9 +3482,9 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         UPDATE drv_tn_td_bb_rr dst
         SET td_tn_bb_rr_action = CASE
             WHEN l.qf_seq < 0 THEN l.qf_seq
-            WHEN l.qf_seq > 0 THEN
-                CASE WHEN l.qk_seq < 0 THEN l.qk_seq
-                     ELSE l.qo_seq END
+            -- 2026-10-20, user: a bearish Bollinger band no longer produces a sell on its own (back-test: no edge, fires on ~1/4 of
+            -- stocks). It is a warning only (technical_trail "warn" stage); the range-position path decides, and a bearish band has no buy path.
+            WHEN l.qf_seq > 0 THEN l.qo_seq
             ELSE NULL
         END
         FROM looked_up l
@@ -3516,6 +3516,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     for w in why_rows:
         wd = dict(w)
         wd["pullback"] = pullback
+        wd["lrr_tol"] = lrr_tol
         try:
             trail = _json.dumps(technical_trail(wd), default=float)
         except Exception:

@@ -879,3 +879,7 @@ An SSS REDUCE (pct_delta below zero, or falling week over week) no longer compet
 
 ### Flagged drop softens SELL ALL to HOLD (2026-10-20)
 A held stock whose winning source dropped it (REMOVE -> SELL ALL) becomes HOLD when that drop is flagged `drop_conflict` (price up more than `ref_settings.premature_drop_up_pct`, default 4%, since the drop, or a fresh 3-day up-streak while up overall). A breached stop is never softened. Only the Final Call changes: `source_actions`, Technical and the Why card (which explains it) stay visible. Code: the "soften SELL ALL" block after the premature-drop enrichment in `etl/derive_actionable.py`.
+
+### Technical SELL TO MIN changes (2026-10-20, after a back-test May-Oct 2026)
+- A falling Bollinger band is a warning only: it no longer makes a Technical sell (back-test: fires on about a quarter of stocks, no edge). `etl/derive.py` Pass 2 now lets the range-position path decide; the Why card's Technical line carries `warn`, shown in the grid warning symbol and popup (`_signalReasons`).
+- Broken LRR support now needs the close more than 2 ATR below LRR (`ref_settings.lrr_break_atr_mult`, was 1.5; `db/seeds_range_zones.sql`). Trend & Trade stays at 0.5 SD.

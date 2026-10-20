@@ -10,3 +10,9 @@ ON CONFLICT (setting_name) DO NOTHING;
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('range_pullback_pct', '0.10', 'TRR-pullback buy: price is at least this fraction of the LRR-TRR range below the day high')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-10-20, user (after a back-test, May-Oct 2026): a broken LRR support counts as a sell only when the close is
+-- this many ATR below LRR. 1.5 bounced back too often; 2 is the first depth where it beat chance.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('lrr_break_atr_mult', '2', 'Broken LRR support = the close is more than this many ATR below LRR')
+ON CONFLICT (setting_name) DO NOTHING;

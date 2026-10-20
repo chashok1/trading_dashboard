@@ -61,6 +61,12 @@ _NBULL = {
 }
 
 
+def _tol_txt(d: dict) -> str:
+    """LRR-break depth in ATRs for the wording (ref_settings lrr_break_atr_mult; default 1.5)."""
+    t = _n(d.get("lrr_tol"))
+    return format(t if t else 1.5, "g")
+
+
 def explain_technical(d: dict) -> Optional[str]:
     """Why line + verdict line (newline-separated) for the Technical signal, or None.
 
@@ -109,7 +115,7 @@ def explain_technical(d: dict) -> Optional[str]:
         raw = _n(d.get("lrr_idx"))
     if eff is not None and int(eff) == -1:
         return _two(f"Price {_usd(last)} {R}below{E} LRR ({_usd(d.get('lrr'))}) by more than "
-                    f"one and a half typical daily moves",
+                    f"{_tol_txt(d)} typical daily moves",
                     "broken support overrides bullish Trend, Trade and band")
     held = ""
     if raw is not None and int(raw) == -1:
@@ -118,7 +124,7 @@ def explain_technical(d: dict) -> Optional[str]:
             # Shallow dip: still under LRR, but by less than the break depth -- these
             # usually bounce (past-data check, 2026-10-14), so watch rather than sell.
             held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) and price "
-                    f"{_usd(last)} is still just under it (less than one and a half typical "
+                    f"{_usd(last)} is still just under it (less than {_tol_txt(d)} typical "
                     f"daily moves): watch for a bounce or a deeper break. ")
         else:
             held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) but price "
@@ -223,7 +229,9 @@ def technical_trail(d: dict) -> dict:
     elif qj >= 0:
         stages.append({"name": "Bollinger bands", "ok": None, "text": "Bands are not rising enough to call it bullish"})
     else:
-        stages.append({"name": "Bollinger bands", "ok": False, "text": "Bands are falling" + bb_txt + ": bearish, overrides range position"})
+        # 2026-10-20: a falling band is a warning only (no sell on its own); see etl/derive.py Pass 2.
+        stages.append({"name": "Bollinger bands", "ok": None, "warn": True,
+                       "text": "Bands are falling" + bb_txt + ": warning only, not counted as a sell"})
         return out
     lrr, trr, last_n = _n(d.get("lrr")), _n(d.get("trr")), _n(last)
     pos = None

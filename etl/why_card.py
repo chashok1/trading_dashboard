@@ -80,7 +80,7 @@ def _technical_step(ctx: dict) -> dict:
     rr = ctx.get("rr_action")
     trail = ctx.get("trail") or {}
     stages = trail.get("stages") or []
-    lines = [{"ok": st.get("ok"), "text": f"{st.get('name')}: {st.get('text')}"} for st in stages]
+    lines = [{"ok": st.get("ok"), "text": f"{st.get('name')}: {st.get('text')}", **({"warn": True} if st.get("warn") else {})} for st in stages]
     if rr:
         tone = _side(rr)
         head = f"{_name(rr)}"

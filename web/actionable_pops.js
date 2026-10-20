@@ -886,6 +886,11 @@ function _signalReasons(row, side) {
   for (const e of _sourcesOf(row)) {
     if (e.warning_only) out.warn.unshift('SSS weight fell' + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only, not counted in the call');
   }
+  // 2026-10-20, user: a falling Bollinger band is a warning only (the Why card's Technical line is flagged warn).
+  let _wc = row && row.why_card;
+  if (typeof _wc === 'string') { try { _wc = JSON.parse(_wc); } catch (_) { _wc = null; } }
+  const _tech = _wc && Array.isArray(_wc.steps) ? _wc.steps.find(x => x.key === 'technical') : null;
+  for (const l of ((_tech && _tech.lines) || [])) if (l.warn) out.warn.unshift(l.text);
   return out;
 }
 

@@ -87,3 +87,11 @@ def test_sss_weight_drop_is_a_warning_not_a_vote():
     step = build_why_card(_ctx(sources=srcs, winning_source="CALL"))["steps"][0]
     assert step["tone"] == "buy"
     assert any("Warning only" in l["text"] for l in step["lines"])
+
+
+def test_bearish_bollinger_is_a_warning_not_a_sell_stage():
+    t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=-3, bb_desc="Cnfm Bear Trnd Less"))
+    bb = t["stages"][1]
+    assert bb["ok"] is None and bb["warn"] is True and "warning only" in bb["text"]
+    card = build_why_card(_ctx(trail=t))
+    assert any(l.get("warn") for l in card["steps"][1]["lines"])
