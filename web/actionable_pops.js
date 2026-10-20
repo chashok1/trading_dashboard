@@ -715,7 +715,9 @@ function _signalReasons(row, side) {
   // mirroring _tradabilityBreakdown's own "near LRR" convention (rawPos <=
   // 15) symmetrically at the other end of the range (rawPos >= 85).
   const _rrPosForWarn = !isSell ? _rawRrPos(row) : null;
-  if (_rrPosForWarn != null && _rrPosForWarn >= 85) {
+  // 2026-10-20, user: one "at TRR" width -- ref_settings range_trr_zone_pct (the same setting Technical uses), no hard-coded 85.
+  const _trrZone = state.rangeTrrZone != null ? state.rangeTrrZone : 0.20;
+  if (_rrPosForWarn != null && _rrPosForWarn >= 100 * (1 - _trrZone)) {
     warn.push('Caution: price at TRR');
   }
   if (!isSell && row.warn_added_this_leg) {

@@ -418,7 +418,7 @@ def get_actionable_settings():
             " WHERE setting_name IN ('conviction_proven_edge_min',"
             " 'trade_mode_weak_buy_sources',"
             " 'rsi_overbought', 'rsi_oversold', 'vlm_rvol_avoid_threshold',"
-            " 'source_order_mode', 'unproven_sell_mode')"
+            " 'source_order_mode', 'unproven_sell_mode', 'range_trr_zone_pct')"
         )).fetchall()
     settings = {r[0]: r[1] for r in rows}
     return {
@@ -435,6 +435,8 @@ def get_actionable_settings():
         # suppression legend without a separate round-trip. Both default OFF.
         "source_order_mode": settings.get("source_order_mode", "static"),
         "unproven_sell_mode": settings.get("unproven_sell_mode", "annotate"),
+        # 2026-10-20: the ONE "at TRR" width (top fraction of the LRR-TRR range); also drives the grid's "price at TRR" caution.
+        "range_trr_zone_pct": float(settings.get("range_trr_zone_pct", 0.20)),
     }
 
 

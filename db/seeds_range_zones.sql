@@ -2,7 +2,7 @@
 -- (etl/derive_cat_atomic_input.py). Fractions of the LRR-TRR range. Idempotent; never overwrites an edit.
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('range_lrr_zone_pct', '0.25', 'At LRR = the day low is in the bottom this fraction of the LRR-TRR range'),
-    ('range_trr_zone_pct', '0.20', 'At TRR = the day high is in the top this fraction of the LRR-TRR range'),
+    ('range_trr_zone_pct', '0.10', 'At TRR = the day high is in the top this fraction of the LRR-TRR range'),
     ('range_mid_zone_pct', '0.10', 'At midpoint = price is within +/- this fraction of the range around the middle')
 ON CONFLICT (setting_name) DO NOTHING;
 

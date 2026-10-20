@@ -1420,6 +1420,8 @@ async function loadSources() {
         if (!isFinite(state.rsiOverbought)) state.rsiOverbought = 70;
         state.rsiOversold = Number(settings.rsi_oversold);
         if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
+        state.rangeTrrZone = Number(settings.range_trr_zone_pct);
+        if (!isFinite(state.rangeTrrZone) || state.rangeTrrZone <= 0) state.rangeTrrZone = 0.20;
         state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
         if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
         // TASK_140/141: read-only mode flags, both default OFF. Only
@@ -1434,6 +1436,7 @@ async function loadSources() {
         state.convictionProvenEdgeMin = 0.5;
         state.rsiOverbought = 70;
         state.rsiOversold = 30;
+        state.rangeTrrZone = 0.20;
         state.vlmRvolAvoidThreshold = 1.5;
         state.sourceOrderMode = 'static';
         state.unprovenSellMode = 'annotate';
