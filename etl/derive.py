@@ -555,6 +555,9 @@ def _derive_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int
         text("DELETE FROM drv_symbols WHERE as_of_date = :d"),
         {"d": as_of_date},
     )
+    # 2026-10-20: the Hedgeye periodic lists (ETF / II / CALL) use the live ceiling on the latest day (their newest file may be newer than
+    # the last TOS close); RR stays <= D. See etl/_derive_common.py::position_ceiling.
+    ceil = position_ceiling(session, as_of_date)
     result = session.execute(text("""
         INSERT INTO drv_symbols (as_of_date, tos_symbol)
         SELECT :d, s FROM (
@@ -564,13 +567,13 @@ def _derive_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int
             UNION SELECT tos_symbol FROM hist_tw WHERE export_date = :d
             UNION SELECT tos_symbol FROM hist_y  WHERE export_date = :d
             -- periodic feeds: latest snapshot <= D (carry-forward; keeps ETFs etc.)
-            UNION SELECT tos_symbol FROM hist_etf  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_ii   WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_call WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_etf  WHERE snapshot_date <= :ceil
+            UNION SELECT tos_symbol FROM hist_ii   WHERE snapshot_date <= :ceil
+            UNION SELECT tos_symbol FROM hist_call WHERE snapshot_date <= :ceil
             UNION SELECT tos_symbol FROM hist_rr   WHERE snapshot_date <= :d
         ) u WHERE s IS NOT NULL
         ON CONFLICT (as_of_date, tos_symbol) DO NOTHING
-    """), {"d": as_of_date})
+    """), {"d": as_of_date, "ceil": ceil})
     return result.rowcount or 0
 
 
@@ -824,7 +827,7 @@ def _derive_outlooks_impl(session: Session, as_of_date: date, run_id: int) -> in
         WHERE as_of_date = :d AND source_code = 'CALL'
     """), {"d": as_of_date})
 
-    # etf CTE — reads drv_source_standing (bundle-cap, tos_symbol keyed)
+    # etf CTE — reads drv_source_standing (bundle-cap, tos_symbol keyed); brr/trr from the same live-ceiling snapshot as the standing rows
     session.execute(text("""
         CREATE TEMP TABLE _t_out_ef ON COMMIT DROP AS
         SELECT dss.tos_symbol,
@@ -834,11 +837,11 @@ def _derive_outlooks_impl(session: Session, as_of_date: date, run_id: int) -> in
         LEFT JOIN LATERAL (
             SELECT brr, trr FROM hist_etf
             WHERE tos_symbol = dss.tos_symbol
-              AND snapshot_date <= :d
+              AND snapshot_date <= :ceil
             ORDER BY snapshot_date DESC LIMIT 1
         ) h ON TRUE
         WHERE dss.as_of_date = :d AND dss.source_code = 'ETF'
-    """), {"d": as_of_date})
+    """), {"d": as_of_date, "ceil": position_ceiling(session, as_of_date)})
 
     # ii CTE — reads drv_source_standing (bundle-cap, tos_symbol keyed)
     session.execute(text("""

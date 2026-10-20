@@ -925,8 +925,8 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     # but with a live-anchor ceiling (see position_ceiling) so a
                     # same-day ETF/II change is visible in the Sources badge
                     # before tonight's anchor advance. drv_source_standing/
-                    # drv_outlooks/the rules engine are untouched — they still
-                    # call these builders with the strict as_of_date ceiling.
+                    # drv_outlooks/the rules engine use the same live ceiling since
+                    # 2026-10-20 (derive_source_standing passes position_ceiling too).
                     # Previous from hist_*+chg with tos_symbol.
                     ceil = position_ceiling(session, as_of_date)
                     curr_etf_built = _build_etf_ii(
@@ -963,7 +963,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     # but with a live-anchor ceiling (see position_ceiling) so a
                     # same-day CALL update is visible in the Sources badge before
                     # tonight's anchor advance. drv_source_standing/drv_outlooks/
-                    # the rules engine are untouched. Prior-diff detection via
+                    # the rules engine use the same live ceiling (2026-10-20). Prior-diff detection via
                     # hist_call (unchanged, still strictly anchored at as_of_date).
                     lb = int(s.get("lookback_days") or 30)
                     ceil = position_ceiling(session, as_of_date)
@@ -1158,7 +1158,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # PS re-rank is visible in the Sources badge (a PS drop is a
                 # complete, final fact the moment it lands — see position_ceiling)
                 # before tonight's anchor advance. drv_source_standing/
-                # drv_outlooks/the rules engine are untouched. Previous from
+                # drv_outlooks/the rules engine use the same live ceiling (2026-10-20). Previous from
                 # hist_ps with tos_symbol for correct comparison.
                 ceil = position_ceiling(session, as_of_date)
                 curr_ps_built = _build_ps(session, as_of_date, run_id, ceiling=ceil)
@@ -1233,8 +1233,8 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # the same builder that feeds drv_source_standing, with a
                 # live-anchor ceiling so a same-day SSS re-rank is visible in the
                 # Sources badge before tonight's anchor advance.
-                # drv_source_standing/drv_outlooks/the rules engine are
-                # untouched. Previous state from hist_sss with tos_symbol.
+                # drv_source_standing/drv_outlooks/the rules engine use the same
+                # live ceiling (2026-10-20). Previous state from hist_sss with tos_symbol.
                 ceil = position_ceiling(session, as_of_date)
                 curr_sss_built = _build_sss(session, as_of_date, run_id, ceiling=ceil)
 

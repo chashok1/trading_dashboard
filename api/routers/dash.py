@@ -18,7 +18,7 @@ from etl.derive_macro import _classify_style, _STANCE
 from api.models import (
     DashRow, DashSummary, StksRow, SymbolHistoryRow,
 )
-from api._helpers import _resolve_date
+from api._helpers import _resolve_date, periodic_cap
 
 
 # ---------------------------------------------------------------------------
@@ -2476,29 +2476,31 @@ def get_actionable_source_data(
 
     out: dict = {}
     with session_scope() as s:
+        # newest file of each periodic Hedgeye list on the latest day (api/_helpers.py::periodic_cap); RR below stays <= d
+        cap = periodic_cap(s, d)
         rr = s.execute(text("""
             SELECT lrr AS buy_trade, trr AS sell_trade, as_of_date AS snapshot_date
             FROM drv_rr WHERE tos_symbol=:sym AND as_of_date<=:d
             ORDER BY as_of_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if rr:
             out["RR"] = {"buy_trade": _f(rr[0]), "sell_trade": _f(rr[1]),
                          "snapshot_date": rr[2].isoformat() if rr[2] else None}
 
         etf = s.execute(text("""
             SELECT brr, trr, snapshot_date FROM hist_etf
-            WHERE tos_symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if etf:
             out["ETF"] = {"brr": _f(etf[0]), "trr": _f(etf[1]),
                           "snapshot_date": etf[2].isoformat() if etf[2] else None}
 
         ps = s.execute(text("""
             SELECT rank, snapshot_date FROM hist_ps
-            WHERE ticker = :sym AND snapshot_date <= :d
+            WHERE ticker = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if ps:
             out["PS"] = {"rank": _f(ps[0]),
                          "snapshot_date": ps[1].isoformat() if ps[1] else None}
@@ -2506,9 +2508,9 @@ def get_actionable_source_data(
         goany = s.execute(text("""
             SELECT status, entry_price, total_return, date_added, snapshot_date
             FROM hist_goany
-            WHERE tos_symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC, (status = 'open') DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if goany:
             out["GOANY"] = {"status": goany[0], "entry_price": _f(goany[1]),
                             "total_return": _f(goany[2]),
@@ -2517,26 +2519,26 @@ def get_actionable_source_data(
 
         sss = s.execute(text("""
             SELECT pct_delta, anlst_best_idea_rank, snapshot_date FROM hist_sss
-            WHERE tos_symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if sss:
             out["SSS"] = {"pct_delta": _f(sss[0]), "anlst_best_idea_rank": sss[1],
                           "snapshot_date": sss[2].isoformat() if sss[2] else None}
 
         call = s.execute(text("""
             SELECT snapshot_date FROM hist_call
-            WHERE tos_symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if call:
             out["CALL"] = {"snapshot_date": call[0].isoformat() if call[0] else None}
 
         ii = s.execute(text("""
             SELECT snapshot_date FROM hist_ii
-            WHERE symbol = :sym AND snapshot_date <= :d
+            WHERE symbol = :sym AND snapshot_date <= :cap
             ORDER BY snapshot_date DESC LIMIT 1
-        """), {"sym": sym, "d": d}).first()
+        """), {"sym": sym, "d": d, "cap": cap}).first()
         if ii:
             out["II"] = {"snapshot_date": ii[0].isoformat() if ii[0] else None}
     return out

@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 
 from etl.db import session_scope
-from api._helpers import _resolve_date
+from api._helpers import _resolve_date, periodic_cap
 
 _gmail_fetch_lock = threading.Lock()
 _gmail_fetch_state: dict = {"running": False, "last_run": None, "last_count": None, "last_error": None}
@@ -669,7 +669,7 @@ def digest_weekly(date: Optional[str] = Query(None)):
     with session_scope() as s:
         ps_date = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_ps WHERE snapshot_date <= :d"
-        ), {"d": d}).scalar()
+        ), {"d": periodic_cap(s, d)}).scalar()
         ps = []
         if ps_date is not None:
             ps = [dict(r) for r in s.execute(text(

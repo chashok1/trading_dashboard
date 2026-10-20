@@ -39,6 +39,16 @@ WEB_DIR = PROJECT_ROOT / "web"
 # Date resolver — used by dash, ref, rules endpoints
 # -----------------------------------------------------------------------------
 
+def periodic_cap(session, d: date) -> date:
+    """Upper bound for the 'newest snapshot' lookup of the periodic Hedgeye lists (SSS, PS, ETF, II, CALL, GOANY ...).
+
+    2026-10-20, user-directed: on the LATEST day (d is the live anchor = MAX(export_date) FROM hist_td) these lists show their newest
+    file even when it is newer than the last TOS close; when an OLDER date is picked it stays `d`, so the page goes back to that day.
+    Same rule as etl/_derive_common.py::position_ceiling (which the derive layer uses)."""
+    anchor = session.execute(text("SELECT MAX(export_date) FROM hist_td")).scalar()
+    return date.max if (anchor is not None and d >= anchor) else d
+
+
 def _resolve_date(d: Optional[str]) -> date:
     """If date is None, return the default (latest available); else parse
     YYYY-MM-DD.

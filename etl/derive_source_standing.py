@@ -34,6 +34,7 @@ from etl._derive_common import (
     _clean, _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
     normalize_change_str,  # D1: canonical change_str normalizer
     etf_ii_patch_outlook,  # D3: ETFCHG/IICHG add/remove-aware patch resolver
+    position_ceiling,  # live-anchor ceiling (2026-10-20)
 )
 
 log = logging.getLogger("etl.derive_source_standing")
@@ -417,12 +418,17 @@ def _derive_source_standing_impl(session: Session,
 
     wt_map = _load_outlook_weights(session)
 
+    # 2026-10-20, user-directed: on the LATEST day the Hedgeye lists (SSS, ETF, II, PS, GOANY, CALL) use their newest file even when it
+    # is newer than the last TOS close (live ceiling = today, same rule as derive_market_read / derive_outlook_action); on a historical
+    # re-derive the ceiling stays as_of_date (no look-ahead). RR keeps its strict as_of_date rule (its files carry the prior close).
+    ceil = position_ceiling(session, as_of_date)
+
     # Collect rows from all sources
     all_rows: list[dict] = []
 
     # Increment 1 — SSS
     try:
-        all_rows.extend(_build_sss(session, as_of_date, run_id))
+        all_rows.extend(_build_sss(session, as_of_date, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing SSS failed: %s", e)
 
@@ -430,7 +436,7 @@ def _derive_source_standing_impl(session: Session,
     try:
         all_rows.extend(_build_etf_ii(
             session, as_of_date,
-            "hist_etf", "hist_etfchg", "ETF", wt_map, run_id))
+            "hist_etf", "hist_etfchg", "ETF", wt_map, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing ETF failed: %s", e)
 
@@ -438,19 +444,19 @@ def _derive_source_standing_impl(session: Session,
     try:
         all_rows.extend(_build_etf_ii(
             session, as_of_date,
-            "hist_ii", "hist_iichg", "II", wt_map, run_id))
+            "hist_ii", "hist_iichg", "II", wt_map, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing II failed: %s", e)
 
     # Increment 3 — PS
     try:
-        all_rows.extend(_build_ps(session, as_of_date, run_id))
+        all_rows.extend(_build_ps(session, as_of_date, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing PS failed: %s", e)
 
     # GOANY — PS-style membership
     try:
-        all_rows.extend(_build_goany(session, as_of_date, run_id))
+        all_rows.extend(_build_goany(session, as_of_date, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing GOANY failed: %s", e)
 
@@ -462,7 +468,7 @@ def _derive_source_standing_impl(session: Session,
 
     # Increment 5 — CALL (30-day window)
     try:
-        all_rows.extend(_build_call(session, as_of_date, 30, wt_map, run_id))
+        all_rows.extend(_build_call(session, as_of_date, 30, wt_map, run_id, ceiling=ceil))
     except Exception as e:
         log.warning("derive_source_standing CALL failed: %s", e)
 

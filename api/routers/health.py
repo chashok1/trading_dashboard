@@ -18,7 +18,7 @@ from etl.db import get_engine, session_scope
 from etl.market_date import add_trading_days
 
 from api.models import HealthResponse
-from api._helpers import discover_data_tables, _resolve_date, _get_ref_setting
+from api._helpers import discover_data_tables, _resolve_date, _get_ref_setting, periodic_cap
 
 logger = logging.getLogger(__name__)
 
@@ -390,7 +390,7 @@ def get_dashboard_symbol_earnings(
                 "JOIN (SELECT tos_symbol FROM hist_cs WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date<=:d) "
                 "UNION SELECT tos_symbol FROM hist_f WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date<=:d) "
                 "UNION SELECT tos_symbol FROM drv_outlooks WHERE as_of_date=:d AND (call_outlook ILIKE 'BULLISH' OR call_outlook ILIKE 'NEUTRAL') "
-                "UNION SELECT COALESCE(NULLIF(tos_symbol,''),symbol) FROM hist_sss WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date<=:d)"
+                "UNION SELECT COALESCE(NULLIF(tos_symbol,''),symbol) FROM hist_sss WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date<=:cap)"
                 ") u ON u.tos_symbol=t.tos_symbol"
             )
             scope_clause = "TRUE"
@@ -405,7 +405,7 @@ def get_dashboard_symbol_earnings(
             "WHERE t.as_of_date = :d AND t.earnings_days IS NOT NULL AND t.earnings_days BETWEEN 0 AND :days_ahead "
             f"AND {scope_clause} "
             "ORDER BY t.earnings_days ASC, t.tos_symbol ASC LIMIT :lim"
-        ), {"d": d, "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
+        ), {"d": d, "cap": periodic_cap(s, d), "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
     return [
         {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
          "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat()}

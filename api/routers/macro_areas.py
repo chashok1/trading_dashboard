@@ -20,7 +20,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import text
 
 from api._helpers import (
-    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, rr_pos, vol_zone,
+    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, periodic_cap, rr_pos, vol_zone,
 )
 from etl.db import session_scope
 from etl.derive_macro import _classify_style
@@ -240,6 +240,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "SELECT MAX(as_of_date) FROM drv_rr WHERE as_of_date <= :d"
         ), {"d": d}).first()
         anchor = anchor_row[0] if anchor_row and anchor_row[0] else d
+        # 2026-10-20, user-directed: on the LATEST day the periodic Hedgeye lists (Signal Strength, PS, ETF, CALL) show their newest
+        # file even when it is newer than the last TOS close; an OLDER picked date goes back to that day (api/_helpers.py::periodic_cap).
+        _snap_cap = periodic_cap(s, anchor)
 
         # Load ref_macro_area members
         members_rows = s.execute(text("""
@@ -574,7 +577,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             from etl.derive_sss_breadth import _normalize_sss_sector, _parse_rank
             snap = s.execute(text(
                 "SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d"
-            ), {"d": anchor}).scalar()
+            ), {"d": _snap_cap}).scalar()
             if snap:
                 kind_order = {"ranked": 0, "bench": 1, "km": 2, None: 3}
                 raw = s.execute(text(
@@ -605,7 +608,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         call_cfg: list[dict] = []
         try:
             _orank = "CASE UPPER(COALESCE({c}, '')) WHEN 'BULLISH' THEN 0 WHEN 'NEUTRAL' THEN 1 WHEN 'BEARISH' THEN 2 ELSE 3 END"
-            psnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_ps WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            psnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_ps WHERE snapshot_date <= :d"), {"d": _snap_cap}).scalar()
             if psnap:
                 seen_ps: set[str] = set()
                 for r in s.execute(text(
@@ -614,7 +617,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     if r["sym"] and r["sym"] not in seen_ps:
                         seen_ps.add(r["sym"])
                         ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": "PS"})
-            esnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_etf WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            esnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_etf WHERE snapshot_date <= :d"), {"d": _snap_cap}).scalar()
             if esnap:
                 seen_e: set[str] = set()
                 for r in s.execute(text(
@@ -623,7 +626,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     if r["sym"] and r["sym"] not in seen_e:
                         seen_e.add(r["sym"])
                         ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": "ETF Pro"})
-            csnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :d"), {"d": anchor}).scalar()
+            csnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :d"), {"d": _snap_cap}).scalar()
             if csnap:
                 seen_c: set[str] = set()
                 for r in s.execute(text(
@@ -680,6 +683,11 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 net_chg = _maybe_float(q_map[sym].get("net_chng"))
             if last is None and sym in tech_map:
                 last = _maybe_float(tech_map[sym].get("last_price"))
+            # A member that comes only from a source list (Signal Strength) and has no TOS price: the row is still listed and flagged
+            # `no_tos` (no price, no range bar, no trend). The SSS file's own last_close / pct_delta are NOT used as a price: pct_delta is
+            # the move since the signal date (not the day's change) and last_close is not a live price (it differs from TOS for the same
+            # names), so showing them as today's price/% was wrong (2026-10-20).
+            no_tos = bool(mc.get("source_only")) and last is None
 
             rr = rr_map.get(sym, {})
             tech = tech_map.get(sym, {})
@@ -811,6 +819,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 # 2026-09-30 -- lets the Accounts panel's card view group
                 # holdings by sector.
                 "sector": tech.get("sector"),
+                "no_tos": no_tos,
             })
 
         # Area roll-up
@@ -894,7 +903,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
 
     if sss_by_sector:
         sss_cfg = [
-            {"member_symbol": sym, "role": "dual", "label": "Signal Strength", "account_group": sec}
+            {"member_symbol": sym, "role": "dual", "label": "Signal Strength", "account_group": sec,
+             "source_only": True}
             for sec in sss_by_sector
             for sym in sss_by_sector[sec]
         ]
