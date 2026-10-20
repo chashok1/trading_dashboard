@@ -2384,9 +2384,8 @@ async function loadCumPnlSnapshot() {
         title += '\n\n' + _dashChgTipLines(summaryChg).join('\n');
       }
       todayEl.title = title;
-      const dTxt = (summaryChg && lastProfit != null && Math.abs(summaryChg.diff) >= 0.5)
-        ? ' (Δ ' + (_fsCompactUsd(summaryChg.diff) || '') + ')' : '';
-      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + dTxt + badge + estBadge : '';
+      // 2026-10-19, user-directed: the "(Δ ...)" leftover is no longer shown on the pill; it stays in the tooltip breakdown.
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge + estBadge : '';
     }
     if (totalEl) {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
