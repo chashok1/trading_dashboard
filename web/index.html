@@ -924,6 +924,26 @@
           <div id="macroRailCorr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
+        <!-- 2026-10-20, user-directed: Sectors (leaders / laggards / rotate-in) and Headwind areas moved up, directly below the $ correlation panel. -->
+        <!-- 2026-08-24 -- Sectors moved back here from .cat-col -- user:
+             "move the sectors back to side panel". Same #macroRailSectors
+             container id, same markup; web/macro_areas.js::
+             renderSectorsPanel() targets it by id regardless of parent, so
+             no script change needed. -->
+        <!-- 2026-08-27 -- "Sectors" header removed -- user: "Remove the
+             header SectorS in right side panel". -->
+        <section class="cockpit-band rail-band" id="macroSectorsBand">
+          <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+        </section>
+
+        <!-- 2026-10-16, user-directed: the "$X headwind" pill's list (areas in Headwind, what you hold in each, the
+             held stocks) shown here, between Dollar correlation and Sectors, instead of a popup. Filled by
+             web/area_verdicts.js::renderHeadwindPanel(); hidden when no area is in Headwind. -->
+        <section class="cockpit-band rail-band" id="headwindBand" hidden>
+          <div class="msr-section-hdr" title="Areas currently in Headwind and the money you hold in each (inverse positions excluded)">Headwind areas <span class="av-dim" style="font-weight:400;text-transform:none;letter-spacing:0;">&middot; you hold <b id="headwindTotal"></b></span></div>
+          <div id="headwindBody" class="av-panel"></div>
+        </section>
+
         <!-- 2026-10-20, user-directed: OPEX / events / Earnings / Lists-vs-Quad / GLD panel (#crossAssetPanel) and the Notes panel
              (#dashNotesBand) moved here from the left column, directly below the $ correlation panel. -->
         <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
@@ -986,25 +1006,6 @@
              as Mkt Situation -- INFL is now always expanded and no longer
              shares that toggle's state, matching every other split-out
              Dashboard Hedgeye panel. -->
-        <!-- 2026-08-24 -- Sectors moved back here from .cat-col -- user:
-             "move the sectors back to side panel". Same #macroRailSectors
-             container id, same markup; web/macro_areas.js::
-             renderSectorsPanel() targets it by id regardless of parent, so
-             no script change needed. -->
-        <!-- 2026-08-27 -- "Sectors" header removed -- user: "Remove the
-             header SectorS in right side panel". -->
-        <section class="cockpit-band rail-band" id="macroSectorsBand">
-          <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <!-- 2026-10-16, user-directed: the "$X headwind" pill's list (areas in Headwind, what you hold in each, the
-             held stocks) shown here, between Dollar correlation and Sectors, instead of a popup. Filled by
-             web/area_verdicts.js::renderHeadwindPanel(); hidden when no area is in Headwind. -->
-        <section class="cockpit-band rail-band" id="headwindBand" hidden>
-          <div class="msr-section-hdr" title="Areas currently in Headwind and the money you hold in each (inverse positions excluded)">Headwind areas <span class="av-dim" style="font-weight:400;text-transform:none;letter-spacing:0;">&middot; you hold <b id="headwindTotal"></b></span></div>
-          <div id="headwindBody" class="av-panel"></div>
-        </section>
-
         <!-- 2026-08-24 -- INFL moved below Sectors, then (2026-10-17) below $ correlation, after SPX realized vol -- user: "move INFL
              panel to below sectors panel". -->
         <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
@@ -1101,7 +1102,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js?v=20261018b"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/portfolio_mix.js?v=20260901a"></script>
+  <script src="/static/portfolio_mix.js?v=20261020a"></script>
   <script src="/static/app.js?v=20261020b"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>

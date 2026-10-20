@@ -138,7 +138,17 @@ function _pmFitCardWidth(cardId, labels, values) {
 // for which pies wire one and which don't. User: "add same click actions
 // on the top graphs also" (top graphs = the Portfolio Mix pies, previously
 // display-only -- no click handler existed on them at all before this).
-function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg, onSliceClick) {
+// SPDR sector ETF per GICS sector (same map as api/routers/macro_areas.py::_SECTOR_ETF).
+const _PM_SECTOR_SYMBOL = {
+  'Communication Services': 'XLC', 'Consumer Discretionary': 'XLY', 'Consumer Staples': 'XLP', 'Energy': 'XLE',
+  'Financials': 'XLF', 'Health Care': 'XLV', 'Industrials': 'XLI', 'Information Technology': 'XLK',
+  'Materials': 'XLB', 'Real Estate': 'XLRE', 'Utilities': 'XLU',
+};
+// displayLabels (optional, 2026-10-20): what the legend shows instead of `labels` (e.g. the ETF symbol XLK for 'Information Technology');
+// `labels` stay the real category names used for clicks, and the tooltip / legend hover show both.
+function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg, onSliceClick, displayLabels) {
+  const shown = displayLabels || labels;
+  const fullNames = labels.map((l, i) => (shown[i] && shown[i] !== l) ? `${shown[i]} \u00b7 ${l}` : l);
   const canvas = $(canvasId);
   const legendEl = $(legendId);
   if (!canvas) return;
@@ -152,7 +162,7 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
   canvas.style.display = '';
   _pmCharts[key] = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1 }] },
+    data: { labels: fullNames, datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1 }] },
     options: {
       responsive: false,
       maintainAspectRatio: false,
@@ -190,12 +200,14 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
     legendEl.innerHTML = labels.map((lab, i) => {
       const pct = total ? Math.round(values[i] / total * 100) : 0;
       const tickers = (tickerLists && tickerLists[i]) || [];
-      const title = tickers.length ? escapeHtml(_pmTickerLines(tickers).join('\n')) : '';
+      const nameLine = (shown[i] !== lab) ? [lab] : [];
+      const titleLines = nameLine.concat(tickers.length ? _pmTickerLines(tickers) : []);
+      const title = titleLines.length ? escapeHtml(titleLines.join('\n')) : '';
       const clickable = !!onSliceClick;
-      const cursor = clickable ? 'pointer' : (tickers.length ? 'help' : 'default');
+      const cursor = clickable ? 'pointer' : ((tickers.length || nameLine.length) ? 'help' : 'default');
       return `<div title="${title}" data-pm-idx="${i}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
         + `<span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>`
-        + `<span style="flex:1;min-width:0;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lab)}</span>`
+        + `<span style="flex:1;min-width:0;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(shown[i])}</span>`
         + `<span style="color:#6b7280;flex-shrink:0;">${pct}%</span>`
         + `</div>`;
     }).join('');
@@ -384,11 +396,14 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   }
   const sortedSecNames = secEntries.map(e => e[0]).filter(n => n !== 'Other').sort();
   const secColorOf = (n) => n === 'Other' ? '#898781' : _PM_CAT_PALETTE[sortedSecNames.indexOf(n) % _PM_CAT_PALETTE.length];
+  // 2026-10-20, user-directed: the legend shows the sector's ETF symbol (XLK for Information Technology, ...) instead of the long name;
+  // hover and clicks still use the full sector name. Unmapped / Other / Country ETF have no SPDR symbol and keep their name.
+  const secShown = secEntries.map(e => _PM_SECTOR_SYMBOL[e[0]] || e[0]);
   _pmDrawPie(idPrefix + 'Sector', idPrefix + 'SectorCanvas', idPrefix + 'SectorLegend',
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
     secTickerLists, 'No sector data for held positions.',
-    (label) => _pmOpenCategoryModal('sector', label));
-  _pmFitCardWidth(idPrefix + 'SectorCard', secEntries.map(e => e[0]), secEntries.map(e => e[1]));
+    (label) => _pmOpenCategoryModal('sector', label), secShown);
+  _pmFitCardWidth(idPrefix + 'SectorCard', secShown, secEntries.map(e => e[1]));
 
   // Concentration -- top 7 holdings by $ value + Other.
   let concEntries = held.map(r => [r.tos_symbol, Number(r.current_position_dollar) || 0]);
