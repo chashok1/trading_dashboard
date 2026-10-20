@@ -392,11 +392,12 @@
       // number), so it stays plain either way, but this keeps the badge
       // opt-in rather than an accidental side effect of a shared helper.
       var _metricLabel = function (label, val, tipBody, highlightNeg) {
-        var color = val >= 0 ? '#1d9e75' : '#d4537e';
+        // 2026-10-19, user-directed: MKT SIT uses the global %chg pill palette (--pct-up / --pct-down, as the US Dollar pill).
+        var color = val >= 0 ? 'var(--pct-up,#0f9d58)' : 'var(--pct-down,#e5484d)';
         var inner = '<span style="text-transform:none;">' + label + '</span> ' +
           '<strong style="color:' + color + '; font-size:11px;">' + esc(val.toFixed(2)) + '</strong>';
         if (highlightNeg && val < 0) {
-          inner = '<span style="background:#fdeaf0; border:1px solid #d4537e; border-radius:3px; ' +
+          inner = '<span style="background:#fdecec; border:1px solid var(--pct-down,#e5484d); border-radius:3px; ' +
             'padding:1px 5px; display:inline-block;">&#9888; ' + inner + '</span>';
         }
         if (!tipBody) return inner;
@@ -423,7 +424,7 @@
           // 2026-10-17 -- Quad-card style box (1px border, thicker left edge, 4px radius) around the
           // image, green when Gamma Throttle >= 0 else red. box-sizing:border-box keeps the
           // panel's outer width/height unchanged (the border eats into the image, not the layout).
-          var gtc = msr.gamma_throttle == null ? null : (msr.gamma_throttle >= 0 ? '#1d9e75' : '#d4537e');
+          var gtc = msr.gamma_throttle == null ? null : (msr.gamma_throttle >= 0 ? 'var(--pct-up,#0f9d58)' : 'var(--pct-down,#e5484d)');
           var gtBox = gtc ? 'border:1px solid ' + gtc + '; border-left:4px solid ' + gtc + '; border-radius:4px;' : 'border-radius:4px;';
           // width:100% (not max-width/auto) -- deliberately stretches to
           // fill the section's full content width, matching its

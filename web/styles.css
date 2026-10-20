@@ -4060,7 +4060,8 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 
 /* 2026-10-16, user-directed: the Themes grid uses the Macro Rail's colours (green #1d9e75 up / pink-red #d4537e down, grey
    neutral) instead of Market Read's teal/orange pair. Scoped to the grid; the Driver pills inside it follow the same palette. */
-#quadRotationPanel .mr-table { --mr-bull: #1d9e75; --mr-bear: #d4537e; --mr-neu: #888888; --mr-bull-bg: #e1f5ee; --mr-bear-bg: #fbe4ec; }
+/* 2026-10-19, user-directed: now the global %chg pill palette (--pct-*, as the US Dollar pill) instead of the older green / pink-red; tints match .mw-card's. */
+#quadRotationPanel .mr-table { --mr-bull: var(--pct-up, #0f9d58); --mr-bear: var(--pct-down, #e5484d); --mr-neu: var(--pct-flat, #8a93a6); --mr-bull-bg: #e6f6ee; --mr-bear-bg: #fdecec; }
 
 /* 2026-10-16, user-directed: Accounts as a single vertical column at the right end, beside Macro Rail / Signal Strength /
    Themes / Hedgeye. */
