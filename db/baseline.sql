@@ -9419,3 +9419,7 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('quad_check_confirm_days',  '2', 'Quad market check: a changed label must hold this many derive dates before it shows; 0 = off'),
     ('quad_check_fit_scale',     '40', 'Quad market check: meter points at which a Quad-fit leg reaches about 73% (indicative bars)')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-10-20: plain-English "Why this action" card (etl/why_card.py) + the Technical stage trail it reads (etl/technical_why.py::technical_trail).
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS tech_trail JSONB;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS why_card JSONB;

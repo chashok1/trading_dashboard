@@ -858,3 +858,21 @@ lives until the next weekly PS snapshot. Tests: `tests/test_ps_drop_verdicts.py`
 
 ## Per-account sizes (TASK_151)
 Account min/max/unit = category pct (`ref_asset_allocation` min_pct/max_pct/units_pct) x the account's latest position-file value x `ref_accounts.size_mult`, rounded to the nearest $1,000 (>$0 never below $1,000). Stored in `drv_account_size` (`etl/derive_account_size.py`). Display only (per-account OVER MAX pill + Action popup list): the household sizing table above and the Final Call are unchanged.
+
+## 2026-10-20 - "Why this action" card (Action popup)
+
+A short, plain-English decision trail at the top of the Action popup: **1 Sources** (what each list says and who drove it), **2 Technical**
+(Trend & Trade, Bollinger bands, Range position - with a tick/cross per stage, and *why there is no signal* when there is none),
+**3 Position** (held / stop / sizing notes), **4 Rules** (buy vs sell rule groups, Trig action, low confidence), then ONE result sentence
+and, when Technical has no signal, **what would change it** (the closest buy setups and the one condition each still lacks, with the
+rule's own threshold and the current price).
+
+- Built at derive time, stored as `drv_actionable.why_card` (JSONB) so the popup, Gate hover and grid read the same text. `etl/why_card.py`
+  (pure `build_why_card`), `etl/technical_why.py::technical_trail` (stages + near-miss hints; stored as `drv_tn_td_bb_rr.tech_trail`),
+  `_compute_final_call()` now also returns `fc_reason` (which branch decided the Final Call) - the card's result sentence is keyed on it.
+- UI: `web/actionable_pops.js::_actpopWhyCardHtml`, styles `.wc-*` in `web/actionable_pops.css`. Rows derived before this have no card.
+- The near-miss hints mirror the bull-path setups in `etl/derive.py::_derive_trend_trade_rules_impl` (Pass 1 `bull_rr_action`); keep the two
+  in step when a setup changes. Tests: `tests/test_why_card.py`.
+
+### SSS "weight fell" is a warning only (2026-10-20)
+An SSS REDUCE (pct_delta below zero, or falling week over week) no longer competes for `consolidated_action` or counts as sell evidence. It stays in `drv_actionable.source_actions` with `warning_only: true`, shows under the Action column's warning symbol and in the Action popup (`web/actionable_pops.js::_signalReasons`), and the Why card lists it as "Warning only, not counted". An SSS "dropped from list" REMOVE is unchanged. Code: `etl/derive_actionable.py` (`src_all` vs `src_actions`).

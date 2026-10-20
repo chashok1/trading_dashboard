@@ -878,7 +878,13 @@ function _signalReasons(row, side) {
   // weakening MACD momentum isn't a caution against selling, it *confirms*
   // the sell. Swap the two lists so the icon color always reflects agreement
   // with the row's own action rather than a hardcoded buy assumption.
-  return isSell ? { warn: buy, buy: warn } : { warn, buy };
+  const out = isSell ? { warn: buy, buy: warn } : { warn, buy };
+  // 2026-10-20, user: an SSS "weight fell" REDUCE no longer drives the call -- it is a warning on every row, whatever the side
+  // (never swapped into the supporting list), so the grid's warning symbol and the popup both show it.
+  for (const e of _sourcesOf(row)) {
+    if (e.warning_only) out.warn.unshift('SSS weight fell' + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only, not counted in the call');
+  }
+  return out;
 }
 
 // 2026-08-16: PVV icon folded into the Final Call confidence slot (same
@@ -1871,7 +1877,7 @@ function _actpopDriverBullets(row, side) {
     const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw));
   }
-  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
+  const others = sources.filter(s => (s.source || s.source_code || '') !== winning && !s.warning_only);
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   for (const s of others) {
     const code = s.source || s.source_code || '?';
@@ -2162,6 +2168,28 @@ function _fmtUsd2(v) {
 // Wraps a header control group so it centers on the price/shares/earnings lines (see .actpop-ctrl-c).
 function _ctrlC(html, extra) { return html ? `<div class="actpop-ctrl-c${extra ? ' ' + extra : ''}">${html}</div>` : ''; }
 
+// 2026-10-20, user-directed: "Why this action" card -- a plain-English decision trail (Sources, Technical, Position, Rules), one
+// sentence for the result and, when there is no signal, what would change it. Built at derive time (etl/why_card.py ->
+// drv_actionable.why_card), so the popup, the Gate hover and the grid read the same text. Rows derived before it existed have no card.
+function _actpopWhyCardHtml(row) {
+  const c = row && row.why_card;
+  if (!c || !Array.isArray(c.steps)) return '';
+  const mark = ok => ok === true ? '<span class="wc-ok">&#10003;</span>'
+    : ok === false ? '<span class="wc-no">&#10007;</span>' : '<span class="wc-dash">&ndash;</span>';
+  const steps = c.steps.map((st, i) => {
+    const lines = (st.lines || []).map(l => `<div class="wc-line">${mark(l.ok)} ${escapeHtml(l.text)}</div>`).join('');
+    return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">${i + 1}</span>`
+      + `<div class="wc-body"><div class="wc-head"><b>${escapeHtml(st.title)}</b> <span class="wc-text">${escapeHtml(st.text)}</span></div>${lines}</div></div>`;
+  }).join('');
+  const flip = (c.flip || []).length
+    ? `<div class="wc-flip"><b>What would change it:</b><ul>${c.flip.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></div>` : '';
+  // the result sentence is the card header (colored by the verdict side)
+  const head = c.result
+    ? `<b>${escapeHtml(c.verdict || '')}</b> &mdash; ${escapeHtml(c.result)}`
+    : `Why ${escapeHtml(c.verdict || 'this action')}`;
+  return `<div class="wc-card"><div class="wc-title wc-${escapeHtml(c.side || 'neutral')}">${head}</div>${steps}${flip}</div>`;
+}
+
 function _buildActionPopHtmlV2(row) {
   const fc = finalCall(row);
   const sym = row.tos_symbol || '—';
@@ -2353,6 +2381,7 @@ function _buildActionPopHtmlV2(row) {
        + `just landed, Technical isn't entry-ripe yet</div>`;
   }
 
+  h += _actpopWhyCardHtml(row);
   h += _actpopDriverBullets(row, side);
   h += tug.html;
   h += _actpopNeutralLine(row);

@@ -455,3 +455,23 @@
 
 .source-pop table.pvv-tbl tr.pvv-hdr td.v { color: #94a3b8; font-size: 9px; font-weight: 700;
                           text-transform: uppercase; letter-spacing: 0.3px; }
+
+/* 2026-10-20: "Why this action" card at the top of the Action popup (web/actionable_pops.js::_actpopWhyCardHtml) */
+.wc-card { border: 1px solid var(--border, #d4d4d8); border-radius: 8px; padding: 7px 9px; margin: 0 0 8px; background: #fff; font-size: 11.5px; line-height: 1.45; }
+.wc-title { font-size: 12px; margin-bottom: 4px; padding: 5px 7px; border-radius: 6px; background: #f3f4f6; }
+.wc-step { display: flex; gap: 7px; padding: 3px 0; border-top: 1px solid #eef0f3; }
+.wc-step:first-of-type { border-top: none; }
+.wc-n { flex: 0 0 16px; height: 16px; border-radius: 50%; background: #e5e7eb; color: #374151; font-size: 10px; font-weight: 700; text-align: center; line-height: 16px; margin-top: 1px; }
+.wc-buy .wc-n { background: var(--act-buy-bg, #dcfce7); color: #166534; }
+.wc-sell .wc-n { background: var(--act-sell-strong-bg, #fee2e2); color: #991b1b; }
+.wc-warn .wc-n { background: #fef3c7; color: #92400e; }
+.wc-body { flex: 1; min-width: 0; }
+.wc-head b { margin-right: 4px; }
+.wc-buy .wc-text { color: #166534; font-weight: 600; }
+.wc-sell .wc-text { color: #991b1b; font-weight: 600; }
+.wc-warn .wc-text { color: #92400e; font-weight: 600; }
+.wc-line { color: var(--text-2, #4b5563); font-size: 11px; padding-left: 2px; }
+.wc-ok { color: #15803d; font-weight: 800; } .wc-no { color: #b91c1c; font-weight: 800; } .wc-dash { color: #9ca3af; font-weight: 800; }
+.wc-title.wc-buy { background: var(--act-buy-bg, #dcfce7); } .wc-title.wc-sell { background: var(--act-sell-strong-bg, #fee2e2); }
+.wc-flip { margin-top: 5px; font-size: 11px; color: var(--text-2, #4b5563); }
+.wc-flip ul { margin: 2px 0 0; padding-left: 16px; } .wc-flip li { margin: 1px 0; }

@@ -131,3 +131,129 @@ def explain_technical(d: dict) -> Optional[str]:
         why = _NBULL.get(int(q)) if q is not None else None
     return _two(f"{held}{why or 'No range-position condition matched'}",
                 "above Trade and Trend, band not bearish")
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-20: stage-by-stage trail of the Technical read + "what would change it" hints.
+# Mirrors the same three stages as explain_technical() above and the bull-path setups in
+# etl/derive.py::_derive_trend_trade_rules_impl (Pass 1 bull_rr_action CASE). Pure function.
+# Used by etl/derive.py (stored as drv_tn_td_bb_rr.tech_trail) and read by etl/why_card.py.
+# ---------------------------------------------------------------------------
+def _day_word(perf: Optional[float]) -> str:
+    if perf is None:
+        return "day"
+    return "up day" if perf > 0 else ("down day" if perf < 0 else "flat day")
+
+
+def _bull_setups(d: dict) -> list:
+    """Every bull-path buy setup as (action label, name, [(met, what it needs)]), in the same terms as the SQL CASE."""
+    last, high = _n(d.get("last")), _n(d.get("high"))
+    lrr, trr, prev_trr = _n(d.get("lrr")), _n(d.get("trr")), _n(d.get("prev_trr"))
+    perf = _n(d.get("perf1d"))
+    lrr_eff, mrr = _n(d.get("lrr_idx_eff")), _n(d.get("mrr_idx"))
+    trr_idx = _n(d.get("trr_idx"))
+    macd, macdh = _n(d.get("macd_dir")), _n(d.get("macdh_dir"))
+    trade_rule = _n(d.get("trade_rule"))
+    pb = _n(d.get("pullback")) or 0.10
+    if None in (last, lrr, trr) or trr <= lrr:
+        return []
+    mid = (lrr + trr) / 2.0
+    pbd = pb * (trr - lrr)
+    up = perf is not None and perf > 0
+    down = perf is not None and perf < 0
+    return [
+        ("BUY MORE", "bounce from the lower half (up day, MACD and MACDH rising)", [
+            (up, "an up day"), (lrr_eff == 1, f"the day's low to stay above LRR ({_usd(lrr)})"),
+            (mrr == -1, f"price below the range midpoint ({_usd(mid)}, now {_usd(last)})"),
+            (macd is not None and macd > 0, "MACD rising"), (macdh is not None and macdh > 0, "MACDH rising")]),
+        ("BUY SOME", "dip while still above the midpoint (moderate down day)", [
+            (perf == -1, "a moderate down day (not a big drop)"), (mrr == 1, f"price above the range midpoint ({_usd(mid)}, now {_usd(last)})")]),
+        ("BUY SOME", "bounce off LRR (up day, low touched LRR)", [
+            (up, "an up day"), (lrr_eff == 0, f"the day's low to touch LRR ({_usd(lrr)})"),
+            (last <= mid, f"price at or below the range midpoint ({_usd(mid)}, now {_usd(last)})")]),
+        ("BUY TO MIN", "up day below the midpoint (MACD rising, MACDH not)", [
+            (up, "an up day"), (lrr_eff == 1, f"the day's low to stay above LRR ({_usd(lrr)})"),
+            (mrr == -1, f"price below the range midpoint ({_usd(mid)}, now {_usd(last)})"),
+            (macd is not None and macd > 0, "MACD rising"), (macdh is not None and macdh < 0, "MACDH falling")]),
+        ("BUY TO MIN", "down day at LRR with the Trade line positive", [
+            (down, "a down day"), (lrr_eff == 0, f"the day's low to touch LRR ({_usd(lrr)})"),
+            (trade_rule is not None and trade_rule > 0, "price above the Trade line")]),
+        ("BUY MORE", "pullback from the top zone (down day, still above the midpoint, TRR rising)", [
+            (trr_idx is not None and trr_idx >= 0, "the day's high to reach the top zone"), (down, "a down day"),
+            (high is not None and high > last and high - last >= pbd, f"a pullback of at least {_usd(pbd)} from the day's high"),
+            (last > mid, f"price still above the range midpoint ({_usd(mid)}, now {_usd(last)})"),
+            (prev_trr is not None and trr > prev_trr, "TRR higher than the day before")]),
+        ("BUY TO MIN", "price at the midpoint on an up or flat day", [
+            (perf is not None and perf >= 0, "an up or flat day"), (mrr == 0, f"price in the midpoint zone (about {_usd(mid)})")]),
+    ]
+
+
+def technical_trail(d: dict) -> dict:
+    """{'signal': bool, 'stages': [{'name', 'ok': True|False|None, 'text'}], 'flip': [{'label','name','missing':[...]}]}.
+
+    Stages: 1 Trend & Trade, 2 Bollinger bands, 3 Range position. ok=None means neutral / not evaluated.
+    `flip` is only filled when stages 1 and 2 are bullish and no signal came out: the closest buy setups and what each one lacks.
+    """
+    signal = _n(d.get("td_tn_bb_rr_action")) is not None
+    qe, qj = _n(d.get("trend_trade_rule")), _n(d.get("bb_rng_strk_rule"))
+    last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
+    stages: list = []
+    out = {"signal": signal, "stages": stages, "flip": []}
+    if qe is None:
+        stages.append({"name": "Trend & Trade", "ok": None, "text": "No Trend/Trade data for this stock"})
+        return out
+    qe = int(qe)
+    if qe in (3, 4):
+        ext = " and extended (more than 2 daily SDs away)" if qe == 4 else ""
+        stages.append({"name": "Trend & Trade", "ok": True,
+                       "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) and Trend ({_usd(trend)}){ext}"})
+    elif qe == 2:
+        stages.append({"name": "Trend & Trade", "ok": None,
+                       "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) but below Trend ({_usd(trend)}): neutral zone, no signal"})
+        return out
+    else:
+        stages.append({"name": "Trend & Trade", "ok": False,
+                       "text": f"Price {_usd(last)} is below Trade ({_usd(trade)}) / Trend ({_usd(trend)}): bearish, overrides everything else"})
+        return out
+    qj = 0 if qj is None else int(qj)
+    bb = d.get("bb_desc") or ""
+    bb_txt = (" (" + bb + ")") if bb else ""
+    if qj >= 2:
+        stages.append({"name": "Bollinger bands", "ok": True, "text": "Bands are rising" + bb_txt})
+    elif qj >= 0:
+        stages.append({"name": "Bollinger bands", "ok": None, "text": "Bands are not rising enough to call it bullish"})
+    else:
+        stages.append({"name": "Bollinger bands", "ok": False, "text": "Bands are falling" + bb_txt + ": bearish, overrides range position"})
+        return out
+    lrr, trr, last_n = _n(d.get("lrr")), _n(d.get("trr")), _n(last)
+    pos = None
+    if lrr is not None and trr is not None and trr > lrr and last_n is not None:
+        pos = round((last_n - lrr) / (trr - lrr) * 100)
+    perf = _n(d.get("perf1d"))
+    chg = _n(d.get("pct_change"))
+    day_txt = _day_word(perf) + ((" (" + format(chg, "+.1f") + "%)") if chg is not None else "")
+    where = (f"price {_usd(last)} is {pos}% of the way up its range ({_usd(lrr)} to {_usd(trr)})"
+             if pos is not None else "range position unknown")
+    macd, macdh = _n(d.get("macd_dir")), _n(d.get("macdh_dir"))
+    mm = ""
+    if macd is not None and macdh is not None:
+        mm = f"; MACD {'rising' if macd > 0 else 'falling'}, MACDH {'rising' if macdh > 0 else 'falling'}"
+    if signal:
+        why = explain_technical(d)
+        first = why.split(NL)[0] if why else ""
+        act = _n(d.get("td_tn_bb_rr_action"))
+        ok = True if act is not None and act > 0 else (False if act is not None and act < 0 else None)
+        stages.append({"name": "Range position", "ok": ok,
+                       "text": (first.replace(R, "").replace(G, "").replace(E, "") or f"A setup matched ({day_txt}; {where})")})
+        return out
+    stages.append({"name": "Range position", "ok": None,
+                   "text": f"No buy or sell setup matched: {day_txt}; {where}{mm}"})
+    if qe >= 3 and qj >= 2:
+        cand = []
+        for label, name, conds in _bull_setups(d):
+            unmet = [need for ok, need in conds if not ok]
+            if unmet and len(conds) - len(unmet) >= 1:
+                cand.append((len(unmet), label, name, unmet))
+        cand.sort(key=lambda c: c[0])
+        out["flip"] = [{"label": lb, "name": nm, "missing": um} for _k, lb, nm, um in cand[:2]]
+    return out

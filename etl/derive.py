@@ -3493,24 +3493,38 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
 
     # 2026-10-01: plain-English reason for each Technical signal (popup/hover on
     # Actionable) -- see etl/technical_why.py. Same decision order as Pass 2.
-    from etl.technical_why import explain_technical
+    from etl.technical_why import explain_technical, technical_trail
+    import json as _json
     why_rows = session.execute(text("""
         SELECT r.tos_symbol, r.trend_trade_rule, r.bb_rng_strk_rule, r.bb_rng_strk_desc AS bb_desc,
                r.bull_rr_action, r.not_bull_rr_action, r.td_tn_bb_rr_action,
                a.lrr_idx AS lrr_idx_raw, r.lrr_idx_eff, q.last_price AS last, q.low_price AS low,
-               rr.lrr, t.a_trade_value AS trade_line, t.a_trend_value AS trend_line
+               rr.lrr, t.a_trade_value AS trade_line, t.a_trend_value AS trend_line,
+               q.high_price AS high, q.pct_change, rr.trr, prr.trr AS prev_trr,
+               a.perf1d_sd_rule AS perf1d, a.mrr_idx, a.trr_idx, a.macd_direction AS macd_dir,
+               a.macdh_direction AS macdh_dir, a.trade_rule
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
         LEFT JOIN drv_rr rr ON rr.as_of_date = r.as_of_date AND rr.tos_symbol = r.tos_symbol
+        LEFT JOIN LATERAL (SELECT trr FROM drv_rr WHERE tos_symbol = r.tos_symbol AND as_of_date < r.as_of_date
+                           ORDER BY as_of_date DESC LIMIT 1) prr ON TRUE
         LEFT JOIN drv_technicals t ON t.as_of_date = r.as_of_date AND t.tos_symbol = r.tos_symbol
         WHERE r.as_of_date = :d
     """), {"d": as_of_date}).mappings().all()
-    upd = [{"d": as_of_date, "s": w["tos_symbol"], "why": explain_technical(dict(w))}
-           for w in why_rows]
+    upd = []
+    for w in why_rows:
+        wd = dict(w)
+        wd["pullback"] = pullback
+        try:
+            trail = _json.dumps(technical_trail(wd), default=float)
+        except Exception:
+            trail = None   # the plain card is optional: never let it break the derive
+        upd.append({"d": as_of_date, "s": w["tos_symbol"], "why": explain_technical(wd), "trail": trail})
     if upd:
         session.execute(text(
-            "UPDATE drv_tn_td_bb_rr SET rr_why = :why WHERE as_of_date = :d AND tos_symbol = :s"
+            "UPDATE drv_tn_td_bb_rr SET rr_why = :why, tech_trail = CAST(:trail AS JSONB) "
+            "WHERE as_of_date = :d AND tos_symbol = :s"
         ), upd)
 
     return rows_pass1

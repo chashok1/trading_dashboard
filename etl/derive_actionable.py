@@ -132,6 +132,7 @@ def _compute_final_call(
         return {
             "final_action": lbl, "final_code": code, "final_side": side,
             "fc_strength": 0, "fc_confidence": "none", "fc_feasible": False,
+            "fc_reason": "no_rec",
         }
 
     # ── TASK_119: stop breach downgrade ──────────────────────────────────
@@ -147,6 +148,7 @@ def _compute_final_call(
         return {
             "final_action": lbl, "final_code": code, "final_side": side,
             "fc_strength": 0, "fc_confidence": "gate", "fc_feasible": True,
+            "fc_reason": "stop_breach",
         }
 
     # ── Helper classifiers ──────────────────────────────────────────────
@@ -184,10 +186,12 @@ def _compute_final_call(
                 "final_action": hold_lbl, "final_code": hold_code,
                 "final_side": hold_side, "fc_strength": 0,
                 "fc_confidence": "gate", "fc_feasible": False,
+                "fc_reason": "exit_not_held",
             }
         return {
             "final_action": lbl, "final_code": code, "final_side": side,
             "fc_strength": _FC_SCALE.get("SA", -3), "fc_confidence": "gate", "fc_feasible": True,
+            "fc_reason": "exit_held",
         }
 
     # ── 2. Don't-initiate guard ──────────────────────────────────────────
@@ -197,6 +201,7 @@ def _compute_final_call(
             "final_action": hold_lbl, "final_code": hold_code,
             "final_side": hold_side, "fc_strength": 0,
             "fc_confidence": "gate", "fc_feasible": True,
+            "fc_reason": "dont_initiate",
         }
 
     fc_label: str
@@ -218,8 +223,10 @@ def _compute_final_call(
         return {
             "final_action": fc_lbl, "final_code": fc_code, "final_side": fc_side,
             "fc_strength": fc_strength, "fc_confidence": "high", "fc_feasible": True,
+            "fc_reason": "bypass_rta",
         }
 
+    reason = ""
     if tech_is_sell:
         # User decision 2026-09-15: when Technical's own read is specifically
         # STM ("sell to min"), the headline should say so too, not collapse
@@ -230,7 +237,9 @@ def _compute_final_call(
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
+            reason = "tech_sell_not_held"
         elif src_is_reduce:
+            reason = "tech_sell_reduce"
             fc_lbl, fc_code, fc_side = _action_display(sell_code)
             fc_strength = _FC_SCALE.get(sell_code, -2)
             # TASK_141 Part B: don't let the badge assert confidence the
@@ -240,19 +249,23 @@ def _compute_final_call(
             else:
                 confidence = "high"
         else:
+            reason = "tech_sell_other"
             fc_lbl, fc_code, fc_side = _action_display(sell_code)
             fc_strength = _FC_SCALE.get(sell_code, -2)
             confidence = "mixed"
     elif tech_is_buy or tech_is_buy_min:
         if src_is_reduce:
+            reason = "tech_buy_reduce"
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
         elif not is_held and src_is_add:
+            reason = "tech_buy_new_add"
             fc_lbl, fc_code, fc_side = _action_display("BMN")
             fc_strength = _FC_SCALE.get("BMN", 2)
             confidence = "high"
         else:
+            reason = "tech_buy"
             buy_code = "BM" if (rra in ("BM",) or ca in ("BM", "INCREASE", "BS")) else "BS"
             fc_lbl, fc_code, fc_side = _action_display(buy_code)
             fc_strength = _FC_SCALE.get(buy_code, 2)
@@ -267,10 +280,12 @@ def _compute_final_call(
         # final else — since a standing re-list with no Technical support
         # isn't grounds to keep signaling BUY either.)
         if src_is_reduce:
+            reason = "tech_neutral_reduce"
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
         else:
+            reason = "tech_neutral_hold"
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "gate"
@@ -278,6 +293,7 @@ def _compute_final_call(
     return {
         "final_action": fc_lbl, "final_code": fc_code, "final_side": fc_side,
         "fc_strength": fc_strength, "fc_confidence": confidence, "fc_feasible": True,
+        "fc_reason": reason,
     }
 
 
@@ -686,6 +702,16 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         log.warning("ref_conviction_hold load failed (conviction_hold stays False)", exc_info=True)
 
+    # 2026-10-20: the Technical stage trail (etl/technical_why.py::technical_trail) for the "Why this action" card.
+    tech_trail_map: dict[str, dict] = {}
+    try:
+        for r in session.execute(text(
+                "SELECT tos_symbol, tech_trail FROM drv_tn_td_bb_rr WHERE as_of_date = :d AND tech_trail IS NOT NULL"
+        ), {"d": as_of_date}).fetchall():
+            tech_trail_map[r[0]] = r[1] if isinstance(r[1], dict) else json.loads(r[1])
+    except Exception:
+        log.warning("tech_trail load failed (why_card falls back to no Technical stages)", exc_info=True)
+
     # Load td_tn_bb_action_desc (the rr_action for finalCall) from drv_tn_td_bb_rr.
     rr_action_map: dict[str, str] = {}
     try:
@@ -1014,7 +1040,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            stop_proximity_sd, stop_proximity_line,
            trade_line_value, trend_line_value,
            winning_source_rank, winning_source_edge,
-           unproven_sell_suppressed)
+           unproven_sell_suppressed, why_card)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -1032,12 +1058,17 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :stop_prox_sd, :stop_prox_line,
            :trade_line, :trend_line,
            :win_src_rank, :win_src_edge,
-           :unproven_sell_suppressed)
+           :unproven_sell_suppressed, CAST(:why_card AS JSONB))
     """)
 
     rows_written = 0
     batch: list[dict] = []
     for sym, src_actions in by_sym.items():
+        # 2026-10-20, user: an SSS "weight fell" REDUCE is a WARNING only -- it no longer competes for the consolidated action
+        # or counts as sell evidence. It stays in source_actions (flag warning_only) so the grid and popup can show it.
+        # SSS "dropped from list" is a REMOVE and is unchanged.
+        src_all = src_actions
+        src_actions = [a for a in src_all if not (str(a["source_code"]).upper() == "SSS" and a["action"] == "REDUCE")]
         # ─── Evaluate rule groups against this symbol's fired composites ───
         # Build composite_results = {composite_code: True} from drv_stks.
         fired_composites = set()
@@ -1316,7 +1347,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # not-held PS REMOVE that was excluded from the winner contest).
         has_other_signal = any(
             a["action"] in ("REMOVE", "REDUCE", "INCREASE", "ADD")
-            for a in src_actions
+            for a in src_all
         )
         if (not consolidated and not in_my_list and not held_today
                 and not has_other_signal):
@@ -1326,8 +1357,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # ─── Build display payloads ───
         rules_fires = (stks.get(sym, {}) or {}).get("triggered_composite_ids") or []
         source_actions_payload = []
-        for a in sorted(src_actions, key=lambda x: src_priority.get(x["source_code"], 999)):
+        for a in sorted(src_all, key=lambda x: src_priority.get(x["source_code"], 999)):
             source_actions_payload.append({
+                "warning_only": bool(str(a["source_code"]).upper() == "SSS" and a["action"] == "REDUCE"),
                 "source":      a["source_code"],
                 "action":      a["action"],
                 "weight":      float(a["base_weight"]) if a["base_weight"] is not None else None,
@@ -1456,6 +1488,22 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         conviction_direction = _conviction[1] if _conviction else None
         conviction_hold = conviction_note is not None
 
+        # ─── 2026-10-20: plain-English "Why this action" card (etl/why_card.py) ───
+        try:
+            from etl.why_card import build_why_card
+            _card = build_why_card({
+                "consolidated": consolidated, "winning_source": winning_source,
+                "sources": source_actions_payload, "rr_action": rr_act,
+                "trail": tech_trail_map.get(sym), "held_today": held_today, "held_dollar": held_dollar,
+                "target_max": target_max, "stop_breached": stop_breached, "stop_signal": stop_signal_val,
+                "suppressed": suppressed, "fc": fc, "trig_action": trig_action,
+                "groups": triggered_groups, "low_confidence": low_confidence,
+            })
+            why_card_json = json.dumps(_card)
+        except Exception:
+            log.warning("why_card build failed for %s", sym, exc_info=True)
+            why_card_json = None
+
         stk = stks.get(sym, {})
         batch.append({
             "d":     as_of_date,
@@ -1505,6 +1553,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "conviction_hold": conviction_hold,
             "conviction_note": conviction_note,
             "conviction_direction": conviction_direction,
+            "why_card":        why_card_json,
         })
         rows_written += 1
 

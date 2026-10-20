@@ -2891,6 +2891,7 @@ function _agreeingSources(row) {
   let count = 0;
   for (const s of sources) {
     const sa = (s.action || '').toUpperCase();
+    if (s.warning_only) continue;
     if (isSell && (sa === 'REMOVE' || sa === 'REDUCE')) count++;
     else if (isBuy && (sa === 'INCREASE' || sa === 'ADD')) count++;
   }
