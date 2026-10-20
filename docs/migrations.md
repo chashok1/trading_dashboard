@@ -855,3 +855,6 @@ New `hist_advice_plan` (frozen night plan per stock/account for the next trading
 
 ## 2026-10-18 — MACRO tag: override removed, Sell cut-offs tightened
 `etl/derive_macro.py::to_action` (and the API's `_macronet_to_vocab` fallback) no longer force BS/SA when the near and far months agree — the tag is now set by score cut-offs only. `macro_thr_stm` -0.15 → -0.6 and `macro_thr_sa` -0.6 → -1.0 (live `ref_settings` updated and `db/baseline.sql` UPDATE lines changed so `init_db` doesn't revert them); BM 1.25 / BS 1.05 unchanged. Evidence + tag mix in `docs/quad_design.md` (Stage 4, Evidence). No schema change; tags refresh as each date is re-derived (2026-10-16 already re-run).
+
+## 2026-10-20 — SPX realized vol: close-to-close (was Yang-Zhang)
+`etl/derive_market_stat.py`: `drv_market_stat.rv10/rv21/rv63` are now annualized close-to-close vol (sample stdev x sqrt(252)) so the dashboard's SPX Realized Vol panel, VRP and the Risk Dial "vol funds selling" gauge match Hedgeye (Yang-Zhang ran higher on wide-range days and put 1M above 3M while Hedgeye showed 3M above 1M). The Yang-Zhang values are kept in `drv_market_stat.detail->'yang_zhang'`. History re-derived with `python -m etl.derive_market_stat --backfill`.

@@ -1,9 +1,9 @@
 """
 etl/derive_market_stat.py — TASK_133 Phase 3: drv_market_stat.
 
-Self-computed market inputs for the Risk Dial: Yang-Zhang realized
-volatility + variance risk premium (SPX), breadth on this system's own
-universe, participation (SPY/QQQ/IWM relative volume), then the Risk Dial
+Self-computed market inputs for the Risk Dial: close-to-close realized
+volatility (Yang-Zhang until 2026-10-20) + variance risk premium (SPX),
+breadth on this system's own universe, participation (SPY/QQQ/IWM relative volume), then the Risk Dial
 itself (etl/derive_risk_dial.py). One row per as_of_date, idempotent
 (DELETE WHERE as_of_date=D -> INSERT via replace_for_date).
 
@@ -102,6 +102,35 @@ def _yz_daily_terms(rows: list[dict]) -> list[tuple]:
                 pass
         prev_close = c
     return terms
+
+
+def _close_returns(rows: list[dict]) -> list[float]:
+    """Daily log close-to-close returns, oldest first. A day with a missing or
+    non-positive close is skipped (the return then spans the gap, same as
+    any data vendor's close series)."""
+    rets: list[float] = []
+    prev = None
+    for row in rows:
+        c = row.get("last_price")
+        if c is None or float(c) <= 0:
+            continue
+        c = float(c)
+        if prev is not None:
+            rets.append(math.log(c / prev))
+        prev = c
+    return rets
+
+
+def _close_to_close(rets: list[float], n: int) -> Optional[float]:
+    """Annualized close-to-close realized vol (percent) over the trailing n
+    returns -- sample stdev (ddof=1) x sqrt(252). None if fewer than n returns
+    (never substitutes a shorter window). 2026-10-20: this is what the SPX
+    realized-vol panel / VRP / Risk Dial now use, to match Hedgeye's chart;
+    Yang-Zhang (below) ran higher on wide-range days and put 1M above 3M
+    while Hedgeye showed 3M above 1M."""
+    if n < 2 or len(rets) < n:
+        return None
+    return statistics.stdev(rets[-n:]) * math.sqrt(252) * 100.0
 
 
 def _yang_zhang(terms: list[tuple], n: int) -> Optional[float]:
@@ -211,7 +240,12 @@ def _derive_market_stat_impl(session: Session, as_of_date: date, run_id) -> int:
     spx_rows = _load_spx_ohlc(session, as_of_date)
     terms = _yz_daily_terms(spx_rows)
     detail["yz_clean_observations"] = len(terms)
-    rv = {n: _yang_zhang(terms, n) for n in YZ_WINDOWS}
+    # 2026-10-20: rv10/21/63 are close-to-close (matches Hedgeye); the Yang-Zhang
+    # figures are kept in `detail` for reference only.
+    rets = _close_returns(spx_rows)
+    rv = {n: _close_to_close(rets, n) for n in YZ_WINDOWS}
+    detail["yang_zhang"] = {str(n): (round(v, 4) if v is not None else None)
+                            for n, v in ((n, _yang_zhang(terms, n)) for n in YZ_WINDOWS)}
 
     # --- 3.2 VRP ---
     vix_row = session.execute(_VIX_SQL, {"d": as_of_date}).first()
