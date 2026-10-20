@@ -41,6 +41,7 @@ INSERT INTO ref_hedgeye_email_type
   (email_type, destination, cadence, subject_re, asset_name, parser) VALUES
   ('the_call_access',     'DROP',     'daily',     '^The Call @ Hedgeye \| Access Here', NULL, NULL),
   ('momo_tracker',        'DROP',     'daily',     '^MOMO Tracker', NULL, NULL),
+  ('market_situation_webcast', 'DROP', 'daily',    '^MARKET SITUATION REPORT.*Webcast', NULL, NULL),
   ('macro_show_access',   'ANALYSIS', 'daily',     '^THE MACRO SHOW:.*Access Show', NULL, NULL),
   ('risk_range',          'DATA',     'daily',     '^RISK RANGE.*SIGNALS', NULL, 'risk_range'),
   ('real_time_alert',     'DATA',     'intraday',  'Real-Time Alert', 'stock_alerts_800px.png', 'real_time_alert'),

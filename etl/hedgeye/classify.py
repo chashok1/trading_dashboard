@@ -39,6 +39,10 @@ EMAIL_TYPES: list[EmailType] = [
     EmailType("the_call_access", "DROP", "daily",
               subject_re=r"^The Call @ Hedgeye \| Access Here"),
     EmailType("momo_tracker", "DROP", "daily", subject_re=r"^MOMO Tracker"),
+    # 2026-10-19 -- the "Market Situation Report Webcast" email is only a link to the webcast. It must be dropped here, before the
+    # market_situation rule below, which would otherwise also catch it by subject (and by its shared header banner).
+    EmailType("market_situation_webcast", "DROP", "daily",
+              subject_re=r"^MARKET SITUATION REPORT.*Webcast"),
     EmailType("macro_show_access", "ANALYSIS", "daily",
               subject_re=r"^THE MACRO SHOW:.*Access Show", parser="macro_show_top3"),
 
