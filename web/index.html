@@ -194,6 +194,9 @@
           <!-- 2026-10-18, user-directed: Retail sentiment panel (BUZZ, MEME, GVIP; deck page 26), below Momentum; web/retail_panel.js <- GET /api/cockpit/retail-sentiment. -->
           <section class="cockpit-band" id="retailBand"><div id="retailBody"><div class="msr-loading">Loading&hellip;</div></div></section>
 
+          <!-- 2026-10-19, user-directed: Jobless claims panel (weekly ICSA + 4-week average + 250k line), below Retail sentiment; web/jobless_panel.js <- GET /api/cockpit/jobless-claims. -->
+          <section class="cockpit-band" id="joblessBand"><div id="joblessBody"><div class="msr-loading">Loading&hellip;</div></div></section>
+
           <!-- 2026-09-30, user-directed: the "What changed" events panel (#eventsBand)
                was removed entirely -- anything that matters belongs in the Risk Dial. -->
           <!-- 2026-08-14 -- Cumulative P&L moved OUT of this column, into
@@ -1133,6 +1136,7 @@
   <script src="/static/credit_panel.js?v=20261018m" defer></script>
   <script src="/static/momentum_panel.js?v=20261018e" defer></script>
   <script src="/static/retail_panel.js?v=20261018b" defer></script>
+  <script src="/static/jobless_panel.js?v=20261019a" defer></script>
   <script src="/static/iv_rv_panel.js?v=20261017a" defer></script>
   <script src="/static/mktsit_images.js?v=20261019a" defer></script>
   <script src="/static/collapse_all.js?v=20261018a" defer></script>

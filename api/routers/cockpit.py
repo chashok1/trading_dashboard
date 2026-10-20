@@ -758,6 +758,30 @@ def get_retail_sentiment(days: int = Query(400, ge=30, le=4000), date: Optional[
             "rows": [[k] + [by[k][x] for x in syms] for k in dates]}
 
 
+@router.get("/api/cockpit/jobless-claims")
+def get_jobless_claims(days: int = Query(800, ge=60, le=4000), date: Optional[str] = Query(None)):
+    """Jobless claims panel: weekly initial claims (FRED ICSA, hist_macro, week ending Saturday). rows = [date, claims, avg4]; avg4 is
+    the average of that week and the three before it (null until four weeks exist). The 4 weeks of lead-in before the window start
+    are used only for the average, so the first returned row already has one."""
+    from datetime import timedelta as _td
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT obs_date, value FROM hist_macro
+            WHERE series_id = 'ICSA' AND value IS NOT NULL AND obs_date <= :d AND obs_date >= :lo
+            ORDER BY obs_date
+        """), {"d": d, "lo": d - _td(days=days + 28)}).all()
+    vals = [(dt, float(v)) for dt, v in rows]
+    cut = (d - _td(days=days)).isoformat()
+    out = []
+    for i, (dt, v) in enumerate(vals):
+        if dt.isoformat() < cut:
+            continue
+        avg4 = round(sum(x for _, x in vals[i - 3:i + 1]) / 4, 1) if i >= 3 else None
+        out.append([dt.isoformat(), v, avg4])
+    return {"as_of": d.isoformat(), "rows": out}
+
+
 @router.get("/api/cockpit/bbb-spread")
 def get_bbb_spread(days: int = Query(1100, ge=60, le=4000), date: Optional[str] = Query(None)):
     """10-Year BBB Corporate Spread: ICE BofA BBB US Corporate effective yield minus the 10-year Treasury yield (both FRED, hist_macro;
