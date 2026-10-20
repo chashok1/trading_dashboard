@@ -15,7 +15,7 @@
     riskDialBand: 'Risk Dial', heMktSituationPanel: 'MKT SIT', quadCardsPanel: 'Quads', quadSmallPanel: 'Quad windows',
     yieldCurveBand: 'Yield curve', moveVixBand: 'Volatility', creditBand: 'Credit', momentumBand: 'Momentum', retailBand: 'Retail sentiment', joblessBand: 'Jobless claims',crossAssetPanel: 'Cross-Asset', dashNotesBand: 'Notes', housekeepingBand: 'Housekeeping',
     macroCorrBand: '$ Corln', macroSectorsBand: 'Sectors', headwindBand: 'Headwind areas', spxRvBand: 'SPX realized vol',
-    heInflPanel: 'INFL', quadOutlookSection: 'Quad Outlook', indicatorBand: 'E.IND', nearEarningsBand: 'Symbol'
+    heInflPanel: 'INFL', quadOutlookSection: 'Quad Outlook', indicatorBand: 'E.IND'
   };
   var GROUPS = [
     { key: 'left', label: 'Left', sel: '.dial-changed-col', chevrons: true, tip: 'Left column' },

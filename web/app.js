@@ -274,43 +274,6 @@ async function loadEconIndicators() {
   }
 }
 
-// TASK_140 follow-up 10 -- new grid below Event: earnings in the next 7
-// days, scoped to held positions + actionable symbols only (not the whole
-// tracked watchlist -- see api/routers/health.py::get_near_term_earnings).
-// 2026-08-10 -- days_ahead 7 -> 30 ("one month") per user request.
-async function loadNearTermEarnings() {
-  const tbody = $('nearEarningsBody');
-  const empty = $('nearEarningsEmpty');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  try {
-    const url = state.date
-      ? `/api/dashboard/near-term-earnings?date=${encodeURIComponent(state.date)}&days_ahead=30`
-      : '/api/dashboard/near-term-earnings?days_ahead=30';
-    const rows = await fetchJson(url);
-    if (!rows || rows.length === 0) {
-      empty.hidden = false;
-      return;
-    }
-    empty.hidden = true;
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      const days = r.days_until != null ? `${r.days_until}d` : '';
-      const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol || ''), r.symbol) : escapeHtml(r.symbol || '');
-      tr.innerHTML = `
-        <td class="text">${sym}</td>
-        <td class="num">${days}</td>
-        <td>${fmtDate(r.event_date)}</td>
-      `;
-      tbody.appendChild(tr);
-    }
-  } catch (e) {
-    console.error('Failed to load near-term earnings:', e);
-    empty.hidden = false;
-    empty.textContent = 'Failed to load.';
-  }
-}
-
 // ---------- health ----------
 
 async function loadHealth() {
@@ -1171,7 +1134,7 @@ async function loadRegimeBand() {
       // everyone in this list is watched unless excluded via
       // _earningsUnwatchedSymbols. User: "Select the only ones that are my
       // holdings, call bullish, SSS by default not all."
-      fetchJson(`/api/dashboard/symbol-earnings?${earningsDateQS}days_ahead=14&limit=200&universe=signals`).catch(() => []),
+      fetchJson(`/api/dashboard/symbol-earnings?${earningsDateQS}days_ahead=30&limit=200&universe=signals`).catch(() => []),
     ]);
     _calTypesCache = calTypes;
     _earningsUnwatchedSymbols = earningsUnwatch.symbols || [];
@@ -2100,7 +2063,7 @@ async function loadHousekeeping() {
     if (line) line.innerHTML = '<span class="hk-dot bad"></span>Housekeeping check failed.';
   }
   await loadTxnFeedGaps();
-  await Promise.all([loadEconIndicators(), loadNearTermEarnings()]);
+  await loadEconIndicators();   // 2026-10-20: SYMBOL (near-term earnings) panel removed; the Earnings box covers 30 days
 }
 
 // TASK_134 C.1 -- per-account transaction-feed staleness (Schwab hist_cst /

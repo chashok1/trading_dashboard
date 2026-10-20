@@ -143,48 +143,6 @@
           <!-- 2026-10-17 -- 60d / monthly / quarterly quads as small boxes right under the big ones; filled by web/app.js::loadRegimeBand() -->
           <section class="cockpit-band" id="quadSmallPanel"><div id="regimeLineBody">Loading…</div></section>
 
-          <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
-               rules (e.g. "Bonds and USD at TRR, Gold at LRR -> buy Gold")
-               the ordinary rules engine can't express -- see
-               etl/derive_cross_asset_rules.py / ref_cross_asset_rule(_leg).
-               Below Mkt Situation per user request ("in its own panel...
-               we will be adding more") -- designed to hold more rules than
-               just this one, so it stays visible even with zero rows fired
-               (shows "how close" each rule is). Populated + wired by
-               web/cross_asset_panel.js, reads GET /api/cockpit/
-               cross-asset-signals. Plain .cockpit-band chrome, matches
-               Risk Dial/Mkt Situation siblings. -->
-          <!-- 2026-09-30, user-directed: the Regime (quad) line ("60d (Q2) ... Qtr (Q4)
-               N (Q2)", #regimeLineBody, still populated by web/app.js::
-               loadRegimeBand()) now lives INSIDE this box, above the "Lists vs Quad
-               model" and rule cards -- so the panel is always shown; only the cards
-               area (#crossAssetBody) hides when it has nothing to show. -->
-          <section class="cockpit-band" id="crossAssetPanel">
-            <!-- 2026-09-30, user-directed: OPEX/events and Earnings boxes moved in here
-                 too (still filled by web/app.js::loadRegimeBand(); boxed via
-                 #crossAssetPanel rules in styles.css). -->
-            <div id="regimeOpexBody">Loading…</div>
-            <div id="regimeEarningsBody">Loading…</div>
-            <div id="crossAssetBody"></div>
-          </section>
-
-          <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
-               optional effective/expiration date window, just below Mkt
-               Situation per user request. Populated + wired by
-               web/dashboard_notes.js (not shared with any other page --
-               unlike the Hedgeye panels above, this is dashboard-only).
-               See db/baseline.sql::user_dashboard_note +
-               api/routers/dash.py's /api/dashboard-notes endpoints. -->
-          <section class="cockpit-band" id="dashNotesBand">
-            <div id="dashNotesBody">Loading…</div>
-          </section>
-
-          <!-- 2026-10-15 -- Breadth tiles (SSS | ETF Pro / PS | CALL / RR), moved from the
-               Market Read panel; filled by web/market_read.js::render(). -->
-          <section class="cockpit-band" id="breadthBand" hidden>
-            <div id="breadthBandBody"></div>
-          </section>
-
           <!-- 2026-10-17, user-directed: US Treasury yield curve (2Y, 10Y, 10Y-2Y spread) with change table, below Breadth; web/yield_curve.js <- GET /api/cockpit/yield-curve. -->
           <section class="cockpit-band" id="yieldCurveBand"><div id="yieldCurveBody"><div class="msr-loading">Loading&hellip;</div></div></section>
 
@@ -966,6 +924,44 @@
           <div id="macroRailCorr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
+        <!-- 2026-10-20, user-directed: OPEX / events / Earnings / Lists-vs-Quad / GLD panel (#crossAssetPanel) and the Notes panel
+             (#dashNotesBand) moved here from the left column, directly below the $ correlation panel. -->
+        <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
+             rules (e.g. "Bonds and USD at TRR, Gold at LRR -> buy Gold")
+             the ordinary rules engine can't express -- see
+             etl/derive_cross_asset_rules.py / ref_cross_asset_rule(_leg).
+             Below Mkt Situation per user request ("in its own panel...
+             we will be adding more") -- designed to hold more rules than
+             just this one, so it stays visible even with zero rows fired
+             (shows "how close" each rule is). Populated + wired by
+             web/cross_asset_panel.js, reads GET /api/cockpit/
+             cross-asset-signals. Plain .cockpit-band chrome, matches
+             Risk Dial/Mkt Situation siblings. -->
+        <!-- 2026-09-30, user-directed: the Regime (quad) line ("60d (Q2) ... Qtr (Q4)
+             N (Q2)", #regimeLineBody, still populated by web/app.js::
+             loadRegimeBand()) now lives INSIDE this box, above the "Lists vs Quad
+             model" and rule cards -- so the panel is always shown; only the cards
+             area (#crossAssetBody) hides when it has nothing to show. -->
+        <section class="cockpit-band" id="crossAssetPanel">
+          <!-- 2026-09-30, user-directed: OPEX/events and Earnings boxes moved in here
+               too (still filled by web/app.js::loadRegimeBand(); boxed via
+               #crossAssetPanel rules in styles.css). -->
+          <div id="regimeOpexBody">Loading…</div>
+          <div id="regimeEarningsBody">Loading…</div>
+          <div id="crossAssetBody"></div>
+        </section>
+
+        <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
+             optional effective/expiration date window, just below Mkt
+             Situation per user request. Populated + wired by
+             web/dashboard_notes.js (not shared with any other page --
+             unlike the Hedgeye panels above, this is dashboard-only).
+             See db/baseline.sql::user_dashboard_note +
+             api/routers/dash.py's /api/dashboard-notes endpoints. -->
+        <section class="cockpit-band" id="dashNotesBand">
+          <div id="dashNotesBody">Loading…</div>
+        </section>
+
         <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
              the Actionable screen's hedgeye_panel.js panel -- user: "INFL to
              3rd column above Indicator grid" -> follow-up reorder put it
@@ -1065,27 +1061,16 @@
           </div>
         </section>
 
-
-        <!-- 2026-08-27 -- Symbol moved here from col 5 (macro-rail-row),
-             the bottom of this side panel -- user: "Symbol to the bottom
-             side panel." Same container ids/markup as its prior spot;
-             web/app.js populates #nearEarningsBody by id regardless of
-             parent, so no script change needed. -->
-        <section class="cockpit-band rail-band" id="nearEarningsBand">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th class="num">Days</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody id="nearEarningsBody"></tbody>
-            </table>
-            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
-          </div>
+        <!-- 2026-10-20, user-directed: Breadth tiles moved here from the left column, directly below the E.IND (Indicator) panel. -->
+        <!-- 2026-10-15 -- Breadth tiles (SSS | ETF Pro / PS | CALL / RR), moved from the
+             Market Read panel; filled by web/market_read.js::render(). -->
+        <section class="cockpit-band rail-band" id="breadthBand" hidden>
+          <div id="breadthBandBody"></div>
         </section>
+
+
+        <!-- 2026-10-20, user-directed: the SYMBOL (near-term earnings) panel was removed -- the Earnings box in the OPEX panel now covers
+             the next 30 days (was 14). -->
 
         <!-- 2026-10-18, user-directed: all charts of the latest Market Situation Report email, stacked at the bottom of the right column; web/mktsit_images.js <- GET /api/mktsit/images. -->
         <section class="cockpit-band rail-band" id="mktSitImgBand" style="display:none;">
@@ -1117,7 +1102,7 @@
   <script src="/static/_common.js?v=20261018b"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20261020a"></script>
+  <script src="/static/app.js?v=20261020b"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -1142,7 +1127,7 @@
   <script src="/static/retail_panel.js?v=20261018b" defer></script>
   <script src="/static/jobless_panel.js?v=20261019a" defer></script>
   <script src="/static/mktsit_images.js?v=20261019a" defer></script>
-  <script src="/static/collapse_all.js?v=20261018a" defer></script>
+  <script src="/static/collapse_all.js?v=20261020a" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261017c" defer></script>
   <script src="/static/outlook_changes.js?v=20261019k" defer></script>
   <script src="/static/area_verdicts.js?v=20261017c" defer></script>
