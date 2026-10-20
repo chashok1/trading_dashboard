@@ -4430,3 +4430,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .pm-pop-click { cursor: pointer; }
 .pm-pop-click:hover { background: var(--bg-2, #f4f5f9); }
 @media (max-width: 760px) { .pm-pop-chart { flex-basis: 100%; } }
+
+/* 2026-10-20: copy-all-symbols button in every rail panel header (web/macro_areas.js::_addCopyButtons) */
+.msr-copy-btn { border: none; background: none; cursor: pointer; font-size: 12px; line-height: 1; color: var(--text-3, #6b7280); padding: 0 4px; margin-left: 4px; }
+.msr-copy-btn:hover { color: var(--accent, #2563eb); }

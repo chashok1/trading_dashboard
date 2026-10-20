@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261020t">
+  <link rel="stylesheet" href="/static/styles.css?v=20261020u">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261017b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -324,6 +324,7 @@
               <label><input type="radio" name="msrValueMode" value="dollar"> $</label>
               <label><input type="radio" name="msrValueMode" value="price"> Price</label><label><input type="radio" name="msrValueMode" value="macro"> Act</label><label><input type="radio" name="msrValueMode" value="held" title="Amount held in the stock, in K (total of all accounts)"> Hld</label><label><input type="radio" name="msrValueMode" value="perf" title="Day / 1WK / 3W / 3M returns on every rail row, in place of the candle, change, Td/Tn and range bar"> Perf</label><label><input type="radio" name="msrValueMode" value="vol" title="Options volatility on every rail row: Prem, vs, Wk, M, Rk. Hover any of the five numbers for every value (implied vol, actual vol, premium, its normal, vs normal, band, 1 week, 1 month, IV rank). &#10;&#8226; Prem = implied vol divided by actual vol, minus 1, 5-day average, in %.&#10;&#8226; vs = Prem compared with the symbol's own normal (its median since April). Red = Rich (over 15% above), green = Cheap (over 15% below).&#10;&#8226; Wk / M = the premium 1 week / 1 month ago.&#10;&#8226; Rk = IV rank from TOS."> Vol</label>
             </span>
+            <button type="button" class="he-ext-link" id="missingTosBtn" title="Bullish symbols on the Hedgeye lists that are not in TOS" style="margin-left:10px;cursor:pointer;">Missing from TOS <b id="missingTosCount"></b></button>
             <button class="msr-sort-btn" id="macroRailToggle" type="button" title="Collapse/expand panel" aria-label="Collapse Macro Rail panel">&#9662;</button>
           </div>
           <div id="macroRailsWrap">
@@ -1143,6 +1144,7 @@
        after hedgeye_panel.js (not that hooks into it -- purely reads/
        writes the .he-collapse-body elements' display + localStorage). -->
   <script src="/static/hedgeye_collapse.js?v=20261020a" defer></script>
+  <script src="/static/missing_tos.js?v=20261020c" defer></script>
   <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
@@ -1154,7 +1156,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261020c" defer></script>
+  <script src="/static/macro_areas.js?v=20261020f" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

@@ -652,7 +652,10 @@
   // per-area header buttons in index.html.
   function _accountGroupSepHtml(shortName, areaKey) {
     var mode = _railSort[areaKey + ':' + shortName] || 0;
+    // 2026-10-20, user-directed: each group (each account / each Signal Strength sector ...) gets its own copy button for just ITS symbols.
     return '<div class="msr-group-sep">' + esc(shortName) +
+      '<button type="button" class="msr-copy-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
+      '" title="Copy all symbols in ' + esc(shortName) + '">&#10697;</button>' +
       '<button class="msr-sort-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
       '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button>' +
       ((_perfOn || _volOn) ? '<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
@@ -1371,6 +1374,59 @@
   }
   document.addEventListener('side-accounts-changed', function () { if (_lastAreasData) renderRail(_lastAreasData); });
 
+  // 2026-10-20, user-directed: every rail panel header gets a copy button that copies the panel's WHOLE symbol list (all of its members,
+  // e.g. every Signal Strength name, including ones TOS does not carry), comma separated so it pastes straight into a TOS watchlist.
+  function _copyToClipboard(text, done) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) { /* nothing more to do */ }
+      ta.remove(); done();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  }
+  function _areaSymbols(areaKey, group) {
+    var a = ((_lastAreasData && _lastAreasData.areas) || []).filter(function (x) { return x.area_key === areaKey; })[0];
+    var out = [], seen = {};
+    ((a && a.members) || []).forEach(function (m) {
+      if (group != null && m.account_group !== group) return;   // one group of the panel (e.g. a single account)
+      if (m.symbol && !seen[m.symbol]) { seen[m.symbol] = 1; out.push(m.symbol); }
+    });
+    return out;
+  }
+  function _addCopyButtons(areas) {
+    (areas || []).forEach(function (a) {
+      var cid = _AREA_CONTAINER_ID[a.area_key];
+      var c = cid && document.getElementById(cid);
+      var band = c && c.closest ? c.closest('section') : null;
+      if (!band && a.area_key === 'ai_bubble') band = document.getElementById('aiBubbleBand');   // AI Bubble has no rail container of its own
+      var hh = band && band.querySelector('.msr-section-hdr');
+      if (!hh) return;
+      var btn = hh.querySelector(':scope > .msr-copy-btn');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'msr-copy-btn';
+        btn.innerHTML = '&#10697;';
+        hh.insertBefore(btn, hh.childNodes[1] || null);   // right after the panel title
+      }
+      btn.setAttribute('data-area', a.area_key);
+      btn.title = 'Copy all ' + _areaSymbols(a.area_key).length + ' symbols in this panel';
+    });
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('.msr-copy-btn') : null;
+    if (!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var syms = _areaSymbols(b.getAttribute('data-area'), b.hasAttribute('data-group') ? b.getAttribute('data-group') : null);
+    if (!syms.length) return;
+    _copyToClipboard(syms.join(', '), function () {
+      b.innerHTML = '&#10003;';
+      setTimeout(function () { b.innerHTML = '&#10697;'; }, 1200);
+    });
+  }, true);
+
   function renderRail(data) {
     _lastAreasData = data;
     var areas = _filterAccounts((data && data.areas) || [], data);
@@ -1413,6 +1469,7 @@
       if (hdr && ar) hdr.innerHTML = _periodHeader(ar);
     });
     renderAccountsCards(areas);
+    _addCopyButtons(areas);
     // TASK_149: area-verdict pills on the rails (web/area_verdicts.js; no-op until its data lands).
     if (window.AreaVerdicts) window.AreaVerdicts.decorateRails();
   }

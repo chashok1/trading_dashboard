@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -425,6 +426,37 @@ def get_dashboard_symbol_earnings(
 # meant the opposite thing, so reinterpreting it would silently un-watch
 # everyone the user previously watched). User: "reverse the logic -> watch
 # all symbols by default but allow me not to watch."
+# 2026-10-20, user-directed: one-click list of every symbol that is on a Hedgeye list with a BULLISH read but is missing from TOS
+# (not in the newest TOSD / TOSL / TOSW export), so it can be added to a TOS watchlist. "Bullish": SSS and PS = on the list; CALL / ETF / RR =
+# outlook Bullish; II = Long. Read from drv_source_standing (which uses the newest file of each list on the latest day). Short SQL on purpose
+# (965-byte command limit): the TOS set and the list rows are two small queries joined in Python.
+@router.get("/api/dashboard/missing-from-tos")
+def get_missing_from_tos(date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        cap = periodic_cap(s, d)
+        tos: set = set()
+        for tbl in ("hist_td", "hist_tl", "hist_tw"):
+            tos |= {r[0] for r in s.execute(text(
+                f"SELECT tos_symbol FROM {tbl} WHERE export_date = (SELECT MAX(export_date) FROM {tbl} WHERE export_date <= :c)"
+            ), {"c": cap}).all()}
+        rows = s.execute(text(
+            "SELECT tos_symbol, source_code, outlook FROM drv_source_standing "
+            "WHERE as_of_date = :d AND on_list AND tos_symbol IS NOT NULL"
+        ), {"d": d}).all()
+    lists: dict = {}
+    for sym, src, outlook in rows:
+        ol = (outlook or "").upper()
+        bullish = src in ("SSS", "PS") or (src in ("CALL", "ETF", "RR") and ol == "BULLISH") or (src == "II" and ol in ("LONG", "BULLISH"))
+        if bullish and sym not in tos:
+            lists.setdefault(sym, set()).add(src)
+    order = {"SSS": 0, "PS": 1, "CALL": 2, "ETF": 3, "II": 4, "RR": 5}
+    out = [{"symbol": sym, "lists": sorted(srcs, key=lambda x: order.get(x, 9)),
+            "us_ticker": bool(re.fullmatch(r"[A-Z]{1,5}", sym))}
+           for sym, srcs in sorted(lists.items())]
+    return {"as_of": d.isoformat(), "count": len(out), "symbols": out}
+
+
 @router.get("/api/dashboard/earnings-unwatch")
 def get_dashboard_earnings_unwatch():
     with session_scope() as s:
