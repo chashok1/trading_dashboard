@@ -311,7 +311,7 @@ def _assert_no_loading_rows(sorted_output_list):
 # ticker, TOS glitch, delisted) can't loop the automation forever.
 RELOAD_SYMBOL_THRESHOLD = 55
 MAX_REPROCESS_ATTEMPTS = 3
-MAX_WL99_RETRY_ATTEMPTS = 3
+MAX_WL99_RETRY_ATTEMPTS = 2  # 2026-10-20: was 3
 
 # 2026-08-20: column-set toggle, tried before each reprocess attempt (see
 # toggle_column_set_away_and_back() / the RELOADWL99 branch). Every recipe
@@ -334,8 +334,12 @@ COLUMN_SET_TOGGLE_REPEAT = 3
 # list that is still resolving is never nudged. Gives up after STALL seconds
 # with no further drop, or MAX seconds in total.
 WL99_SETTLE_POLL_SECONDS = 5
-WL99_SETTLE_STALL_SECONDS = 30
-WL99_SETTLE_MAX_SECONDS = 120
+WL99_SETTLE_STALL_SECONDS = 15   # 2026-10-20: was 30
+WL99_SETTLE_MAX_SECONDS = 60     # 2026-10-20: was 120
+# 2026-10-20: the first WL99 export runs right after wait_for_loading_to_settle()
+# already waited on the same spinners, so download_watchlist()'s own wait
+# only needs a short check, not another 60s.
+WL99_POST_SETTLE_EXPORT_WAIT = 5
 
 # 2026-08-20: TOS.lock is shared by two very different waiters --
 # (1) another TOSType's __main__ wanting to START its own download
@@ -556,20 +560,26 @@ def ensure_tos_in_focus(expected_list=None):
     sys.exit(1)
 
 def input_with_timeout(prompt, timeout=5):
-    q = queue.Queue()
+    # 2026-10-20: was a fresh thread blocked in input() per call, abandoned on
+    # every timeout -- ensure_tos_active() retries every 5s, so dozens of stale
+    # readers piled up and swallowed later "y" + Enter answers (e.g. the refill
+    # prompt). Now shares the one persistent reader with every other prompt.
+    return read_line(prompt, timeout)
 
-    def read_input():
+def read_line(prompt="", timeout=None):
+    """The ONLY place stdin is read. One persistent reader thread feeds
+    _refill_answer_queue; every prompt drains stale lines, prints, then waits
+    on the queue. Returns the raw line, or None on timeout/EOF."""
+    start_input_listener()
+    while not _refill_answer_queue.empty():
         try:
-            q.put(input(prompt))
-        except (EOFError, Exception):
-            q.put(None)
-
-    t = threading.Thread(target=read_input)
-    t.daemon = True
-    t.start()
-
+            _refill_answer_queue.get_nowait()
+        except queue.Empty:
+            break
+    if prompt:
+        print(prompt, end="", flush=True)
     try:
-        return q.get(timeout=timeout)
+        return _refill_answer_queue.get(timeout=timeout)
     except queue.Empty:
         return None
 
@@ -595,20 +605,8 @@ def start_input_listener():
                 _refill_reader_started = True
 
 def _read_refill_answer(timeout):
-    start_input_listener()
-    # Clear any stale inputs from earlier terminal activity
-    while not _refill_answer_queue.empty():
-        try:
-            _refill_answer_queue.get_nowait()
-        except queue.Empty:
-            break
-
-    print(f"Press 'y' + Enter within {timeout}s to execute task (or wait to skip)...", flush=True)
-    try:
-        ans = _refill_answer_queue.get(timeout=timeout)
-        return ans.strip().lower() if ans else None
-    except queue.Empty:
-        return None
+    ans = read_line(f"\nPress 'y' + Enter within {timeout}s to execute task (or wait to skip)...\n", timeout)
+    return ans.strip().lower() if ans else None
 
 def wait_for_mouse_idle(idle_seconds=5):
     last_pos = pyautogui.position()
@@ -634,6 +632,7 @@ def ensure_tos_active(images_folder):
 
     tos_window = None
     prev_active_win = ""
+    tos_wait_notice_shown = False
     while tos_window is None:
 
         windows = [w for w in gw.getWindowsWithTitle("thinkorswim") if not w.isMinimized]
@@ -679,7 +678,14 @@ def ensure_tos_active(images_folder):
 
         if (not tos_window) or (not windows):
             # Ask user to exit with a 3-second timeout
-            user_input = input_with_timeout("⏳ ThinkorSwim not found or not miximized. Please open and log in. Type 'y' to exit (Or will retry in 5 seconds...): ", 5)
+            # 2026-10-20: print the notice once, then keep retrying silently
+            # instead of repeating it every 5s.
+            if not tos_wait_notice_shown:
+                tos_wait_notice_shown = True
+                user_input = input_with_timeout("⏳ ThinkorSwim not found or not maximized. Please open and log in. "
+                                                "Type 'y' + Enter to exit (retrying every 5 seconds)...\n", 5)
+            else:
+                user_input = input_with_timeout("", 5)
 
             if user_input and user_input.lower() == 'y':
                 print("\nExiting...")
@@ -752,6 +758,25 @@ def wait_for_loading_to_settle(images_folder):
             since_drop = 0
         count = new
     return count
+
+def apply_recipe_column_set(df, images_folder):
+    """Applies the recipe's own 'TOS Column Set' (its first two Click rows) and
+    confirms it via that row's target_image. A normal run gets this from the
+    recipe's leading rows; merge-only mode skips them, so TOS kept whatever
+    column set was last on screen and WL99 exported the wrong columns
+    (2026-10-20, 'headers do not match' on TOSD_WL99TD.csv)."""
+    click_rows = df[(df['Type'] == 'Click') & (df['Name'] == 'TOS Column Set')]
+    if len(click_rows) < 2:
+        print("⚠️ apply_recipe_column_set: recipe has no 'TOS Column Set' rows -- column set left as is.")
+        return
+    print("--- Applying the recipe's column set before exporting. ---")
+    do_click_row(click_rows.iloc[0], images_folder)
+    own_row = click_rows.iloc[1]
+    do_click_row(own_row, images_folder)
+    time.sleep(2.0)
+    target_image = own_row.get('target_image')
+    if pd.notna(target_image) and str(target_image).strip() != "":
+        do_exists({'Name': 'Confirm column set is active', 'ref_image': target_image}, images_folder)
 
 def toggle_column_set_away_and_back(df, images_folder):
     """RELOADWL99 reprocess helper (2026-08-20): switches the column-set
@@ -1516,17 +1541,17 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # first export resolved survive a later nudge/re-import (2026-09-16).
     wl99_export_path = os.path.join(save_folder, f"{export_row['Name']}_{export_row['watchlist_name']}.csv")
 
-    def _export_wl99():
+    def _export_wl99(wait_timeout=60):
         if not download_watchlist(export_row, save_folder, images_folder, False, False, False,
-                                   already_selected=True, wait_timeout=60):
+                                   already_selected=True, wait_timeout=wait_timeout):
             print("--- RELOADWL99: export stalled (no change in loading count) -- forcing export of "
                   "current WL99 state so this attempt's progress isn't lost. ---")
             download_watchlist(export_row, save_folder, images_folder, False, True, False,
-                                already_selected=True, wait_timeout=60)
+                                already_selected=True, wait_timeout=wait_timeout)
         _merge_wl99_export_into_history(wl99_export_path, save_folder)
 
     screen_left = wait_for_loading_to_settle(images_folder)
-    _export_wl99()
+    _export_wl99(WL99_POST_SETTLE_EXPORT_WAIT)
     stuck_now = len(get_stuck_symbols())
     if screen_left == 0 or stuck_now == 0:
         print(f"--- RELOADWL99: nothing left loading ({baseline_stuck} loaded -> {stuck_now} stuck) -- no nudge needed. ---")
@@ -1534,10 +1559,26 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
         print(f"--- RELOADWL99: progress made ({baseline_stuck} loaded -> {stuck_now} still stuck) -- "
               "skipping the nudge so resolved symbols aren't reset; leaving the rest to the retry loop. ---")
     else:
-        print(f"--- RELOADWL99: no symbol improved ({baseline_stuck} loaded -> {stuck_now} stuck) -- nudging "
-              "column-set (x3) to force a recompute, then re-exporting. ---")
-        toggle_column_set_away_and_back(df, images_folder)
-        _export_wl99()
+        # 2026-10-20, user: TOS sometimes improves on its own right after the
+        # symbols load, so that export may have caught it mid-resolve. Before
+        # nudging, watch the screen once more; if it is clearing (or already
+        # clear), re-export and re-judge. Nudge only if there is still no gain.
+        print(f"--- RELOADWL99: no symbol improved yet ({baseline_stuck} loaded -> {stuck_now} stuck) -- "
+              "checking whether TOS is still resolving on its own before nudging. ---")
+        before = count_images_in_folder(images_folder, "lo", timeout=1)
+        after = wait_for_loading_to_settle(images_folder)
+        if after < before or after == 0:
+            print(f"    screen loading count {before} -> {after} -- re-exporting to capture the improvement.")
+            _export_wl99(WL99_POST_SETTLE_EXPORT_WAIT)
+            stuck_now = len(get_stuck_symbols())
+        if stuck_now == 0 or stuck_now < baseline_stuck:
+            print(f"--- RELOADWL99: improved on its own ({baseline_stuck} loaded -> {stuck_now} stuck) -- "
+                  "no nudge needed. ---")
+        else:
+            print(f"--- RELOADWL99: still no improvement ({baseline_stuck} loaded -> {stuck_now} stuck) -- "
+                  "nudging column-set (x3) to force a recompute, then re-exporting. ---")
+            toggle_column_set_away_and_back(df, images_folder)
+            _export_wl99()
 
     # 6. Re-sync LoadingSymbols.txt to output_list's stuck state AFTER
     # this export (2026-08-21, user-directed) -- step 5's download_watchlist
@@ -2043,8 +2084,17 @@ def sync_and_validate_count(data, filename):
             # lock_file_path before calling this, so whichever prompt style
             # is used here no longer blocks other scripts either way.
             pause_status_overlay()
-            cont = input(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}. "
-                          "Press y to continue, anything else to abort: ").strip().lower()
+            # Flush stdout and drop stray buffered keystrokes first: the prompt
+            # was sitting unflushed (invisible) until after the user typed 'y'.
+            sys.stdout.flush()
+            try:
+                import msvcrt
+                while msvcrt.kbhit():
+                    msvcrt.getwch()
+            except ImportError:
+                pass
+            cont = (read_line(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}. "
+                              "Press y to continue, anything else to abort: ") or "").strip().lower()
             resume_status_overlay()
             if cont != 'y':
                 print("Aborting process.")
@@ -2489,7 +2539,7 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                         if actual_headers != input_headers:
                             compare_lists(actual_headers, input_headers)
                             pause_status_overlay()
-                            cont = input(f"Error: The headers in the file '{filename}' do not match the expected headers (First Row in headers file). Press y to continue: ").strip().lower()
+                            cont = (read_line(f"Error: The headers in the file '{filename}' do not match the expected headers (First Row in headers file). Press y to continue: ") or "").strip().lower()
                             resume_status_overlay()
                             if cont == 'y':
                                 continue
@@ -2729,7 +2779,7 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                 if not exit_update_exports:
                     if update_exports_prompt:
                         pause_status_overlay()
-                        comp = input(f"Process more files? Press y to process more files: ").strip().lower()
+                        comp = (read_line("Process more files? Press y to process more files: ") or "").strip().lower()
                         resume_status_overlay()
                         if comp != 'y':
                             copy_and_add_empty_lines(export_file_latest, export_file_to_update_indir, lines_to_ignore)
@@ -2929,14 +2979,13 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
             stuck = get_stuck_symbols()
             wl99_fragment = os.path.join(save_folder, f"{reload_row['Name']}_{reload_row['watchlist_name']}.csv")
 
-            if stuck or not os.path.exists(wl99_fragment):
-                if stuck:
-                    print(f"\n--- Merge-only mode: {len(stuck)} symbol(s) genuinely still "
-                          "'Loading' (no fragment has resolved data for them) -- running RELOADWL99 "
-                          "to reload and re-export WL99. ---")
-                else:
-                    print(f"\n--- Merge-only mode: {os.path.basename(wl99_fragment)} is missing -- "
-                          "running RELOADWL99 to export it (nothing to reload). ---")
+            # 2026-10-20: only open TOS when symbols are actually stuck
+            # "Loading". A missing WL99 fragment alone used to trigger it too,
+            # which prompted the user to open/maximize TOS for nothing.
+            if stuck:
+                print(f"\n--- Merge-only mode: {len(stuck)} symbol(s) genuinely still "
+                      "'Loading' (no fragment has resolved data for them) -- running RELOADWL99 "
+                      "to reload and re-export WL99. ---")
                 # This IS real TOS-GUI automation (unlike the rest of
                 # merge-only mode), so ensure_tos_active() first, same as
                 # main() itself does before its own row loop.
@@ -2955,6 +3004,7 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
                 else:
                     start_status_overlay()
                 recipe_dir = os.path.dirname(os.path.abspath(watchlist_file))
+                apply_recipe_column_set(df, images_folder)
                 do_reloadwl99(reload_row, save_folder, images_folder, recipe_dir, df)
                 stop_status_overlay()
 
