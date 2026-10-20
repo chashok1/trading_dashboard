@@ -4103,9 +4103,29 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .rail-split-side { display: flex; flex-direction: column; gap: 4px; }
 .side-acct-bar { flex-wrap: wrap; }
 .side-acct-bar .cat-account-filter { flex-wrap: wrap; }
-#dashPortfolioMixSection > div { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; justify-content: flex-start !important; gap: 8px !important; }
-#dashPortfolioMixSection > div > div { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; max-width: none !important; }
-#dashPortfolioMixSection [id$="Title"] { transform: none !important; width: auto !important; text-align: left !important; }
+/* 2026-10-20, user-directed: the four graphs sit two per line -- Asset Allocation | Sector, then Concentration | Macro Stance -- under the
+   full-width P&L chart. Each card is half the column; its legend moves under the pie (a side-by-side legend would not fit in half the width). */
+#dashPortfolioMixSection > div { flex-direction: row !important; flex-wrap: wrap !important; align-items: flex-start !important; justify-content: space-between !important; gap: 8px !important; }
+#dashPortfolioMixSection > div > div:first-child { flex: 0 0 100% !important; width: 100% !important; min-width: 0 !important; max-width: none !important; }
+#dashPortfolioMixSection > div > div[id$="Card"] { flex: 0 0 calc(50% - 4px) !important; width: auto !important; min-width: 0 !important; max-width: none !important; }
+#dashPortfolioMixSection #dpmAssetCard { order: 1; }
+#dashPortfolioMixSection #dpmBetaCard { order: 2; }     /* Macro Stance (2026-10-20: swapped with Sector) */
+#dashPortfolioMixSection #dpmConcCard { order: 3; }
+#dashPortfolioMixSection #dpmSectorCard { order: 4; }
+/* 2026-10-20, user-directed: the doughnut is drawn in very light colours BEHIND its legend, so only the legend takes the room
+   (portfolio_mix.js::_pmDrawPie draws the light slices; the strong colours stay on the legend swatches). */
+#dashPortfolioMixSection [id$="Card"] > div[style*="display:flex"] { display: block !important; position: relative !important; }
+#dashPortfolioMixSection [id$="Card"] canvas { position: absolute !important; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%);
+  width: 100px !important; height: 100px !important; z-index: 0; pointer-events: none; }
+/* legend: fills its card (names left, percentages right, spread as far as the card allows; the gap to the neighbouring graph is the row gap), so the colour boxes line up between the two cards of a column; dark text over the light graph */
+#dashPortfolioMixSection [id$="Legend"] { position: relative; z-index: 1; width: 100% !important; box-sizing: border-box; padding: 0 6px; margin: 0; min-height: 112px; display: flex !important; flex-direction: column; justify-content: center; }
+#dashPortfolioMixSection [id$="Legend"] > div { gap: 7px !important; }
+#dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(2), #dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(3) { color: #111827 !important; }
+#dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(2), #dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(3) { font-weight: 600; }
+#dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(2) { text-align: left; }   /* names left-aligned */
+#dashPortfolioMixSection [id$="Legend"] > div > span:nth-child(3) { margin-left: auto; text-align: right; min-width: 3.2ch; }   /* percentages right-aligned */
+#dashPortfolioMixSection [id$="Card"] > div:not([style*="display:flex"]) { width: 100% !important; }
+#dashPortfolioMixSection [id$="Title"] { transform: none !important; width: 100% !important; text-align: center !important; }
 
 /* 2026-10-16, user-directed: right-column P&L header -- line 1: period dropdown, the account total ($1,028K) in the middle, expand icon;
    line 2: Today and Cum. (.ts-total-group is flattened so its three amounts can be ordered individually.) */
@@ -4116,8 +4136,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 #dashPortfolioMixSection #tsCumPnlExpandBtn { order: 3; }
 #dashPortfolioMixSection .ts-title::after { content: ''; flex: 0 0 100%; order: 4; height: 0; }
 #dashPortfolioMixSection #tsCumPnlToday, #dashPortfolioMixSection #tsCumPnlTotal { order: 5; margin: 3px 10px 0 0; }
-/* 2026-10-16, user-directed: Macro Stance (with the Beta bar; its card is #dpmBetaCard) moves to the end of the graph stack. */
-#dashPortfolioMixSection #dpmBetaCard { order: 9; }
+/* 2026-10-16, user-directed: Macro Stance (with the Beta bar; its card is #dpmBetaCard) moves to the end of the graph stack (order 4 above, 2026-10-20). */
 
 /* 2026-10-16, user-directed: 'Macro' radio -- the marker slot shows the macro stance tag (BS/BM/SA/STM/HOLD) in place of the outlook-change icons. */
 .oc-slot.ms { display: inline-flex !important; }
@@ -4395,3 +4414,19 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .he-act-tiles > div:nth-child(9), .he-act-tiles > div:nth-child(10) { flex: 0 1 104px; }
 .he-act-tiles > div:nth-child(1) { flex: 0 1 104px; }   /* Top-5: 104 -> 109 -> 115 (+5% twice), then -10% */
 
+/* 2026-10-20: bigger-graph popup for the Dashboard Portfolio Mix graphs (web/portfolio_mix.js::_pmOpenGraphModal). */
+.pm-pop-wrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.pm-pop-chart { flex: 0 0 920px; max-width: 100%; }
+.pm-pop-tbl { flex: 1 1 460px; min-width: 0; max-height: 470px; overflow-y: auto; }
+.pm-pop-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pm-pop-table th { text-align: left; font-size: 10.5px; color: var(--text-3, #6b7280); font-weight: 700; padding: 3px 8px 4px 0; border-bottom: 1px solid var(--border, #d4d4d8); position: sticky; top: 0; background: var(--card-bg, #fff); }
+.pm-pop-table td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border, #eceef2); vertical-align: top; }
+.pm-pop-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pm-pop-table th.num { text-align: right; }
+.pm-pop-table td:first-child { white-space: nowrap; }
+.pm-pop-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.pm-pop-dim { color: var(--text-3, #6b7280); }
+.pm-pop-tk { color: var(--text-2, #4b5563); font-size: 11px; line-height: 1.4; }
+.pm-pop-click { cursor: pointer; }
+.pm-pop-click:hover { background: var(--bg-2, #f4f5f9); }
+@media (max-width: 760px) { .pm-pop-chart { flex-basis: 100%; } }

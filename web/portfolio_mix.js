@@ -40,6 +40,7 @@ const _PM_ASSET_COLORS = {
   FX: '#e87ba4', Unclassified: '#c3c2b7',
 };
 const _pmCharts = {};
+const _pmSig = {};   // last-drawn signature per pie, see _pmDrawPie
 
 function _pmFmtUsd(v) {
   const n = Number(v) || 0;
@@ -138,6 +139,146 @@ function _pmFitCardWidth(cardId, labels, values) {
 // for which pies wire one and which don't. User: "add same click actions
 // on the top graphs also" (top graphs = the Portfolio Mix pies, previously
 // display-only -- no click handler existed on them at all before this).
+// Very light version of a hex colour (the doughnut drawn behind the legend on the Dashboard cards, 2026-10-20).
+function _pmLight(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+  return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, 0.1)` : hex;
+}
+
+// ---- Bigger-graph popup (2026-10-20, user-directed) ----
+// Clicking any of the four Dashboard graphs (Asset Allocation / Sector / Concentration / Macro Stance) opens ONE window (same
+// .modal-overlay look as the Jobless / MKT SIT popups): a large version of the doughnut plus a table with every slice's $ value, share,
+// holding count and the holdings themselves. A table row opens the old per-category detail popup where one exists (onRowClick).
+let _pmPopupChart = null;
+// Black or white text, whichever reads better on the given hex slice colour.
+function _pmTextOn(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+  if (!m) return '#111827';
+  const lum = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)) / 255;
+  return lum > 0.6 ? '#111827' : '#ffffff';
+}
+function _pmClosePopup() {
+  if (_pmPopupChart) { _pmPopupChart.destroy(); _pmPopupChart = null; }
+  const m = document.getElementById('pmGraphModal');
+  if (m) m.remove();
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') _pmClosePopup(); });
+function _pmOpenGraphModal(d) {
+  _pmClosePopup();
+  const total = d.values.reduce((a, b) => a + b, 0);
+  if (!total) return;
+  const usd = (v) => '$' + Math.round(Number(v) || 0).toLocaleString();
+  const rows = d.labels.map((lab, i) => {
+    const pct = total ? (d.values[i] / total * 100) : 0;
+    const tickers = (d.tickerLists && d.tickerLists[i]) || [];
+    const shownName = (d.shown[i] && d.shown[i] !== lab) ? `${escapeHtml(d.shown[i])} <span class="pm-pop-dim">&middot; ${escapeHtml(lab)}</span>` : escapeHtml(lab);
+    const cap = 40;
+    const tk = tickers.slice(0, cap).map(escapeHtml).join(', ') + (tickers.length > cap ? ` <span class="pm-pop-dim">+${tickers.length - cap} more</span>` : '');
+    const clickable = !!d.onRowClick && lab !== 'Other';
+    return `<tr data-pm-row="${i}"${clickable ? ' class="pm-pop-click" title="Open the detailed positions"' : ''}>`
+      + `<td><span class="pm-pop-sw" style="background:${d.colors[i]};"></span>${shownName}</td>`
+      + `<td class="num">${usd(d.values[i])}</td><td class="num">${pct.toFixed(1)}%</td>`
+      + `<td class="num">${tickers.length}</td><td class="pm-pop-tk">${tk}</td></tr>`;
+  }).join('');
+  const m = document.createElement('div');
+  m.id = 'pmGraphModal';
+  m.className = 'modal-overlay active';
+  m.innerHTML = `<div class="modal-content" style="max-width:1600px;width:96vw;"><div class="modal-header"><div>`
+    + `<h2 style="margin:0;">${escapeHtml(d.title)}</h2>`
+    + `<p style="margin:0;">Your holdings &middot; ${d.labels.length} slices &middot; total ${usd(total)}${d.onRowClick ? ' &middot; click a row for the detailed positions' : ''}</p></div>`
+    + `<button class="close-btn" type="button" aria-label="Close">&times;</button></div>`
+    + `<div class="modal-body"><div class="pm-pop-wrap"><div class="pm-pop-chart"><canvas id="pmGraphModalCanvas" width="920" height="470"></canvas></div>`
+    + `<div class="pm-pop-tbl"><table class="pm-pop-table"><thead><tr><th>Slice</th><th class="num">$ value</th><th class="num">Share</th><th class="num">Holdings</th><th>Symbols</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table></div></div></div></div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', (ev) => {
+    if (ev.target === m || ev.target.closest('.close-btn')) { _pmClosePopup(); return; }
+    const tr = ev.target.closest('tr[data-pm-row]');
+    if (tr && d.onRowClick) {
+      const lab = d.labels[Number(tr.getAttribute('data-pm-row'))];
+      if (lab !== 'Other') { _pmClosePopup(); d.onRowClick(lab); }
+    }
+  });
+  const names = d.labels.map((l, i) => (d.shown[i] && d.shown[i] !== l) ? `${d.shown[i]} - ${l}` : l);
+  // 2026-10-20, user-directed: every slice gets an arrow (leader line) to a label with its NAME and SHARE (%) in two columns beside the
+  // ring, so the graph reads without the table (the % is the same number as the table's Share column). Labels on each side are spread
+  // out vertically so they never overlap; slices under 0.4% are left to the table.
+  const calloutPlugin = {
+    id: 'pmCallouts',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      const arcs = chart.getDatasetMeta(0).data;
+      if (!arcs.length) return;
+      const cx = arcs[0].x, cy = arcs[0].y, R = arcs[0].outerRadius;
+      const GAP = 17, top = 14, bottom = chart.height - 14;
+      const items = [];
+      arcs.forEach((arc, i) => {
+        const frac = d.values[i] / total;
+        if (frac < 0.004) return;
+        const ang = (arc.startAngle + arc.endAngle) / 2;
+        const cos = Math.cos(ang), sin = Math.sin(ang);
+        const name = (d.shown[i] && d.shown[i] !== d.labels[i]) ? `${d.shown[i]} \u00b7 ${d.labels[i]}` : d.labels[i];
+        items.push({ i, side: cos >= 0 ? 1 : -1, cos, sin, y: cy + sin * (R + 16), name, pct: (frac * 100).toFixed(1) + '%' });
+      });
+      [1, -1].forEach((side) => {
+        const col = items.filter(it => it.side === side).sort((p, q) => p.y - q.y);
+        for (let k = 0; k < col.length; k++) col[k].y = Math.max(col[k].y, k ? col[k - 1].y + GAP : top);
+        for (let k = col.length - 1; k >= 0; k--) col[k].y = Math.min(col[k].y, k === col.length - 1 ? bottom : col[k + 1].y - GAP);
+      });
+      ctx.save();
+      ctx.textBaseline = 'middle';
+      items.forEach((it) => {
+        const color = d.colors[it.i];
+        const p0 = { x: cx + it.cos * (R + 1), y: cy + it.sin * (R + 1) };
+        const p1 = { x: cx + it.cos * (R + 16), y: cy + it.sin * (R + 16) };
+        const q = { x: cx + it.side * (R + 40), y: it.y };
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(q.x, q.y); ctx.lineTo(q.x + it.side * 8, q.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        const dx = p0.x - p1.x, dy = p0.y - p1.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+        ctx.beginPath();   // arrowhead on the slice
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p0.x - ux * 8 + uy * 4, p0.y - uy * 8 - ux * 4);
+        ctx.lineTo(p0.x - ux * 8 - uy * 4, p0.y - uy * 8 + ux * 4);
+        ctx.closePath(); ctx.fill();
+        ctx.textAlign = it.side === 1 ? 'left' : 'right';
+        const tx = q.x + it.side * 12;
+        ctx.font = '600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+        const nameW = ctx.measureText(it.name).width;
+        ctx.fillStyle = '#111827';
+        // name then share, always read left to right: right column = name + pct, left column = pct + name
+        ctx.font = '700 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+        const pctW = ctx.measureText(it.pct).width;
+        if (it.side === 1) {
+          ctx.font = '600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+          ctx.fillText(it.name, tx, q.y);
+          ctx.font = '700 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+          ctx.fillStyle = color === '#eda100' || color === '#fab219' ? '#92400e' : color;
+          ctx.fillText(it.pct, tx + nameW + 7, q.y);
+        } else {
+          ctx.fillText(it.pct, tx, q.y);
+          ctx.fillStyle = '#111827';
+          ctx.font = '600 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+          ctx.fillText(it.name, tx - pctW - 7, q.y);
+        }
+      });
+      ctx.restore();
+    },
+  };
+  _pmPopupChart = new Chart(document.getElementById('pmGraphModalCanvas'), {
+    type: 'doughnut',
+    plugins: [calloutPlugin],
+    data: { labels: names, datasets: [{ data: d.values, backgroundColor: d.colors, borderColor: '#fff', borderWidth: 2 }] },
+    options: {
+      responsive: false, maintainAspectRatio: false, cutout: '50%', animation: false, layout: { padding: { left: 250, right: 250, top: 34, bottom: 34 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => ` ${c.label}: ${usd(c.parsed)} (${(c.parsed / total * 100).toFixed(1)}%)` } },
+      },
+    },
+  });
+}
+
 // SPDR sector ETF per GICS sector (same map as api/routers/macro_areas.py::_SECTOR_ETF).
 const _PM_SECTOR_SYMBOL = {
   'Communication Services': 'XLC', 'Consumer Discretionary': 'XLY', 'Consumer Staples': 'XLP', 'Energy': 'XLE',
@@ -146,8 +287,19 @@ const _PM_SECTOR_SYMBOL = {
 };
 // displayLabels (optional, 2026-10-20): what the legend shows instead of `labels` (e.g. the ETF symbol XLK for 'Information Technology');
 // `labels` stay the real category names used for clicks, and the tooltip / legend hover show both.
-function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg, onSliceClick, displayLabels) {
-  const shown = displayLabels || labels;
+function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg, onSliceClick, displayLabels, popupTitle) {
+  // Dashboard cards (popupTitle set) show the 3-letter short name 'Unm' for Unmapped (2026-10-20, user-directed); hover / popup keep the full name.
+  const shown = (displayLabels || labels).map(l => (popupTitle && l === 'Unmapped') ? 'Unm' : l);
+  // 2026-10-20, user-directed: "why is the graph getting redrawn now and then? stop it." The Dashboard reloads everything whenever any
+  // data file finishes processing (app.js::checkForNewData -> refreshAll) and each reload used to destroy + redraw (with animation) every
+  // graph. Now a graph whose slices are unchanged is left exactly as it is, and a changed one is redrawn without the animation.
+  const sig = JSON.stringify([labels, values.map(v => Math.round(v)), colors, shown]);
+  if (_pmCharts[key] && _pmSig[key] === sig && popupTitle) return;
+  _pmSig[key] = sig;
+  // popupTitle (2026-10-20): the whole card opens the bigger-graph popup (_pmOpenGraphModal); the old per-slice / per-row click is then
+  // available from that popup's table instead (its onRowClick), so slices and legend rows don't also fire it directly.
+  const card = popupTitle ? (canvasEl => canvasEl && canvasEl.closest('[id$="Card"]'))($(canvasId)) : null;
+  if (card) card._pmOpen = null;
   const fullNames = labels.map((l, i) => (shown[i] && shown[i] !== l) ? `${shown[i]} \u00b7 ${l}` : l);
   const canvas = $(canvasId);
   const legendEl = $(legendId);
@@ -162,10 +314,11 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
   canvas.style.display = '';
   _pmCharts[key] = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels: fullNames, datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1 }] },
+    data: { labels: fullNames, datasets: [{ data: values, backgroundColor: popupTitle ? colors.map(_pmLight) : colors, borderColor: '#fff', borderWidth: 1 }] },
     options: {
       responsive: false,
       maintainAspectRatio: false,
+      animation: false,   // no draw-in animation on (re)draw
       cutout: '55%',
       // Slice click -> onSliceClick(label), same drill-down the Sector/
       // Asset class/Style factor-scorecard pies already had before this pie
@@ -173,11 +326,11 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       // each pie opens (or none, for pies with no natural backend
       // counterpart -- e.g. Beta's Low/Mid/High buckets aren't a real
       // category anywhere server-side).
-      onClick: onSliceClick ? (evt, elements) => {
+      onClick: (onSliceClick && !popupTitle) ? (evt, elements) => {
         if (!elements.length) return;
         onSliceClick(labels[elements[0].index]);
       } : undefined,
-      onHover: onSliceClick ? (evt, elements) => {
+      onHover: (onSliceClick && !popupTitle) ? (evt, elements) => {
         evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
       } : undefined,
       plugins: {
@@ -203,7 +356,7 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       const nameLine = (shown[i] !== lab) ? [lab] : [];
       const titleLines = nameLine.concat(tickers.length ? _pmTickerLines(tickers) : []);
       const title = titleLines.length ? escapeHtml(titleLines.join('\n')) : '';
-      const clickable = !!onSliceClick;
+      const clickable = !!onSliceClick || !!popupTitle;
       const cursor = clickable ? 'pointer' : ((tickers.length || nameLine.length) ? 'help' : 'default');
       return `<div title="${title}" data-pm-idx="${i}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
         + `<span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>`
@@ -211,11 +364,16 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
         + `<span style="color:#6b7280;flex-shrink:0;">${pct}%</span>`
         + `</div>`;
     }).join('');
-    if (onSliceClick) {
+    if (onSliceClick && !popupTitle) {
       legendEl.querySelectorAll('[data-pm-idx]').forEach((el) => {
         el.addEventListener('click', () => onSliceClick(labels[Number(el.getAttribute('data-pm-idx'))]));
       });
     }
+  }
+  if (card) {
+    card.style.cursor = 'pointer';
+    card._pmOpen = () => _pmOpenGraphModal({ title: popupTitle, labels, shown, values, colors, tickerLists, onRowClick: onSliceClick });
+    if (!card._pmWired) { card._pmWired = true; card.addEventListener('click', () => { if (card._pmOpen) card._pmOpen(); }); }
   }
 }
 
@@ -257,7 +415,7 @@ function _pmDrawSegBar(barId, labels, values, colors, tickerLists, emptyMsg, onS
     el.querySelectorAll('[data-pm-seg]').forEach((seg) => {
       const s = segs[Number(seg.getAttribute('data-pm-seg'))];
       if (s.lab === 'Other') return;
-      seg.addEventListener('click', () => onSliceClick(s.lab));
+      seg.addEventListener('click', (ev) => { ev.stopPropagation(); onSliceClick(s.lab); });
     });
   }
 }
@@ -317,7 +475,7 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     assetLabels, assetLabels.map(k => assetTotals[k]),
     assetLabels.map(k => _PM_ASSET_COLORS[k] || '#c3c2b7'),
     assetLabels.map(k => assetTickerMap[k]), 'No asset class data for held positions.',
-    (label) => _pmOpenCategoryModal('asset_class', label));
+    (label) => _pmOpenCategoryModal('asset_class', label), undefined, idPrefix === 'dpm' ? 'Asset Allocation' : null);
   _pmFitCardWidth(idPrefix + 'AssetCard', assetLabels, assetLabels.map(k => assetTotals[k]));
 
   if (!held.length) {
@@ -402,7 +560,7 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmDrawPie(idPrefix + 'Sector', idPrefix + 'SectorCanvas', idPrefix + 'SectorLegend',
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
     secTickerLists, 'No sector data for held positions.',
-    (label) => _pmOpenCategoryModal('sector', label), secShown);
+    (label) => _pmOpenCategoryModal('sector', label), secShown, idPrefix === 'dpm' ? 'Sector' : null);
   _pmFitCardWidth(idPrefix + 'SectorCard', secShown, secEntries.map(e => e[1]));
 
   // Concentration -- top 7 holdings by $ value + Other.
@@ -418,6 +576,6 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     concEntries.map(e => e[0]), concEntries.map(e => e[1]),
     concEntries.map((e, i) => e[0] === 'Other' ? '#898781' : _PM_CAT_PALETTE[i % _PM_CAT_PALETTE.length]),
     concTickerLists, 'No held positions.',
-    _pmOpenSymbolChart);
+    _pmOpenSymbolChart, undefined, idPrefix === 'dpm' ? 'Concentration' : null);
   _pmFitCardWidth(idPrefix + 'ConcCard', concEntries.map(e => e[0]), concEntries.map(e => e[1]));
 }

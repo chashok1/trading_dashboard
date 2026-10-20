@@ -2610,7 +2610,7 @@ function _renderDashMacroStance(held) {
   const macroColorOf = (k) => k === 'No signal' ? _PM_SIDE_COLORS.neutral : (_PM_SIDE_COLORS[actionDisplay(k).side] || _PM_SIDE_COLORS.neutral);
   _pmDrawPie('dpmMacro', 'dpmMacroCanvas', 'dpmMacroLegend',
     macroLabels, macroLabels.map(k => macroTotals[k]), macroLabels.map(macroColorOf),
-    macroLabels.map(k => macroTickerMap[k]), 'No macro signal for held positions.');
+    macroLabels.map(k => macroTickerMap[k]), 'No macro signal for held positions.', undefined, undefined, 'Macro Stance');
 }
 
 // 2026-08-14 -- moves ONLY the pie header text up to Cumulative P&L's
