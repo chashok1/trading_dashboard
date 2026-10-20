@@ -148,8 +148,7 @@ VALUES
   ('remaining', 'Tech & ETFs', 'IAK',   'dual', 120),
   ('remaining', 'Tech & ETFs', 'ITA',   'dual', 130),
   ('remaining', 'Tech & ETFs', 'PINK',  'dual', 140),
-  ('remaining', 'Tech & ETFs', 'SPMO',  'dual', 150),
-  ('remaining', 'Tech & ETFs', 'URA',   'dual', 160)
+  ('remaining', 'Tech & ETFs', 'SPMO',  'dual', 150)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
 -- 2026-07-04: friendly per-member labels for the cryptic (non-stock/ETF)
@@ -598,6 +597,14 @@ ON CONFLICT (rr_name) DO NOTHING;
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
   ('sector_etfs',        'Sectors',           'XRT',  'dual', 120, TRUE),
   ('country_etfs',       'Country ETFs',      'EWJ',  'dual', 5,   TRUE),
-  ('commodities_metals', 'Precious Metals',   'CPER', 'dual', 70,  TRUE),
+  ('commodities_ag',     'Industrial & Ag',   'CPER', 'dual', 15,  TRUE),   -- sits beside Copper (/HG); see the end of this file
   ('rates_duration',     'Rates & Duration',  'IEF',  'dual', 40,  TRUE)
 ON CONFLICT (area_key, member_symbol) DO UPDATE SET sort_order = EXCLUDED.sort_order, enabled = TRUE, label = EXCLUDED.label;   -- label = the area's own display name, so the rail shows the symbol (the earlier relabel above would otherwise stick)
+
+-- 2026-10-19, user-directed: URA was listed twice (Industrial & Ag and Tech & ETFs). It stays in Industrial & Ag (the 2026-08-31 choice); the Tech & ETFs copy is removed.
+DELETE FROM ref_macro_area WHERE area_key = 'remaining' AND member_symbol = 'URA';
+-- 2026-10-19, user-directed: futures and their ETFs sit side by side in the right panels, so CPER leaves Precious Metals for Industrial & Ag, next to Copper (/HG).
+DELETE FROM ref_macro_area WHERE area_key = 'commodities_metals' AND member_symbol = 'CPER';
+
+-- 2026-10-19, user-directed: Gold first, then Silver, at the top of Precious Metals (pinned rows stay on top in their configured order; each ETF follows its futures row).
+UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'commodities_metals' AND member_symbol IN ('/GC', '/SI');

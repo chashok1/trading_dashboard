@@ -1208,11 +1208,27 @@
   // 2026-10-15 -- Major Markets / Sectors also sort by any of their Day / MTD / QTD / YTD
   // column headers (_railSortField[area] = the member field, default pct_change).
   var _railSortField = {};
+  // 2026-10-19, user-directed: a futures (or index) row and its ETF sit side by side. ETF -> its partner row; in the default order
+  // the ETF is moved to sit directly under the partner whenever both are in the same panel. Column sorts still order purely by the column.
+  var _ETF_PAIR = { GLD: '/GC', SLV: '/SI', CPER: '/HG', CORN: '/ZC', WEAT: '/ZW', SOYB: '/ZS',
+                    FXB: '/6B', FXC: '/6C', FXE: '/6E', FXY: '/6J', EWJ: 'N225:JP', EWG: 'GDAXI:DE' };
+  function _pairUp(list) {
+    var out = list.slice(), have = {};
+    out.forEach(function (m) { have[m.symbol] = true; });
+    Object.keys(_ETF_PAIR).forEach(function (etf) {
+      var p = _ETF_PAIR[etf];
+      if (!have[etf] || !have[p]) return;
+      var i = out.findIndex(function (m) { return m.symbol === etf; });
+      var item = out.splice(i, 1)[0];
+      out.splice(out.findIndex(function (m) { return m.symbol === p; }) + 1, 0, item);
+    });
+    return out;
+  }
   function _sortByMode(list, mode, field) {
     if (!mode) {
       // Pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest sort bullish-first.
       var pins = list.filter(function (m) { return m.pinned; });
-      return pins.length ? pins.concat(_bullishFirst(list.filter(function (m) { return !m.pinned; }))) : _bullishFirst(list);
+      return _pairUp(pins.length ? pins.concat(_bullishFirst(list.filter(function (m) { return !m.pinned; }))) : _bullishFirst(list));
     }
     field = field || 'pct_change';
     return list.slice().sort(function (a, b) {
