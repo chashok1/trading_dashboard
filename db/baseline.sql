@@ -7931,6 +7931,8 @@ CREATE TABLE IF NOT EXISTS ref_risk_gauge (
     category    text,                 -- equity | vol | credit | rates | fx | commodity | breadth | positioning | macro
     notes       text
 );
+-- 2026-10-20: plain-English hover help (bulleted text) per gauge; filled by db/seeds_risk_gauge_help.sql.
+ALTER TABLE IF EXISTS ref_risk_gauge ADD COLUMN IF NOT EXISTS help text;
 
 -- Round-number price/yield levels the user considers meaningful.
 CREATE TABLE IF NOT EXISTS ref_level_watch (

@@ -291,6 +291,11 @@ def get_risk_dial(date: Optional[str] = Query(None)):
         ), {"d": d}).scalar()
         total_value = float(total_value) if total_value else None
 
+        # 2026-10-20: plain-English hover help per gauge (ref_risk_gauge.help) for the rank chip + quiet list.
+        help_by_key = {r[0]: r[1] for r in s.execute(text("SELECT gauge_key, help FROM ref_risk_gauge")).all()}
+        for g in fired + quiet:
+            g["help"] = help_by_key.get(g["key"])
+
         for g in fired:
             g["exposure"] = _gauge_exposure(s, d, g["key"], total_value)
 

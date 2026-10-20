@@ -4379,3 +4379,13 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .qm-pop-h { position: relative; padding-right: 26px; }
 .qm-x { position: absolute; right: 0; top: -2px; border: none; background: none; font-size: 14px; line-height: 1; cursor: pointer; color: var(--text-3, #6b7280); }
 .qm-x:hover { color: var(--text-1, #111827); }
+
+/* 2026-10-20: Risk Dial gauge hover help (rank chip + quiet list), web/app.js::_rdHelpShow */
+.rd-wt[data-rdkey], .rd-q-item[data-rdkey] { cursor: help; }
+.rd-help-tip { position: fixed; z-index: 1200; display: none; pointer-events: none; max-width: 340px; padding: 9px 12px; border-radius: 6px;
+  background: var(--card-bg, #fff); color: var(--text-1, #111827); border: 1px solid var(--border, #d4d4d8); box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  font-size: 12px; line-height: 1.45; }
+.rd-help-tip .rd-help-h { font-weight: 700; margin-bottom: 3px; }
+.rd-help-tip ul { margin: 5px 0 0; padding-left: 16px; }
+.rd-help-tip li { margin: 0 0 3px; }
+

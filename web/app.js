@@ -415,6 +415,51 @@ function _riskBandClass(label) {
   }
 }
 
+// Hover help for Risk Dial gauges: the rank chip on fired rows and each line of the quiet list carry data-rdkey; one delegated
+// handler shows a bulleted tip (first line = what it means, then "Fires when" / "Why it matters" bullets from ref_risk_gauge.help,
+// plus what the gauge's weight does to the 0-100 number: budget = 100 x (1 - fired weight / evaluable weight)).
+let _rdHelp = { evaluable: 0, gauges: {} };
+function _rdHelpHtml(g) {
+  const lines = String(g.help || '').split(/\r?\n/).filter(Boolean);
+  const intro = lines.filter(l => !l.startsWith('- '));
+  const bullets = lines.filter(l => l.startsWith('- ')).map(l => l.slice(2));
+  const w = g.weight || 0;
+  const pts = _rdHelp.evaluable ? (w / _rdHelp.evaluable * 100) : null;
+  if (pts != null) bullets.push(`Weight ${Math.round(w)}: if it fires, it takes about ${pts.toFixed(1)} points off the Risk Dial number.`);
+  if (g.fired && g.detail) bullets.unshift(`Today: ${g.detail}`);
+  return `<div class="rd-help-h">${escapeHtml(g.label || g.key)}</div>` +
+    (intro.length ? `<div>${intro.map(escapeHtml).join('<br>')}</div>` : '<div>No description yet.</div>') +
+    (bullets.length ? `<ul>${bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : '');
+}
+function _rdHelpMove(e, tip) {
+  const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 16, y = e.clientY + 18;
+  if (x + w > window.innerWidth - pad) x = Math.max(pad, e.clientX - w - 16);
+  if (y + h > window.innerHeight - pad) y = Math.max(pad, e.clientY - h - 12);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest && e.target.closest('[data-rdkey]');
+  if (!el) return;
+  const g = _rdHelp.gauges[el.dataset.rdkey];
+  if (!g) return;
+  let tip = document.getElementById('rdHelpTip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'rdHelpTip'; tip.className = 'rd-help-tip'; document.body.appendChild(tip); }
+  tip.innerHTML = _rdHelpHtml(g);
+  tip.style.display = 'block';
+  _rdHelpMove(e, tip);
+});
+document.addEventListener('mousemove', e => {
+  const tip = document.getElementById('rdHelpTip');
+  if (tip && tip.style.display === 'block') _rdHelpMove(e, tip);
+});
+document.addEventListener('mouseout', e => {
+  const el = e.target.closest && e.target.closest('[data-rdkey]');
+  if (!el || (e.relatedTarget && el.contains(e.relatedTarget))) return;
+  const tip = document.getElementById('rdHelpTip');
+  if (tip) tip.style.display = 'none';
+});
+
 async function loadRiskDial() {
   const body = $('riskDialBody');
   if (!body) return;
@@ -431,6 +476,10 @@ async function loadRiskDial() {
     // TASK_134 A.4 -- severity encoded as a coloured left rail + weight chip,
     // never colour alone. loadRiskDial's caller (drv_market_stat.gauges_fired)
     // already sorts `fired` by weight descending -- kept as-is.
+    // 2026-10-20, user-directed: hover on the rank chip (and on each quiet-gauge line) shows plain-English help for that gauge
+    // (ref_risk_gauge.help via the API) -- see _rdHelpShow below.
+    _rdHelp = { evaluable: r.evaluable_weight || 0, gauges: {} };
+    (r.fired || []).concat(r.quiet || []).forEach(g => { _rdHelp.gauges[g.key] = g; });
     const firedHtml = (r.fired || []).map(g => {
       const wt = Math.round(g.weight || 0);
       const sev = wt >= 3 ? 3 : wt <= 1 ? 1 : 2;
@@ -440,13 +489,13 @@ async function loadRiskDial() {
                    onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
                    onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
-        <span class="rd-wt">${wt}</span>
+        <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt}</span>
         <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     const quietHtml = (r.quiet || [])
-      .map(g => `${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}`).join('<br>');
+      .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}">${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}</span>`).join('<br>');
     // 2026-08-14 -- SPX vertical range indicator, ALWAYS shown (not just
     // when spx_top_range actually fires, which only happens at >=85% of its
     // risk range -- see etl/derive_risk_dial.py). The API returns this
