@@ -725,6 +725,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
+    # 2026-10-21: symbols whose Technical BUY SOME is the "reclaim" buy (etl/derive.py Pass 2b) -- low confidence, fill-only.
+    reclaim_syms: set[str] = set()
+    try:
+        reclaim_syms = {r[0] for r in session.execute(text(
+            "SELECT tos_symbol FROM drv_tn_td_bb_rr WHERE as_of_date = :d AND reclaim_buy"), {"d": as_of_date}).fetchall()}
+    except Exception:
+        log.warning("reclaim_buy load failed (no reclaim tags)", exc_info=True)
+
     # Per-symbol asset_class for sources that bucket by it (PS + ETF/ETFCHG).
     # Keyed by tos_symbol (normalized) — fixes ticker/symbol vs tos_symbol bug.
     asset_class_ps: dict[str, str] = {}
@@ -1034,7 +1042,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            stop_level, stop_signal, source_run_id,
            final_action, final_code, final_side,
            fc_strength, fc_confidence, fc_feasible, priority_rank,
-           stop_breached, low_confidence,
+           stop_breached, low_confidence, reclaim_buy,
            warn_not_at_lrr, warn_added_this_leg,
            conviction_hold, conviction_note, conviction_direction,
            stop_proximity_sd, stop_proximity_line,
@@ -1052,7 +1060,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :stop, :stop_signal, :rid,
            :f_action, :f_code, :f_side,
            :f_strength, :f_confidence, :f_feasible, :f_priority,
-           :stop_breached, :low_confidence,
+           :stop_breached, :low_confidence, :reclaim_buy,
            :warn_lrr, :warn_leg,
            :conviction_hold, :conviction_note, :conviction_direction,
            :stop_prox_sd, :stop_prox_line,
@@ -1447,6 +1455,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             low_confidence=low_confidence,
             unproven_sell_mode=unproven_sell_mode,
         )
+        # 2026-10-21: a reclaim buy is low confidence -- never "high"; tagged on the row (drv_actionable.reclaim_buy) for the grid.
+        is_reclaim = sym in reclaim_syms and fc["final_side"] == "buy"
+        if is_reclaim:
+            # ...and never bigger than BUY SOME, whatever the source says (an INCREASE source would otherwise show BUY MORE).
+            _bl, _bc, _bs = _action_display("BS")
+            fc.update({"final_action": _bl, "final_code": _bc, "final_side": _bs, "fc_strength": _FC_SCALE.get("BS", 2)})
+            if fc["fc_confidence"] == "high":
+                fc["fc_confidence"] = "mixed"
         # User decision 2026-09-15: suppressed (ALREADY ESTABLISHED/AT
         # CEILING/...) is computed off the Sources-side consolidated_action
         # above, purely to silence redundant *buy* noise -- it must never
@@ -1548,6 +1564,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "f_priority":   priority_rank,
             "stop_breached":   stop_breached,
             "low_confidence":  low_confidence,
+            "reclaim_buy":     is_reclaim,
             "warn_lrr":        warn_not_at_lrr,
             "warn_leg":        warn_added_this_leg,
             "conviction_hold": conviction_hold,

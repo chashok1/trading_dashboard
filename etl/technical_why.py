@@ -99,6 +99,11 @@ def explain_technical(d: dict, bounce_note: bool = True) -> Optional[str]:
         return None
     qe = int(qe)
     last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
+    if d.get("reclaim_buy"):
+        # 2026-10-21 reclaim buy (etl/derive.py Pass 2b): fill-only, low confidence.
+        return _two(f"Price {_usd(last)} is back above a recent Trade line ({_usd(d.get('reclaim_line'))}, one of the last 3) after closing below it "
+                    f"2 days ago, on an up day; Trade is well above Trend ({_usd(trend)}) and no other Technical setup matched",
+                    "reclaim buy: BUY SOME, low confidence")
 
     # 1. Trend / Trade read
     if qe == -2:

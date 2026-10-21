@@ -118,3 +118,11 @@ def test_bounce_exception_adds_a_below_trade_warning_and_carries_on_to_the_range
 def test_falling_band_no_longer_ends_the_trail_before_range_position():
     t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=-3, bb_desc="Cnfm Bear Trnd Less"))
     assert t["stages"][-1]["name"] == "Range position"
+
+
+def test_reclaim_buy_names_the_line_and_is_low_confidence():
+    d = dict(NO_SIGNAL, td_tn_bb_rr_action=9, reclaim_buy=True, reclaim_line=200.59, last=209.73, trend_line=129.02)
+    t = technical_trail(d)
+    assert t["signal"] is True
+    last = t["stages"][-1]
+    assert last["name"] == "Range position" and "200.59" in last["text"] and "209.73" in last["text"]

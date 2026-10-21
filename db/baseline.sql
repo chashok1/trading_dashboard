@@ -9429,3 +9429,10 @@ ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS why_card JSONB;
 -- 2026-10-21: bounce exception to the "below Trade" sell (etl/derive.py Pass 1b). TRUE only when
 -- the stock is above Trend, has 2 up closes in a row, trades above yesterday's high and has not broken LRR.
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS bounce_exempt BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 2026-10-21: "reclaim" buy (etl/derive.py Pass 2b). trade_trend_sd = (Trade - Trend) / SD; reclaim_buy = Technical BUY SOME given because price moved
+-- back above one of the last 3 Trade lines (low confidence, fill-only); reclaim_line = the line it crossed. drv_actionable.reclaim_buy carries it to the grid.
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS trade_trend_sd NUMERIC;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_line NUMERIC;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;

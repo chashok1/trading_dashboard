@@ -3073,7 +3073,8 @@ function _finalCallHtml(row) {
   // that merely had an unrelated unproven SELL rule also fire in the
   // background (found live: REAL — a real BMN buy, wrongly shown muted with
   // a "LOW CONF — Sell evidence..." badge that doesn't even apply to it).
-  var isLowConf = !!row.low_confidence && fc.side === 'sell';
+  // 2026-10-21: a reclaim buy (Technical BUY SOME from a price move back above a recent Trade line) is low confidence too -- muted badge.
+  var isLowConf = (!!row.low_confidence && fc.side === 'sell') || (!!row.reclaim_buy && fc.side === 'buy');
   // Badge
   // 2026-08-20: confidence badge (High/Gate/Mixed) removed from display —
   // user: it's after-the-fact from the Final Call decision itself
@@ -3110,6 +3111,12 @@ function _finalCallHtml(row) {
   }
   var pvvIcon = _pvvAgreementIcon(row, fc.side).trim();
   if (pvvIcon) badgeHtml = badgeHtml ? badgeHtml + ' ' + pvvIcon : pvvIcon;
+  // 2026-10-21, user (SNOW): a HOLD whose Technical read is a buy keeps the call but shows a small tag so the buy signal is visible.
+  // Display only -- the sources keep the call at HOLD (e.g. a softened SELL ALL).
+  if (fc.side === 'neutral' && /^(BS|BM|BMN)$/i.test(String(row.rr_action || ''))) {
+    var _tbIc = '<span class="tech-buy-tag" title="Technical shows a buy here (' + escapeHtml(String(row.rr_action || '')) + '), but the sources keep the call at HOLD. Click the badge for why.">&#9650; Tech buy</span>';
+    badgeHtml = badgeHtml ? badgeHtml + ' ' + _tbIc : _tbIc;
+  }
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
   // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
@@ -4311,6 +4318,9 @@ function _buildActionPopHtml(row) {
   const flags = [];
   if (row.low_confidence && side === 'sell') {
     flags.push('LOW CONF — sell evidence comes only from unproven rules or sources with no measured edge (SSS/RR/ETF)');
+  }
+  if (row.reclaim_buy && side === 'buy') {
+    flags.push('LOW CONF — Technical buy comes from the reclaim rule (price back above a recent Trade line); no other Technical setup matched');
   }
   if (row.stop_breached) {
     flags.push((row.stop_signal || 'STOP') + ' — held, just crossed below its '

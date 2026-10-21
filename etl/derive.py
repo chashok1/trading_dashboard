@@ -3303,7 +3303,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             (as_of_date, tos_symbol,
              a_bb_top_slope, a_bb_bot_slope,
              trend_trade_rule, bb_rng_strk_rule,
-             bull_rr_action, not_bull_rr_action, lrr_idx_eff)
+             bull_rr_action, not_bull_rr_action, lrr_idx_eff, trade_trend_sd)
         SELECT
             c.as_of_date, c.tos_symbol,
             c.a_bb_top_slope, c.a_bb_bot_slope,
@@ -3407,7 +3407,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                      AND c.macdh_direction < 0 THEN 2
                 ELSE NULL
             END,
-            c.lrr_eff
+            c.lrr_eff,
+            c.trade_trend_sd
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
@@ -3529,6 +3530,37 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         WHERE dst.as_of_date = l.as_of_date AND dst.tos_symbol = l.tos_symbol
     """), {"d": as_of_date})
 
+    # Pass 2b (2026-10-21, user, from OKTA): "reclaim" buy. Fill-only -- runs ONLY where Technical has no signal at all (never overrides a sell or a
+    # buy). Today is an up day, price is above Trend, the Trade line is at least 3 SD above Trend (a real uptrend, not two lines on top of each other),
+    # and price is at or above one of the last 3 days' Trade lines that the close 2 days ago was below. Result: Technical BUY SOME (9), low
+    # confidence (flag reclaim_buy; reclaim_line = the highest line crossed). LRR must not be broken.
+    session.execute(text("""
+        UPDATE drv_tn_td_bb_rr r
+        SET td_tn_bb_rr_action = 9, reclaim_buy = TRUE,
+            reclaim_line = (SELECT MAX(v) FROM unnest(l.ls) AS v WHERE v <= q.last_price AND p2.c < v)
+        FROM drv_quote q
+        JOIN LATERAL (SELECT a_trend_value FROM hist_td
+                      WHERE tos_symbol = q.tos_symbol AND snapshot_date <= q.as_of_date
+                      ORDER BY snapshot_date DESC, sequence DESC LIMIT 1) td ON TRUE
+        JOIN LATERAL (SELECT last_price AS c FROM drv_quote
+                      WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND last_price IS NOT NULL
+                      ORDER BY as_of_date DESC LIMIT 1 OFFSET 0) p1 ON TRUE
+        JOIN LATERAL (SELECT last_price AS c FROM drv_quote
+                      WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND last_price IS NOT NULL
+                      ORDER BY as_of_date DESC LIMIT 1 OFFSET 1) p2 ON TRUE
+        JOIN LATERAL (SELECT array_agg(a_trade_value) AS ls FROM
+                        (SELECT a_trade_value FROM drv_technicals
+                         WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND a_trade_value IS NOT NULL
+                         ORDER BY as_of_date DESC LIMIT 3) x) l ON TRUE
+        WHERE r.as_of_date = :d AND q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
+          AND r.td_tn_bb_rr_action IS NULL
+          AND COALESCE(r.lrr_idx_eff, 0) <> -1
+          AND r.trade_trend_sd >= 3
+          AND q.last_price > p1.c
+          AND q.last_price > td.a_trend_value
+          AND EXISTS (SELECT 1 FROM unnest(l.ls) AS v WHERE v <= q.last_price AND p2.c < v)
+    """), {"d": as_of_date})
+
     # 2026-10-01: plain-English reason for each Technical signal (popup/hover on
     # Actionable) -- see etl/technical_why.py. Same decision order as Pass 2.
     from etl.technical_why import explain_technical, technical_trail
@@ -3542,7 +3574,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                a.perf1d_sd_rule AS perf1d, a.mrr_idx, a.trr_idx, a.macd_direction AS macd_dir,
                a.macdh_direction AS macdh_dir, a.trade_rule,
                r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope,
-               r.bounce_exempt
+               r.bounce_exempt, r.reclaim_buy, r.reclaim_line
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
