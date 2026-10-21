@@ -7390,6 +7390,8 @@ ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS gamma_light TEXT;
 ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS flow_light  TEXT;
 ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS pv_light    TEXT;
 ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS alloc_light TEXT;
+-- 2026-10-21: SPX flip line (the GEX flip price), typed in by hand on the MKT SIT card -- the MSR email doesn't carry it.
+ALTER TABLE IF EXISTS hist_msr ADD COLUMN IF NOT EXISTS spx_flip_line NUMERIC(10,2);
 
 -- =====================================================
 -- 2026-07-12 TASK_119: stop_breached flag on drv_actionable.

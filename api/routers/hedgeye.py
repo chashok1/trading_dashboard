@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 
 from etl.db import session_scope
+from etl.hedgeye.msr_flip import flip_status
 from api._helpers import _resolve_date, periodic_cap
 
 _gmail_fetch_lock = threading.Lock()
@@ -418,7 +419,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         ), {"eff": effective_date}).scalar()
         if msr_date is not None:
             msr_row = s.execute(text(
-                "SELECT gamma_throttle, rvol_10day, gamma_light, flow_light, pv_light, alloc_light FROM hist_msr"
+                "SELECT gamma_throttle, rvol_10day, gamma_light, flow_light, pv_light, alloc_light, spx_flip_line FROM hist_msr"
                 " WHERE snapshot_date = :md"
             ), {"md": msr_date}).first()
             if msr_row:
@@ -438,6 +439,8 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     "rvol_10day": (
                         float(msr_row[1]) if msr_row[1] is not None else None
                     ),
+                    "spx_flip_line": float(msr_row[6]) if msr_row[6] is not None else None,
+                    "flip": flip_status(s, float(msr_row[6]) if msr_row[6] is not None else None, d),
                     "vix": float(vix_val) if vix_val is not None else None,
                     # top-box lights read from the image (etl/hedgeye/msr_lights.py); None when unreadable
                     "lights": ({"gamma": msr_row[2], "flow": msr_row[3], "pv": msr_row[4], "alloc": msr_row[5]}
@@ -778,6 +781,53 @@ def hedgeye_fetch_status():
             for r in rows
         ],
     }
+
+
+@router.post("/api/msr/manual")
+def msr_manual_entry(payload: dict = Body(...)):
+    """Hand-enter Gamma Throttle / 10-day vol / SPX flip line (the MSR email doesn't carry them).
+
+    Upserts only those three columns for the day (lights/message_id untouched),
+    then re-runs the Risk Dial (drv_market_stat) so the gamma gauges pick them up.
+    """
+    from datetime import date as _date
+    try:
+        sd = _date.fromisoformat(str(payload.get("date")))
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    vals = {}
+    for k in ("gamma_throttle", "rvol_10day", "spx_flip_line"):
+        v = payload.get(k)
+        if v in (None, ""):
+            vals[k] = None
+            continue
+        try:
+            vals[k] = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"{k} must be a number")
+    if all(v is None for v in vals.values()):
+        raise HTTPException(400, "enter at least one value")
+    # Blank box = leave that column as it is (COALESCE), never wipe a saved value.
+    with session_scope() as s:
+        s.execute(text(
+            "INSERT INTO hist_msr (snapshot_date, gamma_throttle, rvol_10day, spx_flip_line)"
+            " VALUES (:sd, :g, :r, :f)"
+            " ON CONFLICT (snapshot_date) DO UPDATE SET"
+            " gamma_throttle = COALESCE(EXCLUDED.gamma_throttle, hist_msr.gamma_throttle),"
+            " rvol_10day = COALESCE(EXCLUDED.rvol_10day, hist_msr.rvol_10day),"
+            " spx_flip_line = COALESCE(EXCLUDED.spx_flip_line, hist_msr.spx_flip_line)"
+        ), {"sd": sd, "g": vals["gamma_throttle"], "r": vals["rvol_10day"], "f": vals["spx_flip_line"]})
+    rerun = "ok"
+    try:
+        from etl.derive import get_anchor_date
+        from etl.derive_market_stat import derive_market_stat
+        with session_scope() as s:
+            anchor = get_anchor_date(s)
+            if anchor is not None:
+                derive_market_stat(s, anchor)
+    except Exception as exc:  # saved values stay; only the dial refresh failed
+        rerun = f"failed: {exc}"[:200]
+    return {"saved": True, "risk_dial": rerun}
 
 
 @router.post("/api/hedgeye/fetch-now")

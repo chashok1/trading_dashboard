@@ -198,9 +198,13 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
             (float(r["level_value"]), float(r["tolerance"])))
 
     gamma_row = session.execute(text(
-        "SELECT gamma_throttle, rvol_10day FROM hist_msr WHERE snapshot_date <= :d "
+        "SELECT gamma_throttle, rvol_10day, spx_flip_line, snapshot_date FROM hist_msr WHERE snapshot_date <= :d "
         "ORDER BY snapshot_date DESC LIMIT 1"
     ), {"d": as_of_date}).first()
+    # 2026-10-21 -- the hand-entered SPX flip line is a same-day level; a stale one is ignored.
+    from etl.hedgeye.msr_flip import flip_status
+    spx_flip = (flip_status(session, float(gamma_row[2]), as_of_date)
+                if gamma_row and gamma_row[2] is not None and gamma_row[3] == as_of_date else None)
     gamma_throttle = float(gamma_row[0]) if gamma_row and gamma_row[0] is not None else None
     rvol_10day = float(gamma_row[1]) if gamma_row and gamma_row[1] is not None else None
 
@@ -270,6 +274,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
         "rvol_10day": rvol_10day,
+        "spx_flip": spx_flip,
         "rv_hist": rv_hist,
         "vix9d": vix9d,
         "usd_corr": usd_corr_map,
@@ -876,11 +881,23 @@ def _g_short_vol_low(ctx):
     return v <= 12, v, f"VIX9D {v:.1f} (low end of its typical 10-30 range)"
 
 
+def _flip_note(f) -> str:
+    """Detail-text only (does not change whether the gauge fires): where SPX sits vs the GEX flip line."""
+    if not f:
+        return ""
+    s = f"; SPX {f['spx']:.0f} is {abs(f['diff']):.0f} pts {f['side']} the flip line {f['flip']:.0f} ({'steadier' if f['side'] == 'above' else 'jumpier'} side)"
+    if f["crossed"]:
+        s += f" -- CROSSED to {f['side']} the flip since last close"
+    elif f["near"]:
+        s += " -- near the flip"
+    return s
+
+
 def _g_gamma_negative(ctx):
     v = ctx.get("gamma_throttle")
     if v is None:
         return None, None, "gamma_throttle unavailable"
-    return v < 0, v, f"Dealer gamma throttle {v:+.2f}"
+    return v < 0, v, f"Dealer gamma throttle {v:+.2f}" + _flip_note(ctx.get("spx_flip"))
 
 
 # 2026-08-14 -- "neutral zone" companion to _g_gamma_negative above,
@@ -898,7 +915,7 @@ def _g_gamma_neutral(ctx):
     v = ctx.get("gamma_throttle")
     if v is None:
         return None, None, "gamma_throttle unavailable"
-    return 0 <= v <= 2, v, f"Dealer gamma throttle {v:+.2f} (neutral zone -- hedging support fading)"
+    return 0 <= v <= 2, v, f"Dealer gamma throttle {v:+.2f} (neutral zone -- hedging support fading)" + _flip_note(ctx.get("spx_flip"))
 
 
 # 2026-08-14 -- USD's rolling 30d correlation vs gold/SPX weakening from

@@ -331,8 +331,8 @@
 
   // Colour helpers for the MKT SIT window's "Today's readings" only (global %chg palette --pct-up / --pct-down).
   var _MS_GREEN = 'var(--pct-up,#0f9d58)', _MS_RED = 'var(--pct-down,#e5484d)', _MS_AMBER = '#d97706';
-  function _msPill(text, color) {
-    return '<span style="display:inline-block; padding:0 6px; border-radius:9px; font-weight:700; font-size:11px; ' +
+  function _msPill(text, color, fs) {
+    return '<span style="display:inline-block; padding:0 6px; border-radius:9px; font-weight:700; font-size:' + (fs || 11) + 'px; ' +
       'color:' + color + '; border:1px solid ' + color + '; background:rgba(127,127,127,0.08);">' + text + '</span>';
   }
 
@@ -477,9 +477,29 @@
       : 'Realized Vol ' + rvol.toFixed(2) + ' ≥ VIX ' + vix.toFixed(1) + ' (VRP ' + vrp.toFixed(1) + '): actual movement has caught up to/exceeded what was priced in → the premium-seller edge is gone, IV likely to reprice higher. Stocks: often coincides with sharper selloffs or two-way volatility — dealer hedging can flip with-trend here, amplifying whatever move is already underway.';
   }
 
+  // SPX vs the hand-entered GEX flip line: above = steadier, below = jumpier; amber when within 0.3%; bold when crossed since last close.
+  function _flipBadge(msr) {
+    var f = msr.flip, lbl = '<span style="text-transform:none;">SPX Flip ' + esc(msr.spx_flip_line.toFixed(0)) + '</span>';
+    if (!f) return lbl;
+    var above = f.side === 'above';
+    var c = f.crossed ? (above ? _MS_GREEN : _MS_RED) : (f.near ? _MS_AMBER : (above ? _MS_GREEN : _MS_RED));
+    var txt = (f.crossed ? '&#9888; CROSSED &middot; ' : '') +
+      'SPX ' + esc(f.spx.toFixed(0)) + (above ? ' &gt; ' : ' &lt; ') + 'Flip ' + esc(f.flip.toFixed(0)) +
+      ' (' + esc(Math.abs(f.diff).toFixed(0)) + ' pts ' + f.side + ')' + (f.near && !f.crossed ? ' near flip' : '');
+    var tip = [
+      '&bull; Flip line ' + f.flip.toFixed(0) + ' is the price where dealer hedging switches sides.',
+      '&bull; Above it dealers calm the market (steadier). Below it they make moves bigger (jumpier).',
+      '&bull; SPX ' + f.spx.toFixed(0) + ' is ' + Math.abs(f.diff).toFixed(0) + ' points (' + Math.abs(f.pct).toFixed(2) + '%) ' + f.side + ' it.',
+      f.crossed ? '&bull; SPX crossed the flip since the last close: today’s behaviour may differ from yesterday’s.' : '',
+      f.near ? '&bull; Within 0.3% of the line: a cross is easy from here.' : ''
+    ].filter(Boolean).join('\n');
+    var idx = _richTip(_popBox('SPX vs Flip line', tip));
+    return '<span data-hetip="' + idx + '">' + _msPill(txt, c, 10) + '</span>';
+  }
+
   function msrCardHtml(msr, loadedAt) {
     _msrForPopup = msr;
-    var msrMetricsHtml = '';
+    var msrMetricsHtml = '', flipHtml = '';
     if (msr) {
       var metricParts = [];
       // 2026-08-23 -- highlightNeg (opt-in, per-call -- not a global rule
@@ -491,25 +511,19 @@
       // opt-in rather than an accidental side effect of a shared helper.
       var _metricLabel = function (label, val, tipBody, highlightNeg) {
         // 2026-10-19, user-directed: MKT SIT uses the global %chg pill palette (--pct-up / --pct-down, as the US Dollar pill).
+        // 2026-10-21: every reading on both header lines is the same 10px pill; a negative Gamma Throttle gets a leading warning mark.
         var color = val >= 0 ? 'var(--pct-up,#0f9d58)' : 'var(--pct-down,#e5484d)';
-        var inner = '<span style="text-transform:none;">' + label + '</span> ' +
-          '<strong style="color:' + color + '; font-size:11px;">' + esc(val.toFixed(2)) + '</strong>';
-        if (highlightNeg && val < 0) {
-          inner = '<span style="background:#fdecec; border:1px solid var(--pct-down,#e5484d); border-radius:3px; ' +
-            'padding:1px 5px; display:inline-block;">&#9888; ' + inner + '</span>';
-        }
+        var inner = '<span style="text-transform:none; letter-spacing:0;">' + _msPill((highlightNeg && val < 0 ? '&#9888; ' : '') + label + ' ' + esc(val.toFixed(2)), color, 10) + '</span>';
         if (!tipBody) return inner;
         var idx = _richTip(_popBox(esc(label), tipBody));
         return '<span data-hetip="' + idx + '">' + inner + '</span>';
       };
       if (msr.gamma_throttle != null)
-        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle), true));
+        metricParts.push(_metricLabel('Gamma Thrtle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle), true));
       if (msr.rvol_10day != null)
-        metricParts.push(_metricLabel('Realized Vol', msr.rvol_10day, _rvolTip(msr.rvol_10day, msr.vix)));
-      if (metricParts.length) {
-        msrMetricsHtml = ' <span style="font-size:8px; color:#888; font-weight:400;">&middot; ' +
-          metricParts.join(' &middot; ') + '</span>';
-      }
+        metricParts.push(_metricLabel('Relzd Vol', msr.rvol_10day, _rvolTip(msr.rvol_10day, msr.vix)));
+      if (msr.spx_flip_line != null) flipHtml = _flipBadge(msr);
+      msrMetricsHtml = metricParts.join('');
     }
     var img = (msr && msr.image_url)
       ? (function () {
@@ -558,15 +572,65 @@
     // on 'Market News' panel" (see web/dashboard_news_list.js instead).
     // This panel's own link (linked(), ext_links['mkt_situation']) is back
     // to its original Hedgeye Market Situation Report URL, unchanged.
-    var panelTitle = '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
-      'letter-spacing:0.6px; color:#534ab7; margin-bottom:6px; display:flex; ' +
-      'align-items:baseline; justify-content:space-between; gap:8px;">' +
-      '<span>' + linked('MKT SIT', 'mkt_situation') + msrTileTs +
-      '</span>' +
-      '<span>' + msrMetricsHtml + '</span>' +
-      '</div>';
-    return panelTitle + img;
+    // Line 1: MKT SIT, Gamma, Vol, enter spread evenly; line 2: date left, SPX-vs-flip badge right. Same 10px type on both.
+    var rowCss = 'display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:10px; ';
+    var panelTitle = '<div style="' + rowCss + 'font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#534ab7;">' +
+      '<span>' + linked('MKT SIT', 'mkt_situation') + '</span>' + msrMetricsHtml +
+      '<a href="#" id="msrManualLink" title="The email has no Gamma Throttle / 10-day vol / SPX flip line -- type them in" ' +
+      'style="text-decoration:none; text-transform:none; letter-spacing:0; font-weight:400;">&#9998; enter</a>' +
+      '</div>' +
+      '<div style="' + rowCss + 'color:#888; margin:7px 0 6px; white-space:nowrap;">' +
+      '<span>' + msrTileTs.replace(/^ <span[^>]*>· /, '<span>') + '</span>' + flipHtml + '</div>';
+    var mDate = (msr && msr.date) || currentDate() || '';
+    var mForm = '<form id="msrManualForm" data-date="' + esc(mDate) + '" style="display:none; margin:0 0 6px; font-size:11px; ' +
+      'text-transform:none; font-weight:400; color:var(--text-1,#111827);">' +
+      'Gamma Throttle <input name="gamma_throttle" type="number" step="any" style="width:70px;" value="' +
+      (msr && msr.gamma_throttle != null ? esc(msr.gamma_throttle) : '') + '"> ' +
+      '10-day vol <input name="rvol_10day" type="number" step="any" style="width:70px;" value="' +
+      (msr && msr.rvol_10day != null ? esc(msr.rvol_10day) : '') + '"> ' +
+      'SPX flip line <input name="spx_flip_line" type="number" step="any" style="width:80px;" value="' +
+      (msr && msr.spx_flip_line != null ? esc(msr.spx_flip_line) : '') + '"> ' +
+      '<button type="submit">Save</button> <button type="button" id="msrManualCancel">Cancel</button> <span id="msrManualMsg" style="color:#888;"></span></form>';
+    return panelTitle + mForm + img;
   }
+
+  // Delegated so the handlers survive the card being re-rendered by load().
+  document.addEventListener('click', function (e) {
+    if (!e.target) return;
+    if (e.target.id === 'msrManualCancel') {
+      var cf = document.getElementById('msrManualForm');
+      if (cf) { cf.reset(); cf.style.display = 'none'; document.getElementById('msrManualMsg').textContent = ''; }
+      return;
+    }
+    if (e.target.id !== 'msrManualLink') return;
+    e.preventDefault();
+    var f = document.getElementById('msrManualForm');
+    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  });
+  document.addEventListener('submit', async function (e) {
+    var f = e.target;
+    if (!f || f.id !== 'msrManualForm') return;
+    e.preventDefault();
+    var msg = document.getElementById('msrManualMsg');
+    msg.textContent = 'saving...';
+    try {
+      var r = await fetch('/api/msr/manual', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: f.dataset.date,
+          gamma_throttle: f.elements.gamma_throttle.value,
+          rvol_10day: f.elements.rvol_10day.value,
+          spx_flip_line: f.elements.spx_flip_line.value
+        })
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+      msg.textContent = j.risk_dial === 'ok' ? 'saved' : 'saved (Risk Dial refresh ' + j.risk_dial + ')';
+      load();
+    } catch (err) {
+      msg.textContent = 'failed: ' + err.message;
+    }
+  });
 
   function etfChangesHtml(etf) {
     if (!etf || !etf.changes || !etf.changes.length) return '';
