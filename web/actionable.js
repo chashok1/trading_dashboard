@@ -5056,7 +5056,10 @@ function _buildRowEl(r) {
     // favorable entry zone, high (near/at TRR, >=85) is the "caution" zone
     // _srcReasonsHtml's warn logic already flags (see _rawRrPos comment
     // above), so the color meaning lines up with that existing convention.
-    const _rrPosColor = window._ivpBarColor ? window._ivpBarColor(_rrBarW) : '#7c3aed';
+    // 2026-10-21, user: below LRR is not green -- amber when turning up, red while still falling (the clamped 0% used to read as the favourable end).
+    const _rawP = (typeof _rawRrPos === 'function') ? _rawRrPos(r) : null;
+    const _rrPosColor = (_rawP != null && _rawP < 0) ? ((r.pct_change != null && Number(r.pct_change) >= 0) ? '#b45309' : '#b91c1c')
+                      : (window._ivpBarColor ? window._ivpBarColor(_rrBarW) : '#7c3aed');
     const _rrPosPctHtml = _rrBarW != null
       ? `<div style="font-size:10px;line-height:1;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;color:${_rrPosColor};" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})">${_rrBarW}%</div>`
       : '';
@@ -5064,8 +5067,12 @@ function _buildRowEl(r) {
     // range_trr_zone_pct width as the Caution warning; at LRR uses the same <= 15% convention as the Tradability read.
     const _trrZoneW = state.rangeTrrZone != null ? state.rangeTrrZone : 0.20;
     const _atTrrBar = _rrBarW != null && _rrBarW >= 100 * (1 - _trrZoneW);
-    const _atLrrBar = _rrBarW != null && _rrBarW <= 15;
+    const _rawG = (typeof _rawRrPos === 'function') ? _rawRrPos(r) : null;       // unclamped: negative = below LRR
+    const _belowLrr = _rawG != null && _rawG < 0;
+    const _turnG = r.pct_change != null && Number(r.pct_change) >= 0;
+    const _atLrrBar = _rrBarW != null && !_belowLrr && _rrBarW <= 15;
     const _rrAtPill = _atTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>'
+                    : _belowLrr ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill ' + (_turnG ? 'rr-at-below-up' : 'rr-at-below-dn') + '" title="Price is BELOW LRR (' + (_turnG ? 'turning up, but still under the line' : 'still falling') + ')">&lt;LRR</span></div>'
                     : _atLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>' : '';
     const rrBarHtml = _rrBarW != null
       ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">

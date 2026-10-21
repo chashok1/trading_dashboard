@@ -1764,8 +1764,10 @@ function _actpopRrBarHtml(row) {
   const lrr = row.lrr != null ? Number(row.lrr) : null;
   const trr = row.trr != null ? Number(row.trr) : null;
   const clamped = Math.max(0, Math.min(100, rawPos));
-  const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? 'var(--act-buy-bg)' : '#f1f5f9';
-  const tagColor = rawPos > 100 ? 'var(--act-sell-strong)' : rawPos < 0 ? 'var(--act-buy-strong)' : '#475569';
+  // 2026-10-21, user: below LRR is NOT green (it was) -- amber when the stock is turning up, red when it is still falling (same reading as the Tradability score).
+  const _turnUp = row.pct_change != null && Number(row.pct_change) >= 0;
+  const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? (_turnUp ? '#fef3c7' : 'var(--act-sell-strong-bg)') : '#f1f5f9';
+  const tagColor = rawPos > 100 ? 'var(--act-sell-strong)' : rawPos < 0 ? (_turnUp ? '#b45309' : 'var(--act-sell-strong)') : '#475569';
   return `<div class="actpop-rr">
     <div class="actpop-rr-track">
       <div class="actpop-rr-tag" style="left:${clamped}%;background:${tagBg};color:${tagColor};">${Math.round(rawPos)}%</div>
@@ -1778,6 +1780,8 @@ function _actpopRrBarHtml(row) {
     // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
     + (rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
         ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>`
+        : rawPos < 0
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
           ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>` : '')
     + `
