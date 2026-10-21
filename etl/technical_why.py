@@ -5,8 +5,9 @@ Follows the same decision order as etl/derive.py::_derive_trend_trade_rules_impl
 
     1. Trend/Trade read (trend_trade_rule QE):  bearish codes (-2, -1, 1) win outright;
        code 2 (between the lines) is neutral -> no signal; 3/4 are bullish -> continue.
-    2. Bollinger band streak (bb_rng_strk_rule QJ): negative = bearish, wins.
-    3. Range position (QM bull path when QJ >= 2, QN not-bull path when QJ in 0..1),
+       Code 1 with bounce_exempt (2026-10-21 bounce exception) also continues, with a warning line.
+    2. Bollinger band streak (bb_rng_strk_rule QJ): a falling band is a warning only (2026-10-21: for buys too).
+    3. Range position (QM bull path when QJ >= 2, QN not-bull path otherwise),
        with a broken LRR support (lrr_idx = -1) overriding both.
 
 Pure function: takes a dict of the already-derived inputs, returns two lines
@@ -67,7 +68,26 @@ def _tol_txt(d: dict) -> str:
     return format(t if t else 1.5, "g")
 
 
-def explain_technical(d: dict) -> Optional[str]:
+def _below_trade_pct(d: dict) -> str:
+    last, trade = _n(d.get("last")), _n(d.get("trade_line"))
+    if last is None or trade is None or trade <= 0:
+        return ""
+    return f" ({(trade - last) / trade * 100:.0f}% below)"
+
+
+def _bounce_grade(d: dict) -> str:
+    """Grade of a bounce-exception buy: MACDH rising = momentum confirmed, else capped to a small buy."""
+    mh = _n(d.get("macdh_dir"))
+    return "momentum confirmed (MACDH rising)" if mh is not None and mh > 0 else "momentum not confirmed (MACDH not rising), so the buy is capped small"
+
+
+def _bounce_note(d: dict) -> str:
+    return (f"Price {_usd(d.get('last'))} is below Trade ({_usd(d.get('trade_line'))}){_below_trade_pct(d)}: sell skipped because "
+            f"the stock closed up 2 days in a row, is above yesterday's high and LRR held; {_bounce_grade(d)}. "
+            f"The sell returns on a down day, a fall back under yesterday's high or an LRR break")
+
+
+def explain_technical(d: dict, bounce_note: bool = True) -> Optional[str]:
     """Why line + verdict line (newline-separated) for the Technical signal, or None.
 
     Keys used: trend_trade_rule, bb_rng_strk_rule, bb_desc, bull_rr_action,
@@ -88,7 +108,8 @@ def explain_technical(d: dict) -> Optional[str]:
         return _two(f"Trade ({_usd(trade)}) {R}below{E} Trend ({_usd(trend)}), price {_usd(last)} "
                     f"above Trade by less than one typical daily move",
                     "bearish, overrides all other checks")
-    if qe == 1:
+    exempt = qe == 1 and bool(d.get("bounce_exempt"))
+    if qe == 1 and not exempt:
         return _two(f"Price {_usd(last)} {R}below{E} Trade ({_usd(trade)}) by more than half a "
                     f"typical daily move, above Trend ({_usd(trend)})",
                     "bearish, overrides range position")
@@ -99,10 +120,7 @@ def explain_technical(d: dict) -> Optional[str]:
     # 2. Bollinger band streak
     qj = _n(d.get("bb_rng_strk_rule"))
     qj = 0 if qj is None else int(qj)
-    if qj < 0:
-        bb = d.get("bb_desc") or "bearish"
-        return _two(f"Price above Trade and Trend, but Bollinger streak is {R}bearish{E} ({bb})",
-                    "bearish band, overrides range position")
+    # 2026-10-21, user: a falling band is a warning only -- no longer stops the range-position read.
 
     # 3. Range position
     # Effective break uses the latest price (live intraday / the close), not the
@@ -135,8 +153,11 @@ def explain_technical(d: dict) -> Optional[str]:
     else:
         q = _n(d.get("not_bull_rr_action"))
         why = _NBULL.get(int(q)) if q is not None else None
+    if exempt:
+        return _two(f"{_bounce_note(d) + '. ' if bounce_note else ''}{held}{why or 'No range-position condition matched'}",
+                    "bounce exception: below Trade but turning up")
     return _two(f"{held}{why or 'No range-position condition matched'}",
-                "above Trade and Trend, band not bearish")
+                "above Trade and Trend" + (", band falling (warning only)" if qj < 0 else ", band not bearish"))
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +261,8 @@ def _technical_trail_core(d: dict) -> dict:
         ext = " and extended (more than 2 daily SDs away)" if qe == 4 else ""
         stages.append({"name": "Trend & Trade", "ok": True,
                        "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) and Trend ({_usd(trend)}){ext}"})
+    elif qe == 1 and d.get("bounce_exempt"):
+        stages.append({"name": "Trend & Trade", "ok": None, "warn": True, "text": "⚠ " + _bounce_note(d)})
     elif qe == 2:
         stages.append({"name": "Trend & Trade", "ok": None,
                        "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) but below Trend ({_usd(trend)}): neutral zone, no signal"})
@@ -258,8 +281,7 @@ def _technical_trail_core(d: dict) -> dict:
     else:
         # 2026-10-20: a falling band is a warning only (no sell on its own); see etl/derive.py Pass 2.
         stages.append({"name": "Bollinger bands", "ok": None, "warn": True,
-                       "text": "Bands are falling" + bb_txt + ": warning only, not counted as a sell"})
-        return out
+                       "text": "Bands are falling" + bb_txt + ": warning only, not counted as a sell or a block on buys"})
     lrr, trr, last_n = _n(d.get("lrr")), _n(d.get("trr")), _n(last)
     pos = None
     if lrr is not None and trr is not None and trr > lrr and last_n is not None:
@@ -274,7 +296,7 @@ def _technical_trail_core(d: dict) -> dict:
     if macd is not None and macdh is not None:
         mm = f"; MACD {'rising' if macd > 0 else 'falling'}, MACDH {'rising' if macdh > 0 else 'falling'}"
     if signal:
-        why = explain_technical(d)
+        why = explain_technical(d, bounce_note=False)   # the Trade-line warning already has its own stage line
         first = why.split(NL)[0] if why else ""
         act = _n(d.get("td_tn_bb_rr_action"))
         ok = True if act is not None and act > 0 else (False if act is not None and act < 0 else None)

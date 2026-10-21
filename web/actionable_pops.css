@@ -474,5 +474,7 @@
 .wc-line { color: var(--text-2, #4b5563); font-size: 11px; padding-left: 2px; }
 .wc-ok { color: #15803d; font-weight: 800; } .wc-no { color: #b91c1c; font-weight: 800; } .wc-dash { color: #9ca3af; font-weight: 800; }
 .wc-title.wc-buy { background: var(--act-buy-bg, #dcfce7); } .wc-title.wc-sell { background: var(--act-sell-strong-bg, #fee2e2); }
+.wc-warnline { background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 3px; padding: 1px 4px 1px 5px; margin: 1px 0; }
+.wc-skip { background: #fde68a; color: #78350f; font-weight: 800; padding: 0 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; font-size: 10px; }
 .wc-flip { margin-top: 5px; font-size: 11px; color: var(--text-2, #4b5563); }
 .wc-flip ul { margin: 2px 0 0; padding-left: 16px; } .wc-flip li { margin: 1px 0; }

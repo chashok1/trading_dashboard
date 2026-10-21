@@ -2191,7 +2191,9 @@ function _actpopWhyCardHtml(row) {
       const col = /^(INCREASE|ADD|BUY)/.test(m[2]) ? '#15803d' : '#b91c1c';
       return `${escapeHtml(m[1])}<b style="color:${col}">${escapeHtml(m[2])}</b>${escapeHtml(m[3])}`;
     };
-    const lines = (st.lines || []).map(l => `<div class="wc-line">${mark(l.ok)} ${_srcWord(l.text)}</div>`).join('');
+    // 2026-10-21, user: "sell skipped" (the bounce exception to the below-Trade sell) is highlighted, and a warning line gets a soft amber band.
+    const _skipHi = h => h.replace(/sell skipped/i, m => `<span class="wc-skip">${m}</span>`);
+    const lines = (st.lines || []).map(l => `<div class="wc-line${l.warn ? ' wc-warnline' : ''}">${mark(l.ok)} ${_skipHi(_srcWord(l.text))}</div>`).join('');
     return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">${i + 1}</span>`
       + `<div class="wc-body"><div class="wc-head"><b>${escapeHtml(st.title)}</b> <span class="wc-text">${escapeHtml(st.text)}</span></div>${lines}</div></div>`;
   }).join('');

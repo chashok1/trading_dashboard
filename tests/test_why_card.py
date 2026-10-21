@@ -104,3 +104,17 @@ def test_falling_top_or_bottom_band_is_a_warning_only():
         assert len(bb) == 1 and bb[0].get("warn") is True and "warning only" in bb[0]["text"]
     t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=2, bb_top_slope=1.0, bb_bot_slope=0.5))
     assert not any(s.get("warn") for s in t["stages"])
+
+
+def test_bounce_exception_adds_a_below_trade_warning_and_carries_on_to_the_range_stage():
+    d = dict(NO_SIGNAL, trend_trade_rule=1, bounce_exempt=True, last=75.08, trade_line=86.75, trend_line=45.0,
+             bb_rng_strk_rule=-1, td_tn_bb_rr_action=10, macdh_dir=1)
+    t = technical_trail(d)
+    first = t["stages"][0]
+    assert first["warn"] is True and "below Trade" in first["text"] and "sell skipped" in first["text"]
+    assert [s["name"] for s in t["stages"]][:2] == ["Trend & Trade", "Bollinger bands"] and len(t["stages"]) == 3
+
+
+def test_falling_band_no_longer_ends_the_trail_before_range_position():
+    t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=-3, bb_desc="Cnfm Bear Trnd Less"))
+    assert t["stages"][-1]["name"] == "Range position"

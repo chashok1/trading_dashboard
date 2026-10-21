@@ -3415,6 +3415,35 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
 
     rows_pass1 = result.rowcount or 0
 
+    # Pass 1b (2026-10-21, user): bounce exception. A stock BELOW Trade by more than the tolerance (trend_trade_rule = 1) is
+    # normally a sell that skips every later check. When it is above Trend, closed UP two days in a row (yesterday's close
+    # above the close before, which was above the one before that), now trades above yesterday's high, and LRR has not broken,
+    # it goes through the normal Bollinger / range-position checks instead. Re-checked on every derive, so a down day, a fall
+    # back under yesterday's high or an LRR break puts the sell straight back. Always on (user, 2026-10-21).
+    if True:
+        session.execute(text("""
+            UPDATE drv_tn_td_bb_rr r SET bounce_exempt = TRUE
+            FROM drv_quote q
+            JOIN LATERAL (SELECT a_trend_value FROM hist_td
+                          WHERE tos_symbol = q.tos_symbol AND snapshot_date <= q.as_of_date
+                          ORDER BY snapshot_date DESC, sequence DESC LIMIT 1) td ON TRUE
+            JOIN LATERAL (SELECT last_price AS c, high_price AS h FROM drv_quote
+                          WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND last_price IS NOT NULL
+                          ORDER BY as_of_date DESC LIMIT 1 OFFSET 0) p1 ON TRUE
+            JOIN LATERAL (SELECT last_price AS c FROM drv_quote
+                          WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND last_price IS NOT NULL
+                          ORDER BY as_of_date DESC LIMIT 1 OFFSET 1) p2 ON TRUE
+            JOIN LATERAL (SELECT last_price AS c FROM drv_quote
+                          WHERE tos_symbol = q.tos_symbol AND as_of_date < q.as_of_date AND last_price IS NOT NULL
+                          ORDER BY as_of_date DESC LIMIT 1 OFFSET 2) p3 ON TRUE
+            WHERE r.as_of_date = :d AND q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
+              AND r.trend_trade_rule = 1
+              AND COALESCE(r.lrr_idx_eff, 0) <> -1
+              AND q.last_price > td.a_trend_value
+              AND p1.c > p2.c AND p2.c > p3.c
+              AND q.last_price > p1.h
+        """), {"d": as_of_date})
+
     # Pass 2: QR = td_tn_bb_rr_action
     # Excel: IFS(QF<0, QF, QF>0, IF(QK<0, QK, QO), TRUE, "")
     #   QF = ref_param_lookup.seq @ ('tn_td_rule',    QE::text)
@@ -3439,6 +3468,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 r.bb_rng_strk_rule    AS qj,
                 r.bull_rr_action      AS qm_val,
                 r.not_bull_rr_action  AS qn_val,
+                r.bounce_exempt       AS bx,
+                a.macdh_direction     AS mh,
                 COALESCE(r.lrr_idx_eff, a.lrr_idx) AS lrr_idx  -- effective (latest-price) support break
             FROM drv_tn_td_bb_rr r
             LEFT JOIN drv_cat_atomic_input a
@@ -3450,8 +3481,13 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 b.as_of_date,
                 b.tos_symbol,
                 b.qj,
+                b.bx,
+                b.mh,
                 l_qf.seq AS qf_seq,
                 l_qk.seq AS qk_seq,
+                -- 2026-10-21, user: a falling Bollinger band is a warning only for BUYS too (it already was for sells,
+                -- 2026-10-20), so a negative qj no longer cuts off the range-position path -- it uses the not-bull path
+                -- like qj 0..1. A broken LRR support is still a sell whatever the band does.
                 CASE
                     WHEN b.qj >= 2 THEN l_qm.seq
                     -- 2026-09-12, user: broken LRR support -> STM, not-bull
@@ -3461,9 +3497,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                     -- the bull path's equivalent lives in bull_rr_action's
                     -- own CASE above instead, since code -1/STM already
                     -- exists in bull_rr_rule.
-                    WHEN b.qj >= 0 AND b.lrr_idx = -1 THEN -9
-                    WHEN b.qj >= 0 THEN l_qn.seq
-                    ELSE NULL
+                    WHEN b.lrr_idx = -1 THEN -9
+                    ELSE l_qn.seq
                 END AS qo_seq
             FROM base b
             LEFT JOIN ref_param_lookup l_qf
@@ -3481,10 +3516,13 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         )
         UPDATE drv_tn_td_bb_rr dst
         SET td_tn_bb_rr_action = CASE
-            WHEN l.qf_seq < 0 THEN l.qf_seq
+            -- 2026-10-21: bounce exception (Pass 1b) skips the below-Trade sell (trend_trade_rule 1) and lets the range-position
+            -- path decide. Grade: if MACDH is not rising, the biggest buy (BM, 10) is capped to BS (9); MACDH rising keeps it.
+            WHEN l.qf_seq < 0 AND NOT l.bx THEN l.qf_seq
             -- 2026-10-20, user: a bearish Bollinger band no longer produces a sell on its own (back-test: no edge, fires on ~1/4 of
-            -- stocks). It is a warning only (technical_trail "warn" stage); the range-position path decides, and a bearish band has no buy path.
-            WHEN l.qf_seq > 0 THEN l.qo_seq
+            -- stocks). It is a warning only (technical_trail "warn" stage); the range-position path decides (2026-10-21: for buys too).
+            WHEN l.qf_seq > 0 OR l.bx THEN
+                CASE WHEN l.bx AND COALESCE(l.mh, 0) <= 0 AND l.qo_seq = 10 THEN 9 ELSE l.qo_seq END
             ELSE NULL
         END
         FROM looked_up l
@@ -3503,7 +3541,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                q.high_price AS high, q.pct_change, rr.trr, prr.trr AS prev_trr,
                a.perf1d_sd_rule AS perf1d, a.mrr_idx, a.trr_idx, a.macd_direction AS macd_dir,
                a.macdh_direction AS macdh_dir, a.trade_rule,
-               r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope
+               r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope,
+               r.bounce_exempt
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol

@@ -9425,3 +9425,7 @@ ON CONFLICT (setting_name) DO NOTHING;
 -- 2026-10-20: plain-English "Why this action" card (etl/why_card.py) + the Technical stage trail it reads (etl/technical_why.py::technical_trail).
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS tech_trail JSONB;
 ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS why_card JSONB;
+
+-- 2026-10-21: bounce exception to the "below Trade" sell (etl/derive.py Pass 1b). TRUE only when
+-- the stock is above Trend, has 2 up closes in a row, trades above yesterday's high and has not broken LRR.
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS bounce_exempt BOOLEAN NOT NULL DEFAULT FALSE;

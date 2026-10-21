@@ -45,9 +45,28 @@ def test_bearish_trade_trend_read_wins_over_range_signal():
     assert "below LRR" not in _plain(txt)
 
 
-def test_bearish_band_wins_over_range_signal():
-    txt = explain_technical(base(bb_rng_strk_rule=-2, bb_desc="PrBrkdn", lrr_idx=0))
-    assert "Bollinger" in txt and "PrBrkdn" in txt
+def test_falling_band_does_not_stop_the_range_position_read():
+    txt = explain_technical(base(bb_rng_strk_rule=-2, bb_desc="PrBrkdn", lrr_idx=0, not_bull_rr_action=4, td_tn_bb_rr_action=10))
+    assert "touched LRR" in txt and "warning only" in txt
+
+
+def test_bounce_exception_names_the_skipped_sell_and_goes_on_to_range_position():
+    d = base(trend_trade_rule=1, bounce_exempt=True, last=75.08, trade_line=86.75, trend_line=45.0,
+             bb_rng_strk_rule=-1, not_bull_rr_action=4, td_tn_bb_rr_action=10, macdh_dir=1)
+    why, verdict = explain_technical(d).split("\n")
+    assert "below Trade" in why and "sell skipped" in why and "momentum confirmed" in why
+    assert "touched LRR" in why and verdict.startswith("bounce exception")
+
+
+def test_bounce_exception_grade_when_macdh_is_not_rising():
+    d = base(trend_trade_rule=1, bounce_exempt=True, last=75.08, trade_line=86.75, trend_line=45.0,
+             not_bull_rr_action=4, td_tn_bb_rr_action=9, macdh_dir=-1)
+    assert "capped small" in explain_technical(d)
+
+
+def test_below_trade_without_the_exception_is_still_a_sell():
+    txt = explain_technical(base(trend_trade_rule=1, bounce_exempt=False, last=75.08, trade_line=86.75, trend_line=45.0))
+    assert "overrides" in txt and "sell skipped" not in txt
 
 
 def test_between_the_lines_is_neutral():
