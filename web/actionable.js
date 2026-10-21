@@ -963,11 +963,16 @@ function fmtAsOfExport(exportDate, exportTime, loadedAt) {
   }
   return '';
 }
+let _statusTimer = null;
 function showStatus(msg, kind = 'info', timeout = 4000) {
   const el = $('statusBar');
   el.className = 'status-bar ' + kind;
   el.textContent = msg;
-  if (timeout) setTimeout(() => { el.style.display = 'none'; }, timeout);
+  // 2026-10-21: the hide below is inline, so it must be undone on the next message -- otherwise only the first status of a session ever showed
+  // (e.g. "Copied N symbols" was invisible after that).
+  el.style.display = '';
+  if (_statusTimer) clearTimeout(_statusTimer);
+  if (timeout) _statusTimer = setTimeout(() => { el.style.display = 'none'; }, timeout);
 }
 
 // ── Column visibility (TASK_105 U1/U4) ──────────────────────────────────────
@@ -5451,29 +5456,40 @@ function exportCsv() {
 // everything matching the filter, not just what's currently paginated
 // into view).
 async function copySymbols() {
-  const rows = state.visibleRows || state.rows;
-  const symbols = rows.map(r => r.tos_symbol).filter(Boolean);
-  if (!symbols.length) return;
+  // 2026-10-21: the cached list can be empty/stale ([] is truthy, so the old `||` never fell back); the rows actually on screen are the truth.
+  let symbols = (state.visibleRows || []).map(r => r.tos_symbol).filter(Boolean);
+  if (!symbols.length) {
+    symbols = Array.from(document.querySelectorAll('#actBody tr[data-sym]')).map(tr => tr.dataset.sym).filter(Boolean);
+  }
+  if (!symbols.length) symbols = (state.rows || []).map(r => r.tos_symbol).filter(Boolean);
+  if (!symbols.length) { showStatus('No symbols to copy', 'info'); return; }
   const text = symbols.join(',');
+  const legacyCopy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  };
+  let done = false;
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
-    } else {
-      // Fallback for non-secure contexts without the async Clipboard API.
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      done = true;
     }
-    showStatus(`Copied ${symbols.length} symbols`, 'success');
   } catch (e) {
-    console.error('Copy symbols failed:', e);
-    showStatus('Copy symbols failed: ' + e.message, 'error');
+    // e.g. "Document is not focused" after clicking in a popup/devtools -- fall back below instead of failing.
+    console.warn('Clipboard API refused, using fallback:', e);
   }
+  if (!done) {
+    try { done = legacyCopy(); } catch (e) { console.error('Copy symbols failed:', e); }
+  }
+  if (done) showStatus(`Copied ${symbols.length} symbols`, 'success');
+  else showStatus('Copy symbols failed: the browser blocked clipboard access', 'error');
 }
 
 // 2026-08-25, user-directed: "add a small email button so i can send email
