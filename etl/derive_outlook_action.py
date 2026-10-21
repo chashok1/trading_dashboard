@@ -1048,6 +1048,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         continue
 
                     today_w = {r[0]: r[1] for r in rr_rows}
+                    rr_snap_by_sym = {r[0]: r[2] for r in rr_rows}
                     curr_snap_rr = rr_rows[0][2]  # snapshot_date
 
                     # Previous: most recent hist_rr snapshot before curr_snap_rr
@@ -1073,6 +1074,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     held = sym in holdings
                     drop_act = "REMOVE" if sc == "ETF" else "REDUCE"
                     act, reason = _action_standing(base, prev, held, drop_act)
+                    if sc == "RR" and act == "REMOVE" and base is not None and float(base) < 0:
+                        _dd = rr_snap_by_sym.get(sym)
+                        reason = f"dropped from RR list{' ' + _dd.strftime('%m/%d') if _dd else ''}, weight {float(base):+g}"
                     if act is None:
                         # No-op — skip writing the row entirely. Keeps
                         # drv_outlook_action focused on real signals.
@@ -1089,7 +1093,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         "delta": delta, "held": held, "act": act,
                         "reason": reason, "cat": category, "rid": run_id,
                         "analyst_rank": None,
-                        "source_snap": source_snap,
+                        "source_snap": (rr_snap_by_sym.get(sym) if sc == "RR" and reason.startswith("dropped from RR") else source_snap),
                     })
                 if batch:
                     # Periodic sources (ETF/II/PS/SSS) key rows on the period

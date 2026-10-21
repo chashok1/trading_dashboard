@@ -3461,6 +3461,9 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .actpop-rr { width: 150px; flex: 0 0 auto; align-self: center; margin-top: 0; margin-left: 0; }  /* 2026-10-02: 220px/20px margin -> 150px/0 so the header fits the popover */  /* 2026-10-02: centered with the other controls */
 .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
 .actpop-pvv-calc-col { display:inline-flex; flex-direction:column; gap:12px; }
+.actpop-rr-mid { text-align:center; }
+.actpop-rr-mid .actpop-xl { text-align:center !important; }
+.actpop-rr-mid > :first-child { margin-top:0; line-height:1.1; }
 .actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
 .actpop-vlm-line { display:flex; align-items:center; justify-content:flex-end; gap:10px; width:100%; }
 .actpop-trad-col > .actpop-trad-icon,

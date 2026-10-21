@@ -70,10 +70,10 @@
        those controls in the header)". flex:1 1 auto so the row still
        grows to fill .actpop-head's remaining width -- margin-left:auto
        has no free space to consume otherwise. */
-    .actpop-head { display: flex; align-items: center; column-gap: 14px; }
+    .actpop-head { display: flex; align-items: center; column-gap: 14px; margin-bottom: -6px; }  /* 2026-10-20: divider 6px higher */
 
 /* 2026-10-03: the divider moved from .actpop-head to .actpop-top so the warning/notes lines sit above it */
-    .actpop-top { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
+    .actpop-top { margin-bottom:6px; padding-bottom:0; border-bottom:1px solid #e2e8f0; }
 
 /* gap 10px -> 20px, 2026-09-02, user: "2) double it" (the %CHG<->Trade/
        Trend group spacing) -- also the base component of the Trade/
@@ -259,7 +259,8 @@
        stack is short/empty (missing Sector ETF/VLM/proximity data) and
        Macro still has its bar chart, that tallest edge sat right on top of
        the next section with no gap at all -- read as overlapping. */
-    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 10px 0 10px; }
+    .actpop-rr-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,260px) minmax(0,1fr); align-items:flex-start; gap:10px; margin: 10px 0 10px; }
+    .actpop-rr-mid { min-width:0; }  /* 2026-10-20: middle track = centered in the popup */
 
 /* Tradability icon+score (2026-08-30: back inside .actpop-rr-icons,
        between Macro and PVV/CALC -- was its own thing off to the side a
@@ -267,7 +268,7 @@
        both sides, on top of .actpop-rr-icons' own 10px flex gap (16px
        total each side) -- user asked for "a little more space on both
        sides" around it specifically, not just the row's normal gap. */
-    .actpop-rr-trad { margin: 0 6px; }
+    .actpop-rr-trad { margin: 0 14px; }
 
 /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups, and last
        of the [%CHG, Trade/Trend, RR] cluster the auto margin on
@@ -331,7 +332,7 @@
        should not." Reverted for real this time, back to margin-left:auto +
        max-width:320px exactly as it was originally -- do not retry
        flex:1 1 auto here a third time. */
-    .actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
+    .actpop-rr-info { justify-self:end; display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
 
 /* 2026-08-21: justify-content space-between -> flex-end + gap:10px --
        VLM and RVOL now sit next to each other (grouped, with breathing

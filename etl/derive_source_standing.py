@@ -40,6 +40,8 @@ from etl._derive_common import (
 log = logging.getLogger("etl.derive_source_standing")
 
 _TARGET = "drv_source_standing"
+_RR_DROP_WEIGHT = -3.0   # a symbol dropped from the RR list counts as -3 (REMOVE / SELL ALL)
+_RR_DROP_DAYS = 30       # how long after the drop the -3 stands; later it goes silent
 
 
 # ---------------------------------------------------------------------------
@@ -307,12 +309,18 @@ def _build_rr(session: Session, as_of_date: date,
               wt_map: dict[str, float], run_id: int) -> list[dict]:
     """RR: reads drv_rr WHERE as_of_date=D (already built by derive_rr).
 
-    Joins the latest hist_rr outlook <= D per symbol.
+    Joins the latest hist_rr outlook <= D per symbol. 2026-10-20, user: a symbol whose latest RR row is NOT in the newest
+    snapshot has been DROPPED from RR -- it becomes weight -3 (REMOVE / SELL ALL), stamped with the first snapshot that
+    lacked it, for _RR_DROP_DAYS after the drop; older drops are silent (no row). It no longer keeps its stale +3 ADD.
     """
+    newest = session.execute(text(
+        "SELECT MAX(snapshot_date) FROM hist_rr WHERE snapshot_date <= :d"), {"d": as_of_date}).scalar()
     rows = session.execute(text("""
         SELECT r.tos_symbol,
                h.outlook,
-               h.snapshot_date AS snap
+               h.snapshot_date AS snap,
+               (SELECT MIN(snapshot_date) FROM hist_rr
+                 WHERE snapshot_date > h.snapshot_date AND snapshot_date <= :d) AS drop_snap
         FROM drv_rr r
         LEFT JOIN LATERAL (
             SELECT outlook, snapshot_date FROM hist_rr
@@ -325,10 +333,14 @@ def _build_rr(session: Session, as_of_date: date,
     """), {"d": as_of_date}).fetchall()
 
     out: list[dict] = []
-    for sym, outlook, snap in rows:
+    for sym, outlook, snap, drop_snap in rows:
         if not sym:
             continue
         w = _outlook_to_weight(outlook, None, wt_map)
+        if newest is not None and snap is not None and snap < newest:
+            if drop_snap is None or (newest - snap).days > _RR_DROP_DAYS:
+                continue
+            w, outlook, snap = _RR_DROP_WEIGHT, "DROPPED", drop_snap
         out.append({
             "as_of_date":    as_of_date,
             "source_code":   "RR",

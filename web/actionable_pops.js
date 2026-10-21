@@ -881,10 +881,10 @@ function _signalReasons(row, side) {
   // the sell. Swap the two lists so the icon color always reflects agreement
   // with the row's own action rather than a hardcoded buy assumption.
   const out = isSell ? { warn: buy, buy: warn } : { warn, buy };
-  // 2026-10-20, user: an SSS "weight fell" REDUCE no longer drives the call -- it is a warning on every row, whatever the side
-  // (never swapped into the supporting list), so the grid's warning symbol and the popup both show it.
+  // 2026-10-20, user: an SSS "weight fell" REDUCE no longer drives the call -- it is shown, never counted in the call.
+  // It is a sell-side hint, so it opposes a buy / HOLD row but SUPPORTS a sell row (the user flagged it under Opposing there).
   for (const e of _sourcesOf(row)) {
-    if (e.warning_only) out.warn.unshift('SSS weight fell' + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only, not counted in the call');
+    if (e.warning_only) (isSell ? out.buy : out.warn).unshift('SSS weight fell' + (e.snapshot_date ? ' on ' + fmtMD(e.snapshot_date) : '') + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only, not counted in the call');
   }
   // 2026-10-20, user: a falling Bollinger band is a warning only (the Why card's Technical line is flagged warn).
   let _wc = row && row.why_card;
@@ -1888,7 +1888,7 @@ function _actpopDriverBullets(row, side) {
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   for (const s of others) {
     const code = s.source || s.source_code || '?';
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), stopGate ? (actionDisplay((s.action || '').toUpperCase()).side === 'buy' ? 'conflicts' : actionDisplay((s.action || '').toUpperCase()).side === 'sell' ? 'agrees' : null) : null, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), stopGate ? (actionDisplay((s.action || '').toUpperCase()).side === 'buy' ? 'conflicts' : actionDisplay((s.action || '').toUpperCase()).side === 'sell' ? 'agrees' : null) : 'not counted', s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
   }
   // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
   // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
@@ -2184,7 +2184,14 @@ function _actpopWhyCardHtml(row) {
   const mark = ok => ok === true ? '<span class="wc-ok">&#10003;</span>'
     : ok === false ? '<span class="wc-no">&#10007;</span>' : '<span class="wc-dash">&ndash;</span>';
   const steps = c.steps.map((st, i) => {
-    const lines = (st.lines || []).map(l => `<div class="wc-line">${mark(l.ok)} ${escapeHtml(l.text)}</div>`).join('');
+    // 2026-10-20, user: on the Sources lines only the action word is colored -- buys green, sells red.
+    const _srcWord = t => {
+      const m = st.key === 'sources' && String(t).match(/^(\S+ )(INCREASE|ADD|BUY SOME|BUY MORE|BUY TO MIN|REMOVE|REDUCE|SELL SOME|SELL TO MIN|SELL ALL|SELL OVER)(.*)$/);
+      if (!m) return escapeHtml(t);
+      const col = /^(INCREASE|ADD|BUY)/.test(m[2]) ? '#15803d' : '#b91c1c';
+      return `${escapeHtml(m[1])}<b style="color:${col}">${escapeHtml(m[2])}</b>${escapeHtml(m[3])}`;
+    };
+    const lines = (st.lines || []).map(l => `<div class="wc-line">${mark(l.ok)} ${_srcWord(l.text)}</div>`).join('');
     return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">${i + 1}</span>`
       + `<div class="wc-body"><div class="wc-head"><b>${escapeHtml(st.title)}</b> <span class="wc-text">${escapeHtml(st.text)}</span></div>${lines}</div></div>`;
   }).join('');
@@ -2271,7 +2278,8 @@ function _buildActionPopHtmlV2(row) {
   let symExtras = '';
   const _ai = row._actionInfo;
   const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
-  if (_at) symExtras += `<div class="actpop-xl">${_at}</div>`;
+  // 2026-10-20, user: the Bought/Sold tag stays in its old place under the price; the other lines are in the middle block.
+  const _atHtml = _at ? `<div class="actpop-xl">${_at}</div>` : '';
   if (_isOverMaxOverlay(row)) {
     symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">`
        + (row.account_sizes && row.account_sizes.length
@@ -2308,8 +2316,8 @@ function _buildActionPopHtmlV2(row) {
     + `</div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
-    + `<div class="actpop-px-group">${pxTxt}${ownLine}${earnLine}</div>`
-    + (symExtras ? `<div class="actpop-sym-extra">${symExtras}</div>` : '')
+    + `<div class="actpop-px-group">${pxTxt}${ownLine}</div>`
+    + (_atHtml ? `<div class="actpop-sym-extra">${_atHtml}</div>` : '')
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     // 2026-10-02 (user): every control group except the vertical bar is centered on the
@@ -2348,6 +2356,9 @@ function _buildActionPopHtmlV2(row) {
     + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
     + `<span class="actpop-pvv-calc-col">${_actpopPvvActionHtml(row)}${_actpopCalcPillHtml(row)}</span>`
     + `</div>`
+    // 2026-10-20, user: earnings / bought / IRA sizing / stage lines moved here from under the price, into the
+    // space between PVV/CALC and Sector/VOL.
+    + `<div class="actpop-rr-mid">${earnLine}${symExtras}</div>`
     + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}</div>`
     + `</div>`;
 

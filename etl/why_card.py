@@ -48,12 +48,18 @@ def _usd(v) -> str:
         return "?"
 
 
+def _md(d) -> str:
+    """'2026-10-14' -> '10/14' (empty if missing)."""
+    p = str(d or "")[:10].split("-")
+    return f"{p[1]}/{p[2]}" if len(p) == 3 else ""
+
+
 def _sources_step(ctx: dict) -> dict:
     all_srcs = list(ctx.get("sources") or [])
     warn = [x for x in all_srcs if x.get("warning_only")]   # SSS weight fell: shown, never counted
     srcs = [x for x in all_srcs if not x.get("warning_only")]
     win = str(ctx.get("winning_source") or "")
-    wlines = [{"ok": False, "text": f"Warning only, not counted - SSS weight fell: {str(w.get('reason') or '').strip()}"} for w in warn]
+    wlines = [{"ok": False, "text": f"Warning only, not counted - SSS weight fell{' on ' + _md(w.get('snapshot_date')) if _md(w.get('snapshot_date')) else ''}: {str(w.get('reason') or '').strip()}"} for w in warn]
     if not srcs:
         return {"key": "sources", "title": "Sources", "tone": "warn" if warn else "neutral",
                 "text": "No source (SSS, CALL, Top-5, RR ...) is recommending anything for this stock.", "lines": wlines}
@@ -68,11 +74,19 @@ def _sources_step(ctx: dict) -> dict:
         tone, head = "sell", "Lean SELL" + (f" ({sells} sources agree)" if sells > 1 else "")
     else:
         tone, head = "neutral", "Neutral"
+    # Mirrors the popup driver rows (actionable_pops.js): the winning source did not drive the Final Call when a breached stop
+    # turned it into HOLD, or when it points the other way and Technical is what matches the Final Call.
+    fc_side = (ctx.get("fc") or {}).get("final_side") or _side(ctx.get("consolidated"))
+    win_side = next((_side(s.get("action")) for s in srcs if str(s.get("source") or "") == win), None)
+    tech_overrides = bool(win_side and fc_side != "neutral" and win_side != fc_side and _side(ctx.get("rr_action")) == fc_side)
+    win_drove = not ctx.get("stop_breached") and not tech_overrides
     lines = []
     for s in srcs:
-        tag = " (drove it)" if str(s.get("source") or "") == win else ""
+        is_win = str(s.get("source") or "") == win
+        tag = " (drove it)" if win_drove and is_win else (" (not counted)" if win and not is_win else "")
         reason = str(s.get("reason") or "").strip()
-        lines.append({"ok": None, "text": f"{s.get('source')} {_name(s.get('action'))}{tag}" + (f": {reason}" if reason else "")})
+        when = _md(s.get("snapshot_date"))
+        lines.append({"ok": None, "text": f"{s.get('source')} {_name(s.get('action'))}{tag}" + (f" ({when})" if when else "") + (f": {reason}" if reason else "")})
     return {"key": "sources", "title": "Sources", "tone": tone, "text": head, "lines": lines + wlines}
 
 
