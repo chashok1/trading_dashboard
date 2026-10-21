@@ -812,6 +812,10 @@ function _signalReasons(row, side) {
     if (rv >= hi) warn.push('RSI overbought (' + rv + ')');
     else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
   }
+  // 2026-10-21, user: IV vs this stock's own 63-day average (the Tradability box's IV item, now removed) -- a spike over the 1.15x red line is a caution.
+  if (row.iv_ratio != null && Number(row.iv_ratio) > 1.15) {
+    warn.push('IV spiked (' + Number(row.iv_ratio).toFixed(2) + 'x its own 63-day average)');
+  }
 
   // Winning Source / Sector track record (2026-08-20, revised same day
   // after review): reuses v_factor_scorecard, the same backtest data the
@@ -884,7 +888,7 @@ function _signalReasons(row, side) {
   // 2026-10-20, user: an SSS "weight fell" REDUCE no longer drives the call -- it is shown, never counted in the call.
   // It is a sell-side hint, so it opposes a buy / HOLD row but SUPPORTS a sell row (the user flagged it under Opposing there).
   for (const e of _sourcesOf(row)) {
-    if (e.warning_only) (isSell ? out.buy : out.warn).unshift('SSS weight fell' + (e.snapshot_date ? ' on ' + fmtMD(e.snapshot_date) : '') + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only, not counted in the call');
+    if (e.warning_only) (isSell ? out.buy : out.warn).unshift('SSS weight fell' + (e.snapshot_date ? ' on ' + fmtMD(e.snapshot_date) : '') + (e.reason ? ' (' + e.reason + ')' : '') + ' - warning only');
   }
   // 2026-10-20, user: a falling Bollinger band is a warning only (the Why card's Technical line is flagged warn).
   let _wc = row && row.why_card;
@@ -1743,7 +1747,9 @@ function _actpopTradIconHtml(row) {
   // clear _TRADABILITY_BADGE_MIN -- previously stayed "active"-looking
   // even on a low/negative score, same visual weight as a genuinely
   // tradable setup.
-  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">`
+  // 2026-10-21, user: the Tradability section at the bottom is gone (its factors are shown elsewhere in the popup); the full read lives in this hover.
+  const _tradTip = ['Tradability ' + score.toFixed(1)].concat(_tradabilityBreakdown(row).map(it => '• ' + it.label + ': ' + it.detail)).join('\n');
+  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="${escapeHtml(_tradTip)}">`
     + _tradabilityIconSvg(12) + `</span>`;
   const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
@@ -1768,7 +1774,13 @@ function _actpopRrBarHtml(row) {
     </div>
     <div class="actpop-rr-labels"><span>LRR ${lrr != null ? lrr.toFixed(2) : '&mdash;'}</span>`
     + `<span class="num">${row.last_price != null ? fmtUsd(row.last_price) : ''}</span>`
-    + `<span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span></div>
+    + `<span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span></div>`
+    // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
+    + (rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
+        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>`
+        : rawPos <= 15
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>` : '')
+    + `
   </div>`;
 }
 
@@ -1804,10 +1816,20 @@ function _techCostNote(row) {
 }
 
 // Tier 1 — "Driven by": one bullet per source_actions entry + Technical,
-// winning source first ("drove it"), Technical tagged agrees/conflicts vs
+// winning source first ("drove it"), Technical tagged supports/opposes vs
 // the row's own side, each with a real historical hit-rate pill from
 // state.sourceScorecard (same v_source_edge_scorecard data / thresholds as
 // the Trade Mode hit-rate badge — TASK_123).
+// 2026-10-21, user: a tick / cross OUTSIDE the tag box (the box keeps its white text). The tick is coloured like the Final Call's side
+// (buy green / sell red), the cross the other colour; "drove it" counts as a tick.
+function _dvMarkHtml(tag, ref) {
+  if (tag !== 'supports' && tag !== 'opposes' && tag !== 'drove it') return '';
+  if (ref !== 'buy' && ref !== 'sell') ref = 'buy';
+  const same = ref === 'sell' ? '#b91c1c' : '#15803d', other = ref === 'sell' ? '#15803d' : '#b91c1c';
+  const ok = tag !== 'opposes';
+  return `<span class="dv-mark" style="color:${ok ? same : other};font-weight:900;font-size:13px;line-height:1;flex-shrink:0;">${ok ? '✓' : '✗'}</span>`;
+}
+
 function _actpopDriverBullets(row, side) {
   const sc = state.sourceScorecard || {};
   // reason/dt are escaped separately and joined with a literal HTML entity
@@ -1838,10 +1860,10 @@ function _actpopDriverBullets(row, side) {
     // comment; _srcReasonsHtml's grid-column twin of this same treatment.
     noteHtml += _dropPctPillHtml({ action: actUpper, pct_since_drop: pctSinceDrop, drop_conflict: dropConflict, up_streak_3d: upStreak3d });
     return `<div class="actpop-driver ${cls}">
-      <span class="dv-name">${escapeHtml(label)}</span>${hit}
+      <span class="dv-name">${escapeHtml(label)}</span>${hit || '<span></span>'}
       <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
       <span class="dv-note">${noteHtml}</span>
-      ${tag ? `<span class="dv-tag">${escapeHtml(tag)}</span>` : ''}
+      ${tag ? `${_dvMarkHtml(tag, (side === 'buy' || side === 'sell') ? side : winSide)}<span class="dv-tag">${escapeHtml(tag)}</span>` : '<span></span><span></span>'}
     </div>`;
   };
 
@@ -1856,27 +1878,25 @@ function _actpopDriverBullets(row, side) {
   const techSideFc = actionDisplay((row.rr_action || '').toUpperCase()).side;
   const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSideFc === side);
   // 2026-10-09: a breached stop turned the buy into HOLD -- the stop drove
-  // the result; every source/Technical is tagged agrees/conflicts vs the stop; Technical is
+  // the result; every source/Technical is tagged supports/opposes vs the stop; Technical is
   // judged against the stop (sell side), not against HOLD.
   const stopGate = _stopGated(row);
   if (stopGate) {
     rows.push(`<div class="actpop-driver sell">
-      <span class="dv-name">Stop</span>
+      <span class="dv-name">Stop</span><span></span>
       <span class="dv-action sell">Breached</span>
       <span class="dv-note">${escapeHtml(_stopDriverNote(row))}</span>
-      <span class="dv-tag">drove it</span>
+      ${_dvMarkHtml('drove it', 'sell')}<span class="dv-tag">drove it</span>
     </div>`);
   }
-  if (winEntry) {
-    const code = winEntry.source || winEntry.source_code || winning;
-    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), stopGate ? 'conflicts' : techOverrides ? 'conflicts' : 'drove it',
-      winEntry.pct_since_drop, winEntry.drop_conflict, winEntry.up_streak_3d));
-  }
+  // 2026-10-21, user: same labels as the "Why this action" card -- drove it / supports / opposes (never "not counted", which only fits the
+  // warning-only lines) -- and the data newest first (an RTA today on top). Technical reflects today, so it comes first; then the sources by date.
+  const _rel = sd => (sd === 'buy' || sd === 'sell') ? ((side === 'buy' || side === 'sell') ? (sd === side ? 'supports' : 'opposes') : (winSide && sd === winSide ? 'supports' : 'opposes')) : '';
   const rraUpper = (row.rr_action || '').toUpperCase();
   if (rraUpper) {
     const techSide = actionDisplay(rraUpper).side;
-    const tag = stopGate ? (techSide === 'sell' ? 'agrees' : techSide === 'buy' ? 'conflicts' : '')
-                : techOverrides ? 'drove it' : winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
+    const tag = stopGate ? (techSide === 'sell' ? 'supports' : techSide === 'buy' ? 'opposes' : '')
+                : techOverrides ? 'drove it' : winEntry ? _rel(techSide)
                           : 'drove it'; // no source row at all -- Technical is the only driver
     const desc = _whyPlain((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
     // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
@@ -1884,11 +1904,20 @@ function _actpopDriverBullets(row, side) {
     const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw));
   }
-  const others = sources.filter(s => (s.source || s.source_code || '') !== winning && !s.warning_only);
-  others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
-  for (const s of others) {
-    const code = s.source || s.source_code || '?';
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), stopGate ? (actionDisplay((s.action || '').toUpperCase()).side === 'buy' ? 'conflicts' : actionDisplay((s.action || '').toUpperCase()).side === 'sell' ? 'agrees' : null) : 'not counted', s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
+  const srcList = sources.filter(s => !s.warning_only);
+  const _isWinSrc = s => (s.source || s.source_code || '') === winning;
+  srcList.sort((a, b) => {
+    const da = String(a.snapshot_date || '').slice(0, 10), db = String(b.snapshot_date || '').slice(0, 10);
+    if (da !== db) return da < db ? 1 : -1;                       // newest first, undated last
+    return (_isWinSrc(b) ? 1 : 0) - (_isWinSrc(a) ? 1 : 0);       // winner leads on the same date
+  });
+  for (const s of srcList) {
+    const code = s.source || s.source_code || (_isWinSrc(s) ? winning : '?');
+    const sSide = actionDisplay((s.action || '').toUpperCase()).side;
+    const tag = _isWinSrc(s)
+      ? (stopGate || techOverrides ? 'opposes' : 'drove it')
+      : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : _rel(sSide);
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), tag, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
   }
   // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
   // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
@@ -1903,13 +1932,13 @@ function _actpopDriverBullets(row, side) {
       const caution = _PVV_CAUTION.includes(pvvD);
       const cls = caution ? '' : pvvSide;
       const conflicts = (side === 'buy' || side === 'sell') && pvvSide !== side;
-      const tag = conflicts ? 'conflicts' : (pvvSide === side ? 'agrees' : '');
+      const tag = conflicts ? 'opposes' : (pvvSide === side ? 'supports' : '');
       const info = _PVV_DECISION_INFO[pvvD];
       rows.push(`<div class="actpop-driver ${cls}">
-        <span class="dv-name">PVV</span>
+        <span class="dv-name">PVV</span><span></span>
         <span class="dv-action ${cls}">${escapeHtml(_PVV_LABEL[pvvD] || pvvD)}</span>
         <span class="dv-note">${escapeHtml(info ? info.meaning : '')}</span>
-        ${tag ? `<span class="dv-tag">${escapeHtml(tag)}</span>` : ''}
+        ${tag ? `${_dvMarkHtml(tag, (side === 'buy' || side === 'sell') ? side : winSide)}<span class="dv-tag">${escapeHtml(tag)}</span>` : '<span></span><span></span>'}
       </div>`);
     }
   }
@@ -2066,6 +2095,12 @@ function _actpopNeutralLine(row) {
     const bucket = _ivBucket(row.iv_percentile);
     if (bucket === 'Mid (30-70)' || bucket === 'Low (<=30)') bits.push('IV ' + Math.round(row.iv_percentile) + 'pt');
   }
+  // 2026-10-21: the Tradability box's IV-vs-own-average and volume reads, now shown here when they are not a caution.
+  if (row.iv_ratio != null && Number(row.iv_ratio) <= 1.15) bits.push('IV ' + Number(row.iv_ratio).toFixed(2) + 'x own avg');
+  if (row.rvol != null) {
+    const _rv = Number(row.rvol), _hiRv = state.vlmRvolAvoidThreshold != null ? state.vlmRvolAvoidThreshold : 1.5;
+    if (!(_rv >= _hiRv && Number(row.pct_change) > 0)) bits.push('Volume ' + _rv.toFixed(1) + 'x avg');
+  }
   const pvvD = row.pvv_decision;
   if (!pvvD || pvvD === 'NO_ACTION' || pvvD === 'WATCH') bits.push('PVV');
   if (row.final_side_cal == null) bits.push('CALC model');
@@ -2109,12 +2144,14 @@ function _actpopTdTnHtml(row) {
   // check and the stop-breach banner elsewhere in this file).
   const lp = row.last_price != null ? Number(row.last_price) : null;
   const lineCls = v => (lp == null || v == null) ? '' : lp >= v ? ' buy' : ' sell';
+  // 2026-10-21, user: an arrow BEFORE each box, outside it -- ↗ when price is above that line, ↘ when below (same reading as the grid's Td/Tn arrows).
+  const lineArrow = v => (lp == null || v == null) ? '' : `<span class="actpop-tdtn-arrow${lp >= v ? ' buy' : ' sell'}">${lp >= v ? '↗' : '↘'}</span>`;
   const tdRow = td != null
-    ? `<span class="actpop-tdtn-row"><span class="actpop-tdtn-box${lineCls(td)}">Td ${td.toFixed(1)}</span>`
+    ? `<span class="actpop-tdtn-row">${lineArrow(td)}<span class="actpop-tdtn-box${lineCls(td)}">Td ${td.toFixed(1)}</span>`
       + `${_tdtnSdBadge(_lineProximitySd(row, td))}</span>`
     : '';
   const tnRow = tn != null
-    ? `<span class="actpop-tdtn-row"><span class="actpop-tdtn-box${lineCls(tn)}">Tn ${tn.toFixed(1)}</span>`
+    ? `<span class="actpop-tdtn-row">${lineArrow(tn)}<span class="actpop-tdtn-box${lineCls(tn)}">Tn ${tn.toFixed(1)}</span>`
       + `${_tdtnSdBadge(_lineProximitySd(row, tn))}</span>`
     : '';
   const top = (tn != null && (td == null || tn > td)) ? tnRow : tdRow;
@@ -2178,11 +2215,108 @@ function _ctrlC(html, extra) { return html ? `<div class="actpop-ctrl-c${extra ?
 // 2026-10-20, user-directed: "Why this action" card -- a plain-English decision trail (Sources, Technical, Position, Rules), one
 // sentence for the result and, when there is no signal, what would change it. Built at derive time (etl/why_card.py ->
 // drv_actionable.why_card), so the popup, the Gate hover and the grid read the same text. Rows derived before it existed have no card.
+// "Stop breached" line (skipped when the stop gated the buy -- the Stop driver row already says it). 2026-08-20: shows the actual line price
+// (trade_line_value / trend_line_value, the same fields the Td/Tn header boxes show).
+function _actpopStopBannerHtml(row) {
+  if (!(row.stop_breached && !_stopGated(row))) return '';
+  const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
+  const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
+  const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
+  return `<div class="actpop-stop-banner">&#9888; Stop breached &mdash; ${escapeHtml(row.stop_signal || 'trade line broke down')}${priceTxt}</div>`;
+}
+
+// Centres the banner under the price block AND the Td/Tn boxes together: it spans from the left edge of the price/position group to the
+// right edge of the Td/Tn column, text centred. Called right after the popup is shown (it needs real positions).
+function _actpopAlignStopBanner() {
+  const b = document.querySelector('#sourcePop .actpop-stop-banner');
+  if (!b) return;
+  const px = document.querySelector('#sourcePop .actpop-px-group');
+  const tt = document.querySelector('#sourcePop .actpop-tdtn');
+  const par = b.parentElement.getBoundingClientRect();
+  if (!px || !tt || !par.width) return;
+  const l = px.getBoundingClientRect().left, r = tt.getBoundingClientRect().right;
+  if (!(r > l)) return;
+  // 2026-10-21, user: back to the first position -- centred across the price block AND the Td/Tn boxes together.
+  b.style.marginLeft = Math.max(0, l - par.left) + 'px';
+  b.style.width = (r - l) + 'px';
+  // 2026-10-21, user: move it up -- sit just under whichever is lower, the price/position group or the Td/Tn boxes (not below the whole header,
+  // which is as tall as the RR bar column).
+  const lowest = Math.max(px.getBoundingClientRect().bottom, tt.getBoundingClientRect().bottom);
+  const cur = parseFloat(getComputedStyle(b).marginTop) || 0;
+  b.style.marginTop = Math.max(-60, Math.min(cur, cur + (lowest + 2 - b.getBoundingClientRect().top))) + 'px';
+}
+
+// 2026-10-21, user: one line above the "Why" card with the same IV / MACD / MACDH / RSI reads the grid columns show (same colours, same IV
+// glyph and percentile/HV/IV numbers, same MACD caret); RSI is drawn as a 0-100 range bar (oversold zone green, overbought zone red).
+function _actpopIndicatorsLineHtml(row) {
+  const cells = [];
+  const ivpVal = row.iv_percentile != null ? Math.round(Number(row.iv_percentile)) : null;
+  const hvVal = row.hv != null ? Number(row.hv) * 100 : null;
+  const ivVal = row.imp_volatility != null ? Number(row.imp_volatility) * 100 : null;
+  if (ivpVal != null || hvVal != null || ivVal != null) {
+    // 2026-10-21, user: the dashboard's IV-vs-RV premium = implied vol / historical vol - 1 (today's figures here; the dashboard panel smooths it
+    // over 5 days). Positive = options priced richer than the actual movement; a historical vol of 10% or less is rounding noise (marked *).
+    let ivPrem = '';
+    // Matches the grid: its IV glyph colours off iv_to_hv_discount = (1 - IV/HV) * 100 from TOS's own unrounded ratio, so the premium is just
+    // that value flipped. (IV/HV from the two rounded fields differed by a point or two, e.g. CRWD 14% vs 12%.) Falls back to the fields.
+    if (row.iv_to_hv_discount != null || (ivVal != null && hvVal != null && hvVal > 0)) {
+      const pr = row.iv_to_hv_discount != null ? -Number(row.iv_to_hv_discount) : (ivVal / hvVal - 1) * 100;
+      ivPrem = `<span class="actpop-iv-prem" style="color:${pr >= 0 ? '#b45309' : '#15803d'};font-weight:700;margin-left:4px;" `
+        + `title="IV / RV - 1 (same value as the grid's IV bars): implied vol ${ivVal != null ? ivVal.toFixed(1) : '—'} vs historical vol ${hvVal != null ? hvVal.toFixed(1) : '—'}. ${pr >= 0 ? 'Options are priced richer than the actual movement.' : 'Options are priced cheaper than the actual movement.'}${hvVal != null && hvVal <= 10 ? ' (historical vol is 10 or less: rounding noise)' : ''}">`
+        + `${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%${hvVal != null && hvVal <= 10 ? '*' : ''}</span>`;
+    }
+    const glyph = window.ivGlyph ? window.ivGlyph(ivpVal, ivVal, hvVal, row.iv_to_hv_discount) : '';
+    const ivpCol = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#7c3aed';
+    const f = v => v != null ? Math.round(v) : '—';
+    cells.push(`<span class="actpop-ind-c" title="IV percentile / historical vol / implied vol">`
+      + `<span class="actpop-ind-k">IV</span>${glyph}`
+      + `<span style="font-variant-numeric:tabular-nums;"><b style="color:${ivpCol};">${f(ivpVal)}</b><span style="color:#cbd5e1;">/</span>`
+      + `<span style="color:#374151;">${f(hvVal)}</span><span style="color:#cbd5e1;">/</span><span style="color:#000;">${f(ivVal)}</span></span>`
+      + ivPrem + `</span>`);
+  }
+  const mk = (label, v) => v == null ? '' : `<span class="actpop-ind-c"><span class="actpop-ind-k">${label}</span>`
+    + `<b style="color:${_macdColor(v)};">${Number(v).toFixed(2)}</b>${_macdCaret(row.a_macdh_d_brr)}</span>`;
+  if (row.a_macd_brr != null) cells.push(mk('MACD', row.a_macd_brr));
+  if (row.a_macdh_d_brr != null) cells.push(mk('MACDH', row.a_macdh_d_brr));
+  if (row.rsi != null) {
+    const rv = Math.max(0, Math.min(100, Number(row.rsi)));
+    const lo = state.rsiOversold != null ? state.rsiOversold : 30, hi = state.rsiOverbought != null ? state.rsiOverbought : 70;
+    cells.push(`<span class="actpop-ind-c" title="RSI ${Number(row.rsi).toFixed(1)} (oversold at or below ${lo}, overbought at or above ${hi})">`
+      + `<span class="actpop-ind-k">RSI</span><b style="color:${_rsiColor(row.rsi)};min-width:30px;">${Number(row.rsi).toFixed(1)}</b>`
+      + `<span class="actpop-rsi-bar" style="background:linear-gradient(to right,#bbf7d0 0,#bbf7d0 ${lo}%,#e5e7eb ${lo}%,#e5e7eb ${hi}%,#fecaca ${hi}%,#fecaca 100%);">`
+      + `<span class="actpop-rsi-tick" style="left:${rv}%;"></span></span></span>`);
+  }
+  // 2026-10-21, user: the grid's VLM column on this line -- the relative-volume dot plus the VROC (14-day volume rate of change) %.
+  try {
+    const dot = typeof rvolDot === 'function' ? rvolDot(row.rvol, row.rvol_prior) : '';
+    const vroc = typeof _vrocHtml === 'function' ? _vrocHtml(row) : '';
+    if (dot || vroc) {
+      cells.push(`<span class="actpop-ind-c" data-volpop data-sym="${escapeHtml(row.tos_symbol || '')}" style="cursor:default;">`
+        + `<span class="actpop-ind-k">VLM</span>${dot}<span class="actpop-ind-vroc">${vroc}</span></span>`);
+    }
+  } catch (_) { /* volume is optional */ }
+  // 2026-10-21, user: Live (the grid's LIVE column badge) and PVV (moved here from the icon row) on the same line.
+  try {
+    if (typeof _liveCellHtml === 'function' && state.live && state.live.data) {
+      cells.push(`<span class="actpop-ind-c"><span class="actpop-ind-k">Live</span>${_liveCellHtml(row)}</span>`);
+    }
+  } catch (_) { /* live data is optional */ }
+  cells.push(_actpopPvvActionHtml(row));
+  return cells.length ? `<div class="actpop-ind">${cells.join('')}</div>` : '';
+}
+
 function _actpopWhyCardHtml(row) {
   const c = row && row.why_card;
   if (!c || !Array.isArray(c.steps)) return '';
-  const mark = ok => ok === true ? '<span class="wc-ok">&#10003;</span>'
-    : ok === false ? '<span class="wc-no">&#10007;</span>' : '<span class="wc-dash">&ndash;</span>';
+  // 2026-10-21, user: on the Sources lines a tick is coloured like the Final Call's side (buy green / sell red) and a cross like the other one.
+  const _G = '#15803d', _R = '#b91c1c';
+  const mark = (ok, ref) => {
+    if (ok === null || ok === undefined) return '<span class="wc-dash">&ndash;</span>';
+    const sideCol = ref === 'sell' ? _R : ref === 'buy' ? _G : null;
+    const col = sideCol ? (ok ? sideCol : (sideCol === _R ? _G : _R)) : null;
+    const style = col ? ` style="color:${col}"` : '';
+    return ok ? `<span class="wc-ok"${style}>&#10003;</span>` : `<span class="wc-no"${style}>&#10007;</span>`;
+  };
   const steps = c.steps.map((st, i) => {
     // 2026-10-20, user: on the Sources lines only the action word is colored -- buys green, sells red.
     const _srcWord = t => {
@@ -2193,7 +2327,7 @@ function _actpopWhyCardHtml(row) {
     };
     // 2026-10-21, user: "sell skipped" (the bounce exception to the below-Trade sell) is highlighted, and a warning line gets a soft amber band.
     const _skipHi = h => h.replace(/sell skipped/i, m => `<span class="wc-skip">${m}</span>`);
-    const lines = (st.lines || []).map(l => `<div class="wc-line${l.warn ? ' wc-warnline' : ''}">${mark(l.ok)} ${_skipHi(_srcWord(l.text))}</div>`).join('');
+    const lines = (st.lines || []).map(l => `<div class="wc-line${l.warn ? ' wc-warnline' : ''}">${mark(l.ok, st.key === 'sources' ? st.ref : null)} ${_skipHi(_srcWord(l.text))}</div>`).join('');
     return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">${i + 1}</span>`
       + `<div class="wc-body"><div class="wc-head"><b>${escapeHtml(st.title)}</b> <span class="wc-text">${escapeHtml(st.text)}</span></div>${lines}</div></div>`;
   }).join('');
@@ -2313,12 +2447,11 @@ function _buildActionPopHtmlV2(row) {
   h += `<div class="actpop-top"><div class="actpop-head">
     <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(row.rr_name || sym)}</span>`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
-    + tradeAmtTxt
     + nameTxt   // 2026-10-02: company name next to the action pill
     + `</div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
-    + `<div class="actpop-px-group">${pxTxt}${ownLine}</div>`
+    + `<div class="actpop-px-group">${pxTxt}${ownLine}${tradeAmtTxt ? `<div class="actpop-own">${tradeAmtTxt}</div>` : ''}</div>`
     + (_atHtml ? `<div class="actpop-sym-extra">${_atHtml}</div>` : '')
     + `</div>`
     + `<div class="actpop-ctrl-row">`
@@ -2333,6 +2466,7 @@ function _buildActionPopHtmlV2(row) {
     + _ctrlC(_rrHtml, _anch(_rrHtml))
     + `</div>`
     + `</div>`
+    + _actpopStopBannerHtml(row)   // 2026-10-21, user: under the price and the Td/Tn boxes, centred below both (positioned by _actpopAlignStopBanner)
     + `</div>`;
 
   // Second row: Macro/PVV/CALC grouped on the left (.actpop-rr-icons);
@@ -2356,7 +2490,8 @@ function _buildActionPopHtmlV2(row) {
   h += `<div class="actpop-rr-row">`
     + `<div class="actpop-rr-icons">${_actpopMacroStackHtml(row)}`
     + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
-    + `<span class="actpop-pvv-calc-col">${_actpopPvvActionHtml(row)}${_actpopCalcPillHtml(row)}</span>`
+    // 2026-10-21, user: PVV moved up to the indicators line above "Why"; CAL takes PVV's place here.
+    + `<span class="actpop-pvv-calc-col">${_actpopCalcPillHtml(row)}</span>`
     + `</div>`
     // 2026-10-20, user: earnings / bought / IRA sizing / stage lines moved here from under the price, into the
     // space between PVV/CALC and Sector/VOL.
@@ -2366,17 +2501,7 @@ function _buildActionPopHtmlV2(row) {
 
   // 2026-10-09: skipped when the stop gated the buy -- the "Stop" driver line
   // (with "drove it") already says this, with the same line price.
-  if (row.stop_breached && !_stopGated(row)) {
-    // 2026-08-20: shows the actual line price now (trade_line_value/
-    // trend_line_value, today's Trade/Trend line -- same fields the Td/Tn
-    // header boxes show), not just the crossover code with no number to
-    // check it against.
-    const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
-    const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
-    const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
-    h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
-       + `${escapeHtml(row.stop_signal || 'trade line broke down')}${priceTxt}</div>`;
-  }
+  // (the "Stop breached" line now lives in the header -- _actpopStopBannerHtml)
   // Proximity-to-stop ("delta from trade/trend line") moved 2026-08-20 into
   // .actpop-rr-info as a standalone banner, then 2026-08-29 into a per-line
   // badge next to each Td/Tn header box instead -- see _tdtnSdBadge, called
@@ -2401,6 +2526,7 @@ function _buildActionPopHtmlV2(row) {
        + `just landed, Technical isn't entry-ripe yet</div>`;
   }
 
+  h += _actpopIndicatorsLineHtml(row);   // 2026-10-21, user: IV / MACD / MACDH / RSI as on the grid, one line above "Why"
   h += _actpopWhyCardHtml(row);
   h += _actpopDriverBullets(row, side);
   h += tug.html;
@@ -2416,7 +2542,7 @@ function _buildActionPopHtmlV2(row) {
   // Tradability detail box moved to the bottom (2026-08-20) -- was between
   // driver bullets and Tug; user wanted the score breakdown last, after
   // everything else.
-  h += _actpopTradabilityHtml(row);
+  // 2026-10-21, user: section removed -- see the hover on the Tradability icon (_actpopTradIconHtml).
 
   // Analyst notes (same feed as the SYMBOL-cell hover); filled async by _actpopLoadNotes.
   const _nc = _notesCache.get(row.tos_symbol);

@@ -59,11 +59,12 @@ def _sources_step(ctx: dict) -> dict:
     warn = [x for x in all_srcs if x.get("warning_only")]   # SSS weight fell: shown, never counted
     srcs = [x for x in all_srcs if not x.get("warning_only")]
     win = str(ctx.get("winning_source") or "")
-    wlines = [{"ok": False, "text": f"Warning only, not counted - SSS weight fell{' on ' + _md(w.get('snapshot_date')) if _md(w.get('snapshot_date')) else ''}: {str(w.get('reason') or '').strip()}"} for w in warn]
+    wlines = [{"ok": None, "warn": True, "text": f"Warning only - SSS weight fell{' on ' + _md(w.get('snapshot_date')) if _md(w.get('snapshot_date')) else ''}: {str(w.get('reason') or '').strip()}"} for w in warn]
     if not srcs:
         return {"key": "sources", "title": "Sources", "tone": "warn" if warn else "neutral",
                 "text": "No source (SSS, CALL, Top-5, RR ...) is recommending anything for this stock.", "lines": wlines}
-    srcs.sort(key=lambda s: 0 if str(s.get("source") or "") == win else 1)
+    # 2026-10-21, user: newest first (an RTA today goes on top); on the same date the winning source leads. Undated sources go last.
+    srcs.sort(key=lambda s: (str(s.get("snapshot_date") or "")[:10], 1 if str(s.get("source") or "") == win else 0), reverse=True)
     buys = sum(1 for s in srcs if _side(s.get("action")) == "buy")
     sells = sum(1 for s in srcs if _side(s.get("action")) == "sell")
     if buys and sells:
@@ -83,11 +84,32 @@ def _sources_step(ctx: dict) -> dict:
     lines = []
     for s in srcs:
         is_win = str(s.get("source") or "") == win
-        tag = " (drove it)" if win_drove and is_win else (" (not counted)" if win and not is_win else "")
+        # 2026-10-21, user: every other source is labeled by how it relates to the Final Call -- supports / opposes (not "not counted",
+        # which only ever fits the warning-only lines). When the call is HOLD the winning source's side is the reference.
+        ref_side = fc_side if fc_side != "neutral" else win_side
+        rel = _side(s.get("action"))
+        # ok drives the tick / cross the card draws: supports (and the source that drove it) = tick, opposes = cross.
+        if win_drove and is_win:
+            tag, ok = " (drove it)", True
+        elif rel != "neutral" and ref_side in ("buy", "sell"):
+            tag, ok = (" (supports)", True) if rel == ref_side else (" (opposes)", False)
+        else:
+            tag, ok = "", None
         reason = str(s.get("reason") or "").strip()
         when = _md(s.get("snapshot_date"))
-        lines.append({"ok": None, "text": f"{s.get('source')} {_name(s.get('action'))}{tag}" + (f" ({when})" if when else "") + (f": {reason}" if reason else "")})
-    return {"key": "sources", "title": "Sources", "tone": tone, "text": head, "lines": lines + wlines}
+        lines.append({"ok": ok, "text": f"{s.get('source')} {_name(s.get('action'))}{tag}" + (f" ({when})" if when else "") + (f": {reason}" if reason else "")})
+    # "ref" = the side the ticks/crosses are measured against (the Final Call's side, or the winning source's when the call is HOLD); the card
+    # colours a tick like that side and a cross like the other one.
+    ref = fc_side if fc_side != "neutral" else win_side
+    # 2026-10-21, user: the per-source rows live in the driver list right below the card, so the card keeps ONE summary line (counts + who drove
+    # it) and only the warning-only lines, which the driver list does not show.
+    if win and win_drove:
+        head += f" - {win} drove it"
+    elif win and tech_overrides:
+        head += f" - Technical overrode {win}"
+    elif win and ctx.get("stop_breached"):
+        head += f" - the breached stop overrode {win}"
+    return {"key": "sources", "title": "Sources", "tone": tone, "text": head, "ref": ref, "lines": wlines}
 
 
 def _technical_step(ctx: dict) -> dict:
@@ -204,7 +226,10 @@ def _flip_lines(ctx: dict, reason: str) -> list:
 def build_why_card(ctx: dict) -> dict:
     fc = ctx.get("fc") or {}
     reason = str(fc.get("fc_reason") or "")
-    steps = [_sources_step(ctx), _technical_step(ctx), _position_step(ctx), _rules_step(ctx)]
+    pos = _position_step(ctx)
+    # 2026-10-21, user: "You have a position: $X" is already in the popup header, so the Position step only appears when it adds something
+    # (stop breached / stop signal / over Max / suppressed).
+    steps = [_sources_step(ctx), _technical_step(ctx)] + ([pos] if pos["lines"] else []) + [_rules_step(ctx)]
     return {
         "verdict": fc.get("final_action") or "HOLD",
         "side": fc.get("final_side") or "neutral",

@@ -3855,6 +3855,7 @@ function initSourcePopover() {
       if (r) {
         _showDataPop(actionEl, _actionPopV2Enabled() ? _buildActionPopHtmlV2(r) : _buildActionPopHtml(r));
         if (_actionPopV2Enabled()) _actpopLoadNotes(r.tos_symbol);
+        if (_actionPopV2Enabled() && typeof _actpopAlignStopBanner === 'function') _actpopAlignStopBanner();
       }
       return;
     }
@@ -5056,12 +5057,20 @@ function _buildRowEl(r) {
     const _rrPosPctHtml = _rrBarW != null
       ? `<div style="font-size:10px;line-height:1;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;color:${_rrPosColor};" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})">${_rrBarW}%</div>`
       : '';
+    // 2026-10-21, user: a visible "TRR" (red, right) / "LRR" (green, left) pill under the bar when price is at that end. At TRR uses the same
+    // range_trr_zone_pct width as the Caution warning; at LRR uses the same <= 15% convention as the Tradability read.
+    const _trrZoneW = state.rangeTrrZone != null ? state.rangeTrrZone : 0.20;
+    const _atTrrBar = _rrBarW != null && _rrBarW >= 100 * (1 - _trrZoneW);
+    const _atLrrBar = _rrBarW != null && _rrBarW <= 15;
+    const _rrAtPill = _atTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>'
+                    : _atLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>' : '';
     const rrBarHtml = _rrBarW != null
       ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">
            ${_rrPosPctHtml}
            <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:left;" title="LRR ${_lrrNum.toFixed(2)}">${_fmtRR(_lrrNum)}</div>
            <div class="rr-rb" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})"><div class="rr-rb-tick" style="left:${_rrBarW}%;"></div></div>
            <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:right;" title="TRR ${_trrNum.toFixed(2)}">${_fmtRR(_trrNum)}</div>
+           ${_rrAtPill}
          </div>`
       : '';
 

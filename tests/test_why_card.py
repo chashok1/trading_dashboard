@@ -44,7 +44,7 @@ def test_trail_bearish_trend_stops_early():
 def test_card_unheld_buy_with_no_technical_signal_is_hold_and_explains_why():
     card = build_why_card(_ctx())
     assert card["verdict"] == "HOLD"
-    assert [s["key"] for s in card["steps"]] == ["sources", "technical", "position", "rules"]
+    assert [s["key"] for s in card["steps"]] == ["sources", "technical", "rules"]
     assert card["steps"][0]["tone"] == "buy" and card["steps"][1]["text"] == "No signal"
     assert "NEW position needs Technical to confirm" in card["result"]
     assert card["flip"]
@@ -62,7 +62,7 @@ def test_card_sources_mixed_when_they_disagree():
 
 def test_card_rules_step_flags_mixed_groups():
     ctx = _ctx(groups=[{"action": "BS"}, {"action": "SS"}], trig_action="SS", low_confidence=True)
-    rules = build_why_card(ctx)["steps"][3]
+    rules = [s for s in build_why_card(ctx)["steps"] if s["key"] == "rules"][0]
     assert rules["tone"] == "warn" and "mixed" in rules["text"]
     assert any("Low confidence" in l["text"] for l in rules["lines"])
 
@@ -126,3 +126,19 @@ def test_reclaim_buy_names_the_line_and_is_low_confidence():
     assert t["signal"] is True
     last = t["stages"][-1]
     assert last["name"] == "Range position" and "200.59" in last["text"] and "209.73" in last["text"]
+
+
+def test_sources_step_is_one_summary_line_naming_who_drove_it():
+    srcs = [{"source": "TOP5", "action": "INCREASE", "reason": "r", "snapshot_date": "2026-10-13"},
+            {"source": "CALL", "action": "ADD", "reason": "r", "snapshot_date": "2026-10-20"}]
+    ctx = _ctx(sources=srcs, winning_source="TOP5", consolidated="INCREASE")
+    ctx["fc"] = {"final_side": "buy", "fc_reason": "tech_buy"}
+    step = build_why_card(ctx)["steps"][0]
+    assert step["lines"] == [] and "TOP5 drove it" in step["text"] and "2 sources agree" in step["text"]
+
+
+def test_position_step_only_shows_when_it_adds_something():
+    plain = build_why_card(_ctx(held_today=True, held_dollar=5000))
+    assert "position" not in [s["key"] for s in plain["steps"]]
+    flagged = build_why_card(_ctx(held_today=True, held_dollar=5000, suppressed="ALREADY ESTABLISHED"))
+    assert "position" in [s["key"] for s in flagged["steps"]]
