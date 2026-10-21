@@ -2265,6 +2265,10 @@ function _actpopIndicatorsLineHtml(row) {
         + `title="IV / RV - 1 (same value as the grid's IV bars): implied vol ${ivVal != null ? ivVal.toFixed(1) : '—'} vs historical vol ${hvVal != null ? hvVal.toFixed(1) : '—'}. ${pr >= 0 ? 'Options are priced richer than the actual movement.' : 'Options are priced cheaper than the actual movement.'}${hvVal != null && hvVal <= 10 ? ' (historical vol is 10 or less: rounding noise)' : ''}">`
         + `${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%${hvVal != null && hvVal <= 10 ? '*' : ''}</span>`;
     }
+    // 2026-10-21, user: the grid's IV-column edge tag (this IV-percentile bucket's historical 20-day edge vs baseline, pp), same function and hover.
+    let ivEdge = '';
+    try { if (ivpVal != null && typeof _factorEdgeTag === 'function' && typeof _ivBucket === 'function') ivEdge = _factorEdgeTag('IV percentile', _ivBucket(ivpVal), true); } catch (_) {}
+    if (ivEdge) ivEdge = '<span style="margin-left:4px;">' + ivEdge + '</span>';
     const glyph = window.ivGlyph ? window.ivGlyph(ivpVal, ivVal, hvVal, row.iv_to_hv_discount) : '';
     const ivpCol = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#7c3aed';
     const f = v => v != null ? Math.round(v) : '—';
@@ -2272,7 +2276,7 @@ function _actpopIndicatorsLineHtml(row) {
       + `<span class="actpop-ind-k">IV</span>${glyph}`
       + `<span style="font-variant-numeric:tabular-nums;"><b style="color:${ivpCol};">${f(ivpVal)}</b><span style="color:#cbd5e1;">/</span>`
       + `<span style="color:#374151;">${f(hvVal)}</span><span style="color:#cbd5e1;">/</span><span style="color:#000;">${f(ivVal)}</span></span>`
-      + ivPrem + `</span>`);
+      + ivPrem + ivEdge + `</span>`);
   }
   const mk = (label, v) => v == null ? '' : `<span class="actpop-ind-c"><span class="actpop-ind-k">${label}</span>`
     + `<b style="color:${_macdColor(v)};">${Number(v).toFixed(2)}</b>${_macdCaret(row.a_macdh_d_brr)}</span>`;

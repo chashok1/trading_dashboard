@@ -1905,7 +1905,10 @@ function _isTradeModeQualifyingBuy(r) {
   // entry-ripe here regardless of source. User: "In Trade + Strict mode,
   // don't include the ones that technicals are not aligned for today
   // (AMZN, TJX)."
-  if (_ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
+  // 2026-10-21, user (after a May-Sep back-test: RTA buys beat the average stock even when Technical was not ripe): RTA is exempt from this
+  // Technical check in Strict too, as it already is in the loose list.
+  const _stSrc = (r.winning_source || '').toString().toUpperCase();
+  if (_TECH_GATE_EXEMPT_SRC.indexOf(_stSrc) === -1 && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
   // 2026-08-27, 4th Strict-only tightening pass -- PVV's own AVOID
   // decision (r.pvv_decision, condition "outlook=Bearish, today=NEUTRAL/
   // NA/DRIFT" -- see _PVV_DECISION_INFO) is a second, independent
