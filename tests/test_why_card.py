@@ -95,3 +95,12 @@ def test_bearish_bollinger_is_a_warning_not_a_sell_stage():
     assert bb["ok"] is None and bb["warn"] is True and "warning only" in bb["text"]
     card = build_why_card(_ctx(trail=t))
     assert any(l.get("warn") for l in card["steps"][1]["lines"])
+
+
+def test_falling_top_or_bottom_band_is_a_warning_only():
+    for top, bot in ((-5.0, 1.0), (1.0, -5.0)):
+        t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=2, bb_top_slope=top, bb_bot_slope=bot))
+        bb = [s for s in t["stages"] if s["name"] == "Bollinger bands"]
+        assert len(bb) == 1 and bb[0].get("warn") is True and "warning only" in bb[0]["text"]
+    t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=2, bb_top_slope=1.0, bb_bot_slope=0.5))
+    assert not any(s.get("warn") for s in t["stages"])

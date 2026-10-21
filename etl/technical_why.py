@@ -194,7 +194,34 @@ def _bull_setups(d: dict) -> list:
     ]
 
 
+def _bb_falling_txt(d: dict) -> str:
+    """2026-10-21, user: '' unless the TOP or the BOTTOM Bollinger band is falling (score <= -bb_lo, default 2; the same
+    +/-2.0 cut the TOS Score study colors red), else which band(s). Warning only -- never changes the signal."""
+    lo = _n(d.get("bb_lo")) or 2.0
+    top, bot = _n(d.get("bb_top_slope")), _n(d.get("bb_bot_slope"))
+    parts = []
+    if top is not None and top <= -lo:
+        parts.append(f"top band {format(top, 'g')}")
+    if bot is not None and bot <= -lo:
+        parts.append(f"bottom band {format(bot, 'g')}")
+    return ", ".join(parts)
+
+
 def technical_trail(d: dict) -> dict:
+    """Same as _technical_trail_core, plus a warning-only 'Bollinger bands' line when the top or bottom band is falling."""
+    out = _technical_trail_core(d)
+    fall = _bb_falling_txt(d)
+    if fall:
+        msg = f"A band is falling ({fall}): warning only, not counted as a sell"
+        bb_st = next((s for s in out["stages"] if s.get("name") == "Bollinger bands"), None)
+        if bb_st is None:
+            out["stages"].append({"name": "Bollinger bands", "ok": None, "warn": True, "text": msg})
+        elif not bb_st.get("warn"):
+            bb_st.update({"warn": True, "text": bb_st["text"] + "; " + msg})
+    return out
+
+
+def _technical_trail_core(d: dict) -> dict:
     """{'signal': bool, 'stages': [{'name', 'ok': True|False|None, 'text'}], 'flip': [{'label','name','missing':[...]}]}.
 
     Stages: 1 Trend & Trade, 2 Bollinger bands, 3 Range position. ok=None means neutral / not evaluated.

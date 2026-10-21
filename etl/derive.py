@@ -3502,7 +3502,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                rr.lrr, t.a_trade_value AS trade_line, t.a_trend_value AS trend_line,
                q.high_price AS high, q.pct_change, rr.trr, prr.trr AS prev_trr,
                a.perf1d_sd_rule AS perf1d, a.mrr_idx, a.trr_idx, a.macd_direction AS macd_dir,
-               a.macdh_direction AS macdh_dir, a.trade_rule
+               a.macdh_direction AS macdh_dir, a.trade_rule,
+               r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
@@ -3517,6 +3518,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         wd = dict(w)
         wd["pullback"] = pullback
         wd["lrr_tol"] = lrr_tol
+        wd["bb_lo"] = bb_slope_lo
         try:
             trail = _json.dumps(technical_trail(wd), default=float)
         except Exception:
