@@ -1648,8 +1648,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             continue
         _lbl, _code, _side = _action_display("HOLD")
         _amt = abs(float(b["stgt"]) - float(b["curr"])) if b["stgt"] is not None and b["curr"] is not None else 0.0
-        b.update({"f_action": _lbl, "f_code": _code, "f_side": _side, "f_strength": 0, "f_confidence": "none",
-                  "f_feasible": False, "f_priority": -1e6 + _amt})
+        b.update({"f_action": _lbl, "f_code": _code, "f_side": _side, "f_strength": 0, "f_confidence": "gate",
+                  "f_feasible": True, "f_priority": -1e6 + _amt})   # 2026-10-21: "gate"/feasible so the grid shows a HOLD badge, not a dash
         try:
             _c = json.loads(b["why_card"]) if b.get("why_card") else None
             if _c:

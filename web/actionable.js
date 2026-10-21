@@ -3058,7 +3058,9 @@ function _finalCallHtml(row) {
   var fc = finalCall(row);
   if (!fc.feasible || fc.confidence === 'none') {
     var _pvvNone = _pvvAgreementIcon(row, fc.side).trim();
-    return '<span style="color:#cbd5e1;">—</span>' + (_pvvNone ? ' ' + _pvvNone : '');
+    // 2026-10-21, user: the Action popup must open even when there is no action -- the dash is the hover/click target.
+    return '<span style="color:#cbd5e1;cursor:help;display:inline-block;padding:2px 12px;" data-actionpop="' + escapeHtml(row.tos_symbol) + '">—</span>'
+      + (_pvvNone ? ' ' + _pvvNone : '');
   }
   var text = fc.label || actionText(fc);  // plain-English label (e.g. "SELL ALL")
   // TASK_118: low_confidence — sell evidence comes only from rules with a
