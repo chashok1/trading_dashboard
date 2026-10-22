@@ -1162,6 +1162,7 @@ def get_actionable(
                rr.td_tn_bb_action_desc AS rr_action,
                rr.tn_td_rule_desc AS tn_td_desc,
                rr.bb_rng_strk_desc AS bb_desc,
+               rr.bb_rng_strk_rule,
                rr.rr_desc,
                rr.rr_why,
                rr.rr_bull_bear,

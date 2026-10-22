@@ -1559,6 +1559,20 @@ function _actpopCalcPillHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">CAL</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
 }
 
+// 2026-10-21, user: Bull / Not Bull under CAL. Bull = Bollinger band streak rule >= 2 (decides which
+// range-position path Technical reads: bull_rr_action vs not_bull_rr_action -- see etl/technical_why.py).
+function _actpopBullPillHtml(row) {
+  const q = row.bb_rng_strk_rule;
+  const has = q != null;
+  const bull = has && Number(q) >= 2;
+  // direction of the bands: 3/4 rising, -3/-4 falling, 1/2 leaning up, -1/-2 leaning down, 0 sideways
+  const n = has ? Number(q) : 0;
+  const dir = n >= 3 ? 'rising' : n <= -3 ? 'falling' : n > 0 ? 'leaning up' : n < 0 ? 'leaning down' : 'sideways';
+  const txt = !has ? '—' : (bull ? 'Bull' : 'Not Bull') + ' · ' + dir;
+  const color = !has ? '#cbd5e1' : bull ? 'var(--act-buy-strong)' : '#64748b';
+  return `<span class="actpop-lv"><span style="font-size:10px;white-space:nowrap;color:${color};">${escapeHtml(txt)}</span></span>`;
+}
+
 function _sectorEtfFor(row) {
   const raw = (row.sector || '').trim().toLowerCase();
   if (!raw) return null;
@@ -1764,6 +1778,12 @@ function _actpopRrBarHtml(row) {
   const lrr = row.lrr != null ? Number(row.lrr) : null;
   const trr = row.trr != null ? Number(row.trr) : null;
   const clamped = Math.max(0, Math.min(100, rawPos));
+  // 2026-10-22, user: Technical's "At TRR" is high-based (high in the top zone, price above the midpoint); when only
+  // the high got there, show an outlined "TRR · high" pill instead of nothing. Same test as derive_cat_atomic_input ES.
+  const _trrZ = state.rangeTrrZone != null ? state.rangeTrrZone : 0.20;
+  const _hiPos = (row.high_price != null && lrr != null && trr != null && trr > lrr)
+    ? (Number(row.high_price) - lrr) / (trr - lrr) * 100 : null;
+  const _highInTrrZone = _hiPos != null && _hiPos >= 100 * (1 - _trrZ) && rawPos > 50;
   // 2026-10-21, user: below LRR is NOT green (it was) -- amber when the stock is turning up, red when it is still falling (same reading as the Tradability score).
   const _turnUp = row.pct_change != null && Number(row.pct_change) >= 0;
   const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? (_turnUp ? '#fef3c7' : 'var(--act-sell-strong-bg)') : '#f1f5f9';
@@ -1780,6 +1800,8 @@ function _actpopRrBarHtml(row) {
     // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
     + (rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
         ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>`
+        : _highInTrrZone
+          ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR &middot; high</span></div>`
         : rawPos < 0
           ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
@@ -2499,7 +2521,7 @@ function _buildActionPopHtmlV2(row) {
     + `<div class="actpop-rr-icons">${_actpopMacroStackHtml(row)}`
     + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
     // 2026-10-21, user: PVV moved up to the indicators line above "Why"; CAL takes PVV's place here.
-    + `<span class="actpop-pvv-calc-col">${_actpopCalcPillHtml(row)}</span>`
+    + `<span class="actpop-pvv-calc-col">${_actpopBullPillHtml(row)}${_actpopCalcPillHtml(row)}</span>`
     + `</div>`
     // 2026-10-20, user: earnings / bought / IRA sizing / stage lines moved here from under the price, into the
     // space between PVV/CALC and Sector/VOL.
