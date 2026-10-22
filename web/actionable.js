@@ -1879,7 +1879,8 @@ const _TECH_GATE_EXEMPT_SRC = ['RTA'];
 // "Non-Strict" button can compute loose-minus-strict.
 function _isTradeModeQualifyingBuyLoose(r) {
   const code = (r.final_code || '').toUpperCase();
-  if (code !== 'BM' && code !== 'BMN') return false;
+  // 2026-10-22, user: BS (Buy Some) buys also qualify for Trade.
+  if (code !== 'BM' && code !== 'BMN' && code !== 'BS') return false;
   if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
   const src = (r.winning_source || '').toString().toUpperCase();
   const tech = (r.rr_action || '').toUpperCase();
@@ -7068,8 +7069,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   $('accountFilter').addEventListener('change', (e) => {
+    // 2026-10-22, user: account is applied on top of the existing filters (no toggle reset).
     state.filters.account = e.target.value;
-    if (state.filters.account) { _resetToggleFiltersForLookup(); loadActionable(); return; }
     applyClientFilter();
   });
   $('heldOnly').addEventListener('click', () => {
