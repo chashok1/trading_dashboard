@@ -489,6 +489,7 @@
 .rr-at-trr { background: var(--act-sell-strong-bg, #fee2e2); color: var(--act-sell-strong, #b91c1c); border-color: var(--act-sell-strong, #b91c1c); }
 /* 2026-10-22, user: only the day's high reached the top zone, price has pulled back -- outlined, no fill. */
 .rr-at-trr-high { background: transparent; color: var(--act-sell-strong, #b91c1c); border-color: var(--act-sell-strong, #b91c1c); border-style: dashed; }
+.rr-at-lrr-low { background: transparent; color: var(--act-buy-strong, #15803d); border-color: var(--act-buy-strong, #15803d); border-style: dashed; }
 .rr-at-lrr { background: var(--act-buy-bg, #dcfce7); color: var(--act-buy-strong, #15803d); border-color: var(--act-buy-strong, #15803d); }
 /* 2026-10-21, user: bigger pill (size, not gap). Popup RR bar larger than the narrow grid RR cell. */
 .rr-at-pill { font-size: 9px; padding: 1px 6px; }

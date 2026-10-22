@@ -1784,6 +1784,11 @@ function _actpopRrBarHtml(row) {
   const _hiPos = (row.high_price != null && lrr != null && trr != null && trr > lrr)
     ? (Number(row.high_price) - lrr) / (trr - lrr) * 100 : null;
   const _highInTrrZone = _hiPos != null && _hiPos >= 100 * (1 - _trrZ) && rawPos > 50;
+  // LRR mirror: the day's low in the bottom zone, price still at/below the midpoint.
+  const _lrrZ = state.rangeLrrZone != null ? state.rangeLrrZone : 0.25;
+  const _loPos = (row.low_price != null && lrr != null && trr != null && trr > lrr)
+    ? (Number(row.low_price) - lrr) / (trr - lrr) * 100 : null;
+  const _lowInLrrZone = _loPos != null && _loPos <= 100 * _lrrZ && rawPos >= 0 && rawPos <= 50;
   // 2026-10-21, user: below LRR is NOT green (it was) -- amber when the stock is turning up, red when it is still falling (same reading as the Tradability score).
   const _turnUp = row.pct_change != null && Number(row.pct_change) >= 0;
   const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? (_turnUp ? '#fef3c7' : 'var(--act-sell-strong-bg)') : '#f1f5f9';
@@ -1805,7 +1810,9 @@ function _actpopRrBarHtml(row) {
         : rawPos < 0
           ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>` : '')
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>`
+        : _lowInLrrZone
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR &middot; low</span></div>` : '')
     + `
   </div>`;
 }

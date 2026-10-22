@@ -1427,6 +1427,8 @@ async function loadSources() {
         if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
         state.rangeTrrZone = Number(settings.range_trr_zone_pct);
         if (!isFinite(state.rangeTrrZone) || state.rangeTrrZone <= 0) state.rangeTrrZone = 0.20;
+        state.rangeLrrZone = Number(settings.range_lrr_zone_pct);
+        if (!isFinite(state.rangeLrrZone) || state.rangeLrrZone <= 0) state.rangeLrrZone = 0.25;
         state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
         if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
         // TASK_140/141: read-only mode flags, both default OFF. Only
