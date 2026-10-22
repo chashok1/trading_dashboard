@@ -715,6 +715,12 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "vol_high": vt.get("high"),
                     "zone": zone,
                     "outlook": rr.get("outlook"),
+                    # 2026-10-22: risk range for the volatility rows' range bar (same fields the other rows carry).
+                    "rr_pos": _pct(rr_pos(last, _maybe_float(rr.get("lrr")), _maybe_float(rr.get("trr")))),
+                    "lrr": _maybe_float(rr.get("lrr")),
+                    "trr": _maybe_float(rr.get("trr")),
+                    "prev_lrr": _prev_range_val(_maybe_float(rr.get("lrr")), prev_rr_map.get(sym, {}).get("lrr")),
+                    "prev_trr": _prev_range_val(_maybe_float(rr.get("trr")), prev_rr_map.get(sym, {}).get("trr")),
                     "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
                     "macro6": ms_map.get(sym, {}).get("macro6"),
                     "desc": desc_map.get(sym),

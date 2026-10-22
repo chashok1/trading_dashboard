@@ -871,6 +871,9 @@
             '</div>' +
             '<div class="msr-vol-cluster">' +
               (vol ? _volCells(m, m.label) : perf ? _perfPills(m, area) :
+              // 2026-10-22, user-directed: the risk range bar (LRR..TRR position) on the Volatility rows, narrower than elsewhere (see .msr-vol-cluster .msr-rb).
+              railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
+                           { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: m.label || area.label }) +
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted,
                            { price: _chipCompactPrice(m.last), dollarChg: _chipDollarChgTxt(m), held: _heldKTxt(m, area), heldTip: _heldTip(m, area), tip: _ohlcTip(m) })) +
