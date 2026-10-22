@@ -4445,3 +4445,17 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-10-20: copy-all-symbols button in every rail panel header (web/macro_areas.js::_addCopyButtons) */
 .msr-copy-btn { border: none; background: none; cursor: pointer; font-size: 12px; line-height: 1; color: var(--text-3, #6b7280); padding: 0 4px; margin-left: 4px; }
 .msr-copy-btn:hover { color: var(--accent, #2563eb); }
+
+/* 2026-10-22, user-directed: the three top panels are 6px taller (rows 20px -> 22px, so the extra space is shared by the three lines) and
+   reach 2px further down, so no gap is left between them and the Hedgeye / Yahoo / CNBC header. The middle and right panels span all three
+   lines again (a third line is coming); the chips keep two lines, centred in their rows. Row pitch = 22 + 8 = 30px. */
+.oc-card .oc-body { grid-template-rows: 22px 22px 22px; }
+/* Space from a panel's top/bottom edge to its first/last chip = the 10px between the chip lines (8px row gap + 1px of row slack above and below each 20px chip). */
+.cockpit-band.oc-card .oc-body { padding-top: 9px; padding-bottom: 9px; }
+.oc-card .oc-body::before, .oc-card .oc-body::after, .oc-card .oc-side { margin-top: -9px; margin-bottom: -9px; }
+.oc-card .oc-body::after, .oc-card .oc-side { grid-row: 1 / span 3; }
+.oc-card .oc-line { row-gap: 10px; position: relative; top: 1px; }
+.oc-lead > .mw-usd-slot, .oc-lead > .oc-vix, .oc-lead > .oc-mkt, .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Book"], .oc-card .oc-more { align-self: center; }
+.oc-stack { gap: 10px; }
+.oc-stack2 { margin-top: -30px; }
+.oc-stack3 { margin-top: -60px; }
