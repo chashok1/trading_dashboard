@@ -2794,6 +2794,19 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
             "LEFT JOIN drv_rr r ON r.tos_symbol = q.tos_symbol AND r.as_of_date = q.as_of_date "
             "WHERE q.as_of_date = :a AND q.tos_symbol = ANY(:syms)"), {"a": anchor, "syms": syms}).mappings().all()
     by = {r["tos_symbol"]: r for r in rows}
+    # 2026-10-22: where VIX sits in its own history (share of stored days with a lower reading) -- shown in the VIX pill's hover text.
+    vix_pct = None
+    with session_scope() as s:
+        vr = s.execute(text(
+            "SELECT COUNT(*) AS n, MIN(as_of_date) AS since, "
+            "COUNT(*) FILTER (WHERE last_price < (SELECT last_price FROM drv_quote WHERE tos_symbol = 'VIX' AND as_of_date = :a)) AS below "
+            "FROM drv_quote WHERE tos_symbol = 'VIX' AND last_price IS NOT NULL AND as_of_date <= :a AND EXTRACT(DOW FROM as_of_date) BETWEEN 1 AND 5"), {"a": anchor}).mappings().first()
+        prev3 = s.execute(text(
+            "SELECT as_of_date, last_price, pct_change FROM drv_quote WHERE tos_symbol = 'VIX' AND last_price IS NOT NULL "
+            "AND as_of_date < :a AND EXTRACT(DOW FROM as_of_date) BETWEEN 1 AND 5 ORDER BY as_of_date DESC LIMIT 3"), {"a": anchor}).all()
+    if vr and vr["n"] and vr["n"] >= 30:
+        vix_pct = {"recent": [{"date": r[0].isoformat(), "last": float(r[1]), "pct": None if r[2] is None else float(r[2])} for r in prev3],
+                   "pctile": round(100.0 * vr["below"] / vr["n"], 0), "hist_n": int(vr["n"]), "hist_since": vr["since"].isoformat()}
     pills = []
     for label, sym in _INDEX_PILLS:
         label = short_name(sym, label)
@@ -2806,7 +2819,7 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
                       "open_price": float(r["open_price"]) if r and r["open_price"] is not None else None,
                       "high_price": float(r["high_price"]) if r and r["high_price"] is not None else None,
                       "low_price": float(r["low_price"]) if r and r["low_price"] is not None else None,
-                      "outlook": ol})
+                      "outlook": ol, **(vix_pct if sym == "VIX" and vix_pct else {})})
     return {"as_of": anchor.isoformat(), "pills": pills}
 
 

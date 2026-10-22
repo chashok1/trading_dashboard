@@ -8814,7 +8814,9 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('rd_sss_collapse_pct', '40', 'TASK_146 sss_book_collapse gauge: %% drop from 4wk high that counts as collapse.'),
     ('rd_rr_flip_min', '9', 'TASK_146 rr_flip_day gauge: min RR outlook flips in one session to count as a regime-shift day.'),
     ('rd_conflict_min', '4', 'TASK_146 lists_quad_conflict gauge: min themes with quad_conflict=true to fire.'),
-    ('rd_exposed_pct', '15', 'TASK_146 exposed_bear_themes gauge: %% of risk $ in bear-stance themes that counts as exposed.')
+    ('rd_exposed_pct', '15', 'TASK_146 exposed_bear_themes gauge: %% of risk $ in bear-stance themes that counts as exposed.'),
+    ('rd_vix_jump_1d_pct', '9', 'vix_jump gauge: VIX one-day rise (%%) that fires it.'),
+    ('rd_vix_jump_3d_pct', '20', 'vix_jump gauge: VIX rise over 3 sessions (%%) that fires it.')
 ON CONFLICT (setting_name) DO NOTHING;
 
 -- TASK_146 -- gauge scorecard (report-only): did each gauge fire in the 20

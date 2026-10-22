@@ -182,6 +182,19 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     quote_chg_map = {r["tos_symbol"]: float(r["pct_change"])
                       for r in q_rows if r["pct_change"] is not None}
 
+    # 2026-10-22 -- VIX's last 4 closes (newest first; the newest may be intraday) for the 3-session jump in _g_vix_jump, and the
+    # two jump thresholds (ref_settings, % -- tunable).
+    vix_closes = [float(r[0]) for r in session.execute(text(
+        "SELECT last_price FROM drv_quote WHERE tos_symbol = 'VIX' AND as_of_date <= :d AND last_price IS NOT NULL "
+        "AND EXTRACT(DOW FROM as_of_date) BETWEEN 1 AND 5 ORDER BY as_of_date DESC LIMIT 4"), {"d": as_of_date}).all()]
+    vix_jump_th = {}
+    for nm, dflt in (("rd_vix_jump_1d_pct", 9.0), ("rd_vix_jump_3d_pct", 20.0)):
+        v = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"), {"n": nm}).scalar()
+        try:
+            vix_jump_th[nm] = float(v) if v is not None else dflt
+        except (TypeError, ValueError):
+            vix_jump_th[nm] = dflt
+
     vol_rows = session.execute(text(
         "SELECT tos_symbol, low, high FROM ref_vol_threshold"
     )).mappings().all()
@@ -275,6 +288,8 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "rr": rr_map,
         "quote": quote_map,
         "quote_chg": quote_chg_map,
+        "vix_closes": vix_closes,
+        "vix_jump_th": vix_jump_th,
         "vol": vol_map,
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
@@ -515,6 +530,23 @@ def _g_vix_elevated(ctx):
     if v is None or th is None:
         return None, v, "VIX unavailable"
     return v > th["high"], v, f"VIX {v:.1f} vs elevated>{th['high']:.0f}"
+
+
+def _g_vix_jump(ctx):
+    # 2026-10-22 -- a fast VIX rise matters more than its level: volatility-following funds sell on the jump. Fires on a big one-day
+    # rise or a big rise over 3 sessions (thresholds ref_settings rd_vix_jump_1d_pct / rd_vix_jump_3d_pct).
+    th = ctx["vix_jump_th"]
+    c = ctx["vix_closes"]
+    # 1-day from the closes themselves: drv_quote.pct_change is stored as a fraction (0.10) on some days and a percent (10.0) on others.
+    chg1 = (c[0] / c[1] - 1.0) * 100.0 if len(c) >= 2 and c[1] else ctx["quote_chg"].get("VIX")
+    chg3 = (c[0] / c[3] - 1.0) * 100.0 if len(c) >= 4 and c[3] else None
+    if chg1 is None and chg3 is None:
+        return None, None, "VIX change unavailable"
+    t1, t3 = th["rd_vix_jump_1d_pct"], th["rd_vix_jump_3d_pct"]
+    fired = (chg1 is not None and chg1 >= t1) or (chg3 is not None and chg3 >= t3)
+    p1 = f"{chg1:+.1f}% on the day" if chg1 is not None else "day change n/a"
+    p3 = f"{chg3:+.1f}% over 3 sessions" if chg3 is not None else "3-session change n/a"
+    return fired, chg1 if chg1 is not None else chg3, f"VIX {p1}, {p3} (fires at +{t1:.0f}% in a day or +{t3:.0f}% over 3 sessions)"
 
 
 def _g_vix_chop(ctx):
@@ -1137,6 +1169,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("spx_bottom_range", _g_spx_bottom_range),
     ("vix_spx_divergence", _g_vix_spx_divergence),
     ("vix_elevated", _g_vix_elevated),
+    ("vix_jump", _g_vix_jump),
     ("vix_chop", _g_vix_chop),
     ("vxn_chop", _g_vxn_chop),
     ("vxn_elevated", _g_vxn_elevated),
