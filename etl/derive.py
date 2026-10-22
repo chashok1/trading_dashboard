@@ -3584,9 +3584,14 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         LEFT JOIN drv_technicals t ON t.as_of_date = r.as_of_date AND t.tos_symbol = r.tos_symbol
         WHERE r.as_of_date = :d
     """), {"d": as_of_date}).mappings().all()
+    _zs = dict(session.execute(text(
+        "SELECT setting_name, CAST(setting_value AS NUMERIC) FROM ref_settings "
+        "WHERE setting_name IN ('range_trr_zone_pct','range_lrr_zone_pct')")).fetchall())
     upd = []
     for w in why_rows:
         wd = dict(w)
+        wd["trr_zone"] = float(_zs.get("range_trr_zone_pct", 0.20))   # 2026-10-22: for technical_why._touch_clause
+        wd["lrr_zone"] = float(_zs.get("range_lrr_zone_pct", 0.25))
         wd["pullback"] = pullback
         wd["lrr_tol"] = lrr_tol
         wd["bb_lo"] = bb_slope_lo

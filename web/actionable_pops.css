@@ -498,10 +498,11 @@
 .actpop-own .actpop-amt { margin-left: 0; }
 
 /* 2026-10-21, user: IV / MACD / MACDH / RSI line above the "Why" card; RSI as a 0-100 range bar. */
-.actpop-ind { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 5px 9px; margin: 0 0 8px; border: 1px solid var(--border, #d4d4d8); border-radius: 8px; background: #fff; font-size: 11.5px; }
-.actpop-ind-c { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.actpop-ind { display: flex; align-items: center; gap: 11px; flex-wrap: nowrap; padding: 5px 8px; margin: 0 0 8px; border: 1px solid var(--border, #d4d4d8); border-radius: 8px; background: #fff; font-size: 11px; }
+/* 2026-10-22, user: smaller type + tighter gaps so the whole indicators line fits on one line. */
+.actpop-ind-c { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .actpop-ind-k { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #64748b; text-transform: uppercase; }
-.actpop-rsi-bar { position: relative; display: inline-block; width: 70px; height: 8px; border-radius: 4px; border: 1px solid #cbd5e1; }
+.actpop-rsi-bar { position: relative; display: inline-block; width: 60px; height: 8px; border-radius: 4px; border: 1px solid #cbd5e1; }
 .actpop-rsi-tick { position: absolute; top: -3px; width: 3px; height: 14px; margin-left: -1px; background: #0f172a; border-radius: 1px; }
 
 /* 2026-10-21, user: ↗ / ↘ before the Td and Tn boxes, outside them (green = price above the line, red = below). */
@@ -514,4 +515,5 @@
 .actpop-ind-vroc > div { margin-top: 0 !important; font-size: 10px !important; font-weight: 700; }
 /* 2026-10-21, user: price BELOW LRR is not green -- amber while turning up, red while still falling. */
 .rr-at-below-up { background: #fef3c7; color: #b45309; border-color: #b45309; }
+.rr-at-above { background: var(--act-sell-strong, #b91c1c); color: #fff; border-color: var(--act-sell-strong, #b91c1c); }  /* 2026-10-22: price above TRR, solid red */
 .rr-at-below-dn { background: var(--act-sell-strong-bg, #fee2e2); color: var(--act-sell-strong, #b91c1c); border-color: var(--act-sell-strong, #b91c1c); }

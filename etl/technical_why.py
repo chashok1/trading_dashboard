@@ -62,6 +62,26 @@ _NBULL = {
 }
 
 
+def _touch_clause(why: str, d: dict) -> str:
+    """2026-10-22, user: say WHICH of price / the day's high (TRR) / the day's low (LRR) is in the end zone of the range,
+    since "At TRR" / "low touched LRR" read the same whether the price is there now or only the high/low got there."""
+    last, high, low = _n(d.get("last")), _n(d.get("high")), _n(d.get("low"))
+    lrr, trr = _n(d.get("lrr")), _n(d.get("trr"))
+    if None in (last, lrr, trr) or trr <= lrr:
+        return ""
+    rng = trr - lrr
+    top_edge = trr - (_n(d.get("trr_zone")) or 0.20) * rng
+    bot_edge = lrr + (_n(d.get("lrr_zone")) or 0.25) * rng
+    parts = []
+    if "TRR" in why and high is not None and high >= top_edge:
+        parts.append(f"Price {_usd(last)} is in the top zone (TRR {_usd(trr)})" if last >= top_edge else
+                     f"Only the day's high {_usd(high)} reached the top zone (TRR {_usd(trr)}); price {_usd(last)} is below it")
+    if "LRR" in why and low is not None and low <= bot_edge:
+        parts.append(f"Price {_usd(last)} is in the bottom zone (LRR {_usd(lrr)})" if last <= bot_edge else
+                     f"Only the day's low {_usd(low)} reached the bottom zone (LRR {_usd(lrr)}); price {_usd(last)} is above it")
+    return ". ".join(parts)
+
+
 def _tol_txt(d: dict) -> str:
     """LRR-break depth in ATRs for the wording (ref_settings lrr_break_atr_mult; default 1.5)."""
     t = _n(d.get("lrr_tol"))
@@ -158,6 +178,10 @@ def explain_technical(d: dict, bounce_note: bool = True) -> Optional[str]:
     else:
         q = _n(d.get("not_bull_rr_action"))
         why = _NBULL.get(int(q)) if q is not None else None
+    if why:
+        _tc = _touch_clause(why, d)
+        if _tc:
+            why = why + ". " + _tc
     if exempt:
         return _two(f"{_bounce_note(d) + '. ' if bounce_note else ''}{held}{why or 'No range-position condition matched'}",
                     "bounce exception: below Trade but turning up")

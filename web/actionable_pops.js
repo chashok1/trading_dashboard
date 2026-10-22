@@ -1803,16 +1803,18 @@ function _actpopRrBarHtml(row) {
     + `<span class="num">${row.last_price != null ? fmtUsd(row.last_price) : ''}</span>`
     + `<span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span></div>`
     // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
-    + (rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
-        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>`
+    + (rawPos > 100
+        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>`
+        : rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
+        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
         : _highInTrrZone
-          ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR &middot; high</span></div>`
+          ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span></div>`
         : rawPos < 0
           ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>`
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
         : _lowInLrrZone
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR &middot; low</span></div>` : '')
+          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span></div>` : '')
     + `
   </div>`;
 }
@@ -2294,9 +2296,9 @@ function _actpopIndicatorsLineHtml(row) {
     // that value flipped. (IV/HV from the two rounded fields differed by a point or two, e.g. CRWD 14% vs 12%.) Falls back to the fields.
     if (row.iv_to_hv_discount != null || (ivVal != null && hvVal != null && hvVal > 0)) {
       const pr = row.iv_to_hv_discount != null ? -Number(row.iv_to_hv_discount) : (ivVal / hvVal - 1) * 100;
-      ivPrem = `<span class="actpop-iv-prem" style="color:${pr >= 0 ? '#b45309' : '#15803d'};font-weight:700;margin-left:4px;" `
-        + `title="IV / RV - 1 (same value as the grid's IV bars): implied vol ${ivVal != null ? ivVal.toFixed(1) : '—'} vs historical vol ${hvVal != null ? hvVal.toFixed(1) : '—'}. ${pr >= 0 ? 'Options are priced richer than the actual movement.' : 'Options are priced cheaper than the actual movement.'}${hvVal != null && hvVal <= 10 ? ' (historical vol is 10 or less: rounding noise)' : ''}">`
-        + `${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%${hvVal != null && hvVal <= 10 ? '*' : ''}</span>`;
+      ivPrem = `<span class="actpop-iv-prem" style="color:${pr >= 30 ? '#b91c1c' : pr >= 10 ? '#b45309' : pr <= -10 ? '#15803d' : '#64748b'};font-weight:700;margin-left:4px;" `
+        + `title="IV / RV - 1 (same value as the grid's IV bars): implied vol ${ivVal != null ? ivVal.toFixed(1) : '—'} vs historical vol ${hvVal != null ? hvVal.toFixed(1) : '—'}. ${pr >= 10 ? 'Options are priced richer than the actual movement.' : pr <= -10 ? 'Options are priced cheaper than the actual movement.' : 'Options are priced about in line with the actual movement.'} Fair = within 10% either way; rich / cheap = 10% or more; very = 30% or more.${hvVal != null && hvVal <= 10 ? ' (historical vol is 10 or less: rounding noise)' : ''}">`
+        + `${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%${hvVal != null && hvVal <= 10 ? '*' : ''} ${pr >= 30 ? 'very rich' : pr >= 10 ? 'rich' : pr <= -30 ? 'very cheap' : pr <= -10 ? 'cheap' : 'fair'}</span>`;
     }
     // 2026-10-21, user: the grid's IV-column edge tag (this IV-percentile bucket's historical 20-day edge vs baseline, pp), same function and hover.
     let ivEdge = '';

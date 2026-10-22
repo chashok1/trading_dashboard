@@ -5073,9 +5073,20 @@ function _buildRowEl(r) {
     const _belowLrr = _rawG != null && _rawG < 0;
     const _turnG = r.pct_change != null && Number(r.pct_change) >= 0;
     const _atLrrBar = _rrBarW != null && !_belowLrr && _rrBarW <= 15;
-    const _rrAtPill = _atTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR</span></div>'
+    // 2026-10-22, user: same as the popup bar -- outlined "TRR · high" / "LRR · low" when only the day's high / low reached the end zone.
+    const _rngG = (_lrrNum != null && _trrNum != null && _trrNum > _lrrNum) ? (_trrNum - _lrrNum) : null;
+    const _hiG = (_rngG && r.high_price != null) ? (Number(r.high_price) - _lrrNum) / _rngG * 100 : null;
+    const _loG = (_rngG && r.low_price != null) ? (Number(r.low_price) - _lrrNum) / _rngG * 100 : null;
+    const _lrrZoneW = state.rangeLrrZone != null ? state.rangeLrrZone : 0.25;
+    const _highTrrBar = _hiG != null && _hiG >= 100 * (1 - _trrZoneW) && _rawG != null && _rawG > 50;
+    const _lowLrrBar = _loG != null && _loG <= 100 * _lrrZoneW && _rawG != null && _rawG >= 0 && _rawG <= 50;
+    const _aboveTrr = _rawG != null && _rawG > 100;
+    const _rrAtPill = _aboveTrr ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>'
+                    : _atTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>'
+                    : _highTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr-high" title="The day high reached the top of the risk range, but price is now below it">TRR - HIGH</span></div>'
                     : _belowLrr ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill ' + (_turnG ? 'rr-at-below-up' : 'rr-at-below-dn') + '" title="Price is BELOW LRR (' + (_turnG ? 'turning up, but still under the line' : 'still falling') + ')">&lt;LRR</span></div>'
-                    : _atLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR</span></div>' : '';
+                    : _atLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>'
+                    : _lowLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr-low" title="The day low reached the bottom of the risk range, but price is now above it">LRR - LOW</span></div>' : '';
     const rrBarHtml = _rrBarW != null
       ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">
            ${_rrPosPctHtml}
