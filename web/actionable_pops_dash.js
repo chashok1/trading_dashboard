@@ -18,6 +18,17 @@
   };
   var hoverEl = null;
 
+  // 2026-10-22: the Action popup's indicators line calls _macdColor / _macdCaret / _rsiColor, which live in actionable.js (not loaded on the
+  // Dashboard) -- without them the popup threw a ReferenceError and never appeared. Same code, defined here inside the evaluated scope.
+  var HELPERS = `
+function _macdColor(v) { if (v == null) return ''; var n = Number(v);
+  if (n > 0.5) return '#15803d'; if (n > 0) return '#4ade80'; if (n < -0.5) return '#b91c1c'; if (n < 0) return '#f87171'; return '#6b7280'; }
+function _macdCaret(h) { if (h == null) return ''; var mv = Number(h), up = mv > 0;
+  return '<span style="margin-left:2px;color:' + _macdColor(mv) + ';" title="MACD momentum ' + (up ? 'strengthening' : 'weakening') + ' (MACDH ' + mv.toFixed(2) + ')">' + (up ? '▲' : '▼') + '</span>'; }
+function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
+  if (n >= 70) return '#b91c1c'; if (n >= 60) return '#f97316'; if (n <= 30) return '#15803d'; if (n <= 40) return '#4ade80'; return '#6b7280'; }
+`;
+
   function dateQS() {
     var dp = document.getElementById('datePicker');
     return (dp && dp.value) ? '?date=' + encodeURIComponent(dp.value) : '';
@@ -62,7 +73,7 @@
         if (s.sector && s.etf) popState.sectorEtfMap[s.sector.trim().toLowerCase()] = s.etf;
       });
       // Evaluate the shared popup code in its own scope (see header comment).
-      api = new Function('state', src + '\n;return {build: _buildActionPopHtmlV2, loadNotes: _actpopLoadNotes, notes: showNotesPop,' +
+      api = new Function('state', HELPERS + src + '\n;return {build: _buildActionPopHtmlV2, loadNotes: _actpopLoadNotes, notes: showNotesPop,' +
         ' showData: _showDataPop, hide: hideSourcePop, prep: prepareActionableRow, noise: _buyNoiseGated,' +
         ' isNew: _isNewSnapshot, actioned: _actionedInfo};')(popState);
       popState.allRows = popState.rows = Array.isArray(list) ? list : (list && list.rows) || [];
