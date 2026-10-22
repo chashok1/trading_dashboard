@@ -1379,6 +1379,9 @@ function _actpopNotesHtml(notes) {
 }
 
 async function _actpopLoadNotes(sym) {
+  // Also mounts the popup's candle chart (this is the one post-render hook the grid and the dashboard both already call).
+  const _gc = document.querySelector('#sourcePop .actpop-gchart');
+  if (_gc && window.mountRrChart) window.mountRrChart(_gc, _gc.dataset.sym);
   const box = () => document.querySelector('#sourcePop .actpop-notes[data-sym="' + CSS.escape(sym) + '"]');
   let notes;
   if (_notesCache.has(sym)) notes = _notesCache.get(sym);
@@ -1389,6 +1392,8 @@ async function _actpopLoadNotes(sym) {
   const el = box();
   if (el) el.innerHTML = _actpopNotesHtml(notes);
 }
+
+function _popInteractive() { const p = $('sourcePop'); return !!p && p.style.display !== 'none' && p.style.pointerEvents === 'auto'; }
 
 function hideSourcePop() {
   _srcPopEl = null;
@@ -1401,6 +1406,12 @@ function _showDataPop(el, html) {
   if (!pop) return;
   pop.innerHTML = html;
   pop.style.display = 'block';
+  // 2026-10-22, user: the Action popup stays open while the mouse is on it (other popups stay click-through, as before).
+  if (!pop._closeWired) {   // X button in the Action popup header
+    pop._closeWired = true;
+    pop.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-actpop-close]')) hideSourcePop(); });
+  }
+  pop.style.pointerEvents = String(html).indexOf('class="actpop"') !== -1 ? 'auto' : '';
   const rect = el.getBoundingClientRect();
   let top = rect.bottom + 4;
   if (top + pop.offsetHeight > window.innerHeight - 8)
@@ -2483,11 +2494,19 @@ function _buildActionPopHtmlV2(row) {
   let _anchored = false;
   const _anch = html => { if (!html || _anchored) return ''; _anchored = true; return 'actpop-ctrl-anchor-rr'; };
   const _tdtnHtml = _actpopTdTnHtml(row), _rrHtml = _actpopRrBarHtml(row);
+  // 2026-10-22, user: symbol + action + company name moved to a header row on top of a TRR/LRR/Trade/Trend candle chart
+  // (web/chart_modal.js, window.mountRrChart; loaded from _actpopLoadNotes). The old symbol line keeps the action pill
+  // (its original place, same 22px height) so nothing below it moves.
+  const _pill = `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`;
+  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;"><div><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
+    // 2026-10-22, user: symbol always shown; company name bigger, in the outlook colour (falls back to the display name when it differs from the symbol)
+    + ((row.company_name || (row.rr_name && row.rr_name !== sym))
+        ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
+    + `</div><div style="display:flex;align-items:center;gap:10px;">${_pill}`   // 2026-10-22, user: action pill right-justified in the header
+    + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:22px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
+    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:220px;background:#1b1b1b;margin:2px 0 6px;"><div class="scm-own-svg"></div></div>`;
   h += `<div class="actpop-top"><div class="actpop-head">
-    <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(row.rr_name || sym)}</span>`
-    + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
-    + nameTxt   // 2026-10-02: company name next to the action pill
-    + `</div>`
+    <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
     + `<div class="actpop-px-group">${pxTxt}${ownLine}${tradeAmtTxt ? `<div class="actpop-own">${tradeAmtTxt}</div>` : ''}</div>`

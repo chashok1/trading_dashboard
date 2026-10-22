@@ -1587,7 +1587,7 @@ svg.rr-candle {
   border-radius: 4px; flex-shrink: 0;
 }
 .scm-close:hover { background: #f1f5f9; color: #1e293b; }
-.scm-body  { flex: 1; min-height: 0; }
+.scm-body  { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .tv-sym-link { cursor: pointer; text-decoration: underline;
                text-underline-offset: 2px; color: inherit; }
 .tv-sym-link:hover { color: #1d4ed8; }

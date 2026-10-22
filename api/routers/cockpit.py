@@ -2787,7 +2787,8 @@ def get_rr_history(symbol: str = Query(...), days: int = Query(90, ge=0, le=3650
     days=0 means every stored day. Weekend rows are left out. Loaded only when a bar is clicked."""
     with session_scope() as s:
         rows = s.execute(text(
-            "SELECT r.as_of_date, r.lrr, r.trr, q.last_price, t.a_trade_value, t.a_trend_value FROM drv_rr r "
+            "SELECT r.as_of_date, r.lrr, r.trr, q.last_price, t.a_trade_value, t.a_trend_value, "
+            "q.open_price, q.high_price, q.low_price FROM drv_rr r "
             "LEFT JOIN drv_quote q ON q.tos_symbol = r.tos_symbol AND q.as_of_date = r.as_of_date "
             "LEFT JOIN drv_technicals t ON t.tos_symbol = r.tos_symbol AND t.as_of_date = r.as_of_date "
             "WHERE r.tos_symbol = :s AND EXTRACT(DOW FROM r.as_of_date) BETWEEN 1 AND 5 "
@@ -2803,7 +2804,8 @@ def get_rr_history(symbol: str = Query(...), days: int = Query(90, ge=0, le=3650
         if price is not None:
             prev = price
         pts.append({"date": r[0].isoformat(), "lrr": f(r[1]), "trr": f(r[2]), "price": None if stale else price,
-                    "trade": f(r[4]), "trend": f(r[5])})
+                    "trade": f(r[4]), "trend": f(r[5]),
+                    "open": None if stale else f(r[6]), "high": None if stale else f(r[7]), "low": None if stale else f(r[8])})
     return {"symbol": symbol, "days": days, "points": pts}
 
 

@@ -3806,7 +3806,9 @@ function _buildSignalPopHtml(sym, sig, isWarn, side) {
 function initSourcePopover() {
   const body = $('actBody');
   if (!body) return;
+  let _hideT = null;   // short grace period so the mouse can cross the gap between the cell and the Action popup
   const _onOver = (e) => {
+    clearTimeout(_hideT);
     const el = e.target.closest('[data-srcpop]');
     if (el && el.dataset.src) { showSourcePop(el); return; }
     const volEl = e.target.closest('[data-volpop]');
@@ -3883,10 +3885,25 @@ function initSourcePopover() {
   };
   const _onOut = (e) => {
     if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-livepop],[data-signalpop],[data-tradabilitypop],[data-actionpop]')) return;
+    // 2026-10-22, user: an Action popup stays open while the mouse is on it.
+    if (_popInteractive()) {
+      if (e.relatedTarget && e.relatedTarget.closest('#sourcePop')) return;
+      clearTimeout(_hideT); _hideT = setTimeout(hideSourcePop, 200);
+      return;
+    }
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
   body.addEventListener('mouseout', _onOut);
+  const _pop = $('sourcePop');
+  if (_pop) {
+    _pop.addEventListener('mouseenter', () => clearTimeout(_hideT));
+    _pop.addEventListener('mouseleave', (e) => {
+      if (!_popInteractive()) return;
+      if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-actionpop]')) return;
+      clearTimeout(_hideT); _hideT = setTimeout(hideSourcePop, 120);
+    });
+  }
 }
 
 // ---- TASK_66: bull_prob cell renderer ----

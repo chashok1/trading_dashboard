@@ -7,7 +7,7 @@
  * The rows and settings it reads are fetched once from the same /api endpoints the Actionable screen uses. */
 (function () {
   'use strict';
-  var POPS_URL = '/static/actionable_pops.js?v=20261020m';
+  var POPS_URL = '/static/actionable_pops.js?v=20261022m';
   var api = null, loading = null, rows = {};
   var popState = {
     date: null, anchorDate: null, rows: [], allRows: [], filters: { trade_mode: false, act_only: false },
@@ -147,8 +147,17 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
     return null;
   }
 
+  // X button in the popup header: the shared code hides the popup; this resets the hover state so the same symbol can be hovered again.
+  document.addEventListener('click', function (e) {
+    if (!(e.target && e.target.closest && e.target.closest('[data-actpop-close]'))) return;
+    clearTimeout(hideT);
+    if (hoverEl) { muteTitle(hoverEl.closest('.msr-row'), false); hoverEl = null; }
+  });
+  var hideT = null;   // short grace period so the mouse can cross the gap between the symbol and the popup
   document.addEventListener('mouseover', function (e) {
+    if (e.target && e.target.closest && e.target.closest('#sourcePop')) clearTimeout(hideT);
     var t = targetOf(e);
+    if (t) clearTimeout(hideT);
     if (!t || t.el === hoverEl) return;
     hoverEl = t.el;
     if (api) { show(t.el, t.kind); return; }
@@ -159,11 +168,16 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
     if (!hoverEl) return;
     var rel = e.relatedTarget;
     if (rel && (hoverEl.contains(rel) || (rel.closest && rel.closest('#sourcePop')))) return;
-    var rowEl = hoverEl.closest('.msr-row');
-    hoverEl = null;
-    muteTitle(rowEl, false);
-    if (api) { try { api.hide(); } catch (err) { /* ignore */ } }
-    else { var pe = document.getElementById('sourcePop'); if (pe) pe.style.display = 'none'; }
+    var gone = hoverEl;
+    clearTimeout(hideT);
+    hideT = setTimeout(function () {
+      if (hoverEl !== gone) return;   // the pointer moved on to another symbol meanwhile
+      var rowEl = gone.closest('.msr-row');
+      hoverEl = null;
+      muteTitle(rowEl, false);
+      if (api) { try { api.hide(); } catch (err) { /* ignore */ } }
+      else { var pe = document.getElementById('sourcePop'); if (pe) pe.style.display = 'none'; }
+    }, 200);
   });
   // New date or refresh: drop the cached rows so the next hover loads fresh ones.
   function reset() { api = null; loading = null; rows = {}; setTimeout(loadAll, 1500); }
