@@ -350,7 +350,7 @@
     if (L) {
       var LIGHTS = [
         ['SPX Gamma Exposure', L.gamma, { Positive: 'dealers calm the market', Neutral: 'dealers have little effect', Negative: 'dealers make moves bigger' }],
-        ['Systematic Flow Risk', L.flow, { Bullish: 'funds have room to buy', Neutral: 'no big push either way', Bearish: 'funds may have to sell' }],
+        ['Systematic Flow Risk', L.flow, { Bullish: 'funds have room to buy more', Neutral: 'no big push either way', Bearish: 'the report sees high risk these funds must sell if volatility rises' }],
         ['PV Band Risk/Reward', L.pv, { Long: 'more room up than down', Neutral: 'room is balanced', Short: 'more room down than up' }],
         ['Strategic Allocation', L.alloc, { 'Risk On': 'favors stocks', Neutral: 'no strong stance', 'Risk Off': 'defensive' }]
       ];
@@ -381,14 +381,27 @@
     var p = function (h, t) { return '<div><b style="color:var(--text-1,#111827);">' + h + '</b> ' + t + '</div>'; };
     return '<div class="qm-help"><div class="qm-help-h">How to read this</div>' +
       p('What it is.', 'A daily Hedgeye snapshot of how the market is likely to behave today: calm or jumpy. It is not a buy or sell signal.') +
+      p('Snapshot, not live.', 'The lights and the Gamma Throttle, Realized Vol and Flip numbers are fixed when the morning report is made and are not updated during the day. ' +
+        'The only live part is SPX itself, compared with the flip line.') +
+      p('Gamma Thrtle pill.', 'Its colour follows where SPX is now against the flip line: red = below it, green = above it, amber = within 0.3%. ' +
+        '&#9660; = below, &#9650; = above. A struck-through number with &#9888; means the morning throttle no longer matches the live side (for example, a positive throttle while SPX is below the flip), so do not rely on the number. ' +
+        'It clears again by itself if SPX moves back. Without a flip line the colour just follows the sign of the throttle.') +
       p('Panel header.', 'Gamma Throttle above 0 = dealers calm the market; below 0 (red badge) = they make moves bigger. ' +
         'Realized Vol is how much the market actually moved over the last 10 days. A VIX above it means options are expensive, which usually goes with calm. ' +
         'The border is green when Gamma Throttle is 0 or more, red below 0.') +
       p('Calm or jumpy? (Gamma Exposure light, GEX Throttle, GEX Flip).', 'Light: Positive / Neutral / Negative. ' +
         'Calmer = dealers sell into rallies and buy dips. Jumpier = they buy into rallies and sell into drops. ' +
         'GEX Flip is the price where they switch: above it is steadier, below it is jumpier. Neutral usually means price is sitting close to the flip.') +
+      p('The flip line.', 'The price where dealer gamma is zero. The email does not include it, so you type it in (use the amber button on the panel). ' +
+        'Find it as &ldquo;GEX Flip&rdquo; in the report&rsquo;s key-levels box. It only counts for the day it was entered; an older one is ignored.') +
       p('Funds buying or selling? (Systematic Flow light).', 'Light: Bullish / Neutral / Bearish. Rule-based funds (vol-control, CTA, risk parity) ' +
-        'buy when volatility falls and sell when it rises. Bullish = room to buy, Bearish = they may have to sell.') +
+        'set how much stock they hold from recent volatility: they buy when it falls and sell when it rises, whatever the news or price. ' +
+        'Bullish = the report sees room for them to buy more. Neutral = no big push either way. ' +
+        'Bearish = the report judges the risk of these funds being forced to sell (cut exposure) to be high if volatility rises or prices fall. ' +
+        'The more stock these funds already hold, the more they have to sell when volatility jumps, so the risk is highest when their holdings are high and volatility starts to rise. ' +
+        'It is a risk warning, not a forecast that stocks will fall. The report does not say why the risk is high; ' +
+        'the app only stores this light, so the detail is in the report’s Systematic Positioning pages. ' +
+        'Read it together with the Gamma light and the flip line: a Bearish flow with SPX below the flip is the shakiest combination.') +
       p('Where is the range? (PV Band light and the levels).', 'Light: Long / Neutral / Short. ' +
         'The Upper and Lower PV Band are the expected high and low. Upside and Downside Risk are how far price is from each band, in %. ' +
         'Spread is the total width. Implied Move is what options traders expect today, in %. The light turns room-up versus room-down into Long, Neutral or Short.') +
@@ -397,6 +410,13 @@
         'Focal is the busiest strike, and price often drifts toward it. These are estimates, not hard walls.') +
       p('Charts.', 'Return Distribution: a tall, narrow hump means calm days. The donut is the suggested Core vs High Beta split. ' +
         'The regime chart shows the S&amp;P 500 with green Risk On, yellow Neutral and red Risk Off dots.') +
+      p('Reading them together.', 'These are the report&rsquo;s lights plus live SPX, not a trading signal. ' +
+        '&bull; Flow Bearish and SPX below the flip: the shakiest mix, because dealers add to moves and the funds may be forced to sell. ' +
+        '&bull; Flow Bearish and SPX above the flip: the risk is there, but dealers are still calming moves. ' +
+        '&bull; Gamma Neutral with SPX near the flip: it can tip either way, so watch which side it settles on. ' +
+        '&bull; Flow Bullish or Neutral with SPX above the flip: the calmest mix. ' +
+        '&bull; Calm days can end quickly when price crosses the flip, so the colour change on the Gamma Thrtle pill matters more than the number.') +
+      p('Risk Dial.', 'The Risk Dial&rsquo;s &ldquo;Dealer gamma negative&rdquo; warning also fires when SPX is below the flip line, even if the morning throttle is positive, so the panel and the dial agree.') +
       '</div>';
   }
 
@@ -497,6 +517,32 @@
     return '<span data-hetip="' + idx + '">' + _msPill(txt, c, 10) + '</span>';
   }
 
+  // 2026-10-22, user-directed: the Gamma Throttle is a snapshot from the morning report and nobody updates it, but the flip line is where
+  // dealer gamma is zero, so SPX's CURRENT side of it says what gamma is now. The colour follows that side (below = red, above = green,
+  // within the "near" band = amber); the number is struck through, with a warning mark, when its sign disagrees with the live side. Every
+  // refresh re-checks, so a dip below the flip and back above clears the strike and the red again. Without a flip line it is as before.
+  function _gammaThrottlePill(msr) {
+    var val = msr.gamma_throttle, f = msr.flip;
+    var sign = val >= 0 ? 'var(--pct-up,#0f9d58)' : 'var(--pct-down,#e5484d)';
+    var color = sign, conflict = false, arrow = '', note = '';
+    if (f) {
+      var below = f.side === 'below';
+      color = f.near ? '#f59e0b' : (below ? 'var(--pct-down,#e5484d)' : 'var(--pct-up,#0f9d58)');
+      conflict = (val >= 0 && below) || (val < 0 && !below);
+      arrow = below ? ' &#9660;' : ' &#9650;';
+      var NL2 = String.fromCharCode(10, 10), NL1 = String.fromCharCode(10);
+      note = NL2 + 'Live check: SPX ' + f.spx.toFixed(0) + ' is ' + Math.abs(f.diff).toFixed(0) + ' pts ' + f.side + ' the flip line ' + f.flip.toFixed(0) +
+        (below ? ' -- dealers are in negative gamma now.' : ' -- dealers are in positive gamma now.') +
+        (f.crossed ? NL1 + 'SPX crossed the flip since the last close.' : '') +
+        (conflict ? NL1 + 'The ' + val.toFixed(2) + ' throttle is the morning report snapshot (taken before this move), so it is struck through.' : '');
+    }
+    var num = conflict ? '<s style="text-decoration-thickness:2px;">' + esc(val.toFixed(2)) + '</s>' : esc(val.toFixed(2));
+    var warn = (conflict || val < 0) ? '&#9888; ' : '';
+    var inner = '<span style="text-transform:none; letter-spacing:0;">' + _msPill(warn + 'Gamma Thrtle ' + num + arrow, color, 10) + '</span>';
+    var idx = _richTip(_popBox('Gamma Thrtle', _gammaThrottleTip(val) + note));
+    return '<span data-hetip="' + idx + '">' + inner + '</span>';
+  }
+
   function msrCardHtml(msr, loadedAt) {
     _msrForPopup = msr;
     var msrMetricsHtml = '', flipHtml = '';
@@ -519,10 +565,15 @@
         return '<span data-hetip="' + idx + '">' + inner + '</span>';
       };
       if (msr.gamma_throttle != null)
-        metricParts.push(_metricLabel('Gamma Thrtle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle), true));
+        metricParts.push(_gammaThrottlePill(msr));
       if (msr.rvol_10day != null)
         metricParts.push(_metricLabel('Relzd Vol', msr.rvol_10day, _rvolTip(msr.rvol_10day, msr.vix)));
       if (msr.spx_flip_line != null) flipHtml = _flipBadge(msr);
+      // 2026-10-22, user-directed: the email never carries the SPX flip line, so when it is missing say so loudly -- an amber
+      // button in the badge's place that opens the entry form with that field ready to type in.
+      else flipHtml = '<a href="#" id="msrFlipEnter" title="The SPX flip line is not in the email -- click and type it in (find it in the Hedgeye GEX note)" ' +
+        'style="text-decoration:none; text-transform:none; letter-spacing:0; font-weight:700; font-size:10px; color:#92400e; background:#fef3c7; ' +
+        'border:1px solid #f59e0b; border-radius:9px; padding:0 8px;">&#9888; Enter SPX flip value &#9998;</a>';
       msrMetricsHtml = metricParts.join('');
     }
     var img = (msr && msr.image_url)
@@ -602,10 +653,15 @@
       if (cf) { cf.reset(); cf.style.display = 'none'; document.getElementById('msrManualMsg').textContent = ''; }
       return;
     }
-    if (e.target.id !== 'msrManualLink') return;
+    var lk = e.target.closest ? e.target.closest('#msrManualLink, #msrFlipEnter') : null;
+    if (!lk) return;
     e.preventDefault();
     var f = document.getElementById('msrManualForm');
-    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    if (!f) return;
+    // The flip button always opens the form (never closes it) and puts the cursor in the flip field.
+    var open = lk.id === 'msrFlipEnter' ? true : f.style.display === 'none';
+    f.style.display = open ? 'block' : 'none';
+    if (open && lk.id === 'msrFlipEnter' && f.elements.spx_flip_line) f.elements.spx_flip_line.focus();
   });
   document.addEventListener('submit', async function (e) {
     var f = e.target;

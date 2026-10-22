@@ -127,6 +127,7 @@ def _process_pass(cfg, since, dry_run: bool) -> int:
     # Track whether any email-only (direct-insert) data landed.
     # Tab-backed feeds now derive via the loader — no derive needed here.
     direct_inserts = 0
+    msr_landed = False   # a Market Situation Report was processed: its gamma/vol/flip feed the Risk Dial
     with open_source(cfg) as src:
         for email in src.iter_since(since):
             try:
@@ -148,6 +149,8 @@ def _process_pass(cfg, since, dry_run: bool) -> int:
                         summary["tables"], summary.get("files", {}),
                     )
                     direct_inserts += sum(summary.get("tables", {}).values())
+                    if et.name == "market_situation":
+                        msr_landed = True
                     n += 1
             except Exception as e:  # noqa: BLE001
                 # One bad message must not block everything after it in this pass.
@@ -167,6 +170,20 @@ def _process_pass(cfg, since, dry_run: bool) -> int:
     # Tab-backed feeds derive via the scheduler after it picks up the file.
     if direct_inserts > 0 and not dry_run:
         _trigger_derive()
+    # 2026-10-22: the MSR writes hist_msr directly (not counted in direct_inserts), and the Risk Dial's gamma gauges read it,
+    # so re-run just the Risk Dial once the email's rows are committed (the email has no flip line; entering it re-runs it again).
+    if msr_landed and not dry_run:
+        try:
+            from etl.derive import get_anchor_date
+            from etl.derive_market_stat import derive_market_stat
+            from etl.db import session_scope
+            with session_scope() as s:
+                anchor = get_anchor_date(s)
+                if anchor is not None:
+                    derive_market_stat(s, anchor)
+            log.info("risk dial refreshed after Market Situation Report")
+        except Exception:
+            log.exception("risk dial refresh after MSR failed (non-fatal)")
     return n
 
 

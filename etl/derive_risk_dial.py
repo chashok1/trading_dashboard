@@ -197,14 +197,19 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         levels_by_sym.setdefault(r["tos_symbol"], []).append(
             (float(r["level_value"]), float(r["tolerance"])))
 
+    # 2026-10-22 -- the Market Situation Report arrives before the open and is stamped with that day, which is AFTER the derive
+    # anchor (the last TOSD export). When deriving the newest date, use the newest report instead of skipping it for being
+    # "in the future"; older dates keep the report as of that date.
+    from etl.derive import get_anchor_date
+    is_latest = as_of_date >= (get_anchor_date(session) or as_of_date)
     gamma_row = session.execute(text(
-        "SELECT gamma_throttle, rvol_10day, spx_flip_line, snapshot_date FROM hist_msr WHERE snapshot_date <= :d "
-        "ORDER BY snapshot_date DESC LIMIT 1"
+        "SELECT gamma_throttle, rvol_10day, spx_flip_line, snapshot_date FROM hist_msr "
+        + ("" if is_latest else "WHERE snapshot_date <= :d ") + "ORDER BY snapshot_date DESC LIMIT 1"
     ), {"d": as_of_date}).first()
-    # 2026-10-21 -- the hand-entered SPX flip line is a same-day level; a stale one is ignored.
+    # 2026-10-21 -- the hand-entered SPX flip line is a same-day level; a stale one (older than the as-of date) is ignored.
     from etl.hedgeye.msr_flip import flip_status
     spx_flip = (flip_status(session, float(gamma_row[2]), as_of_date)
-                if gamma_row and gamma_row[2] is not None and gamma_row[3] == as_of_date else None)
+                if gamma_row and gamma_row[2] is not None and gamma_row[3] >= as_of_date else None)
     gamma_throttle = float(gamma_row[0]) if gamma_row and gamma_row[0] is not None else None
     rvol_10day = float(gamma_row[1]) if gamma_row and gamma_row[1] is not None else None
 
@@ -893,11 +898,24 @@ def _flip_note(f) -> str:
     return s
 
 
+def _spx_below_flip(ctx) -> bool:
+    f = ctx.get("spx_flip")
+    return bool(f) and f["side"] == "below"
+
+
 def _g_gamma_negative(ctx):
+    # 2026-10-22 -- the throttle is a snapshot from the morning report (nobody updates it during the day), but the flip line is the
+    # price where dealer gamma is zero: SPX below it means dealers are in negative gamma NOW. So either one fires the gauge.
     v = ctx.get("gamma_throttle")
-    if v is None:
+    below = _spx_below_flip(ctx)
+    if v is None and not below:
         return None, None, "gamma_throttle unavailable"
-    return v < 0, v, f"Dealer gamma throttle {v:+.2f}" + _flip_note(ctx.get("spx_flip"))
+    if below and (v is None or v >= 0):
+        f = ctx["spx_flip"]
+        thr = f"; the throttle {v:+.2f} is this morning's report" if v is not None else ""
+        return True, v, (f"SPX {f['spx']:.0f} is {abs(f['diff']):.0f} pts below the flip line {f['flip']:.0f} -- dealers are in negative gamma now{thr}"
+                         + (" -- CROSSED to below the flip since last close" if f["crossed"] else ""))
+    return v < 0 or below, v, f"Dealer gamma throttle {v:+.2f}" + _flip_note(ctx.get("spx_flip"))
 
 
 # 2026-08-14 -- "neutral zone" companion to _g_gamma_negative above,
@@ -915,6 +933,8 @@ def _g_gamma_neutral(ctx):
     v = ctx.get("gamma_throttle")
     if v is None:
         return None, None, "gamma_throttle unavailable"
+    if _spx_below_flip(ctx):   # below the flip _g_gamma_negative already fires; keep the two from both firing
+        return False, v, f"Dealer gamma throttle {v:+.2f}" + _flip_note(ctx.get("spx_flip"))
     return 0 <= v <= 2, v, f"Dealer gamma throttle {v:+.2f} (neutral zone -- hedging support fading)" + _flip_note(ctx.get("spx_flip"))
 
 
