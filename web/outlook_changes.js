@@ -251,13 +251,16 @@
       line.style.maxHeight = (3 * h + 2 * gap) + 'px';
       var lr = line.getBoundingClientRect(), lb = lr.bottom;
       // Book + the button sit over the third row's right end: chips there must stop short of them.
-      var stopX = Infinity, row3Top = lr.top + 2 * (h + gap) - 1;
-      [document.querySelector('#outlookChangesCard .oc-grp[title="Book"]'), more].forEach(function (b) {
-        if (b && !b.hidden && b.offsetParent) stopX = Math.min(stopX, b.getBoundingClientRect().left - 8);
+      // 2026-10-22: the event pill (row 1), Book (row 2) and the button (row 3) sit over the line's right end: a chip that
+      // shares a row with one of them must stop short of it, so it is checked by vertical overlap, not by a fixed row.
+      var blockers = [];
+      [document.querySelector('#outlookChangesCard .oc-grp[title="Next event"]'), document.querySelector('#outlookChangesCard .oc-grp[title="Book"]'), more].forEach(function (b) {
+        if (b && !b.hidden && b.offsetParent) blockers.push(b.getBoundingClientRect());
       });
       Array.prototype.forEach.call(line.children, function (c, i) {
         var r = c.getBoundingClientRect();
-        if (first < 0 && (r.bottom > lb + 0.5 || (r.top >= row3Top && r.right > stopX))) first = i;
+        var hit = blockers.some(function (b) { return r.top < b.bottom - 1 && r.bottom > b.top + 1 && r.right > b.left - 8; });
+        if (first < 0 && (r.bottom > lb + 0.5 || hit)) first = i;
       });
       // A date label left alone at the end of the line (its chips pushed to the overlay) moves to the overlay too.
       if (first > 0 && !items[first].label && items[first - 1].label) { first--; line.children[first].style.visibility = 'hidden'; }
