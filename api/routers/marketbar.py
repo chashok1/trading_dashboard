@@ -34,6 +34,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from sqlalchemy import text
 
+from api._symbol_names import short_names
 from etl.db import session_scope
 from etl.marketbar import resolve_all
 
@@ -320,12 +321,18 @@ _CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes',
 _RR_META_ALL: dict[str, tuple[str, str]] = {
     **_RR_META,
     'SPX':   ('Indexes', 'SPX'),
-    '$COMP': ('Indexes', 'NDAQ'),
-    'RUT':   ('Indexes', 'Russell'),
+    '$COMP': ('Indexes', 'NDQ'),
+    'RUT':   ('Indexes', 'RUS'),
     'VIX':   ('Risk',    'VIX'),
     '$DXY':  ('FX',      'DXY'),
 }
 _CATEGORY_ORDER_ALL = ['Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech', 'ETFs']
+
+
+def _named(meta: dict) -> dict:
+    """Meta with labels replaced by ref_symbol_short_name where a short name exists."""
+    sn = short_names()
+    return {k: (v[0], sn.get(k, v[1])) for k, v in meta.items()}
 
 
 def _build_rr_response(rows, meta: dict, cat_order: list,
@@ -438,7 +445,7 @@ def get_rr_bar() -> dict:
         pct_fb    = _hist_rr_pct(s)
         dq_fb     = _drv_quote_pct(s)
         vol_thresh = _load_vol_thresh(s)
-    return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER,
+    return _build_rr_response(rows, _named(_RR_META), _CATEGORY_ORDER,
                                exclude=_FIRST_BAR_RR, curated_only=True,
                                rr_pct=pct_fb, dq_pct=dq_fb, vol_thresh=vol_thresh)
 
@@ -451,6 +458,6 @@ def get_rr_bar_all() -> dict:
         pct_fb    = _hist_rr_pct(s)
         dq_fb     = _drv_quote_pct(s)
         vol_thresh = _load_vol_thresh(s)
-    return _build_rr_response(rows, _RR_META_ALL, _CATEGORY_ORDER_ALL,
+    return _build_rr_response(rows, _named(_RR_META_ALL), _CATEGORY_ORDER_ALL,
                                exclude=_FIRST_BAR_RR, rr_pct=pct_fb, dq_pct=dq_fb,
                                vol_thresh=vol_thresh)

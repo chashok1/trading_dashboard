@@ -9436,3 +9436,26 @@ ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS trade_trend_sd NU
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_line NUMERIC;
 ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 2026-10-22: short display names (3 chars where possible) for index / future / FX symbols, read by the market bar,
+-- RR strip and dashboard pills (api/_symbol_names.py). Separate from ref_rrt (not unique per tos_ticker, and refreshed
+-- from the workbook). Seed is insert-only so edits made in the /ref UI stay.
+CREATE TABLE IF NOT EXISTS ref_symbol_short_name (
+    tos_symbol  TEXT PRIMARY KEY,
+    short_name  TEXT NOT NULL
+);
+INSERT INTO ref_symbol_short_name (tos_symbol, short_name) VALUES
+    ('$COMP','NDQ'), ('RUT','RUS'), ('$SSEC','SHA'), ('GDAXI:DE','DAX'), ('N225:JP','NKY'),
+    ('/HG','CPR'), ('/GC','GLD'), ('/SI','SLV'), ('/CL','OIL'), ('/BZ','BRT'), ('/NG','GAS'),
+    ('/BTC','BTC'), ('/6E','EUR'), ('/6J','JPY'), ('/6B','GBP'), ('/6C','CAD'),
+    ('$DXY','DXY'), ('TNX:CGI','10Y')
+ON CONFLICT (tos_symbol) DO NOTHING;
+
+-- 2026-10-22: more short names (ags, softs, metals, foreign/vol indexes, yields). Month contracts like /CL[H26] reuse the
+-- base symbol's name in api/_symbol_names.py, so they need no rows.
+INSERT INTO ref_symbol_short_name (tos_symbol, short_name) VALUES
+    ('/ZC','CRN'), ('/ZS','SOY'), ('/ZW','WHT'), ('/KC','COF'), ('/SB','SUG'), ('/LE','CTL'),
+    ('/PL','PLT'), ('/PA','PAL'), ('/NKD','NKY'), ('$DJI','DJI'), ('HSI:HK','HSI'),
+    ('DGS2:FRED','2Y'), ('TYX:CGI','30Y'), ('MOVE:GIF','MOV'),
+    ('GVZ:CGI','GVZ'), ('OVX:CGI','OVX'), ('VXN:CGI','VXN')
+ON CONFLICT (tos_symbol) DO NOTHING;

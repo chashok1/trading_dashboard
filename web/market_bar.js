@@ -430,17 +430,17 @@
     // markets). i need to see all those."
     { label: 'VIX',  source: 'mkt', key: 'VIX',  pairLead: true },   // S&P Vol
     { label: 'SPY',  source: 'mkt', key: 'SPY' },   // S&P 500 ETF proxy
-    { label: 'Nas',  source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
+    { label: 'NDQ',  source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
     { label: 'VXN',  source: 'mkt', key: 'VXN' },   // Nasdaq Vol
     { label: 'DJI',  source: 'mkt', key: 'DJI',  pairLead: true },   // Dow
     { label: 'VXD',  source: 'mkt', key: 'VXD' },   // Dow Vol
-    { label: 'Rus',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
+    { label: 'RUS',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
     // IWM added after RVX, same reasoning as SPY above.
     { label: 'RVX',  source: 'mkt', key: 'RVX',  pairLead: true },   // Russell Vol
     { label: 'IWM',  source: 'mkt', key: 'IWM' },   // Russell 2000 ETF proxy
-    { label: 'Gold', source: 'mkt', key: 'GC',   pairLead: true },    // Gold
+    { label: 'GLD', source: 'mkt', key: 'GC',   pairLead: true },    // Gold
     { label: 'GVZ',  source: 'mkt', key: 'GVZ' },   // Gold Vol
-    { label: 'WTI',  source: 'mkt', key: 'WTI',  pairLead: true },   // Oil
+    { label: 'OIL',  source: 'mkt', key: 'WTI',  pairLead: true },   // Oil
     { label: 'OVX',  source: 'mkt', key: 'OVX' },   // Oil Vol
     // Rates group (2026-07-04): 2Y in front of 10Y, both grouped with MOVE
     // as one 3-tile unit (2Y pairLead removes its border to 10Y; 10Y's

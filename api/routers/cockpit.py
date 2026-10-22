@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from api._helpers import _resolve_date, _get_ref_setting
+from api._symbol_names import short_name
 from etl.db import session_scope
 
 router = APIRouter()
@@ -1763,7 +1764,7 @@ def _area_legs(detail) -> list:
 
 
 # Friendly labels + sub-groups for the Hedgeye RR symbols (/api/cockpit/rr-strip).
-_RR_LABEL = {
+_RR_LABEL = {   # fallback labels; short_name() from ref_symbol_short_name wins
     "$COMP": "NDX", "$SSEC": "SSE", "GDAXI:DE": "DAX", "N225:JP": "N225",
     "$DXY": "DXY", "/6B": "GBP", "/6C": "CAD", "/6E": "EUR", "/6J": "JPY",
     "DGS2:FRED": "2Y", "TNX:CGI": "10Y", "TYX:CGI": "30Y",
@@ -1840,7 +1841,7 @@ def get_rr_strip(date: Optional[str] = Query(None)):
                 state = "above" if raw > 1 else "below" if raw < 0 else "in"
         group, sub = _RR_SUB.get(sym, ("etf_stock", 9))
         out.append({
-            "symbol": sym, "label": _RR_LABEL.get(sym, sym), "name": r["name"],
+            "symbol": sym, "label": short_name(sym, _RR_LABEL.get(sym, sym)), "name": r["name"],
             "outlook": outlook, "outlook_raw": r["outlook"], "last": last,
             "chg5": None if last is None or prev is None else last - prev,
             "lrr": lrr if has_range else None, "trr": trr if has_range else None,
@@ -2759,7 +2760,7 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
         for r in rows:                                   # rows are newest-first
             e = by_sym.get(r["tos_symbol"])
             if e is None:
-                by_sym[r["tos_symbol"]] = e = {"symbol": r["tos_symbol"],
+                by_sym[r["tos_symbol"]] = e = {"symbol": r["tos_symbol"], "label": short_name(r["tos_symbol"], r["tos_symbol"]),
                     "panel": _OC_PANEL.get(r["area_key"], r["area_key"] or ""),
                     "from": r["frm"], "to": r["to_o"], "changed_on": r["changed_on"].isoformat(),
                     "desc": r["descr"] or "", "_steps": {}}
@@ -2777,7 +2778,7 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
 
 # 2026-10-18 -- Market pills under the US Dollar pill (top of the centre column): day % change + Hedgeye outlook for
 # SPX / Ndq / Rus / VIX / Oil / Gold / 10Y / BTC. Display only. Symbols are the Macro Rail's own members (ref_macro_area).
-_INDEX_PILLS = [("SPX", "SPX"), ("Ndq", "$COMP"), ("Rus", "RUT"), ("VIX", "VIX"), ("Oil", "/CL"), ("Gld", "/GC"), ("10Y", "TNX:CGI"), ("BTC", "/BTC")]
+_INDEX_PILLS = [("SPX", "SPX"), ("NDQ", "$COMP"), ("RUS", "RUT"), ("VIX", "VIX"), ("OIL", "/CL"), ("GLD", "/GC"), ("10Y", "TNX:CGI"), ("BTC", "/BTC")]   # labels are fallbacks; short_name() wins
 
 
 @router.get("/api/cockpit/index-pills")
@@ -2795,6 +2796,7 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
     by = {r["tos_symbol"]: r for r in rows}
     pills = []
     for label, sym in _INDEX_PILLS:
+        label = short_name(sym, label)
         r = by.get(sym)
         o = (r["outlook"] or "") if r else ""
         ol = "Bullish" if "bull" in o.lower() else "Bearish" if "bear" in o.lower() else ("Neutral" if o else None)

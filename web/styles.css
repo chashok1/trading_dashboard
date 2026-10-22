@@ -4035,7 +4035,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 /* 2026-10-22, user-directed: the event pill moves to the top-right corner of the card, over the symbol chips' first row (outlook_changes.js keeps chips out from under it). */
 .oc-lead .oc-grp[title="Next event"] { grid-row: 1; grid-column: 3; justify-self: stretch; position: relative; z-index: 1; }
 .oc-lead .oc-grp[title="Book"] { grid-row: 2; grid-column: 3; justify-self: stretch; position: relative; z-index: 1; }   /* 2026-10-22, user-directed: Book and +N swapped -- Book is the last item, +N sits just before it */
-.oc-line { grid-row: 1 / span 3; grid-column: 2; }
+.oc-line { grid-row: 1 / span 2; grid-column: 2; }
 /* Market pills (SPX/Nas/Oil/Gld/2Y/10Y) on row 3, under the US Dollar / event pills. */
 .oc-lead > .oc-mkt { grid-row: 3; grid-column: 1; display: flex; gap: 6px; justify-self: start; align-items: center; margin-right: 18px; }   /* +18px: doubles the 18px gap between the Oil stack and the symbol chips (first chip SPMO) */
 .oc-mkt:empty { display: none; }
@@ -4043,7 +4043,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .oc-stack2 { margin-top: -28px; }
 .oc-stack3 { margin-top: -56px; }
 .oc-stack .oc-chip2 { justify-content: space-between; }
-.oc-more { grid-row: 3; grid-column: 2; justify-self: end; /* 2026-10-22: lower right corner of the chips panel */ position: relative; z-index: 1; }
+.oc-more { grid-row: 2; grid-column: 2; justify-self: end; /* 2026-10-22: lower right corner of the chips panel */ position: relative; z-index: 1; }
 .oc-lead .oc-grp-gap { margin-right: 0; }   /* 2026-10-22: Book no longer keeps the 16px right margin -- it made Book 16px narrower than the Next event pill in the shared column */
 .oc-lead > .mw-usd-slot { display: flex; }
 .mw-chip.mw-usd { gap: 6px; padding: 1px 10px 1px 8px; font-size: 11px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
@@ -4342,9 +4342,9 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .cockpit-band.oc-card .oc-body { padding: 14px; column-gap: 36px; }
 .oc-card .oc-body::before, .oc-card .oc-body::after { content: ""; grid-row: 1 / span 3; align-self: stretch; justify-self: stretch; margin: -12px; border: 1px solid var(--border, #e5e5e2); border-radius: 6px; background: var(--card-bg, #fff); pointer-events: none; z-index: -1; }
 .oc-card .oc-body::before { grid-column: 1; }
-.oc-card .oc-body::after { grid-column: 2; }
+.oc-card .oc-body::after { grid-column: 2; grid-row: 1 / span 2; }   /* 2026-10-22: the chips panel is two lines tall */
 /* 2026-10-22, user-directed: Next event, Book and +N more form their own third panel, one column wide (the width of Book), right of the chips. */
-.oc-card .oc-side { content: ""; grid-row: 1 / span 3; grid-column: 3; align-self: stretch; justify-self: stretch; margin: -12px; border: 1px solid var(--border, #e5e5e2); border-radius: 6px; background: var(--card-bg, #fff); pointer-events: none; z-index: -1; }
+.oc-card .oc-side { content: ""; grid-row: 1 / span 2; grid-column: 3; align-self: stretch; justify-self: stretch; margin: -12px; border: 1px solid var(--border, #e5e5e2); border-radius: 6px; background: var(--card-bg, #fff); pointer-events: none; z-index: -1; }
 .oc-lead .oc-grp[title="Next event"] > *, .oc-lead .oc-grp[title="Book"] > * { width: 100%; justify-content: center; box-sizing: border-box; }
 .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Book"] { display: flex; }
 /* 2026-10-22, user-directed: the panel is as wide as Book; the event pill takes no part in sizing (width 0, then min-width 100% of the column) and is clipped to fit. */

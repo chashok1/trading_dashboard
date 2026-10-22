@@ -35,7 +35,7 @@
       return (i ? '<i class="oc-ar">&rarr;</i>' : '') +
         (i === last && wordy ? '<span class="oc-w ' + cls(st) + '">' + esc(st) + '</span>' : shape(st));
     }).join('');
-    return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + esc(d.symbol) + '</b>' +
+    return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + esc(d.label || d.symbol) + '</b>' +
       (showDate && d.changed_on ? '<span class="oc-dt">' + d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) + '</span>' : '') +
       '<span class="oc-ft">' + (path.length > shown.length ? '<i class="oc-ar">&hellip;</i>' : '') + steps + '</span></span>';
   }
@@ -245,10 +245,10 @@
     function firstOverflow(label) {
       more.hidden = false; more.textContent = label;   // the button narrows the line, so measure with its real text
       Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
-      // Three static rows (2026-10-18, user-directed: one more line): size the line to three chip-rows; anything that wraps onto a third row goes to the overlay.
+      // Two static rows (2026-10-22, user-directed: back to two lines): size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
       var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1;
       var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
-      line.style.maxHeight = (3 * h + 2 * gap) + 'px';
+      line.style.maxHeight = (2 * h + gap) + 'px';
       var lr = line.getBoundingClientRect(), lb = lr.bottom;
       // Book + the button sit over the third row's right end: chips there must stop short of them.
       // 2026-10-22: the event pill (row 1), Book (row 2) and the button (row 3) sit over the line's right end: a chip that
@@ -285,6 +285,8 @@
       var rest = first < 0 ? [] : items.slice(first);
       if (rest.length && rest[0].chip && rest[0].grp > 1) rest.unshift({ html: '<span class="oc-dl">' + esc(rest[0].day || 'This week') + '</span>' });
       pop.innerHTML = rest.map(function (i) { return i.html; }).join('');
+      // 2026-10-22: everything from the first overflowing chip on is hidden in the line (it is in the overlay), so no chip can sit under the button.
+      if (first >= 0) Array.prototype.forEach.call(line.children, function (c, i) { if (i >= first) c.style.visibility = 'hidden'; });
       more.hidden = !nChips;
       more.textContent = '+' + nChips + ' more ▾';
       if (!nChips) setOpen(false);
@@ -294,7 +296,7 @@
     if (!_docClick) { _docClick = true; document.addEventListener('click', function (e) { if (st.open && !el.contains(e.target)) { var p2 = document.getElementById('ocPop'), m2 = document.getElementById('ocMore'); if (p2) p2.hidden = true; if (m2) m2.classList.remove('on'); st.open = false; } }); }
     setOpen(false);
     fit();
-    if (!_ro && window.ResizeObserver) { _ro = true; new ResizeObserver(function () { fit(); }).observe(el); }
+    if (!_ro && window.ResizeObserver) { _ro = true; var ro = new ResizeObserver(function () { if (window.ocFit) window.ocFit(); }); ro.observe(el); ro.observe(line); }   // the chips line also narrows when the left-hand pills load, which does not resize the card
   }
 
   // The card is shown when it has anything: Macro Week pills at its start and/or outlook-change chips.
@@ -346,7 +348,7 @@
           '<span class="oc-ft"><span class="oc-pct ' + pcCls + '">' + txt + '</span></span></span>';
       });
       // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.
-      var pills = D.pills || [], STACKS = [['Oil', 'Gld', 'BTC']], out = [], seen = {}, slot = {}, vixHtml = '', tenYAt = -1;
+      var pills = D.pills || [], STACKS = [['OIL', 'GLD', 'BTC']], out = [], seen = {}, slot = {}, vixHtml = '', tenYAt = -1;
       pills.forEach(function (p, i) {
         var k = -1;
         STACKS.forEach(function (st, j) { if (st.indexOf(p.label) >= 0) k = j; });
