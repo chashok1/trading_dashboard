@@ -2781,6 +2781,32 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
 _INDEX_PILLS = [("SPX", "SPX"), ("NDQ", "$COMP"), ("RUS", "RUT"), ("VIX", "VIX"), ("OIL", "/CL"), ("GLD", "/GC"), ("10Y", "TNX:CGI"), ("BTC", "/BTC")]   # labels are fallbacks; short_name() wins
 
 
+@router.get("/api/cockpit/rr-history")
+def get_rr_history(symbol: str = Query(...), days: int = Query(90, ge=0, le=3650)) -> dict:
+    """Daily risk range (low LRR / high TRR) and price for one symbol, oldest first -- the Macro Rail range-bar click chart.
+    days=0 means every stored day. Weekend rows are left out. Loaded only when a bar is clicked."""
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT r.as_of_date, r.lrr, r.trr, q.last_price, t.a_trade_value, t.a_trend_value FROM drv_rr r "
+            "LEFT JOIN drv_quote q ON q.tos_symbol = r.tos_symbol AND q.as_of_date = r.as_of_date "
+            "LEFT JOIN drv_technicals t ON t.tos_symbol = r.tos_symbol AND t.as_of_date = r.as_of_date "
+            "WHERE r.tos_symbol = :s AND EXTRACT(DOW FROM r.as_of_date) BETWEEN 1 AND 5 "
+            "AND (:d = 0 OR r.as_of_date >= (SELECT MAX(as_of_date) FROM drv_rr WHERE tos_symbol = :s) - :d) "
+            "ORDER BY r.as_of_date"), {"s": symbol, "d": days}).all()
+    f = lambda v: None if v is None else float(v)
+    pts, prev = [], None
+    for r in rows:
+        price = f(r[3])
+        # drv_quote repeats the prior day's price when a day's data is missing: an identical value is a stale carry-forward, so leave it out
+        # (the chart joins the real points) instead of drawing a flat step.
+        stale = price is not None and price == prev
+        if price is not None:
+            prev = price
+        pts.append({"date": r[0].isoformat(), "lrr": f(r[1]), "trr": f(r[2]), "price": None if stale else price,
+                    "trade": f(r[4]), "trend": f(r[5])})
+    return {"symbol": symbol, "days": days, "points": pts}
+
+
 @router.get("/api/cockpit/index-pills")
 def get_index_pills(date: Optional[str] = Query(None)) -> dict:
     d = _resolve_date(date)

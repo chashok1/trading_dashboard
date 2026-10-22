@@ -4464,3 +4464,18 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    comes from the gauge wrap's left padding (16 -> 4px) and the zone badge (62 -> 58px) above. */
 .msr-vol-cluster > .msr-rb-wrap { margin-left: 2px; }
 .msr-vol-cluster .msr-rb { width: 24px; }
+
+/* 2026-10-22, user-directed: click a Macro Rail risk range bar -> history chart popup (web/rr_history.js). The bar's click area is padded
+   (invisible) so the 3px bar is easy to hit; nothing visible moves. */
+.msr-rb-wrap { position: relative; cursor: pointer; }
+.msr-rb-wrap::before { content: ""; position: absolute; left: -2px; right: -2px; top: -7px; bottom: -7px; }
+#rrHistModal { position: fixed; inset: 0; z-index: 3000; background: rgba(15,23,42,.35); display: flex; align-items: center; justify-content: center; }
+#rrHistModal[hidden] { display: none !important; }
+.rrh-box { background: var(--card-bg, #fff); border: 1px solid var(--border, #d4d4d8); border-radius: 8px; width: min(820px, 94vw); box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+.rrh-hdr { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border, #e5e5e2); font-size: 12px; }
+.rrh-hdr #rrhNow { color: var(--text-2, #5b6172); font-size: 11px; flex: 1; }
+.rrh-btns button { border: 1px solid var(--border, #d4d4d8); background: var(--card-bg, #fff); border-radius: 999px; font-size: 10px; padding: 1px 8px; margin-left: 4px; cursor: pointer; }
+.rrh-btns button.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+#rrhClose { border: 0; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text-2, #5b6172); }
+.rrh-body { position: relative; height: 340px; padding: 8px 12px 10px; }
+#rrhMsg { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 12px; color: var(--text-2, #5b6172); }
