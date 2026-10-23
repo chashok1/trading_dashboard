@@ -7,7 +7,7 @@
  * The rows and settings it reads are fetched once from the same /api endpoints the Actionable screen uses. */
 (function () {
   'use strict';
-  var POPS_URL = '/static/actionable_pops.js?v=20261023j';
+  var POPS_URL = '/static/actionable_pops.js?v=20261023v';
   var api = null, loading = null, rows = {};
   var popState = {
     date: null, anchorDate: null, rows: [], allRows: [], filters: { trade_mode: false, act_only: false },
@@ -150,6 +150,11 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
   // X button in the popup header: the shared code hides the popup; this resets the hover state so the same symbol can be hovered again.
   document.addEventListener('click', function (e) {
     if (!(e.target && e.target.closest && e.target.closest('[data-actpop-close]'))) return;
+    clearTimeout(hideT);
+    if (hoverEl) { muteTitle(hoverEl.closest('.msr-row'), false); hoverEl = null; }
+  });
+  // The shared popup code closed the popup because the pointer left it: reset the hover state so the same symbol can be hovered again.
+  window.addEventListener('actpop:closed', function () {
     clearTimeout(hideT);
     if (hoverEl) { muteTitle(hoverEl.closest('.msr-row'), false); hoverEl = null; }
   });

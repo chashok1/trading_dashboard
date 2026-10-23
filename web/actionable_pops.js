@@ -1399,6 +1399,47 @@ function hideSourcePop() {
   _srcPopEl = null;
   const pop = $('sourcePop');
   if (pop) pop.style.display = 'none';
+  _popWatchStop();
+}
+
+// 2026-10-23, user: "when I move out of the popup, it needs to be closed". The Action popup stays open while the mouse is on it
+// (or on the symbol that opened it, or crossing the small gap between them); this position check closes it ~200ms after the
+// pointer is anywhere else, whatever the mouseout / mouseleave events did. Fires 'actpop:closed' so the Dashboard's hover state resets.
+let _popWatch = null;
+function _popWatchStop() {
+  if (!_popWatch) return;
+  document.removeEventListener('mousemove', _popWatch.onMove, true);
+  clearTimeout(_popWatch.timer);
+  _popWatch = null;
+}
+function _popWatchStart(anchor, pop) {
+  _popWatchStop();
+  const w = _popWatch = { x: -1, y: -1, timer: null };
+  const inR = (r, x, y, m) => x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m;
+  const inside = () => {
+    const pr = pop.getBoundingClientRect();
+    if (inR(pr, w.x, w.y, 2)) return true;
+    if (anchor && anchor.isConnected) {
+      const ar = anchor.getBoundingClientRect();
+      if (inR(ar, w.x, w.y, 0)) return true;
+      // the gap between the symbol and the popup, over the symbol's own width
+      const top = Math.min(ar.bottom, pr.bottom), bot = Math.max(ar.top, pr.top);
+      if (w.x >= ar.left && w.x <= ar.right && w.y >= Math.min(top, bot) && w.y <= Math.max(top, bot)) return true;
+    }
+    return false;
+  };
+  w.onMove = (e) => {
+    w.x = e.clientX; w.y = e.clientY;
+    if (inside()) { clearTimeout(w.timer); w.timer = null; return; }
+    if (w.timer) return;
+    w.timer = setTimeout(() => {
+      w.timer = null;
+      if (_popWatch !== w || inside()) return;
+      hideSourcePop();
+      window.dispatchEvent(new CustomEvent('actpop:closed'));
+    }, 200);
+  };
+  document.addEventListener('mousemove', w.onMove, true);
 }
 
 function _showDataPop(el, html) {
@@ -1412,6 +1453,7 @@ function _showDataPop(el, html) {
     pop.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-actpop-close]')) hideSourcePop(); });
   }
   pop.style.pointerEvents = String(html).indexOf('class="actpop"') !== -1 ? 'auto' : '';
+  if (pop.style.pointerEvents === 'auto') _popWatchStart(el, pop); else _popWatchStop();
   const rect = el.getBoundingClientRect();
   let top = rect.bottom + 4;
   if (top + pop.offsetHeight > window.innerHeight - 8)
@@ -1823,13 +1865,13 @@ function _actpopRrBarHtml(row) {
         : rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
         ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
         : _highInTrrZone
-          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span></div>`
+          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">high ${_fmtUsd2(row.high_price)}</div></div>`
         : rawPos < 0
           ? `<div style="margin-top:36px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
           ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
         : _lowInLrrZone
-          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span></div>` : '')
+          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">low ${_fmtUsd2(row.low_price)}</div></div>` : '')
     + `</div></div></div>`;
 }
 
@@ -1879,6 +1921,94 @@ function _dvMarkHtml(tag, ref) {
   return `<span class="dv-mark" style="color:${ok ? same : other};font-weight:900;font-size:13px;line-height:1;flex-shrink:0;">${ok ? '✓' : '✗'}</span>`;
 }
 
+// The Technical checks the "Why this action" card built at derive time (row.why_card, technical step): one line per stage with a
+// tick / cross / dash. '' when the row has no card (older rows) so the caller falls back to the one-line Why.
+// 2026-10-23, user: highlight the important parts of a source's reason -- signed numbers (+ green / - red) and direction words.
+function _hiNote(s) {
+  const G = '#15803d', R = '#b91c1c';
+  return escapeHtml(String(s == null ? '' : s))
+    .replace(/(^|[\s(>])([+-]\d[\d,]*\.?\d*%?)/g, (m, a, n) => `${a}<b style="color:${n[0] === '-' ? R : G}">${n}</b>`)
+    .replace(/\b(rising|new on [A-Za-z0-9]+ list|new in [A-Za-z -]+?portfolio|on list|added|raised|upgraded|bullish|long)\b/gi, m => `<b style="color:${G}">${m}</b>`)
+    .replace(/\b(falling|dropped from [A-Za-z0-9 -]+? list|dropped|removed|downgraded|bearish|short)\b/gi, m => `<b style="color:${R}">${m}</b>`);
+}
+
+// 2026-10-23, user: the Technical read as a chain -- Trend/Trade 10 -> Bands rising -> RR Zone 10 -> Score 10.
+// Trend/Trade and RR Zone carry their scores. The Bollinger bands are NOT scored: they only pick which list of setups RR Zone uses
+// (rising bands = bull setups, flat / falling = not-bull setups) and a falling band is just a warning (etl/derive.py Pass 2), so the
+// step reads "Bands rising / flat / falling". A bearish or neutral Trend/Trade ends the chain (later steps shown as a dash).
+// The stage sentences (built at derive time, row.why_card) and the BB score / description are on hover. '' for rows without a card / scores.
+// What a Technical score means (the same -10..+10 scale at every step: ref_param_lookup seq values).
+function _scoreWord(n) {
+  if (n == null || isNaN(n)) return '';
+  if (n >= 10) return 'strongest buy';
+  if (n === 9) return 'good buy';
+  if (n === 8) return 'weaker buy';
+  if (n > 0) return 'mild buy';
+  if (n === 0) return 'neutral';
+  if (n <= -10) return 'sell all';
+  if (n === -9) return 'sell to min';
+  if (n === -8) return 'sell some';
+  return 'mild sell';
+}
+
+function _techChainHtml(row) {
+  const st = ((row && row.why_card && row.why_card.steps) || []).find(s => s.key === 'technical');
+  const lines = (st && st.lines) || [];
+  if (!lines.length || row.tn_td_score == null) return '';
+  const num = v => (v == null || v === '') ? null : Number(v);
+  const tt = num(row.tn_td_score), zone = num(row.zone_score), ts = num(row.tech_score), bbRule = num(row.bb_rng_strk_rule);
+  const tip = (title, parts) => escapeHtml([title].concat(parts.filter(Boolean).map(p => '• ' + _whyPlain(p))).join('\n'));
+  const body = l => String((l && l.text) || '').replace(/^[^:]*: /, '');
+  const clsOf = l => l.ok === true ? 'ok' : l.ok === false ? 'no' : (l.warn ? 'warn' : 'na');
+  const chip = (cls, label, title) => `<span class="tw-chain-chip ${cls}" title="${title}">${label}</span>`;
+  const off = (what, why) => chip('off', '┄', tip(what, [why]));
+  const arrow = '<span class="tw-arrow">→</span>';
+  let h = '';
+  // 1 Trend/Trade
+  const l1 = lines[0];
+  const ttNeutral = l1.ok === null && !l1.warn;
+  h += chip(clsOf(l1), `Trend/Trade ${tt}${l1.ok === true ? ' ✓' : l1.ok === false ? ' ✗' : ttNeutral ? ' · neutral' : ' ⚠'}`,
+            tip('Trend & Trade: ' + tt + ' = ' + _scoreWord(tt), [body(l1), row.tn_td_desc]));
+  // 2 Bollinger bands (a gate, not a score)
+  const l2 = lines[1];
+  h += arrow;
+  if (!l2) {
+    h += off('Bollinger bands', 'Not reached: Trend/Trade ended the chain');
+  } else {
+    const bbWord = bbRule == null ? 'Bands' : bbRule >= 2 ? 'Bands rising ✓' : bbRule >= 0 ? 'Bands flat · not counted' : 'Bands falling ⚠ warning only';
+    const bbCls = bbRule != null && bbRule >= 2 ? 'ok' : bbRule != null && bbRule < 0 ? 'warn' : 'na';
+    h += chip(bbCls, bbWord, tip('Bollinger bands', [body(l2), row.bb_desc && 'BB Range Streak ' + (row.bb_score != null ? num(row.bb_score) + ': ' : '') + row.bb_desc,
+              'Not added to the score: rising bands use the bull setups, flat or falling bands the not-bull setups']));
+  }
+  // 3 RR Zone
+  const l3 = lines[2];
+  h += arrow;
+  if (!l3) {
+    h += off('RR Zone', 'Not reached: an earlier step ended the chain');
+  } else {
+    h += chip(clsOf(l3), `RR Zone ${zone != null ? zone : '—'}`,
+              tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''), [body(l3), row.rr_desc, zone == null && 'No setup in the range right now']));
+  }
+  // Score
+  const side = actionDisplay((row.rr_action || '').toUpperCase()).side;
+  const lbl = actionDisplay((row.rr_action || '').toUpperCase()).label || '';
+  h += arrow + (ts != null
+    ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="${tip('Technical score: ' + ts + ' = ' + _scoreWord(ts), [lbl && 'Call: ' + lbl])}">Score ${ts}${side === 'sell' && lbl ? ' (' + escapeHtml(lbl) + ')' : ''}</span>`
+    : '<span class="tw-chain-chip final na" title="No Technical signal">no signal</span>');
+  return `<div class="actpop-tw tw-chain">${h}</div>`;
+}
+
+function _techStageLinesHtml(row) {
+  const st = ((row && row.why_card && row.why_card.steps) || []).find(s => s.key === 'technical');
+  if (!st || !(st.lines || []).length) return '';
+  return st.lines.map(l => {
+    const m = l.ok === true ? '<span class="wc-ok">&#10003;</span>' : l.ok === false ? '<span class="wc-no">&#10007;</span>' : '<span class="wc-dash">&ndash;</span>';
+    const i = String(l.text).indexOf(': ');
+    const body = i > 0 ? `<b>${escapeHtml(String(l.text).slice(0, i))}</b>: ${_whyHtml(String(l.text).slice(i + 2))}` : _whyHtml(l.text);
+    return `<div class="actpop-tw tw-stage${l.warn ? ' wc-warnline' : ''}">${m} ${body}</div>`;
+  }).join('');
+}
+
 function _actpopDriverBullets(row, side) {
   const sc = state.sourceScorecard || {};
   // reason/dt are escaped separately and joined with a literal HTML entity
@@ -1897,18 +2027,21 @@ function _actpopDriverBullets(row, side) {
       hit = `<span class="actpop-hit hit-rate-pill ${hcls}" title="${escapeHtml(label)} hit rate: ${wr}% (n=${srcSc.n})">${wr}%</span>`;
     }
     const actionLabel = d.label || actUpper || '—'; // literal em dash, not an entity -- see note above
-    let noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
+    let noteHtml = _hiNote(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
     // 2026-10-02: Technical shows two label:value pieces -- Why <situation> /
     // Call <action>: <verdict> -- from rr_why's two lines (etl/technical_why.py).
     if (tw) {
-      noteHtml = `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`
+      // 2026-10-23, user: the "Why this action" card's Sources / Technical sections were duplicates of this list, so the card's
+      // three Technical checks (Trend & Trade, Bollinger bands, Range position) live here now, replacing the one-line "Why".
+      const _stages = _techChainHtml(row) || _techStageLinesHtml(row);
+      noteHtml = (_stages || `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`)
         + `<div class="actpop-tw"><span class="tw-k">Call</span><b>${escapeHtml(actionLabel)}</b>: ${_whyHtml(tw.verdict)}</div>`
         + (tw.cost ? `<div class="actpop-tw tw-cost">${escapeHtml(tw.cost)}</div>` : '');
     }
     // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header
     // comment; _srcReasonsHtml's grid-column twin of this same treatment.
     noteHtml += _dropPctPillHtml({ action: actUpper, pct_since_drop: pctSinceDrop, drop_conflict: dropConflict, up_streak_3d: upStreak3d });
-    return `<div class="actpop-driver ${cls}">
+    return `<div class="actpop-driver ${cls} dv-${_tk(tag)}">
       <span class="dv-name">${escapeHtml(label)}</span>${hit || '<span></span>'}
       <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
       <span class="dv-note">${noteHtml}</span>
@@ -1916,7 +2049,12 @@ function _actpopDriverBullets(row, side) {
     </div>`;
   };
 
-  const rows = [];
+  // 2026-10-23, user: order = Stop, the row that drove it, rows that support it, rows that oppose it, untagged rows, warning-only sources,
+  // warning-only and PVV last (warnings at the very bottom). Newest-first (and Technical first) is kept only inside each group, because the sort is stable.
+  const _rows = [];
+  const _grp = tag => tag === 'drove it' ? 1 : tag === 'supports' ? 2 : tag === 'opposes' ? 3 : 4;
+  const _tk = tag => tag === 'drove it' ? 'drove' : tag === 'supports' ? 'supports' : tag === 'opposes' ? 'opposes' : 'none';
+  const rows = { push: (h, g) => _rows.push({ g: g == null ? 4 : g, h }) };
   const sources = _sourcesOf(row);
   const winning = (row.winning_source || '').toString();
   const winEntry = sources.find(s => (s.source || s.source_code || '') === winning);
@@ -1931,12 +2069,12 @@ function _actpopDriverBullets(row, side) {
   // judged against the stop (sell side), not against HOLD.
   const stopGate = _stopGated(row);
   if (stopGate) {
-    rows.push(`<div class="actpop-driver sell">
+    rows.push(`<div class="actpop-driver sell dv-stop">
       <span class="dv-name">Stop</span><span></span>
       <span class="dv-action sell">Breached</span>
       <span class="dv-note">${escapeHtml(_stopDriverNote(row))}</span>
       ${_dvMarkHtml('drove it', 'sell')}<span class="dv-tag">drove it</span>
-    </div>`);
+    </div>`, 0);
   }
   // 2026-10-21, user: same labels as the "Why this action" card -- drove it / supports / opposes (never "not counted", which only fits the
   // warning-only lines) -- and the data newest first (an RTA today on top). Technical reflects today, so it comes first; then the sources by date.
@@ -1951,7 +2089,7 @@ function _actpopDriverBullets(row, side) {
     // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
     const _twLines = String(row.rr_why || '').split('\n');
     const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
-    rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw));
+    rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw), _grp(tag));
   }
   const srcList = sources.filter(s => !s.warning_only);
   const _isWinSrc = s => (s.source || s.source_code || '') === winning;
@@ -1966,7 +2104,17 @@ function _actpopDriverBullets(row, side) {
     const tag = _isWinSrc(s)
       ? (stopGate || techOverrides ? 'opposes' : 'drove it')
       : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : _rel(sSide);
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), tag, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), tag, s.pct_since_drop, s.drop_conflict, s.up_streak_3d), _grp(tag));
+  }
+  // 2026-10-23, user: warning-only sources (e.g. SSS weight fell) sit with the other sources instead of in the card; never counted.
+  for (const w of sources.filter(s => s.warning_only)) {
+    const wd = fmtMD(w.snapshot_date);
+    rows.push(`<div class="actpop-driver dv-warn">
+      <span class="dv-name">${escapeHtml(w.source || w.source_code || '?')}</span><span></span>
+      <span class="dv-action">Warning</span>
+      <span class="dv-note"><div class="actpop-tw wc-warnline">${escapeHtml(String(w.reason || 'weight fell').trim())}${wd ? ' &middot; ' + escapeHtml(wd) : ''}</div></span>
+      <span></span><span class="dv-tag">warning only</span>
+    </div>`, 7);
   }
   // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
   // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
@@ -1983,15 +2131,16 @@ function _actpopDriverBullets(row, side) {
       const conflicts = (side === 'buy' || side === 'sell') && pvvSide !== side;
       const tag = conflicts ? 'opposes' : (pvvSide === side ? 'supports' : '');
       const info = _PVV_DECISION_INFO[pvvD];
-      rows.push(`<div class="actpop-driver ${cls}">
+      rows.push(`<div class="actpop-driver ${cls} dv-${_tk(tag)}">
         <span class="dv-name">PVV</span><span></span>
         <span class="dv-action ${cls}">${escapeHtml(_PVV_LABEL[pvvD] || pvvD)}</span>
         <span class="dv-note">${escapeHtml(info ? info.meaning : '')}</span>
         ${tag ? `${_dvMarkHtml(tag, (side === 'buy' || side === 'sell') ? side : winSide)}<span class="dv-tag">${escapeHtml(tag)}</span>` : '<span></span><span></span>'}
-      </div>`);
+      </div>`, 6);
     }
   }
-  return rows.length ? `<div class="actpop-drivers">${rows.join('')}</div>` : '';
+  _rows.sort((a, b) => a.g - b.g);   // stable: keeps Technical-first / newest-first inside each group
+  return _rows.length ? `<div class="actpop-drivers">${_rows.map(r => r.h).join('')}</div>` : '';
 }
 
 // Fired composite rules, partitioned by whether their proven direction
@@ -2358,6 +2507,78 @@ function _actpopIndicatorsLineHtml(row) {
   return cells.length ? `<div class="actpop-ind">${cells.join('')}</div>` : '';
 }
 
+// 2026-10-23, user: the card's headline is one summary line -- a tag per source (supporting / opposing / warning), Technical, then the
+// Final Call:  Sources [CALL ▲★] [PS ▲] [RR ▼] [SSS ⚠]  +  Technical [BUY TO MIN]  →  [BUY MORE].  The relations (drove it / supports /
+// opposes) mirror _actpopDriverBullets so the tags and the rows below always agree. The one-sentence reason is shown only when the
+// parts do not line up (a mixed or missing lean, a different side, a stop) -- when they agree the tags are enough.
+function _actpopSummaryLineHtml(row, c) {
+  const side = finalCall(row).side;
+  const sources = _sourcesOf(row);
+  const winning = (row.winning_source || '').toString();
+  const isWin = s => (s.source || s.source_code || '') === winning;
+  const winEntry = sources.find(isWin);
+  const winSide = winEntry ? actionDisplay((winEntry.action || '').toUpperCase()).side : null;
+  const rraUpper = (row.rr_action || '').toUpperCase();
+  const techSide = rraUpper ? actionDisplay(rraUpper).side : null;
+  const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSide === side);
+  const stopGate = _stopGated(row);
+  const rel = sd => (sd === 'buy' || sd === 'sell') ? ((side === 'buy' || side === 'sell') ? (sd === side ? 'supports' : 'opposes') : (winSide && sd === winSide ? 'supports' : 'opposes')) : '';
+  const arrow = sd => sd === 'buy' ? '▲' : sd === 'sell' ? '▼' : '';
+  const cls = tag => tag === 'drove it' || tag === 'supports' ? 'ok' : tag === 'opposes' ? 'no' : 'na';
+  const tip = (title, lines) => escapeHtml([title].concat((lines || []).filter(Boolean).map(l => '• ' + l)).join('\n'));
+  const items = [];
+  if (stopGate) items.push({ g: 0, h: `<span class="wc-chip no" title="${tip('Stop breached', [_stopDriverNote(row)])}">Stop ▼</span>` });
+  const srcs = sources.filter(s => !s.warning_only);
+  srcs.sort((a, b) => {
+    const da = String(a.snapshot_date || '').slice(0, 10), db = String(b.snapshot_date || '').slice(0, 10);
+    if (da !== db) return da < db ? 1 : -1;
+    return (isWin(b) ? 1 : 0) - (isWin(a) ? 1 : 0);
+  });
+  let nFor = 0, nAgainst = 0, nWarn = 0;
+  for (const s of srcs) {
+    const code = s.source || s.source_code || (isWin(s) ? winning : '?');
+    const sSide = actionDisplay((s.action || '').toUpperCase()).side;
+    const tag = isWin(s) ? (stopGate || techOverrides ? 'opposes' : 'drove it')
+      : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : rel(sSide);
+    if (cls(tag) === 'ok') nFor++; else if (cls(tag) === 'no') nAgainst++;
+    const d = fmtMD(s.snapshot_date);
+    const g = tag === 'drove it' ? 1 : tag === 'supports' ? 2 : tag === 'opposes' ? 3 : 4;
+    const lbl = actionDisplay((s.action || '').toUpperCase()).label || s.action || '';
+    items.push({ g, h: `<span class="wc-chip ${cls(tag)}${tag === 'drove it' ? ' drove' : ''}" title="${tip(code + ' ' + lbl + (tag ? ' (' + tag + ')' : ''), [d && 'Snapshot ' + d, s.reason])}">${escapeHtml(code)} ${arrow(sSide)}${tag === 'drove it' ? ' ★' : ''}</span>` });
+  }
+  for (const w of sources.filter(s => s.warning_only)) {
+    nWarn++;
+    const wd = fmtMD(w.snapshot_date);
+    items.push({ g: 7, h: `<span class="wc-chip warn" title="${tip((w.source || w.source_code || '?') + ' warning only (not counted)', [wd && 'Snapshot ' + wd, w.reason])}">${escapeHtml(w.source || w.source_code || '?')} ⚠</span>` });
+  }
+  const pvvD = row.pvv_decision;
+  if (pvvD && pvvD !== 'NO_ACTION' && pvvD !== 'WATCH') {
+    const ps = _PVV_BUY_SIDE.includes(pvvD) ? 'buy' : (_PVV_SELL_SIDE.includes(pvvD) ? 'sell' : null);
+    if (ps) {
+      const tag = (side === 'buy' || side === 'sell') ? (ps === side ? 'supports' : 'opposes') : '';
+      const info = _PVV_DECISION_INFO[pvvD];
+      items.push({ g: 6, h: `<span class="wc-chip ${cls(tag)}" title="${tip('PVV ' + (_PVV_LABEL[pvvD] || pvvD), [info && info.meaning])}">PVV ${arrow(ps)}</span>` });
+    }
+  }
+  items.sort((a, b) => a.g - b.g);
+  const counts = (items.length > 4)
+    ? `<span class="wc-sum-n">${[nFor && nFor + ' for', nAgainst && nAgainst + ' against', nWarn && nWarn + ' warning'].filter(Boolean).join(' · ')}</span>` : '';
+  const srcHtml = items.length ? items.map(i => i.h).join('') : '<span class="wc-chip na">none</span>';
+  const techTag = !rraUpper ? '' : stopGate ? (techSide === 'sell' ? 'supports' : techSide === 'buy' ? 'opposes' : '')
+    : techOverrides ? 'drove it' : winEntry ? rel(techSide) : 'drove it';
+  const techLbl = rraUpper ? (actionDisplay(rraUpper).label || rraUpper) : '';
+  const techHtml = rraUpper
+    ? `<span class="wc-chip ${cls(techTag)}${techTag === 'drove it' ? ' drove' : ''}" title="${tip('Technical ' + techLbl + (techTag ? ' (' + techTag + ')' : ''), [])}">${escapeHtml(techLbl)} ${arrow(techSide)}</span>`
+    : '<span class="wc-chip na" title="Technical has no signal">no signal</span>';
+  const fcCls = c.side === 'buy' ? 'ok' : c.side === 'sell' ? 'no' : 'na';
+  // aligned = the Final Call's side is backed by a source lean and by Technical, with nothing against it and no stop in the way
+  const aligned = !stopGate && (side === 'buy' || side === 'sell') && techSide === side && nFor > 0 && nAgainst === 0;
+  const html = `<div class="wc-sum"><span class="wc-sum-k">Sources</span>${srcHtml}${counts}`
+    + `<span class="wc-sum-op">+</span><span class="wc-sum-k">Technical</span>${techHtml}`
+    + `<span class="wc-sum-op">→</span><span class="wc-chip final ${fcCls}">${escapeHtml(c.verdict || 'HOLD')}</span></div>`;
+  return { html, aligned };
+}
+
 function _actpopWhyCardHtml(row) {
   const c = row && row.why_card;
   if (!c || !Array.isArray(c.steps)) return '';
@@ -2370,7 +2591,10 @@ function _actpopWhyCardHtml(row) {
     const style = col ? ` style="color:${col}"` : '';
     return ok ? `<span class="wc-ok"${style}>&#10003;</span>` : `<span class="wc-no"${style}>&#10007;</span>`;
   };
-  const steps = c.steps.map((st, i) => {
+  // 2026-10-23, user: the card keeps only the summary line (and What would change it): Sources / Technical are the rows below, Rules and Position are not shown.
+  // (A breached stop still shows as the red Stop tag in the summary line and as the Stop row below.)
+  const _keep = () => false;
+  const steps = c.steps.filter(_keep).map((st, i) => {
     // 2026-10-20, user: on the Sources lines only the action word is colored -- buys green, sells red.
     const _srcWord = t => {
       const m = st.key === 'sources' && String(t).match(/^(\S+ )(INCREASE|ADD|BUY SOME|BUY MORE|BUY TO MIN|REMOVE|REDUCE|SELL SOME|SELL TO MIN|SELL ALL|SELL OVER)(.*)$/);
@@ -2381,12 +2605,17 @@ function _actpopWhyCardHtml(row) {
     // 2026-10-21, user: "sell skipped" (the bounce exception to the below-Trade sell) is highlighted, and a warning line gets a soft amber band.
     const _skipHi = h => h.replace(/sell skipped/i, m => `<span class="wc-skip">${m}</span>`);
     const lines = (st.lines || []).map(l => `<div class="wc-line${l.warn ? ' wc-warnline' : ''}">${mark(l.ok, st.key === 'sources' ? st.ref : null)} ${_skipHi(_srcWord(l.text))}</div>`).join('');
-    return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">${i + 1}</span>`
+    return `<div class="wc-step wc-${escapeHtml(st.tone || 'neutral')}"><span class="wc-n">!</span>`
       + `<div class="wc-body"><div class="wc-head"><b>${escapeHtml(st.title)}</b> <span class="wc-text">${escapeHtml(st.text)}</span></div>${lines}</div></div>`;
   }).join('');
   const flip = (c.flip || []).length
     ? `<div class="wc-flip"><b>What would change it:</b><ul>${c.flip.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></div>` : '';
   // the result sentence is the card header (colored by the verdict side)
+  const sum = _actpopSummaryLineHtml(row, c);
+  if (sum) {
+    const why = (c.result && !sum.aligned) ? `<div class="wc-result">${escapeHtml(c.result)}</div>` : '';
+    return `<div class="wc-card">${sum.html}${why}${steps}${flip}</div>`;
+  }
   const head = c.result
     ? `<b>${escapeHtml(c.verdict || '')}</b> &mdash; ${escapeHtml(c.result)}`
     : `Why ${escapeHtml(c.verdict || 'this action')}`;
@@ -2505,13 +2734,13 @@ function _buildActionPopHtmlV2(row) {
   const _pill = `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`;
   // 2026-10-23, user: the header pill must be the same size as the one below. In the header it is a flex item that inherits the symbol line's 22px line-height (so it was taller); line-height:normal makes it the same height as the inline one.
   const _pillHdr = _pill.replace('<span class="actpop-call', '<span style="line-height:normal;" class="actpop-call');
-  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;"><div><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
+  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;height:18px;line-height:18px;"><div><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
     // 2026-10-22, user: symbol always shown; company name bigger, in the outlook colour (falls back to the display name when it differs from the symbol)
     + ((row.company_name || (row.rr_name && row.rr_name !== sym))
         ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
     + `</div><div style="display:flex;align-items:center;gap:10px;">${_pillHdr}`   // 2026-10-22, user: action pill right-justified in the header
-    + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:22px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
-    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:2px 0 6px;"><div class="scm-own-svg"></div></div>`;
+    + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:18px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
+    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:10px 0 6px;"><div class="scm-own-svg"></div></div>`;
   h += `<div class="actpop-top"><div class="actpop-head">
     <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
     // price / shares / earnings share one fixed band with the right-hand control groups

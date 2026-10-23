@@ -498,11 +498,12 @@
 .actpop-own .actpop-amt { margin-left: 0; }
 
 /* 2026-10-21, user: IV / MACD / MACDH / RSI line above the "Why" card; RSI as a 0-100 range bar. */
-.actpop-ind { display: flex; align-items: center; gap: 11px; flex-wrap: nowrap; padding: 5px 8px; margin: 0 0 8px; border: 1px solid var(--border, #d4d4d8); border-radius: 8px; background: #fff; font-size: 11px; }
+.actpop-ind { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; padding: 5px 6px; margin: 0 0 8px; border: 1px solid var(--border, #d4d4d8); border-radius: 8px; background: #fff; font-size: 11px; }
 /* 2026-10-22, user: smaller type + tighter gaps so the whole indicators line fits on one line. */
-.actpop-ind-c { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.actpop-ind-c { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.actpop-ind .actpop-val { padding: 2px 4px; }  /* 2026-10-23: tighter so the PVV value (BUY_DIP) stays inside the box */
 .actpop-ind-k { font-size: 9px; font-weight: 800; letter-spacing: .04em; color: #64748b; text-transform: uppercase; }
-.actpop-rsi-bar { position: relative; display: inline-block; width: 60px; height: 8px; border-radius: 4px; border: 1px solid #cbd5e1; }
+.actpop-rsi-bar { position: relative; display: inline-block; width: 48px; height: 8px; border-radius: 4px; border: 1px solid #cbd5e1; }
 .actpop-rsi-tick { position: absolute; top: -3px; width: 3px; height: 14px; margin-left: -1px; background: #0f172a; border-radius: 1px; }
 
 /* 2026-10-21, user: ↗ / ↘ before the Td and Tn boxes, outside them (green = price above the line, red = below). */
@@ -529,3 +530,39 @@
 .actpop-rrv-track .actpop-rr-tick { top:auto; left:50%; width:15px; height:3px; transform:translate(-50%,50%); }
 .actpop-rrv-track .actpop-rr-tag { top:auto; left:14px; transform:translateY(50%); line-height:1.15; }
 .actpop-rrv-px { display:block; font-weight:600; font-size:8px; opacity:.85; }
+
+/* 2026-10-23, user: driver rows look like the Supporting / Opposing boxes - white background, a coloured bar at the start
+   (green = drove it / supports, red = opposes, amber = warning only), the important words in the text coloured. */
+.actpop-driver, .actpop-driver.buy, .actpop-driver.sell { background:#fff; border:1px solid #e5e7eb; border-left:3px solid #cbd5e1; }
+.actpop-driver.dv-drove, .actpop-driver.dv-supports { border-left-color: var(--act-buy); }
+.actpop-driver.dv-opposes, .actpop-driver.dv-stop { border-left-color: var(--act-sell-strong); }
+.actpop-driver.dv-warn { border-left-color:#f59e0b; }
+/* 2026-10-23, user: very light green / very light red backgrounds for the same rows (others stay white). */
+.actpop-driver.dv-drove, .actpop-driver.dv-supports { background:#f0fdf4; }
+.actpop-driver.dv-opposes, .actpop-driver.dv-stop { background:#fef2f2; }
+.actpop-driver.dv-warn { background:#fefce8; }  /* 2026-10-23, user: warning-only rows very light yellow */
+
+/* 2026-10-23, user: one summary line in the "Why this action" card -- a tag per source, Technical, then the Final Call. */
+.wc-sum { display:flex; flex-wrap:wrap; align-items:center; gap:4px 5px; min-height:24px; margin-bottom:4px; padding:3px 4px; border-radius:6px; background:#fff; }
+.wc-sum-k { font-size:9px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#64748b; margin-right:1px; }
+.wc-sum-op { font-size:12px; font-weight:800; color:#94a3b8; margin:0 2px; }
+.wc-sum-n { font-size:9px; color:#64748b; margin:0 2px; white-space:nowrap; }
+.wc-chip { display:inline-block; font-size:10px; font-weight:700; line-height:1.3; padding:1px 7px; border-radius:10px; border:1px solid #cbd5e1; background:#f8fafc; color:#64748b; white-space:nowrap; cursor:help; }
+.wc-chip.ok { background:#f0fdf4; border-color:var(--act-buy, #3a6a4a); color:var(--act-buy-strong, #166534); }
+.wc-chip.no { background:#fef2f2; border-color:var(--act-sell-strong, #9e3636); color:var(--act-sell-strong, #991b1b); }
+.wc-chip.warn { background:#fefce8; border-color:#f59e0b; color:#92400e; }
+.wc-chip.drove { font-weight:900; box-shadow:0 0 0 1px currentColor; }
+.wc-chip.final { font-size:12px; font-weight:900; padding:2px 10px; border-radius:6px; cursor:default; }
+.wc-chip.final.ok { background:var(--act-buy-bg, #dcfce7); }
+.wc-chip.final.no { background:var(--act-sell-strong-bg, #fee2e2); }
+.wc-result { font-size:11px; color:#334155; padding:2px 6px 4px; }
+
+/* 2026-10-23, user: Technical chain  Trend/Trade 10 -> BB Streak 0 -> RR Zone 10 -> Score 10. */
+.actpop-tw.tw-chain { display:flex; flex-wrap:wrap; align-items:center; gap:3px 4px; margin:1px 0 9px; }  /* 2026-10-23: room before the Call line */
+.tw-arrow { font-size:10px; color:#94a3b8; font-weight:800; }
+.tw-chain-chip { display:inline-block; font-size:9.5px; font-weight:700; line-height:1.3; padding:0 6px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#64748b; white-space:nowrap; cursor:help; }
+.tw-chain-chip.ok { background:#f0fdf4; border-color:var(--act-buy, #3a6a4a); color:var(--act-buy-strong, #166534); }
+.tw-chain-chip.no { background:#fef2f2; border-color:var(--act-sell-strong, #9e3636); color:var(--act-sell-strong, #991b1b); }
+.tw-chain-chip.warn { background:#fefce8; border-color:#f59e0b; color:#92400e; }
+.tw-chain-chip.off { background:#fff; border-style:dashed; color:#cbd5e1; }
+.tw-chain-chip.final { font-weight:900; }
