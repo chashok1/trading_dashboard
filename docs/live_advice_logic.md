@@ -99,3 +99,12 @@ AVOID, BMN only above the Trade line.
 - Same-day sells are not known at plan time, so a same-day buy-back (spec 3 rule B, same-day branch) is not built.
 - The plan is frozen from 09:30 ET; positions bought intraday do not change starter accounts until the next plan.
 - `hist_y` has no rows for 9/25 and 9/28 (moves across the gap span two days).
+
+## LIVE column = price-triggered signals only (2026-10-23, user)
+
+The LIVE column and the Act (N) chip carry only what TODAY'S PRICE triggered: `TRIM` (day high reaches the trim line),
+`DIP_BUY_STRONG` / `DIP_BUY_LIGHT` (day low reaches the dip line), `BUY_BACK`, `WAIT`. `SELL_ALL`, `SELL_SOME`,
+`TRIM_TO_MAX` and `BUY_IDEA` come from last night's data and repeat the Final Call, so the screen drops them
+(`web/actionable.js::_livePriceOnly`, applied in `_fetchLiveData`). The API payload and `hist_advice_live` are unchanged.
+On 2026-10-22 data: stocks with a signal 27 -> 19, Act 17 -> 7. The hover's top lines give "Fires when" and the formula
+(`_liveRuleLinesHtml`).

@@ -4060,13 +4060,36 @@ async function _fetchLiveData() {
     const viewingLatest = !state.anchorDate || !state.date || state.date === state.anchorDate;
     const d = viewingLatest ? await fetchJson('/api/actionable/live') : null;
     state.live.data = d;
-    state.live.bySym = (d && d.stocks) || {};
-    state.live.act = new Set((d && d.today && d.today.act_symbols) || []);
+    // 2026-10-23, user: the LIVE column only carries what TODAY'S PRICE triggered (spike trim, dip buy, buy-back, wait).
+    // SELL ALL / SELL SOME / TRIM->MAX / BUY IDEA come from last night's data and repeat the Final Call, so they are left out here.
+    const po = _livePriceOnly((d && d.stocks) || {});
+    state.live.bySym = po.stocks;
+    state.live.act = po.act;
   } catch (e) {
     console.warn('live advice unavailable:', e);
     state.live.data = null; state.live.bySym = {}; state.live.act = new Set();
   }
   try { _syncTriggerSourcePills(); } catch (e) { console.warn('act chip:', e); }
+}
+const _LIVE_PRICE_SIGS = new Set(['TRIM', 'DIP_BUY_STRONG', 'DIP_BUY_LIGHT', 'BUY_BACK', 'WAIT']);
+function _livePriceOnly(stocks) {
+  const out = {}, act = new Set();
+  for (const [sym, s] of Object.entries(stocks || {})) {
+    const lines = (s.lines || []).filter(l => _LIVE_PRICE_SIGS.has(l.signal));
+    const keep = Object.assign({}, s, { lines });
+    if (!lines.length) {
+      Object.assign(keep, { signal: null, tier: null, est_value: null, chase: false });
+    } else {
+      const best = lines.slice().sort((a, b) => _LIVE_SIG[a.signal].rank - _LIVE_SIG[b.signal].rank)[0];
+      const tierIdx = Math.min(...lines.map(l => _LIVE_TIER_IDX[l.tier] != null ? _LIVE_TIER_IDX[l.tier] : 3));
+      keep.signal = best.signal;
+      keep.tier = Object.keys(_LIVE_TIER_IDX).find(k => _LIVE_TIER_IDX[k] === tierIdx);
+      keep.chase = lines.some(l => l.chase);
+      if (keep.tier === 'MUST' || keep.tier === 'CONSIDER') act.add(sym);
+    }
+    out[sym] = keep;
+  }
+  return { stocks: out, act };
 }
 function _liveActSet() { return (state.live && state.live.act) || new Set(); }
 
@@ -4146,6 +4169,7 @@ function _buildLivePopHtml(r) {
     lis.push(li('No live plan for this stock today (not held and not on the dip-buy list).'));
   } else {
     const p = s.plan || {};
+    for (const rl of _liveRuleLinesHtml(s)) lis.push(rl);   // when it fires + the formula, first
     if (p.prior_close != null) {
       lis.push(li(`Price ${s.price != null ? _liveP(s.price) : 'n/a'}, prior close ${_liveP(p.prior_close)}`
         + (p.sd_pct != null ? `, normal daily move ${p.sd_pct.toFixed(1)}% (SD)` : '')));
@@ -4228,6 +4252,52 @@ function _buildLivePopHtml(r) {
   }
   return `<div class="sp-title">${title}</div>`
        + `<ul style="margin:2px 0 4px 16px;padding:0;list-style:disc;font-size:10.5px;line-height:1.5;color:#334155;">${lis.join('')}</ul>`;
+}
+// 2026-10-23, user: the top lines of the LIVE hover say WHEN each signal fires and the FORMULA behind it, with this stock's own numbers.
+// Mirrors etl/derive_live_advice.py (evaluate_row + the night plan); see docs/live_advice_logic.md.
+function _liveRuleLinesHtml(s) {
+  const p = s.plan || {};
+  const li = t => `<li style="list-style:none;margin-left:-16px;">${t}</li>`;
+  const fires = t => li(`<b style="color:#0f172a;">Fires when:</b> ${t}`);
+  const formula = t => li(`<b style="color:#0f172a;">Formula:</b> ${t}`);
+  const sd = p.sd_pct != null ? p.sd_pct.toFixed(1) + '%' : 'SD';
+  const prior = p.prior_close != null ? _liveP(p.prior_close) : 'prior close';
+  const seen = new Set(), out = [];
+  for (const l of (s.lines || [])) {
+    if (!l.signal || l.signal === 'NONE' || seen.has(l.signal)) continue;
+    seen.add(l.signal);
+    const a = (s.accounts || []).find(x => x.name === l.account) || {};
+    if (l.signal === 'SELL_ALL') {
+      out.push(fires('a trusted source (CALL, RTA, TOP5 ...) dropped or cut the stock and you hold it'));
+      out.push(formula('sell the whole position, in every account that holds it'));
+    } else if (l.signal === 'SELL_SOME') {
+      out.push(fires('a trusted source cut its weight and no other signal fired'));
+      out.push(formula('sell 1 unit (or the whole position if smaller)'));
+    } else if (l.signal === 'TRIM') {
+      out.push(fires(`today’s high reaches the trim line${p.trim_line != null ? ' ' + _liveP(p.trim_line) : ''}`));
+      out.push(formula(`trim line = lower of prior close × (1 + 1.5 SD) and max(TRR, prior close × (1 + 1.0 SD)); prior ${prior}, SD ${sd}`
+        + `${p.trim_line != null ? ' → ' + _liveP(p.trim_line) : ''}; size = 1 unit`));
+    } else if (l.signal === 'TRIM_TO_MAX') {
+      out.push(fires('the account is over its max AND (held is above 1.25× max, or today’s high reaches the over-max line)'));
+      out.push(formula(`over-max line = lower of prior close × (1 + 1.0 SD) and 80% of the risk range; size = held − max`
+        + `${a.held != null && a.max != null ? ' = ' + _liveK(a.held) + ' − ' + _liveK(a.max) : ''}`));
+    } else if (l.signal === 'DIP_BUY_STRONG' || l.signal === 'DIP_BUY_LIGHT') {
+      const k = l.signal === 'DIP_BUY_STRONG' ? '1.5' : '2.0';
+      out.push(fires(`today’s low reaches the dip-buy line${p.dip_line != null ? ' ' + _liveP(p.dip_line) : ''}; stock is Bullish with no stop, SELL ALL or Avoid note`));
+      out.push(formula(`dip line = prior close × (1 − ${k} SD) (${l.signal === 'DIP_BUY_STRONG' ? 'Strong: last night’s call was BM / BMN / BS' : 'Light: any other Bullish stock'}); `
+        + `${prior} × (1 − ${k} × ${sd})${p.dip_line != null ? ' = ' + _liveP(p.dip_line) : ''}; size = 1 unit up to max, or a starter at min`));
+    } else if (l.signal === 'BUY_BACK') {
+      out.push(fires('you sold it in the last 5 trading days, today’s low reaches the buy-back line and price is at or above the prior close'));
+      out.push(formula(`buy-back line = average sell price − 0.5 SD${l.price ? ' = ' + _liveP(l.price) : ''}; size = net dollars sold, capped at the room to max`));
+    } else if (l.signal === 'WAIT') {
+      out.push(fires('the buy-back line is reached but price is still below the prior close (still falling)'));
+      out.push(formula('no order is suggested until the price stops falling'));
+    } else if (l.signal === 'BUY_IDEA') {
+      out.push(fires('a strict Trade Mode buy: BM / BMN call, Technical entry-ripe, no stop, tradability score 12 or more'));
+      out.push(formula('size = the Final Call’s own AMT$'));
+    }
+  }
+  return out;
 }
 function _liveStarterNext(s, acct) {
   const rest = (s.accounts || []).filter(a => a.starter_order && a.name !== acct)
