@@ -1167,7 +1167,7 @@ def get_actionable(
                rr.bb_rng_strk_rule,
                rr.tn_td_rule_action AS tn_td_score,
                rr.bb_rng_strk_action AS bb_score,
-               rr.risk_rng_longs_action AS zone_score,
+               COALESCE(rr.rr_zone_score, rr.risk_rng_longs_action) AS zone_score,
                rr.td_tn_bb_rr_action AS tech_score,
                rr.rr_desc,
                rr.rr_why,

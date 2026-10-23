@@ -9437,6 +9437,8 @@ ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS bounce_exempt BOO
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS trade_trend_sd NUMERIC;
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS reclaim_line NUMERIC;
+-- 2026-10-23, user: RR Zone setup score for every stock (display only, shown in the Action popup's Technical chain even when Trend/Trade ended the chain).
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS rr_zone_score NUMERIC;
 ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS reclaim_buy BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- 2026-10-22: short display names (3 chars where possible) for index / future / FX symbols, read by the market bar,

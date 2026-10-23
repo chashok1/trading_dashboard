@@ -2521,6 +2521,31 @@ function _heldAccountsDisplay(held) {
   return held.split(',').map(n => _acctDisplayName(n.trim())).join(', ');
 }
 
+// 2026-10-23, user: the POS cell lists each account with its own amount in brackets -- "F-A (3.2k), F-M (6.3k), IRA ($64)".
+// Amount = shares held in that account x the current price (the same maths as the Action popup's account lines).
+function _posAcctAmt(v) { return v >= 1000 ? '$' + (Math.round(v / 100) / 10) + 'k' : '$' + Math.round(v); }
+function _posBreakdown(r) {
+  const px = Number(r.last_price);
+  const a = (Array.isArray(r.held_by_account) ? r.held_by_account : []).filter(x => Number(x.qty) > 0);
+  if (!(px > 0) || !a.length) return null;
+  const rows = a.map(x => ({ name: x.name, qty: Number(x.qty), amt: Number(x.qty) * px }));
+  return {
+    line: rows.map(x => `${x.name} (${_posAcctAmt(x.amt)})`).join(', '),
+    title: ['Held by account:'].concat(rows.map(x => `\u2022 ${x.name}: $${Math.round(x.amt).toLocaleString()} (${Math.round(x.qty).toLocaleString()} sh)`)).join('\n'),
+  };
+}
+
+// The picked account's own $ in this stock (shares in that account x current price), or null when no account is picked / it holds none.
+function _posSelectedAmt(r) {
+  if (!state.filters.account) return null;
+  const a = (state.allAccounts || []).find(x => x.account_number === state.filters.account);
+  const sn = a && a.short_name;
+  const px = Number(r.last_price);
+  if (!sn || !(px > 0)) return null;
+  const h = (Array.isArray(r.held_by_account) ? r.held_by_account : []).find(x => x.name === sn);
+  return h && Number(h.qty) > 0 ? Number(h.qty) * px : null;
+}
+
 function _availableAccounts() {
   const have = new Set();
   for (const r of state.allRows) {
@@ -5196,12 +5221,10 @@ function _buildRowEl(r) {
     const _highTrrBar = _hiG != null && _hiG >= 100 * (1 - _trrZoneW) && _rawG != null && _rawG > 50;
     const _lowLrrBar = _loG != null && _loG <= 100 * _lrrZoneW && _rawG != null && _rawG >= 0 && _rawG <= 50;
     const _aboveTrr = _rawG != null && _rawG > 100;
-    const _rrAtPill = _aboveTrr ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>'
-                    : _atTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>'
-                    : _highTrrBar ? '<div style="text-align:right;margin-top:12px;"><span class="rr-at-pill rr-at-trr-high" style="text-align:center;" title="' + escapeHtml('High near TRR\n• Today\'s high ' + Number(r.high_price).toFixed(2) + ' is ' + (_trrNum - Number(r.high_price)).toFixed(2) + ' below TRR ' + _trrNum.toFixed(2) + ' (inside the top zone, but it did not reach the line)\n• Price is now below it') + '"><span style="display:block;font-size:7px;line-height:1.15;letter-spacing:.04em;">HIGH NEAR</span><span style="display:block;line-height:1.15;">TRR</span></span></div>'
-                    : _belowLrr ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill ' + (_turnG ? 'rr-at-below-up' : 'rr-at-below-dn') + '" title="Price is BELOW LRR (' + (_turnG ? 'turning up, but still under the line' : 'still falling') + ')">&lt;LRR</span></div>'
-                    : _atLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>'
-                    : _lowLrrBar ? '<div style="text-align:left;margin-top:12px;"><span class="rr-at-pill rr-at-lrr-low" style="text-align:center;" title="' + escapeHtml('Low near LRR\n• Today\'s low ' + Number(r.low_price).toFixed(2) + ' is ' + (Number(r.low_price) - _lrrNum).toFixed(2) + ' above LRR ' + _lrrNum.toFixed(2) + ' (inside the bottom zone, but it did not reach the line)\n• Price is now above it') + '"><span style="display:block;font-size:7px;line-height:1.15;letter-spacing:.04em;">LOW NEAR</span><span style="display:block;line-height:1.15;">LRR</span></span></div>' : '';
+    // 2026-10-23, user: specific labels for every TRR / LRR case -- one shared spec with the Action popup (_rrPillSpec in actionable_pops.js).
+    const _rrSp = _rrPillSpec({ lrr: _lrrNum, trr: _trrNum, price: r.last_price, high: r.high_price, low: r.low_price,
+      trrZone: state.rangeTrrZone, lrrZone: state.rangeLrrZone, turnUp: _turnG });
+    const _rrAtPill = _rrSp ? `<div style="text-align:${_rrSp.side === 'trr' ? 'right' : 'left'};margin-top:1px;">${_rrPillHtml(_rrSp, 8, 8, true)}</div>` : '';
     const rrBarHtml = _rrBarW != null
       ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">
            ${_rrPosPctHtml}
@@ -5215,7 +5238,10 @@ function _buildRowEl(r) {
     // Final Call cell — reconciled action + confidence badge
     const fcHtml = _finalCallHtml(r);
 
-    const posStr = fmtCompact(r.current_position_dollar);
+    let posStr = fmtCompact(r.current_position_dollar);
+    // 2026-10-23, user: with an account picked in the Acct dropdown the POS cell reads "that account's $ (total $)", e.g. "$4k ($10k)".
+    const _selAmt = _posSelectedAmt(r);
+    if (_selAmt != null) posStr = `${_posAcctAmt(_selAmt)} (${_posAcctAmt(Number(r.current_position_dollar) || 0)})`;
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
       <td data-col="lt" style="padding:4px 2px; text-align:center;">${r.conviction_hold
@@ -5232,7 +5258,7 @@ function _buildRowEl(r) {
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
       <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
+      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}

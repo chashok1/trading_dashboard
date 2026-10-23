@@ -1822,6 +1822,58 @@ function _actpopTradIconHtml(row) {
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
 
+// 2026-10-23, user: one specific label for every TRR / LRR case, shared by the Action popup bar and the grid's RR column.
+//   Price OVER TRR / IN the TRR zone  | High OVER TRR / IN the TRR zone
+//   Price BELOW LRR / IN the LRR zone | Low BELOW LRR / IN the LRR zone
+// "IN" = inside the end zone (TRR zone = top 20% of the range, LRR zone = bottom 15% for price, 25% for the day's low), not past the line.
+// Same order of checks as before; only the wording is more specific. Returns null when there is nothing to flag.
+function _rrPillSpec(o) {
+  const lrr = o.lrr != null ? Number(o.lrr) : null, trr = o.trr != null ? Number(o.trr) : null, px = Number(o.price);
+  if (lrr == null || trr == null || !(trr > lrr) || !isFinite(px)) return null;
+  const rng = trr - lrr, pos = (px - lrr) / rng * 100;
+  const tz = o.trrZone != null ? o.trrZone : 0.20, lz = o.lrrZone != null ? o.lrrZone : 0.25;
+  const hi = o.high != null ? Number(o.high) : null, lo = o.low != null ? Number(o.low) : null;
+  const hiPos = hi != null ? (hi - lrr) / rng * 100 : null, loPos = lo != null ? (lo - lrr) / rng * 100 : null;
+  const u = _fmtUsd2, d = v => u(Math.abs(v));
+  const nl = (t, lines) => [t].concat(lines.map(l => '• ' + l)).join('\n');
+  if (pos > 100) {
+    return { side: 'trr', cls: 'rr-at-above', top: 'PRICE OVER', bottom: 'TRR',
+      title: nl('Price over TRR', [`Price ${u(px)} is ${d(px - trr)} above TRR ${u(trr)}`, 'It broke out above the top of its risk range']) };
+  }
+  if (pos >= 100 * (1 - tz)) {
+    return { side: 'trr', cls: 'rr-at-trr', top: 'PRICE IN', bottom: 'TRR',
+      title: nl('Price in the TRR zone', [`Price ${u(px)} is ${Math.round(pos)}% of the way up its range`, `TRR ${u(trr)} is ${d(trr - px)} away`, `Top zone starts at ${Math.round(100 * (1 - tz))}% of the range`]) };
+  }
+  if (hiPos != null && hiPos >= 100 * (1 - tz) && pos > 50) {
+    const over = hi > trr;
+    return { side: 'trr', cls: 'rr-at-trr-high', top: over ? 'HIGH OVER' : 'HIGH IN', bottom: 'TRR', sub: 'high', subVal: hi,
+      title: nl(over ? 'High over TRR' : 'High in the TRR zone',
+        [`Today's high ${u(hi)} is ${d(hi - trr)} ${over ? 'above' : 'below'} TRR ${u(trr)}${over ? '' : ' (inside the top zone, it did not reach the line)'}`, `Price ${u(px)} is now below it`]) };
+  }
+  if (pos < 0) {
+    const up = !!o.turnUp;
+    return { side: 'lrr', cls: up ? 'rr-at-below-up' : 'rr-at-below-dn', top: 'PRICE BELOW', bottom: 'LRR',
+      title: nl('Price below LRR', [`Price ${u(px)} is ${d(px - lrr)} below LRR ${u(lrr)}`, up ? 'Turning up, but still under the line' : 'Still falling']) };
+  }
+  if (pos <= 15) {
+    return { side: 'lrr', cls: 'rr-at-lrr', top: 'PRICE IN', bottom: 'LRR',
+      title: nl('Price in the LRR zone', [`Price ${u(px)} is ${Math.round(pos)}% of the way up its range`, `LRR ${u(lrr)} is ${d(px - lrr)} below`, 'Bottom zone is the lowest 15% of the range']) };
+  }
+  if (loPos != null && loPos <= 100 * lz && pos >= 0 && pos <= 50) {
+    const below = lo < lrr;
+    return { side: 'lrr', cls: 'rr-at-lrr-low', top: below ? 'LOW BELOW' : 'LOW IN', bottom: 'LRR', sub: 'low', subVal: lo,
+      title: nl(below ? 'Low below LRR' : 'Low in the LRR zone',
+        [`Today's low ${u(lo)} is ${d(lo - lrr)} ${below ? 'below' : 'above'} LRR ${u(lrr)}${below ? '' : ' (inside the bottom zone, it did not reach the line)'}`, `Price ${u(px)} is now above it`]) };
+  }
+  return null;
+}
+function _rrPillHtml(sp, topPx, botPx, oneLine) {
+  // nowrap: each part stays on ONE line (the narrow grid column used to wrap "PRICE IN" onto two lines -> 3 lines in all)
+  return `<span class="rr-at-pill ${sp.cls}" style="text-align:center;white-space:nowrap;${botPx ? 'font-size:' + botPx + 'px;padding:1px 5px;' : ''}" title="${escapeHtml(sp.title)}">`
+    + `<span style="display:block;white-space:nowrap;font-size:${topPx}px;line-height:1.15;letter-spacing:${topPx <= 7 ? '0' : '.04em'};">${sp.top}</span>`
+    + (oneLine ? '' : `<span style="display:block;line-height:1.15;">${sp.bottom}</span>`) + `</span>`;
+}
+
 // RR position bar — same _rawRrPos formula as the grid's RR column tick
 // (unclamped, so an above-TRR/below-LRR row still shows its real % — the
 // grid's own .rr-rb only shows the clamped tick; this popup wants the number).
@@ -1860,18 +1912,14 @@ function _actpopRrBarHtml(row) {
     + `<div class="actpop-rrv-pillcol">`
     // 2026-10-23, user: the range pill sits to the RIGHT of the bar (TRR pills level with the top, LRR pills with the bottom), not below it.
     // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
-    + (rawPos > 100
-        ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>`
-        : rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
-        ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
-        : _highInTrrZone
-          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="${escapeHtml(['High near TRR', '• Today\'s high ' + _fmtUsd2(row.high_price) + (trr != null ? ' is ' + _fmtUsd2(trr - Number(row.high_price)) + (Number(row.high_price) >= trr ? ' above' : ' below') + ' TRR ' + _fmtUsd2(trr) + ' (inside the top zone' + (Number(row.high_price) >= trr ? ')' : ', but it did not reach the line)') : ''), '• Price ' + _fmtUsd2(row.last_price) + ' is now below it'].join('\n'))}" style="text-align:center;"><span style="display:block;font-size:8px;line-height:1.15;letter-spacing:.04em;">HIGH NEAR</span><span style="display:block;line-height:1.15;">TRR</span></span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">high ${_fmtUsd2(row.high_price)}</div></div>`
-        : rawPos < 0
-          ? `<div style="margin-top:36px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
-        : rawPos <= 15
-          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
-        : _lowInLrrZone
-          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="${escapeHtml(['Low near LRR', '\u2022 Today\'s low ' + _fmtUsd2(row.low_price) + (lrr != null ? ' is ' + _fmtUsd2(Number(row.low_price) - lrr) + ' above LRR ' + _fmtUsd2(lrr) + ' (inside the bottom zone, but it did not reach the line)' : ''), '\u2022 Price ' + _fmtUsd2(row.last_price) + ' is now above it'].join('\n'))}" style="text-align:center;"><span style="display:block;font-size:8px;line-height:1.15;letter-spacing:.04em;">LOW NEAR</span><span style="display:block;line-height:1.15;">LRR</span></span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">low ${_fmtUsd2(row.low_price)}</div></div>` : '')
+    + (() => {
+        // 2026-10-23, user: specific labels for every TRR / LRR case (see _rrPillSpec); TRR pills level with the top of the bar, LRR with the bottom.
+        const sp = _rrPillSpec({ lrr, trr, price: row.last_price, high: row.high_price, low: row.low_price,
+          trrZone: state.rangeTrrZone, lrrZone: state.rangeLrrZone, turnUp: _turnUp });
+        if (!sp) return '';
+        const sub = sp.sub ? `<div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">${sp.sub} ${_fmtUsd2(sp.subVal)}</div>` : '';
+        return `<div style="${sp.side === 'trr' ? 'margin-bottom:36px;' : 'margin-top:36px;'}">${_rrPillHtml(sp, 8)}${sub}</div>`;
+      })()
     + `</div></div></div>`;
 }
 
@@ -1973,7 +2021,9 @@ function _techChainHtml(row) {
   const l2 = lines[1];
   h += arrow;
   if (!l2) {
-    h += off('Bollinger bands', 'Not reached: Trend/Trade ended the chain');
+    // 2026-10-23, user: still show what the bands say (greyed, dashed) after Trend/Trade ended the chain
+    const bw = bbRule == null ? '' : bbRule >= 2 ? 'Bands rising' : bbRule >= 0 ? 'Bands flat' : 'Bands falling';
+    h += bw ? chip('off', bw + ' · not counted', tip('Bollinger bands', ['Not counted: Trend/Trade ended the chain'])) : off('Bollinger bands', 'Not reached: Trend/Trade ended the chain');
   } else {
     const bbWord = bbRule == null ? 'Bands' : bbRule >= 2 ? 'Bands rising ✓' : bbRule >= 0 ? 'Bands flat · not counted' : 'Bands falling ⚠ warning only';
     const bbCls = bbRule != null && bbRule >= 2 ? 'ok' : bbRule != null && bbRule < 0 ? 'warn' : 'na';
@@ -1984,7 +2034,10 @@ function _techChainHtml(row) {
   const l3 = lines[2];
   h += arrow;
   if (!l3) {
-    h += off('RR Zone', 'Not reached: an earlier step ended the chain');
+    // 2026-10-23, user: the RR Zone setup is worked out for every stock; after an earlier step ended the chain it is shown greyed, not counted
+    h += chip('off', `RR Zone ${zone != null ? zone : '—'} · not counted`,
+              tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''),
+                  [row.rr_desc, zone == null ? 'No setup in the range right now' : null, 'Not counted: an earlier step ended the chain, so the Technical call does not use it']));
   } else {
     h += chip(clsOf(l3), `RR Zone ${zone != null ? zone : '—'}`,
               tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''), [body(l3), row.rr_desc, zone == null && 'No setup in the range right now']));
@@ -2090,6 +2143,17 @@ function _actpopDriverBullets(row, side) {
     const _twLines = String(row.rr_why || '').split('\n');
     const tw = _twLines.length >= 2 ? { why: _twLines[0], verdict: _twLines[1], cost: _techCostNote(row) } : null;
     rows.push(bulletFor('Technical', rraUpper, desc, null, tag, undefined, undefined, undefined, tw), _grp(tag));
+  } else {
+    // 2026-10-23, user: the Technical row is always shown -- when there is NO signal it says so and shows the chain (which step
+    // stopped it, and the greyed RR Zone), placed just after the row that drove the call.
+    const _chain = _techChainHtml(row) || _techStageLinesHtml(row);
+    const _why = _whyPlain(row.rr_why || row.rr_desc || '').trim();
+    rows.push(`<div class="actpop-driver dv-none">
+      <span class="dv-name">Technical</span><span></span>
+      <span class="dv-action">No signal</span>
+      <span class="dv-note">${_chain || escapeHtml(_why || 'No Technical read for this stock')}</span>
+      <span></span><span></span>
+    </div>`, 1.5);
   }
   const srcList = sources.filter(s => !s.warning_only);
   const _isWinSrc = s => (s.source || s.source_code || '') === winning;

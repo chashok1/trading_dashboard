@@ -3526,6 +3526,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 CASE WHEN l.bx AND COALESCE(l.mh, 0) <= 0 AND l.qo_seq = 10 THEN 9 ELSE l.qo_seq END
             ELSE NULL
         END
+        , rr_zone_score = l.qo_seq   -- 2026-10-23, user: the RR Zone setup score for EVERY stock (display only; the call above still gates on Trend/Trade)
         FROM looked_up l
         WHERE dst.as_of_date = l.as_of_date AND dst.tos_symbol = l.tos_symbol
     """), {"d": as_of_date})
