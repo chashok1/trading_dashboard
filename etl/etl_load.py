@@ -577,6 +577,10 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
     # See get_anchor_date() / docs/derive_date_logic.md.
     derive_error = None
     derive_dt = None
+    if ft.upper() in ('TOSD', 'TOSL'):
+        from etl.export_sanity import check_zero_lows
+        with session_scope() as s_chk:
+            check_zero_lows(s_chk, ft)
     if do_derive:
         with session_scope() as s2:
             derive_dt = get_anchor_date(s2)

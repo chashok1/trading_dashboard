@@ -96,6 +96,34 @@ def _account_snapshot(session: Session, acct: dict, ceil: date, anchor: date):
     return snap, total, held
 
 
+def household_alloc(session: Session, as_of_date: date) -> dict:
+    """{CATEGORY_UPPER: {'min_dollar','max_dollar','units'}} = per-account sizes
+    (same formula and $1,000 rounding as drv_account_size) summed over the active
+    trading accounts. The household sizing in derive_actionable compares ALL-account
+    holdings, so its floor/max/unit must be the all-account sum, not one account's
+    size (ref_asset_allocation's dollar columns are single-account scale).
+    Categories with a zero sum are omitted so the caller keeps its old values."""
+    accounts = _load_accounts(session)
+    ceil = position_ceiling(session, as_of_date)
+    totals = []
+    for acct in accounts.values():
+        snap = _account_snapshot(session, acct, ceil, as_of_date)
+        if snap is not None:
+            totals.append(snap[1] * acct["mult"])
+    out: dict = {}
+    for r in session.execute(text(
+            "SELECT category, min_pct, max_pct, units_pct, units FROM ref_asset_allocation")).fetchall():
+        units_pct = r[3] if r[3] is not None else (
+            _dec(r[4]) / _HOUSEHOLD_BASE if r[4] is not None else Decimal(0))
+        mn = sum((round_to_k(b * _dec(r[1])) for b in totals), Decimal(0))
+        mx = sum((round_to_k(b * _dec(r[2])) for b in totals), Decimal(0))
+        un = sum((round_to_k(b * _dec(units_pct)) for b in totals), Decimal(0))
+        if mx > 0:
+            out[str(r[0] or "").strip().upper()] = {
+                "min_dollar": float(mn), "max_dollar": float(mx), "units": float(un)}
+    return out
+
+
 def _derive_account_size_impl(session: Session, as_of_date: date, run_id=None) -> int:
     d = as_of_date
     session.execute(text("DELETE FROM drv_account_size WHERE as_of_date = :d"), {"d": d})

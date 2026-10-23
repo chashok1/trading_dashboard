@@ -404,6 +404,17 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "maintain":   bool(r[4]),
         }
 
+    # Holdings below are summed over ALL accounts, so the floor/max/unit they are
+    # compared with must be the sum of the per-account sizes (drv_account_size
+    # formula), not ref_asset_allocation's single-account dollar columns.
+    try:
+        from etl.derive_account_size import household_alloc
+        for _k, _v in household_alloc(session, as_of_date).items():
+            if _k in asset_alloc:
+                asset_alloc[_k].update(_v)
+    except Exception:
+        log.exception("household_alloc failed; using ref_asset_allocation dollars")
+
     def _alloc_key(cat):
         return str(cat).strip().upper() if cat else ""
     alloc_has = lambda cat: _alloc_key(cat) in asset_alloc

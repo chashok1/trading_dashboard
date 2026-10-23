@@ -2935,13 +2935,40 @@ function _hasPositiveEdge(row) {
 // stale $0 buy target. Confirmed cases: ILMN, TXG, OIH.
 // 2026-10-19, user-directed: a held stock whose buy signal is only suppressed because the position already meets
 // the floor / ceiling is shown dimmed with "Held, at target" instead of being hidden.
-function _heldAtTarget(r) {
-  return !!r.held_today && /^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || '') && finalCall(r).side !== 'sell';
+// 2026-10-23, user-directed: "at target" is judged per ACCOUNT when one is picked in
+// the Acct dropdown (that account's own floor/max from r.account_sizes), else on the
+// household totals (the server's suppressed_reason, summed over all accounts).
+function _acctSizeFor(r) {
+  if (!state.filters.account) return null;
+  const a = state.allAccounts.find(x => x.account_number === state.filters.account);
+  const sn = a && a.short_name;
+  return (sn && (r.account_sizes || []).find(x => x.name === sn)) || null;
+}
+// Returns null (not at target) or {scope: 'all accts' | account short name, lines: [...]}.
+function _atTargetScope(r) {
+  if (!r.held_today || finalCall(r).side === 'sell') return null;
+  const as = _acctSizeFor(r);
+  if (as) {
+    const ca = (r.consolidated_action || '').toUpperCase();
+    if (ca === 'ADD' && as.min > 0 && as.held >= as.min)
+      return {scope: as.name, lines: [`${as.name} holds ${fmtUsd(as.held)}`, `its floor is ${fmtUsd(as.min)} - already established`]};
+    if (ca === 'INCREASE' && as.max > 0 && as.held >= as.max)
+      return {scope: as.name, lines: [`${as.name} holds ${fmtUsd(as.held)}`, `its max is ${fmtUsd(as.max)} - at ceiling`]};
+    return null;
+  }
+  if (/^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || ''))
+    return {scope: 'all accts', lines: [r.suppressed_reason, 'judged on the total across all accounts']};
+  return null;
+}
+function _heldAtTarget(r) { return !!_atTargetScope(r); }
+// Household buy-suppression that doesn't apply to the picked account: keep the row live.
+function _acctNotAtTarget(r) {
+  return !!_acctSizeFor(r) && /^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || '') && !_atTargetScope(r);
 }
 function _hiddenReason(r) {
   if (_heldAtTarget(r) && !r.last_user_action) return null;
   const _isSell = finalCall(r).side === 'sell';
-  if (!_isSell && r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
+  if (!_isSell && r.suppressed_reason && !_acctNotAtTarget(r)) return 'Snoozed: ' + r.suppressed_reason;
   const ua = (r.last_user_action || '').toUpperCase();
   if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return 'Acted: ' + ua;
   if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return 'Acted: SNOOZED';
@@ -5138,7 +5165,7 @@ function _buildRowEl(r) {
       <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
-        ${_heldAtTarget(r) ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml(r.suppressed_reason)}">Held, at target</div>` : ''}
+        ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}
         ${r.stop_signal ? (
           // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
           // = sell = red, TD BM/TD BMN = buy = green), not r.stop_breached --

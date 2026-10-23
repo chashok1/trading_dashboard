@@ -288,7 +288,7 @@ colored badge — both are still hoverable. `WATCH`→act-neutral-tint (gray)
 is kept in the JS map only so historical dates derived before 2026-08-16
 still render (decide_pvv() no longer produces it going forward). Badge
 text differs from the DB decision code for three tiers
-(`_PVV_LABEL`): `BUY_LRR`→"BUY@LRR", `BUY_WATCH`→"BUYWATCH",
+(`_PVV_LABEL`): `BUY_LRR`→"BUY@LRR" (2026-10-23: a 0 low from a bad TOSD export faked `low_lrr`=3 for ~600 symbols; zero lows are now treated as missing in `derive_cat_atomic_input.py`), `BUY_WATCH`→"BUYWATCH",
 `SELL_WATCH`→"SELLWATCH".
 
 Hover (`data-pvvpop` + `_showDataPop`, same mechanism as the MACRO/Vol/IV

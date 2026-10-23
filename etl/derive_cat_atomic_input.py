@@ -431,7 +431,13 @@ def compute_intermediates(row: dict) -> dict:
     EF   = _f(row.get("td_last"))                # MA!EF = CN = D_Last (prior session close)
     EK   = _f(row.get("td_high"))
     EL   = _f(row.get("td_low"))
-    AP   = _f(row.get("a_bb_high_low_days"))         # MA!AP source
+    # A 0 low is a bad export (2026-10-22 TOSD had low=0 for most symbols), not a real
+    # price; it would win MIN(EI, EL) and fake "low below LRR". Treat as missing.
+    if not EI:
+        EI = None
+    if not EL:
+        EL = None
+    AP  = _f(row.get("a_bb_high_low_days"))         # MA!AP source
     AJ   = _f(row.get("a_bb_high_low"))              # MA!AJ source — TOS composite
 
     # ---- BB_Streak struct (AS/AT/AU/AV/AW/AX/AY/AZ) ----
