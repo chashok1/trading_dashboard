@@ -2062,6 +2062,14 @@ function _techStageLinesHtml(row) {
   }).join('');
 }
 
+// 2026-10-23, user (SNOW): when the Final Call is a SELL (SELL TO MIN / SELL SOME) the action word and size come from TECHNICAL
+// (etl/derive_actionable.py: STM if Technical says STM, else SS); a source REDUCE only allows the sell. So Technical drove it and the
+// source (same side) supports it -- not "the source drove it". SELL ALL (code SA) and source exits stay with the source.
+function _techDecidesSell(row, side, techSide) {
+  const code = String(row.final_code || '').toUpperCase();
+  return side === 'sell' && techSide === 'sell' && (code === 'STM' || code === 'SS');
+}
+
 function _actpopDriverBullets(row, side) {
   const sc = state.sourceScorecard || {};
   // reason/dt are escaped separately and joined with a literal HTML entity
@@ -2117,6 +2125,7 @@ function _actpopDriverBullets(row, side) {
   const winSide = winEntry ? actionDisplay((winEntry.action || '').toUpperCase()).side : null;
   const techSideFc = actionDisplay((row.rr_action || '').toUpperCase()).side;
   const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSideFc === side);
+  const techDecides = _techDecidesSell(row, side, techSideFc);
   // 2026-10-09: a breached stop turned the buy into HOLD -- the stop drove
   // the result; every source/Technical is tagged supports/opposes vs the stop; Technical is
   // judged against the stop (sell side), not against HOLD.
@@ -2136,7 +2145,7 @@ function _actpopDriverBullets(row, side) {
   if (rraUpper) {
     const techSide = actionDisplay(rraUpper).side;
     const tag = stopGate ? (techSide === 'sell' ? 'supports' : techSide === 'buy' ? 'opposes' : '')
-                : techOverrides ? 'drove it' : winEntry ? _rel(techSide)
+                : (techOverrides || techDecides) ? 'drove it' : winEntry ? _rel(techSide)
                           : 'drove it'; // no source row at all -- Technical is the only driver
     const desc = _whyPlain((row.rr_why || row.rr_desc || row.tn_td_desc || row.bb_desc || '') + ' ' + _techCostNote(row)).trim();  // 2026-10-01: rr_why = plain-English reason + your-cost note
     // rr_why is "why<newline>verdict" once re-derived; older rows are one sentence.
@@ -2166,7 +2175,7 @@ function _actpopDriverBullets(row, side) {
     const code = s.source || s.source_code || (_isWinSrc(s) ? winning : '?');
     const sSide = actionDisplay((s.action || '').toUpperCase()).side;
     const tag = _isWinSrc(s)
-      ? (stopGate || techOverrides ? 'opposes' : 'drove it')
+      ? (stopGate || techOverrides ? 'opposes' : techDecides ? 'supports' : 'drove it')
       : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : _rel(sSide);
     rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), tag, s.pct_since_drop, s.drop_conflict, s.up_streak_3d), _grp(tag));
   }
@@ -2585,6 +2594,7 @@ function _actpopSummaryLineHtml(row, c) {
   const rraUpper = (row.rr_action || '').toUpperCase();
   const techSide = rraUpper ? actionDisplay(rraUpper).side : null;
   const techOverrides = !!(winEntry && side && winSide && winSide !== side && techSide === side);
+  const techDecides = _techDecidesSell(row, side, techSide);
   const stopGate = _stopGated(row);
   const rel = sd => (sd === 'buy' || sd === 'sell') ? ((side === 'buy' || side === 'sell') ? (sd === side ? 'supports' : 'opposes') : (winSide && sd === winSide ? 'supports' : 'opposes')) : '';
   const arrow = sd => sd === 'buy' ? '▲' : sd === 'sell' ? '▼' : '';
@@ -2604,7 +2614,7 @@ function _actpopSummaryLineHtml(row, c) {
   for (const s of srcs) {
     const code = s.source || s.source_code || (isWin(s) ? winning : '?');
     const sSide = actionDisplay((s.action || '').toUpperCase()).side;
-    const tag = isWin(s) ? (stopGate || techOverrides ? 'opposes' : 'drove it')
+    const tag = isWin(s) ? (stopGate || techOverrides ? 'opposes' : techDecides ? 'supports' : 'drove it')
       : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : rel(sSide);
     if (tag === 'drove it' || tag === 'supports') nFor++; else if (tag === 'opposes') nAgainst++;
     const d = fmtMD(s.snapshot_date);
@@ -2631,7 +2641,7 @@ function _actpopSummaryLineHtml(row, c) {
     ? `<span class="wc-sum-n">${[nFor && nFor + ' for', nAgainst && nAgainst + ' against', nWarn && nWarn + ' warning'].filter(Boolean).join(' · ')}</span>` : '';
   const srcHtml = items.length ? items.map(i => i.h).join('') : '<span class="wc-chip na">none</span>';
   const techTag = !rraUpper ? '' : stopGate ? (techSide === 'sell' ? 'supports' : techSide === 'buy' ? 'opposes' : '')
-    : techOverrides ? 'drove it' : winEntry ? rel(techSide) : 'drove it';
+    : (techOverrides || techDecides) ? 'drove it' : winEntry ? rel(techSide) : 'drove it';
   const techLbl = rraUpper ? (actionDisplay(rraUpper).label || rraUpper) : '';
   const techHtml = rraUpper
     ? `<span class="wc-chip ${cls(techSide)}${techTag === 'drove it' ? ' drove' : ''}" title="${tip('Technical ' + techLbl + (techTag ? ' (' + techTag + ')' : ''), [])}">${escapeHtml(techLbl)} ${arrow(techSide)}${opp(techTag)}</span>`
@@ -2800,11 +2810,13 @@ function _buildActionPopHtmlV2(row) {
   const _pill = `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`;
   // 2026-10-23, user: the header pill must be the same size as the one below. In the header it is a flex item that inherits the symbol line's 22px line-height (so it was taller); line-height:normal makes it the same height as the inline one.
   const _pillHdr = _pill.replace('<span class="actpop-call', '<span style="line-height:normal;" class="actpop-call');
-  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;height:18px;line-height:18px;"><div><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
+  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;height:18px;line-height:18px;"><div style="display:flex;align-items:center;min-width:0;"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
+    // 2026-10-23, user: the action pill sits between the symbol and the company name
+    + `<span style="margin-left:10px;display:inline-flex;align-items:center;">${_pillHdr}</span>`
     // 2026-10-22, user: symbol always shown; company name bigger, in the outlook colour (falls back to the display name when it differs from the symbol)
     + ((row.company_name || (row.rr_name && row.rr_name !== sym))
-        ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
-    + `</div><div style="display:flex;align-items:center;gap:10px;">${_pillHdr}`   // 2026-10-22, user: action pill right-justified in the header
+        ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
+    + `</div><div style="display:flex;align-items:center;gap:10px;">`
     + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:18px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
     + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:10px 0 6px;"><div class="scm-own-svg"></div></div>`;
   h += `<div class="actpop-top"><div class="actpop-head">

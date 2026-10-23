@@ -184,7 +184,7 @@ _RESULT = {
     "dont_initiate": "You have no position in it and the sources are not recommending a buy, so there is nothing to start.",
     "bypass_rta": "A real-time alert is itself a live trigger, so it does not need Technical to confirm - the buy goes through.",
     "tech_sell_not_held": "Technical says sell, but you have no position in it - nothing to sell, so HOLD.",
-    "tech_sell_reduce": "The sources and Technical both point to selling - the sell goes through.",
+    "tech_sell_reduce": "Technical says sell and sets the sell (its call, e.g. SELL TO MIN); the sources' REDUCE confirms it - the sell goes through.",
     "tech_sell_other": "Technical says sell and overrides the sources' buy, so the call is a sell (lower confidence because they disagree).",
     "tech_buy_reduce": "The sources say reduce but Technical says buy - they conflict, so HOLD.",
     "tech_buy_new_add": "The sources say add and Technical confirms - a new position is allowed (BUY TO MIN).",
