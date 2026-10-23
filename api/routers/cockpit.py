@@ -2806,7 +2806,23 @@ def get_rr_history(symbol: str = Query(...), days: int = Query(90, ge=0, le=3650
         pts.append({"date": r[0].isoformat(), "lrr": f(r[1]), "trr": f(r[2]), "price": None if stale else price,
                     "trade": f(r[4]), "trend": f(r[5]),
                     "open": None if stale else f(r[6]), "high": None if stale else f(r[7]), "low": None if stale else f(r[8])})
-    return {"symbol": symbol, "days": days, "points": pts}
+    # Source-action changes (a source's action differs from its previous row) for the chart's event lane.
+    # Rows before the window start are read only so the first in-window row is compared with what came before it.
+    events = []
+    if rows:
+        start = rows[0][0]
+        with session_scope() as s:
+            ev_rows = s.execute(text(
+                "SELECT as_of_date, source_code, action, action_reason FROM drv_outlook_action "
+                "WHERE tos_symbol = :s AND as_of_date >= CAST(:a AS date) - 45 ORDER BY source_code, as_of_date"),
+                {"s": symbol, "a": start}).all()
+        last_by_src = {}
+        for d_, src, act, why in ev_rows:
+            if last_by_src.get(src) != act and d_ >= start:
+                events.append({"date": d_.isoformat(), "source": src, "action": act, "reason": why})
+            last_by_src[src] = act
+        events.sort(key=lambda e: e["date"])
+    return {"symbol": symbol, "days": days, "points": pts, "events": events}
 
 
 @router.get("/api/cockpit/index-pills")

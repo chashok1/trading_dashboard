@@ -2504,7 +2504,7 @@ function _buildActionPopHtmlV2(row) {
         ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
     + `</div><div style="display:flex;align-items:center;gap:10px;">${_pill}`   // 2026-10-22, user: action pill right-justified in the header
     + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:22px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
-    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:220px;background:#1b1b1b;margin:2px 0 6px;"><div class="scm-own-svg"></div></div>`;
+    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:2px 0 6px;"><div class="scm-own-svg"></div></div>`;
   h += `<div class="actpop-top"><div class="actpop-head">
     <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
     // price / shares / earnings share one fixed band with the right-hand control groups

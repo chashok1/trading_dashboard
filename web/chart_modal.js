@@ -87,9 +87,12 @@
     return d ? '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + w + '"/>' : '';
   }
 
-  function _drawOwn(el, pts) {
+  function _evKind(a) { return /^(ADD|INCREASE)$/.test(a) ? 'up' : /^(REMOVE|REDUCE)$/.test(a) ? 'dn' : 'hold'; }
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function _drawOwn(el, pts, events) {
     var W = Math.max(el.clientWidth, 400), H = el.clientHeight || Math.round(W * 366 / 2004);
-    var PL = 6, PR = 62, PT = 22, PB = 16, n = pts.length;
+    var PL = 6, PR = 62, PT = 22, PB = (events && events.length) ? 54 : 16, n = pts.length;
     var last = function (k) { for (var i = n - 1; i >= 0; i--) if (pts[i][k] != null) return pts[i][k]; return null; };
     var trade = last('trade'), trend = last('trend'), lrr = last('lrr'), trr = last('trr'), px = last('price');
     var vals = [];
@@ -107,11 +110,35 @@
       g += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y + '" y2="' + y + '" stroke="' + C_GRID + '" stroke-dasharray="1 3"/>'
         + '<text x="' + (W - PR + 5) + '" y="' + (y + 3) + '" font-size="10" fill="#cbd5e1">' + f(v) + '</text>';
     }
-    var step = Math.max(1, Math.round(n / 6));
+    var step = Math.max(1, Math.ceil(46 / slot));
     for (var i = 0; i < n; i += step) {
       var dt = pts[i].date, x = xOf(i);
       g += '<line x1="' + x + '" x2="' + x + '" y1="' + PT + '" y2="' + (H - PB) + '" stroke="' + C_GRID + '" stroke-dasharray="1 3"/>'
         + '<text x="' + x + '" y="' + (H - 4) + '" font-size="9" fill="#9ca3af" text-anchor="middle">' + dt.slice(5, 7) + '/' + dt.slice(8, 10) + '</text>';
+    }
+    // Source-action lane: one small triangle per date where a source's action changed (up = ADD/INCREASE, down = REMOVE/REDUCE, dot = HOLD).
+    // Details show on hover so the chart itself stays clean.
+    var evAt = {}, laneY = H - 30;
+    if (events && events.length) {
+      var idxOf = {}; pts.forEach(function (p, i) { idxOf[p.date] = i; });
+      events.forEach(function (e) {
+        var i = idxOf[e.date];
+        if (i == null) { for (var j = 0; j < n; j++) if (pts[j].date >= e.date) { i = j; break; } }
+        if (i == null) return;
+        (evAt[i] = evAt[i] || []).push(e);
+      });
+      g += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + (laneY - 15) + '" y2="' + (laneY - 15) + '" stroke="' + C_GRID + '"/>';
+      Object.keys(evAt).forEach(function (k) {
+        var x = xOf(+k), kinds = {};
+        evAt[k].forEach(function (e) { kinds[_evKind(e.action)] = 1; });
+        var ks = Object.keys(kinds), off = (ks.length - 1) * -6;
+        ks.forEach(function (kd, m) {
+          var cx = x + off + m * 12, c = kd === 'up' ? C_UP : kd === 'dn' ? C_DN : '#9ca3af';
+          g += kd === 'up' ? '<path d="M' + cx + ' ' + (laneY - 5) + 'l-5 10h10z" fill="' + c + '"/>'
+            : kd === 'dn' ? '<path d="M' + cx + ' ' + (laneY + 5) + 'l-5 -10h10z" fill="' + c + '"/>'
+            : '<circle cx="' + cx + '" cy="' + laneY + '" r="3.5" fill="' + c + '"/>';
+        });
+      });
     }
     [[trade, C_TRADE], [trend, C_TREND]].forEach(function (l) {
       if (l[0] == null) return;
@@ -133,10 +160,10 @@
     }
     // Hover (like TOS): the line nearest the cursor is highlighted and its number shows in a coloured box at the cursor.
     var hov = [
-      { n: 'TRR', c: C_TRR, fg: '#000', at: function (i) { return pts[i].trr; } },
-      { n: 'LRR', c: C_LRR, fg: '#fff', at: function (i) { return pts[i].lrr; } },
-      { n: 'Trade', c: C_TRADE, fg: '#000', at: function () { return trade; } },
-      { n: 'Trend', c: C_TREND, fg: '#000', at: function () { return trend; } }
+      { n: 'TRR', c: C_TRR, fg: '#000', now: trr, at: function (i) { return pts[i].trr; } },
+      { n: 'LRR', c: C_LRR, fg: '#fff', now: lrr, at: function (i) { return pts[i].lrr; } },
+      { n: 'Trade', c: C_TRADE, fg: '#000', now: trade, at: function () { return trade; } },
+      { n: 'Trend', c: C_TREND, fg: '#000', now: trend, at: function () { return trend; } }
     ];
     var host = el.querySelector('.scm-own-svg') || el;
     host.innerHTML = g + '<g class="scm-hov" pointer-events="none"></g></svg>';
@@ -151,10 +178,26 @@
         var d = Math.abs(yOf(v) - my_);
         if (d < bd) { bd = d; best = { h: h, v: v }; }
       });
+      if (events && events.length && my_ > laneY - 14 && my_ < laneY + 14 && mx_ >= PL && mx_ <= W - PR) {   // source-action lane: details for the nearest marked date
+        var near = null, nd = 12;
+        Object.keys(evAt).forEach(function (k) { var d_ = Math.abs(xOf(+k) - mx_); if (d_ < nd) { nd = d_; near = +k; } });
+        if (near == null) { hg.innerHTML = ''; host.style.cursor = ''; return; }
+        host.style.cursor = 'default';
+        var L = ['Source actions · ' + pts[near].date.slice(5, 7) + '/' + pts[near].date.slice(8, 10)].concat(evAt[near].map(function (e) {
+          var why = e.reason ? ' — ' + (e.reason.length > 46 ? e.reason.slice(0, 45) + '…' : e.reason) : '';
+          return '• ' + e.source + ' ' + e.action + why;
+        }));
+        var tw = Math.min(W - PL - 4, Math.max.apply(null, L.map(function (s) { return s.length; })) * 5.6 + 12), th = L.length * 13 + 6;
+        var tx = Math.max(PL, Math.min(xOf(near) - tw / 2, W - PR - tw)), ty = laneY - 18 - th;
+        hg.innerHTML = '<rect x="' + tx + '" y="' + ty + '" width="' + tw + '" height="' + th + '" rx="3" fill="#0f172a" stroke="#475569"/>'
+          + L.map(function (s, q) { return '<text x="' + (tx + 6) + '" y="' + (ty + 13 + q * 13) + '" font-size="10" font-weight="' + (q ? 400 : 700) + '" fill="#e5e7eb">' + _esc(s) + '</text>'; }).join('');
+        return;
+      }
       if (!best) { hg.innerHTML = ''; host.style.cursor = ''; return; }
       host.style.cursor = 'pointer';
+      best.v = best.h.now != null ? best.h.now : best.v;
       var y = yOf(best.v), isFlat = best.h.n === 'Trade' || best.h.n === 'Trend';
-      var txt = best.h.n + ' ' + f(best.v), bx = Math.min(mx_ + 10, W - PR - 84), by = Math.max(PT, y - 20);
+      var txt = best.h.n + ' ' + f(best.v), bx = W - PR - 84, by = Math.max(PT, y - 20);
       var s = '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y + '" y2="' + y + '" stroke="' + best.h.c + '" stroke-width="3" opacity="0.9"'
         + (isFlat ? ' stroke-dasharray="1.5 4" stroke-linecap="round"' : '') + '/>';
       if (!isFlat) {
@@ -207,12 +250,13 @@
     try {
       var res = await fetch('/api/cockpit/rr-history?symbol=' + encodeURIComponent(sym) + '&days=' + _ownDays);
       if (!res.ok) { if (tok === el._tok) note('Chart not available.'); return; }
-      var pts = ((await res.json()).points || []).filter(function (p) { return p.price != null || p.lrr != null; });
+      var js = await res.json();
+      var pts = (js.points || []).filter(function (p) { return p.price != null || p.lrr != null; });
       if (tok !== el._tok) return;
       if (pts.length < 5) { note('No range history stored for this symbol.'); return; }
       el.style.display = 'block';
       _ownButtons(el, sym);
-      _drawOwn(el, pts);
+      _drawOwn(el, pts, js.events || []);
     } catch (e) { if (tok === el._tok) note('Chart not available.'); /* click popup: the TradingView chart below still shows */ }
   }
   window.mountRrChart = function (el, sym) { if (el && sym) _loadOwn(el, sym); };
@@ -270,7 +314,7 @@
     if (!sym || sym === '$') {
       body.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:14px;">No chart available for ' + displaySym + '</div>';
     } else {
-      body.innerHTML = '<div id="scmOwn" style="display:none;height:290px;flex:0 0 290px;position:relative;"><div class="scm-own-svg"></div></div>'
+      body.innerHTML = '<div id="scmOwn" style="display:none;height:370px;flex:0 0 370px;position:relative;"><div class="scm-own-svg"></div></div>'
         + '<div id="scmTv" style="flex:1 1 auto;min-height:0;"></div>';
       _loadChart(document.getElementById('scmTv'), tvSym);
     }
