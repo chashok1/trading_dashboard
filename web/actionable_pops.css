@@ -559,11 +559,11 @@
 .wc-result { font-size:11px; color:#334155; padding:2px 6px 4px; }
 
 /* 2026-10-23, user: Technical chain  Trend/Trade 10 -> BB Streak 0 -> RR Zone 10 -> Score 10. */
-.actpop-tw.tw-chain { display:flex; flex-wrap:wrap; align-items:center; gap:3px 4px; margin:1px 0 9px; }  /* 2026-10-23: room before the Call line */
-.tw-arrow { font-size:10px; color:#94a3b8; font-weight:800; }
-.tw-chain-chip { display:inline-block; font-size:9.5px; font-weight:700; line-height:1.3; padding:0 6px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#64748b; white-space:nowrap; cursor:help; }
+.actpop-tw.tw-chain { display:flex; flex-wrap:wrap; align-items:center; gap:3px 3px; margin:1px 0 9px; }  /* 2026-10-23: room before the Call line */
+.tw-arrow { font-size:9px; color:#94a3b8; font-weight:800; margin:0 -1px; }
+.tw-chain-chip { display:inline-block; font-size:9.5px; font-weight:700; line-height:1.3; padding:0 5px; border-radius:9px; border:1px solid #cbd5e1; background:#f8fafc; color:#64748b; white-space:nowrap; cursor:help; }
 .tw-chain-chip.ok { background:#f0fdf4; border-color:var(--act-buy, #3a6a4a); color:var(--act-buy-strong, #166534); }
 .tw-chain-chip.no { background:#fef2f2; border-color:var(--act-sell-strong, #9e3636); color:var(--act-sell-strong, #991b1b); }
 .tw-chain-chip.warn { background:#fefce8; border-color:#f59e0b; color:#92400e; }
-.tw-chain-chip.off { background:#fff; border-style:dashed; color:#cbd5e1; }
+.tw-chain-chip.off { background:#fff; border-style:dashed; border-color:#94a3b8; color:#64748b; }  /* 2026-10-23: darker so "not counted" steps read on white */
 .tw-chain-chip.final { font-weight:900; }

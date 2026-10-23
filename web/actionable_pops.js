@@ -2023,7 +2023,7 @@ function _techChainHtml(row) {
   if (!l2) {
     // 2026-10-23, user: still show what the bands say (greyed, dashed) after Trend/Trade ended the chain
     const bw = bbRule == null ? '' : bbRule >= 2 ? 'Bands rising' : bbRule >= 0 ? 'Bands flat' : 'Bands falling';
-    h += bw ? chip('off', bw + ' · not counted', tip('Bollinger bands', ['Not counted: Trend/Trade ended the chain'])) : off('Bollinger bands', 'Not reached: Trend/Trade ended the chain');
+    h += bw ? chip('off', bw, tip('Bollinger bands', ['Not counted: Trend/Trade ended the chain'])) : off('Bollinger bands', 'Not reached: Trend/Trade ended the chain');
   } else {
     const bbWord = bbRule == null ? 'Bands' : bbRule >= 2 ? 'Bands rising ✓' : bbRule >= 0 ? 'Bands flat · not counted' : 'Bands falling ⚠ warning only';
     const bbCls = bbRule != null && bbRule >= 2 ? 'ok' : bbRule != null && bbRule < 0 ? 'warn' : 'na';
@@ -2035,7 +2035,7 @@ function _techChainHtml(row) {
   h += arrow;
   if (!l3) {
     // 2026-10-23, user: the RR Zone setup is worked out for every stock; after an earlier step ended the chain it is shown greyed, not counted
-    h += chip('off', `RR Zone ${zone != null ? zone : '—'} · not counted`,
+    h += chip('off', `RR Zone ${zone != null ? zone : '—'}`,
               tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''),
                   [row.rr_desc, zone == null ? 'No setup in the range right now' : null, 'Not counted: an earlier step ended the chain, so the Technical call does not use it']));
   } else {
