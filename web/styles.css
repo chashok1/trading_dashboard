@@ -3406,6 +3406,8 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .actpop-name { display:inline-block; vertical-align:middle; width:0; overflow:visible; margin-left:8px; font-size:11px; font-weight:400; color:#64748b; white-space:nowrap; }  /* zero layout width: the name runs out into the free space instead of widening the left block and squeezing the right-hand controls */
 .actpop-px { font-size:19px; font-weight:800; color:#0f172a; line-height:1.15; margin-top:0; font-variant-numeric:tabular-nums; }
 .actpop-amt { margin-left:8px; font-size:11px; font-weight:700; color:#475569; }
+.actpop-amt.actpop-amt-sell { color:#dc2626; }
+.actpop-amt.actpop-amt-buy { color:#16a34a; }
 .actpop-sym-extra { max-width:215px; margin-top:2px; white-space:normal; }
 .actpop-xl { font-size:10px; font-weight:500; color:#475569; line-height:1.35; margin-top:1px; }
 .actpop-notes { margin-top:6px; padding-top:5px; border-top:1px dashed #e2e8f0; font-size:10px; color:#334155; }
@@ -3414,7 +3416,8 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .actpop-note { margin-top:2px; line-height:1.35; }
 .actpop-symline { height:22px; line-height:22px; white-space:nowrap; }
 /* 2026-10-03: price/shares/earnings band = same top (22px symbol line + 16px gap) and height as .actpop-ctrl-c, contents centered, so all those group centers line up */
-.actpop-px-group { margin-top:16px; height:61px; display:flex; flex-direction:column; justify-content:center; }
+.actpop-px-group { margin-top:16px; height:84px; display:flex; flex-direction:column; justify-content:flex-start; }  /* 2026-10-23: fixed height, top-aligned: price + holding + 2 account lines + trade amount each keep their place */
+.actpop-acct-line { font-size:10px; min-height:13px; white-space:nowrap; }
 .actpop-own, .actpop-earn { font-size:10px; font-weight:500; color:#475569; margin-top:2px; }
 .actpop-lvlbar { flex:0 0 auto; align-self:center; }
 .actpop-tw { font-size:10px; color:#334155; line-height:1.35; }

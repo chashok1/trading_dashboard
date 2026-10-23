@@ -517,3 +517,15 @@
 .rr-at-below-up { background: #fef3c7; color: #b45309; border-color: #b45309; }
 .rr-at-above { background: var(--act-sell-strong, #b91c1c); color: #fff; border-color: var(--act-sell-strong, #b91c1c); }  /* 2026-10-22: price above TRR, solid red */
 .rr-at-below-dn { background: var(--act-sell-strong-bg, #fee2e2); color: var(--act-sell-strong, #b91c1c); border-color: var(--act-sell-strong, #b91c1c); }
+
+/* 2026-10-23: vertical stock risk-range bar (Action popup). TRR top, LRR bottom; tag + price sit right of the bar at the price level. */
+.actpop-rr.actpop-rr-v { width: auto; }
+.actpop-rrv-row { display:flex; align-items:stretch; gap:10px; }
+.actpop-rrv-pillcol { display:flex; flex-direction:column; justify-content:center; margin:12px 0 12px 48px; }
+.actpop-rrv { display:flex; gap:6px; height:104px; margin:12px 0 12px; }
+.actpop-rrv-lbls { display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; font-size:9px; color:#94a3b8; white-space:nowrap; }
+.actpop-rrv-track.actpop-rr-track { width:7px; height:100%; flex:0 0 7px; }
+.actpop-rrv-track .actpop-rr-fill { left:0; right:0; top:auto; bottom:0; width:100%; background:linear-gradient(0deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
+.actpop-rrv-track .actpop-rr-tick { top:auto; left:50%; width:15px; height:3px; transform:translate(-50%,50%); }
+.actpop-rrv-track .actpop-rr-tag { top:auto; left:14px; transform:translateY(50%); line-height:1.15; }
+.actpop-rrv-px { display:block; font-weight:600; font-size:8px; opacity:.85; }

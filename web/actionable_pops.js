@@ -1804,30 +1804,33 @@ function _actpopRrBarHtml(row) {
   const _turnUp = row.pct_change != null && Number(row.pct_change) >= 0;
   const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? (_turnUp ? '#fef3c7' : 'var(--act-sell-strong-bg)') : '#f1f5f9';
   const tagColor = rawPos > 100 ? 'var(--act-sell-strong)' : rawPos < 0 ? (_turnUp ? '#b45309' : 'var(--act-sell-strong)') : '#475569';
-  return `<div class="actpop-rr">
-    <div class="actpop-rr-track">
-      <div class="actpop-rr-tag" style="left:${clamped}%;background:${tagBg};color:${tagColor};">${Math.round(rawPos)}%</div>
-      <div class="actpop-rr-fill" style="width:${clamped}%;"></div>
-      <div class="actpop-rr-tick" style="left:${clamped}%;"></div>
-    </div>
-    <div class="actpop-rr-labels"><span>LRR ${lrr != null ? lrr.toFixed(2) : '&mdash;'}</span>`
-    + `<span class="num">${row.last_price != null ? fmtUsd(row.last_price) : ''}</span>`
-    + `<span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span></div>`
+  // 2026-10-23, user: the stock's risk range bar is VERTICAL (TRR at the top, LRR at the bottom, fill rising from LRR).
+  // Left column = TRR / LRR numbers; right of the bar = the % tag and the price at the tick. Pills stay below.
+  return `<div class="actpop-rr actpop-rr-v"><div class="actpop-rrv-row">
+    <div class="actpop-rrv">
+      <div class="actpop-rrv-lbls"><span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span><span>LRR ${lrr != null ? lrr.toFixed(2) : '&mdash;'}</span></div>
+      <div class="actpop-rr-track actpop-rrv-track">
+        <div class="actpop-rr-fill" style="height:${clamped}%;"></div>
+        <div class="actpop-rr-tick" style="bottom:${clamped}%;"></div>
+        <div class="actpop-rr-tag" style="bottom:${clamped}%;background:${tagBg};color:${tagColor};">${Math.round(rawPos)}%<span class="actpop-rrv-px">${row.last_price != null ? '$' + Number(row.last_price).toFixed(2) : ''}</span></div>
+      </div>
+    </div>`
+    + `<div class="actpop-rrv-pillcol">`
+    // 2026-10-23, user: the range pill sits to the RIGHT of the bar (TRR pills level with the top, LRR pills with the bottom), not below it.
     // 2026-10-21, user: a red TRR (right) / green LRR (left) pill on its own row BELOW the labels, with a gap -- not touching the bar.
     + (rawPos > 100
-        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>`
+        ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-above" title="Price is ABOVE TRR (broke out above the top of its risk range)">ABOVE TRR</span></div>`
         : rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
-        ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
+        ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
         : _highInTrrZone
-          ? `<div style="text-align:right;margin-top:15px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span></div>`
+          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span></div>`
         : rawPos < 0
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
+          ? `<div style="margin-top:36px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
+          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
         : _lowInLrrZone
-          ? `<div style="text-align:left;margin-top:15px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span></div>` : '')
-    + `
-  </div>`;
+          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span></div>` : '')
+    + `</div></div></div>`;
 }
 
 // 2026-10-01: "your cost vs the Trade line" context for the Technical
@@ -2407,7 +2410,7 @@ function _buildActionPopHtmlV2(row) {
   // Suggested trade size next to the pill (same _amt the grid's AMT column shows), only for a
   // real buy/sell call -- for HOLD _amt is just the current holding, not a trade.
   const tradeAmtTxt = ((side === 'buy' || side === 'sell') && Number(row._amt) > 0)
-    ? `<span class="actpop-amt" title="Suggested trade size">${side === 'sell' ? 'sell' : 'buy'} ${escapeHtml(_actpopFmtAmt(row._amt).replace('k', 'K'))}</span>` : '';
+    ? `<span class="actpop-amt ${side === 'sell' ? 'actpop-amt-sell' : 'actpop-amt-buy'}" title="Suggested trade size">${side === 'sell' ? 'sell' : 'buy'} ${escapeHtml(_actpopFmtAmt(row._amt).replace('k', 'K'))}</span>` : '';
   const pxTxt = row.last_price != null ? `<div class="actpop-px">${_fmtUsd2(row.last_price)}</div>` : '';
   const hq = Number(row.held_qty), hc = Number(row.held_cost);
   // 2026-10-03 (user): "$17K · Avg $14.20" (avg green below the current price, red above), then
@@ -2417,16 +2420,19 @@ function _buildActionPopHtmlV2(row) {
   const _avgColor = (_avg != null && _px > 0) ? (_avg < _px ? '#15803d' : _avg > _px ? '#b91c1c' : '') : '';
   const _acctAmt = v => v >= 1000 ? Math.round(v / 1000) + 'K' : String(Math.round(v));
   const _accts = (Array.isArray(row.held_by_account) ? row.held_by_account : []).filter(a => Number(a.qty) > 0);
-  const acctTxt = (_px > 0 && _accts.length)
-    ? _accts.map(a => `${escapeHtml(a.name)}: ${_acctAmt(Number(a.qty) * _px)} (${Math.round(Number(a.qty)).toLocaleString()} sh)`).join(' &middot; ')
-    : '';
+  // 2026-10-23, user: the per-account amounts always take TWO fixed-height lines (first half of the accounts on line 1, the rest on
+  // line 2; blank when not held) so nothing below or beside them moves with the data.
+  const _acctParts = (_px > 0 && _accts.length)
+    ? _accts.map(a => `${escapeHtml(a.name)}: ${_acctAmt(Number(a.qty) * _px)} (${Math.round(Number(a.qty)).toLocaleString()} sh)`) : [];
+  const _acctHalf = Math.ceil(_acctParts.length / 2);
+  const acctLines = [_acctParts.slice(0, _acctHalf), _acctParts.slice(_acctHalf)].map(l => l.join(' &middot; '));
   const ownTxt = row.held_today && hq > 0
     ? [row.current_position_dollar != null ? _actpopFmtAmt(row.current_position_dollar).replace('k', 'K') : '',
        _avg != null ? `Avg <span${_avgColor ? ` style="color:${_avgColor};font-weight:700;"` : ''}>${_fmtUsd2(_avg)}</span>` : '']
       .filter(Boolean).join(' &middot; ')
     : 'Not held';
   const ownLine = `<div class="actpop-own">${ownTxt}</div>`
-    + (row.held_today && acctTxt ? `<div class="actpop-own" style="font-size:10px;">${acctTxt}</div>` : '');
+    + acctLines.map(l => `<div class="actpop-own actpop-acct-line">${row.held_today && l ? l : '&nbsp;'}</div>`).join('');
   const earnLine = hasEd
     ? `<div class="actpop-earn">Earnings in ${edDays <= 3 ? `<span class="opex-soon">${edDays}d</span>` : `${edDays}d`}</div>`
     : '';
@@ -2464,8 +2470,7 @@ function _buildActionPopHtmlV2(row) {
   let symExtras = '';
   const _ai = row._actionInfo;
   const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
-  // 2026-10-20, user: the Bought/Sold tag stays in its old place under the price; the other lines are in the middle block.
-  const _atHtml = _at ? `<div class="actpop-xl">${_at}</div>` : '';
+  // 2026-10-23, user: the Bought/Sold tag now shares the suggested-trade line (e.g. "Bought 10/22  sell $6K") in the price block.
   if (_isOverMaxOverlay(row)) {
     symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">`
        + (row.account_sizes && row.account_sizes.length
@@ -2498,19 +2503,20 @@ function _buildActionPopHtmlV2(row) {
   // (web/chart_modal.js, window.mountRrChart; loaded from _actpopLoadNotes). The old symbol line keeps the action pill
   // (its original place, same 22px height) so nothing below it moves.
   const _pill = `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`;
+  // 2026-10-23, user: the header pill must be the same size as the one below. In the header it is a flex item that inherits the symbol line's 22px line-height (so it was taller); line-height:normal makes it the same height as the inline one.
+  const _pillHdr = _pill.replace('<span class="actpop-call', '<span style="line-height:normal;" class="actpop-call');
   h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;"><div><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
     // 2026-10-22, user: symbol always shown; company name bigger, in the outlook colour (falls back to the display name when it differs from the symbol)
     + ((row.company_name || (row.rr_name && row.rr_name !== sym))
         ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
-    + `</div><div style="display:flex;align-items:center;gap:10px;">${_pill}`   // 2026-10-22, user: action pill right-justified in the header
+    + `</div><div style="display:flex;align-items:center;gap:10px;">${_pillHdr}`   // 2026-10-22, user: action pill right-justified in the header
     + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:22px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
     + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:2px 0 6px;"><div class="scm-own-svg"></div></div>`;
   h += `<div class="actpop-top"><div class="actpop-head">
     <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
-    + `<div class="actpop-px-group">${pxTxt}${ownLine}${tradeAmtTxt ? `<div class="actpop-own">${tradeAmtTxt}</div>` : ''}</div>`
-    + (_atHtml ? `<div class="actpop-sym-extra">${_atHtml}</div>` : '')
+    + `<div class="actpop-px-group">${pxTxt}${ownLine}${(_at || tradeAmtTxt) ? `<div class="actpop-own actpop-acct-line" style="display:flex;align-items:center;gap:6px;">${_at}${tradeAmtTxt}</div>` : ''}</div>`   // 2026-10-23, user: "Bought 10/22" tag and "sell $6K" on ONE line
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     // 2026-10-02 (user): every control group except the vertical bar is centered on the
@@ -2519,7 +2525,7 @@ function _buildActionPopHtmlV2(row) {
     // right edge by margin-left:auto on the first one present (2026-10-02, user).
     + `<div class="actpop-ctrl-c">${_chgCandleControlsHtml(row, 0, false)}</div>`
     + _ctrlC(tug.conviction)
-    + _ctrlC(_tdtnHtml, _anch(_tdtnHtml))
+    + _ctrlC(_tdtnHtml)
     + _actpopLevelBarHtml(row)
     + _ctrlC(_rrHtml, _anch(_rrHtml))
     + `</div>`
