@@ -1865,13 +1865,13 @@ function _actpopRrBarHtml(row) {
         : rawPos >= 100 * (1 - (state.rangeTrrZone != null ? state.rangeTrrZone : 0.20))
         ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr" title="Price is at TRR (top of its risk range)">TRR - PRC</span></div>`
         : _highInTrrZone
-          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="Today's high (${fmtUsd(row.high_price)}) reached the top of the risk range, but price (${fmtUsd(row.last_price)}) is now below it">TRR - HIGH</span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">high ${_fmtUsd2(row.high_price)}</div></div>`
+          ? `<div style="margin-bottom:36px;"><span class="rr-at-pill rr-at-trr-high" title="${escapeHtml(['High near TRR', '• Today\'s high ' + _fmtUsd2(row.high_price) + (trr != null ? ' is ' + _fmtUsd2(trr - Number(row.high_price)) + (Number(row.high_price) >= trr ? ' above' : ' below') + ' TRR ' + _fmtUsd2(trr) + ' (inside the top zone' + (Number(row.high_price) >= trr ? ')' : ', but it did not reach the line)') : ''), '• Price ' + _fmtUsd2(row.last_price) + ' is now below it'].join('\n'))}" style="text-align:center;"><span style="display:block;font-size:8px;line-height:1.15;letter-spacing:.04em;">HIGH NEAR</span><span style="display:block;line-height:1.15;">TRR</span></span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">high ${_fmtUsd2(row.high_price)}</div></div>`
         : rawPos < 0
           ? `<div style="margin-top:36px;"><span class="rr-at-pill ${_turnUp ? 'rr-at-below-up' : 'rr-at-below-dn'}" title="Price is BELOW LRR (${_turnUp ? 'turning up, but still under the line' : 'still falling'})">BELOW LRR</span></div>`
         : rawPos <= 15
           ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr" title="Price is at LRR (bottom of its risk range)">LRR - PRC</span></div>`
         : _lowInLrrZone
-          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="Today's low (${fmtUsd(row.low_price)}) reached the bottom of the risk range, but price (${fmtUsd(row.last_price)}) is now above it">LRR - LOW</span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">low ${_fmtUsd2(row.low_price)}</div></div>` : '')
+          ? `<div style="margin-top:36px;"><span class="rr-at-pill rr-at-lrr-low" title="${escapeHtml(['Low near LRR', '\u2022 Today\'s low ' + _fmtUsd2(row.low_price) + (lrr != null ? ' is ' + _fmtUsd2(Number(row.low_price) - lrr) + ' above LRR ' + _fmtUsd2(lrr) + ' (inside the bottom zone, but it did not reach the line)' : ''), '\u2022 Price ' + _fmtUsd2(row.last_price) + ' is now above it'].join('\n'))}" style="text-align:center;"><span style="display:block;font-size:8px;line-height:1.15;letter-spacing:.04em;">LOW NEAR</span><span style="display:block;line-height:1.15;">LRR</span></span><div style="text-align:right;font-size:9px;font-weight:600;line-height:1.2;color:#64748b;margin-top:2px;">low ${_fmtUsd2(row.low_price)}</div></div>` : '')
     + `</div></div></div>`;
 }
 
@@ -2524,7 +2524,9 @@ function _actpopSummaryLineHtml(row, c) {
   const stopGate = _stopGated(row);
   const rel = sd => (sd === 'buy' || sd === 'sell') ? ((side === 'buy' || side === 'sell') ? (sd === side ? 'supports' : 'opposes') : (winSide && sd === winSide ? 'supports' : 'opposes')) : '';
   const arrow = sd => sd === 'buy' ? '▲' : sd === 'sell' ? '▼' : '';
-  const cls = tag => tag === 'drove it' || tag === 'supports' ? 'ok' : tag === 'opposes' ? 'no' : 'na';
+  // 2026-10-23, user: a tag's colour is the source's own type (BUY green / SELL red), also when it opposes the call; an opposing tag gets a ✗.
+  const cls = sd => sd === 'buy' ? 'ok' : sd === 'sell' ? 'no' : 'na';
+  const opp = tag => tag === 'opposes' ? ' ✗' : '';
   const tip = (title, lines) => escapeHtml([title].concat((lines || []).filter(Boolean).map(l => '• ' + l)).join('\n'));
   const items = [];
   if (stopGate) items.push({ g: 0, h: `<span class="wc-chip no" title="${tip('Stop breached', [_stopDriverNote(row)])}">Stop ▼</span>` });
@@ -2540,11 +2542,11 @@ function _actpopSummaryLineHtml(row, c) {
     const sSide = actionDisplay((s.action || '').toUpperCase()).side;
     const tag = isWin(s) ? (stopGate || techOverrides ? 'opposes' : 'drove it')
       : stopGate ? (sSide === 'buy' ? 'opposes' : sSide === 'sell' ? 'supports' : null) : rel(sSide);
-    if (cls(tag) === 'ok') nFor++; else if (cls(tag) === 'no') nAgainst++;
+    if (tag === 'drove it' || tag === 'supports') nFor++; else if (tag === 'opposes') nAgainst++;
     const d = fmtMD(s.snapshot_date);
     const g = tag === 'drove it' ? 1 : tag === 'supports' ? 2 : tag === 'opposes' ? 3 : 4;
     const lbl = actionDisplay((s.action || '').toUpperCase()).label || s.action || '';
-    items.push({ g, h: `<span class="wc-chip ${cls(tag)}${tag === 'drove it' ? ' drove' : ''}" title="${tip(code + ' ' + lbl + (tag ? ' (' + tag + ')' : ''), [d && 'Snapshot ' + d, s.reason])}">${escapeHtml(code)} ${arrow(sSide)}${tag === 'drove it' ? ' ★' : ''}</span>` });
+    items.push({ g, h: `<span class="wc-chip ${cls(sSide)}${tag === 'drove it' ? ' drove' : ''}" title="${tip(code + ' ' + lbl + (tag ? ' (' + tag + ')' : ''), [d && 'Snapshot ' + d, s.reason])}">${escapeHtml(code)} ${arrow(sSide)}${tag === 'drove it' ? ' ★' : ''}${opp(tag)}</span>` });
   }
   for (const w of sources.filter(s => s.warning_only)) {
     nWarn++;
@@ -2557,7 +2559,7 @@ function _actpopSummaryLineHtml(row, c) {
     if (ps) {
       const tag = (side === 'buy' || side === 'sell') ? (ps === side ? 'supports' : 'opposes') : '';
       const info = _PVV_DECISION_INFO[pvvD];
-      items.push({ g: 6, h: `<span class="wc-chip ${cls(tag)}" title="${tip('PVV ' + (_PVV_LABEL[pvvD] || pvvD), [info && info.meaning])}">PVV ${arrow(ps)}</span>` });
+      items.push({ g: 6, h: `<span class="wc-chip ${cls(ps)}" title="${tip('PVV ' + (_PVV_LABEL[pvvD] || pvvD), [info && info.meaning])}">PVV ${arrow(ps)}${opp(tag)}</span>` });
     }
   }
   items.sort((a, b) => a.g - b.g);
@@ -2568,7 +2570,7 @@ function _actpopSummaryLineHtml(row, c) {
     : techOverrides ? 'drove it' : winEntry ? rel(techSide) : 'drove it';
   const techLbl = rraUpper ? (actionDisplay(rraUpper).label || rraUpper) : '';
   const techHtml = rraUpper
-    ? `<span class="wc-chip ${cls(techTag)}${techTag === 'drove it' ? ' drove' : ''}" title="${tip('Technical ' + techLbl + (techTag ? ' (' + techTag + ')' : ''), [])}">${escapeHtml(techLbl)} ${arrow(techSide)}</span>`
+    ? `<span class="wc-chip ${cls(techSide)}${techTag === 'drove it' ? ' drove' : ''}" title="${tip('Technical ' + techLbl + (techTag ? ' (' + techTag + ')' : ''), [])}">${escapeHtml(techLbl)} ${arrow(techSide)}${opp(techTag)}</span>`
     : '<span class="wc-chip na" title="Technical has no signal">no signal</span>';
   const fcCls = c.side === 'buy' ? 'ok' : c.side === 'sell' ? 'no' : 'na';
   // aligned = the Final Call's side is backed by a source lean and by Technical, with nothing against it and no stop in the way

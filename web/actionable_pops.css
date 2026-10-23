@@ -534,12 +534,13 @@
 /* 2026-10-23, user: driver rows look like the Supporting / Opposing boxes - white background, a coloured bar at the start
    (green = drove it / supports, red = opposes, amber = warning only), the important words in the text coloured. */
 .actpop-driver, .actpop-driver.buy, .actpop-driver.sell { background:#fff; border:1px solid #e5e7eb; border-left:3px solid #cbd5e1; }
-.actpop-driver.dv-drove, .actpop-driver.dv-supports { border-left-color: var(--act-buy); }
-.actpop-driver.dv-opposes, .actpop-driver.dv-stop { border-left-color: var(--act-sell-strong); }
+.actpop-driver.buy { border-left-color: var(--act-buy); }
+.actpop-driver.sell { border-left-color: var(--act-sell-strong); }
 .actpop-driver.dv-warn { border-left-color:#f59e0b; }
 /* 2026-10-23, user: very light green / very light red backgrounds for the same rows (others stay white). */
-.actpop-driver.dv-drove, .actpop-driver.dv-supports { background:#f0fdf4; }
-.actpop-driver.dv-opposes, .actpop-driver.dv-stop { background:#fef2f2; }
+/* 2026-10-23, user: colour = the row's own type (BUY green, SELL red), also when it opposes the call; supports / opposes stays in the tag and the tick. */
+.actpop-driver.buy { background:#f0fdf4; }
+.actpop-driver.sell { background:#fef2f2; }
 .actpop-driver.dv-warn { background:#fefce8; }  /* 2026-10-23, user: warning-only rows very light yellow */
 
 /* 2026-10-23, user: one summary line in the "Why this action" card -- a tag per source, Technical, then the Final Call. */
