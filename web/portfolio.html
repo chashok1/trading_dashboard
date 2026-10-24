@@ -341,8 +341,8 @@
       </div>
 
       <!-- Trends panel: 2 charts. Period selector lives in the filter bar above. -->
-      <div id="trendsPanel" style="margin: 4px 0 8px; padding: 8px 12px; border: 1px solid var(--border, #e0e0e0); border-radius: 6px; background: var(--surface, #fafafa);">
-        <div style="display:grid; grid-template-columns: 3.15fr 3.15fr 3.7fr; gap:12px;">
+      <div id="trendsPanel" style="margin: 2px 0 4px; padding: 3px 4px; border: 1px solid var(--border, #e0e0e0); border-radius: 6px; background: var(--surface, #fafafa);">
+        <div style="display:grid; grid-template-columns: 3.15fr 3.15fr 3.7fr; gap:4px;">
 
           <!-- Account Value: Total / Cash / Market / Cost inline next to title.
                The expand icon (⤢) is positioned absolute top-right so the
@@ -380,8 +380,10 @@
           <!-- 2026-10-24, user-directed: the 4 Portfolio Mix pies from the Dashboard (Asset Allocation with Beta bar under it, Sector,
                Concentration) in the remaining 40% of the row. Drawn by web/portfolio_mix.js (idPrefix 'ppm') from the filtered rows
                (Group / Account / Source) -- see renderPortfolioPies() in portfolio.js. Click a pie for the bigger popup. -->
-          <style>#ppmPanel .empty-note{grid-column:1/-1;}</style>
-          <div id="ppmPanel" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(135px, 1fr)); gap:6px 12px; align-content:start;">
+          <style>#ppmPanel .empty-note{grid-column:1/-1;}
+          #trendsPanel .trend-card, #ppmPanel > div { border:1px solid var(--border,#d6d9de); border-radius:6px; padding:3px 4px; background:#fff; }
+          #ppmPanel > div { cursor:pointer; }</style>
+          <div id="ppmPanel" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(135px, 1fr)); gap:4px; align-content:start;">
             <div id="ppmAssetCard">
               <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:3px;">Asset Allocation</div>
               <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
@@ -679,7 +681,7 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js?v=20261023b"></script>
-  <script src="/static/portfolio_mix.js?v=20261020h3"></script>
+  <script src="/static/portfolio_mix.js?v=20261020h4"></script>
   <script src="/static/portfolio.js?v=20261024h"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>

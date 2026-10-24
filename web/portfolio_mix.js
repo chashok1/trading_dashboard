@@ -363,7 +363,7 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       return `<div title="${title}" data-pm-idx="${i}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
         + `<span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>`
         + `<span style="flex:1;min-width:0;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(shown[i])}</span>`
-        + `<span style="color:#6b7280;flex-shrink:0;">${pct}%</span>`
+        + `<span style="color:#6b7280;flex-shrink:0;">${pct}%${solid ? ' ($' + Math.round(values[i] / 1000).toLocaleString() + 'k)' : ''}</span>`
         + `</div>`;
     }).join('');
     if (onSliceClick && !popupTitle) {
