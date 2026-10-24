@@ -224,6 +224,11 @@ function renderTrendCharts(data) {
             }
         };
     }
+    // Compact charts show dates as mm/dd (labels arrive as YYYY-MM-DD); tooltips and the expanded popup keep the full date.
+    const mmdd = function (val) {
+        const l = String(this.getLabelForValue(val));
+        return /^\d{4}-\d{2}-\d{2}/.test(l) ? l.slice(5, 7) + '/' + l.slice(8, 10) : l;
+    };
     // Account Value chart options: NO legend, x-axis ticks visible, Y on right
     const baseOpts = {
         responsive: true, maintainAspectRatio: false,
@@ -235,7 +240,7 @@ function renderTrendCharts(data) {
         scales: {
             x: { display: true,
                  ticks: { font: { size: 9 }, color: '#666',
-                          maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                          maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: mmdd },
                  grid:  { display: false } },
             y: { type: 'linear', position: 'right', display: true,
                  ticks: { font: { size: 9 }, color: '#666', callback: yTick },
@@ -285,7 +290,7 @@ function renderTrendCharts(data) {
         scales: {
             x:  { display: true,
                   ticks: { font: { size: 9 }, color: '#666',
-                           maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                           maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: mmdd },
                   grid:  { display: false } },
             y:  { type: 'linear', position: 'right', display: true,
                   ticks: { font: { size: 9 }, color: '#666', callback: yTick },
@@ -467,6 +472,19 @@ function openTrendModal(key, title) {
     $('trendModalTitle').textContent = title;
     $('trendModalSub').textContent   = sub
         + (modalEstBarIdx >= 0 ? '  •  purple bar = pending CST/FT estimate, not yet confirmed' : '');
+    // Same header numbers as the compact chart (Total/Cash/Market/Cost, or Today's Change/Realized/Cum), copied live from it.
+    const statsEl = $('trendModalStats');
+    const statsSrc = $(key === 'value' ? 'ovValueHeader' : (key === 'cum' || key === 'daily') ? 'ovCumHeader' : '');
+    if (statsEl) {
+        statsEl.innerHTML = '';
+        if (statsSrc) {
+            const c = statsSrc.cloneNode(true);
+            c.removeAttribute('id'); c.style.paddingRight = '0';
+            c.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+            statsEl.appendChild(c);
+        }
+        statsEl.style.display = statsSrc ? '' : 'none';
+    }
     $('trendModalBackdrop').style.display = 'flex';
 
     if (_trendModalChart) { _trendModalChart.destroy(); _trendModalChart = null; }
@@ -1357,6 +1375,44 @@ function buildAccountMap() {
   }
 }
 
+// 2026-10-24, user-directed: Portfolio Mix pies (Asset Allocation + Beta bar, Sector, Concentration) next to the two trend charts.
+// Same engine as the Dashboard (web/portfolio_mix.js, idPrefix 'ppm'); positions = the rows currently shown (Group / Account / Source /
+// search filters), classification maps fetched once per date.
+async function ensurePieMaps() {
+    if (state.pmMaps && state.pmMaps.date === state.date) return state.pmMaps;
+    const dq = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    const [beta, ac, sec] = await Promise.all([
+        fetchJson('/api/portfolio/beta-map' + dq).catch(() => ({})),
+        fetchJson('/api/portfolio/asset-class-map' + dq).catch(() => ({})),
+        fetchJson('/api/portfolio/sector-map' + dq).catch(() => ({})),
+    ]);
+    state.pmMaps = { date: state.date, beta: beta || {}, ac: ac || {}, sec: sec || {} };
+    return state.pmMaps;
+}
+async function renderPortfolioPies() {
+    if (typeof Chart === 'undefined' || typeof pmRenderCoreMix !== 'function' || !$('ppmPanel')) return;
+    try {
+        const maps = await ensurePieMaps();
+        const bySym = {};
+        let cash = 0;
+        for (const r of (state.filtered || [])) {
+            const mv = Number(r.market_value) || 0;
+            if (isCashRow(r)) { cash += mv; continue; }
+            if (!r.symbol) continue;
+            const row = bySym[r.symbol] || (bySym[r.symbol] = {
+                tos_symbol: r.symbol, current_position_dollar: 0,
+                _pmAssetClass: maps.ac[r.symbol] || 'Unmapped',
+                _pmSector: maps.sec[r.symbol] || 'Unmapped',
+            });
+            row.current_position_dollar += mv;
+        }
+        const held = Object.values(bySym).filter(r => r.current_position_dollar > 0);
+        pmRenderCoreMix('ppm', held, cash, maps.beta);
+    } catch (e) {
+        console.warn('portfolio pies failed:', e);
+    }
+}
+
 function applyClientFilter() {
   const q = (state.filters.search || '').toLowerCase().trim();
   const groupTags = state.filters.group ? (state.groups[state.filters.group] || []) : null;
@@ -1371,6 +1427,7 @@ function applyClientFilter() {
   applySort();              // apply current sort so the visible order matches the indicator
   renderGrid();
   updateSortIndicators();   // initial load needs this so the default ▲ appears on Symbol
+  renderPortfolioPies();
 
   // Latest-prices override depends on what is currently shown.
   if (state.filters && state.filters.latestPrices) {

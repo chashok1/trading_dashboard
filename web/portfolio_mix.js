@@ -312,14 +312,16 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
     return;
   }
   canvas.style.display = '';
+  // 'ppm' = the Portfolio screen's pies: solid, full-colour pies (the Dashboard's are faint doughnuts).
+  const solid = String(key).indexOf('ppm') === 0;
   _pmCharts[key] = new Chart(canvas, {
     type: 'doughnut',
-    data: { labels: fullNames, datasets: [{ data: values, backgroundColor: popupTitle ? colors.map(_pmLight) : colors, borderColor: '#fff', borderWidth: 1 }] },
+    data: { labels: fullNames, datasets: [{ data: values, backgroundColor: (popupTitle && !solid) ? colors.map(_pmLight) : colors, borderColor: '#fff', borderWidth: 1 }] },
     options: {
       responsive: false,
       maintainAspectRatio: false,
       animation: false,   // no draw-in animation on (re)draw
-      cutout: '55%',
+      cutout: solid ? '0%' : '55%',
       // Slice click -> onSliceClick(label), same drill-down the Sector/
       // Asset class/Style factor-scorecard pies already had before this pie
       // ever existed -- see pmRenderCoreMix's own callers for which axis
@@ -475,11 +477,12 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     assetLabels, assetLabels.map(k => assetTotals[k]),
     assetLabels.map(k => _PM_ASSET_COLORS[k] || '#c3c2b7'),
     assetLabels.map(k => assetTickerMap[k]), 'No asset class data for held positions.',
-    (label) => _pmOpenCategoryModal('asset_class', label), undefined, idPrefix === 'dpm' ? 'Asset Allocation' : null);
+    (label) => _pmOpenCategoryModal('asset_class', label), undefined, (idPrefix === 'dpm' || idPrefix === 'ppm') ? 'Asset Allocation' : null);
   _pmFitCardWidth(idPrefix + 'AssetCard', assetLabels, assetLabels.map(k => assetTotals[k]));
 
   if (!held.length) {
     _pmDrawSegBar(idPrefix + 'BetaBar', [], [], [], [], 'No held positions match the current filters.');
+    if (idPrefix === 'ppm') _pmDrawPie('ppmBeta', 'ppmBetaCanvas', 'ppmBetaLegend', [], [], [], [], 'No held positions match the current filters.');
     ['Sector', 'Conc'].forEach(suf => {
       _pmDrawPie(idPrefix + suf, idPrefix + suf + 'Canvas', idPrefix + suf + 'Legend',
         [], [], [], [], 'No held positions match the current filters.');
@@ -506,10 +509,17 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   // (web/app.js::_renderQuadOutlookPanel's _segBar) -- one bar, no
   // separate legend list, % printed INSIDE each wide-enough segment.
   // Click-to-open popup unchanged (same 'beta' axis/thresholds as before).
-  _pmDrawSegBar(idPrefix + 'BetaBar', betaLabels, betaLabels.map(k => betaBuckets[k]),
-    betaLabels.map(k => _PM_BETA_COLORS[k]), betaLabels.map(k => betaTickers[k]),
-    'No beta data for held positions.',
-    (label) => _pmOpenCategoryModal('beta', label));
+  if (idPrefix === 'ppm') {
+    // Portfolio screen: Beta is a pie of its own (2026-10-24, user-directed); the Dashboard keeps the segmented bar.
+    _pmDrawPie('ppmBeta', 'ppmBetaCanvas', 'ppmBetaLegend', betaLabels, betaLabels.map(k => betaBuckets[k]),
+      betaLabels.map(k => _PM_BETA_COLORS[k]), betaLabels.map(k => betaTickers[k]),
+      'No beta data for held positions.', (label) => _pmOpenCategoryModal('beta', label), undefined, 'Beta');
+  } else {
+    _pmDrawSegBar(idPrefix + 'BetaBar', betaLabels, betaLabels.map(k => betaBuckets[k]),
+      betaLabels.map(k => _PM_BETA_COLORS[k]), betaLabels.map(k => betaTickers[k]),
+      'No beta data for held positions.',
+      (label) => _pmOpenCategoryModal('beta', label));
+  }
 
   // Sector mix -- top 7 by $ value + Other. Color assigned by alpha rank so
   // the same sector keeps the same slot across re-renders (not tied to $ rank).
@@ -560,7 +570,7 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmDrawPie(idPrefix + 'Sector', idPrefix + 'SectorCanvas', idPrefix + 'SectorLegend',
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
     secTickerLists, 'No sector data for held positions.',
-    (label) => _pmOpenCategoryModal('sector', label), secShown, idPrefix === 'dpm' ? 'Sector' : null);
+    (label) => _pmOpenCategoryModal('sector', label), secShown, (idPrefix === 'dpm' || idPrefix === 'ppm') ? 'Sector' : null);
   _pmFitCardWidth(idPrefix + 'SectorCard', secShown, secEntries.map(e => e[1]));
 
   // Concentration -- top 7 holdings by $ value + Other.
@@ -576,6 +586,6 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     concEntries.map(e => e[0]), concEntries.map(e => e[1]),
     concEntries.map((e, i) => e[0] === 'Other' ? '#898781' : _PM_CAT_PALETTE[i % _PM_CAT_PALETTE.length]),
     concTickerLists, 'No held positions.',
-    _pmOpenSymbolChart, undefined, idPrefix === 'dpm' ? 'Concentration' : null);
+    _pmOpenSymbolChart, undefined, (idPrefix === 'dpm' || idPrefix === 'ppm') ? 'Concentration' : null);
   _pmFitCardWidth(idPrefix + 'ConcCard', concEntries.map(e => e[0]), concEntries.map(e => e[1]));
 }

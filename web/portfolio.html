@@ -342,14 +342,14 @@
 
       <!-- Trends panel: 2 charts. Period selector lives in the filter bar above. -->
       <div id="trendsPanel" style="margin: 4px 0 8px; padding: 8px 12px; border: 1px solid var(--border, #e0e0e0); border-radius: 6px; background: var(--surface, #fafafa);">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div style="display:grid; grid-template-columns: 3.15fr 3.15fr 3.7fr; gap:12px;">
 
           <!-- Account Value: Total / Cash / Market / Cost inline next to title.
                The expand icon (⤢) is positioned absolute top-right so the
                last header value (Cost) aligns with the chart's right Y-axis. -->
           <div class="trend-card" data-trend-key="value" data-trend-title="Account Value" style="cursor:pointer; position:relative;" title="Click to expand">
             <span style="position:absolute; top:2px; right:4px; color:var(--text-3,#aaa); font-size:11px; line-height:1;">⤢</span>
-            <div id="ovValueHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+            <div id="ovValueHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 10px;">
               <span style="display:flex; gap:14px; color:var(--text-1,#222); margin-left:auto; font-variant-numeric: tabular-nums;">
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Total </span><strong id="ovTotal" style="font-size:15px;">—</strong></span>
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Cash </span><strong id="ovCash" style="font-size:15px;">—</strong></span>
@@ -365,8 +365,7 @@
                with the right Y-axis tick labels in the chart below. -->
           <div class="trend-card" data-trend-key="cum" data-trend-title="Cumulative P&amp;L" style="cursor:pointer; position:relative;" title="Click to expand">
             <span style="position:absolute; top:2px; right:4px; color:var(--text-3,#aaa); font-size:11px; line-height:1;">⤢</span>
-            <div id="ovCumHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
-              <span style="font-weight:700; white-space:nowrap; font-size:14px;">Cumulative P&amp;L</span>
+            <div id="ovCumHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 10px;">
               <span style="display:flex; gap:14px; color:var(--text-1,#222); margin-left:auto; font-variant-numeric: tabular-nums;">
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Today's Change </span><strong id="ovTodayGain" style="font-size:15px;">—</strong></span>
                 <span><span style="color:var(--text-2,#666); font-size:11px;">Realized </span><strong id="ovRealized" style="font-size:15px;">—</strong></span>
@@ -376,6 +375,41 @@
             <div style="height: 200px; position: relative;"><canvas id="chTrendCum" role="img" aria-label="Cumulative P&amp;L line with day change thin bars overlay"></canvas></div>
             <!-- legacy canvas retained as a hidden placeholder so any old code can still find chTrendDaily without erroring -->
             <canvas id="chTrendDaily" style="display:none;"></canvas>
+          </div>
+
+          <!-- 2026-10-24, user-directed: the 4 Portfolio Mix pies from the Dashboard (Asset Allocation with Beta bar under it, Sector,
+               Concentration) in the remaining 40% of the row. Drawn by web/portfolio_mix.js (idPrefix 'ppm') from the filtered rows
+               (Group / Account / Source) -- see renderPortfolioPies() in portfolio.js. Click a pie for the bigger popup. -->
+          <style>#ppmPanel .empty-note{grid-column:1/-1;}</style>
+          <div id="ppmPanel" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(135px, 1fr)); gap:6px 12px; align-content:start;">
+            <div id="ppmAssetCard">
+              <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:3px;">Asset Allocation</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <canvas id="ppmAssetCanvas" width="120" height="120"></canvas>
+                <div id="ppmAssetLegend" style="width:100%;min-width:0;display:grid;grid-template-columns:1fr 1fr;column-gap:10px;"></div>
+              </div>
+            </div>
+            <div id="ppmBetaCard">
+              <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:3px;">Beta</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <canvas id="ppmBetaCanvas" width="120" height="120"></canvas>
+                <div id="ppmBetaLegend" style="width:100%;min-width:0;display:grid;grid-template-columns:1fr 1fr;column-gap:10px;"></div>
+              </div>
+            </div>
+            <div id="ppmSectorCard">
+              <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:3px;">Sector</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <canvas id="ppmSectorCanvas" width="120" height="120"></canvas>
+                <div id="ppmSectorLegend" style="width:100%;min-width:0;display:grid;grid-template-columns:1fr 1fr;column-gap:10px;"></div>
+              </div>
+            </div>
+            <div id="ppmConcCard">
+              <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:3px;">Concentration</div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <canvas id="ppmConcCanvas" width="120" height="120"></canvas>
+                <div id="ppmConcLegend" style="width:100%;min-width:0;display:grid;grid-template-columns:1fr 1fr;column-gap:10px;"></div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -645,7 +679,8 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js?v=20261023b"></script>
-  <script src="/static/portfolio.js?v=20261024e"></script>
+  <script src="/static/portfolio_mix.js?v=20261020h3"></script>
+  <script src="/static/portfolio.js?v=20261024h"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261001b" defer></script>
@@ -749,5 +784,6 @@
         </div>
         <button id="trendModalClose" aria-label="close" style="background:transparent; border:none; font-size:22px; cursor:pointer; padding:4px 10px;">&times;</button>
       </div>
-      <div style="flex:1; min-height:0; position:relative; height: calc(88vh - 100px);">
+      <div id="trendModalStats" style="display:none; margin-bottom:8px;"></div>
+      <div style="flex:1; min-height:0; position:relative; height: calc(88vh - 140px);">
         <canvas id="trendModalCanvas" role="img" aria-label="expanded trend chart"></ca
