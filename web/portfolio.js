@@ -1395,7 +1395,7 @@ async function renderPortfolioPies() {
         const maps = await ensurePieMaps();
         const bySym = {};
         let cash = 0;
-        for (const r of (state.filtered || [])) {
+        for (const r of (state.pieBase || state.filtered || [])) {
             const mv = Number(r.market_value) || 0;
             if (isCashRow(r)) { cash += mv; continue; }
             if (!r.symbol) continue;
@@ -1408,15 +1408,41 @@ async function renderPortfolioPies() {
         }
         const held = Object.values(bySym).filter(r => r.current_position_dollar > 0);
         pmRenderCoreMix('ppm', held, cash, maps.beta);
+        updatePieSelUi();
     } catch (e) {
         console.warn('portfolio pies failed:', e);
     }
 }
 
+// Pie filter: click a legend row / slice on the Portfolio Mix pies -> the grid shows only those holdings. Click again (or the chip) clears.
+// The pies themselves keep drawing from every other filter (state.pieBase) so they don't collapse to the selection.
+function onPieSelect(key, label, symbols) {
+  const pie = String(key).replace(/^ppm/, '');
+  const cur = state.pieSel;
+  if (cur && cur.pie === pie && cur.label === label) state.pieSel = null;
+  else state.pieSel = { pie, label, symbols: new Set(symbols || []), cash: pie === 'Asset' && label === 'Cash' };
+  applyClientFilter();
+}
+window.onPieSelect = onPieSelect;
+function updatePieSelUi() {
+  const sel = state.pieSel;
+  const chip = $('pieSelChip');
+  if (chip) {
+    chip.style.display = sel ? '' : 'none';
+    if (sel) chip.innerHTML = `${escapeHtml(sel.pie === 'Conc' ? 'Concentration' : sel.pie)}: <b>${escapeHtml(sel.label)}</b> <span style="font-size:13px;line-height:1;">&times;</span>`;
+  }
+  document.querySelectorAll('#ppmPanel [data-pm-label]').forEach(el => {
+    const pie = (el.closest('[id^="ppm"][id$="Card"]') || {}).id;
+    const on = !!sel && pie === 'ppm' + sel.pie + 'Card' && el.getAttribute('data-pm-label') === sel.label;
+    el.style.background = on ? '#e8f0fe' : '';
+    el.style.fontWeight = on ? '700' : '';
+  });
+}
+
 function applyClientFilter() {
   const q = (state.filters.search || '').toLowerCase().trim();
   const groupTags = state.filters.group ? (state.groups[state.filters.group] || []) : null;
-  state.filtered = state.rows.filter(r => {
+  const base = state.rows.filter(r => {
     if (q && !(`${r.symbol || ''} ${r.description || ''}`).toLowerCase().includes(q)) return false;
     if (groupTags && !groupTags.includes(r.account_tag)) return false;
     if (state.filters.account && r.account !== state.filters.account) return false;
@@ -1424,10 +1450,14 @@ function applyClientFilter() {
     if (state.categorySymbols && !state.categorySymbols.has(r.symbol)) return false;
     return true;
   });
+  state.pieBase = base;
+  const ps = state.pieSel;
+  state.filtered = ps ? base.filter(r => isCashRow(r) ? ps.cash : ps.symbols.has(r.symbol)) : base;
   applySort();              // apply current sort so the visible order matches the indicator
   renderGrid();
   updateSortIndicators();   // initial load needs this so the default ▲ appears on Symbol
   renderPortfolioPies();
+  updatePieSelUi();
 
   // Latest-prices override depends on what is currently shown.
   if (state.filters && state.filters.latestPrices) {
@@ -1732,6 +1762,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   checkForNewData();
   setInterval(checkForNewData, 30000);
 
+  $('pieSelChip')?.addEventListener('click', () => { state.pieSel = null; applyClientFilter(); });
   $('groupFilter').addEventListener('change', e => {
     state.filters.group = e.target.value;
     state.filters.account = '';  // Reset account selection when group changes

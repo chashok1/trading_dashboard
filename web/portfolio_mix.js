@@ -328,11 +328,17 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       // each pie opens (or none, for pies with no natural backend
       // counterpart -- e.g. Beta's Low/Mid/High buckets aren't a real
       // category anywhere server-side).
-      onClick: (onSliceClick && !popupTitle) ? (evt, elements) => {
+      onClick: solid ? (evt, elements) => {
+        // Portfolio screen: a slice filters the positions grid (portfolio.js::onPieSelect); a click elsewhere on the card opens the popup.
+        if (!elements.length || typeof window.onPieSelect !== 'function') return;
+        if (evt.native && evt.native.stopPropagation) evt.native.stopPropagation();
+        const i = elements[0].index;
+        window.onPieSelect(key, labels[i], (tickerLists && tickerLists[i]) || []);
+      } : (onSliceClick && !popupTitle) ? (evt, elements) => {
         if (!elements.length) return;
         onSliceClick(labels[elements[0].index]);
       } : undefined,
-      onHover: (onSliceClick && !popupTitle) ? (evt, elements) => {
+      onHover: (solid || (onSliceClick && !popupTitle)) ? (evt, elements) => {
         evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
       } : undefined,
       plugins: {
@@ -360,13 +366,22 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       const title = titleLines.length ? escapeHtml(titleLines.join('\n')) : '';
       const clickable = !!onSliceClick || !!popupTitle;
       const cursor = clickable ? 'pointer' : ((tickers.length || nameLine.length) ? 'help' : 'default');
-      return `<div title="${title}" data-pm-idx="${i}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
+      return `<div title="${title}" data-pm-idx="${i}" data-pm-label="${escapeHtml(lab)}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
         + `<span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>`
         + `<span style="flex:1;min-width:0;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(shown[i])}</span>`
         + `<span style="color:#6b7280;flex-shrink:0;">${pct}%${solid ? ' ($' + Math.round(values[i] / 1000).toLocaleString() + 'k)' : ''}</span>`
         + `</div>`;
     }).join('');
-    if (onSliceClick && !popupTitle) {
+    if (solid && typeof window.onPieSelect === 'function') {
+      // Portfolio screen: a legend row filters the positions grid (does not bubble up to the card's open-popup click).
+      legendEl.querySelectorAll('[data-pm-idx]').forEach((el) => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const i = Number(el.getAttribute('data-pm-idx'));
+          window.onPieSelect(key, labels[i], (tickerLists && tickerLists[i]) || []);
+        });
+      });
+    } else if (onSliceClick && !popupTitle) {
       legendEl.querySelectorAll('[data-pm-idx]').forEach((el) => {
         el.addEventListener('click', () => onSliceClick(labels[Number(el.getAttribute('data-pm-idx'))]));
       });
