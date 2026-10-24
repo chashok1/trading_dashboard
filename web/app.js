@@ -2328,8 +2328,28 @@ async function loadCumPnlSnapshot() {
     const lastCum = cum.length ? cum[cum.length - 1] : 0;
     const cumColor = lastCum >= 0 ? colorPos : colorNeg;
     const yTick = v => Math.abs(v) >= 1000 ? '$' + (Math.round(v / 100) / 10).toFixed(1) + 'k' : '$' + Math.round(v);
+    // 2026-10-24, user-directed: each Day Change bar is labelled with its value rounded to whole $K (9k, -3k, 0k).
+    const barKLabels = {
+      id: 'barKLabels',
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+        meta.data.forEach((bar, i) => {
+          const v = Number(dayArr[i]);
+          if (!isFinite(v)) return;
+          const k = Math.round(v / 1000);
+          ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
+          ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
+          ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+        });
+        ctx.restore();
+      },
+    };
     _cumPnlChart = new Chart(canvas, {
       type: 'bar',
+      plugins: [barKLabels],
       data: { labels: dates, datasets: [
         { type: 'bar', label: 'Day Change', data: dayArr,
           backgroundColor: dayArr.map((v, i) => i === estBarIdx
@@ -2345,6 +2365,7 @@ async function loadCumPnlSnapshot() {
       ] },
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 12, bottom: 12 } },
         plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false,
             callbacks: (estBarIdx >= 0 || summaryChg) ? { label(ctx) {
                 const y = ctx.parsed.y;
@@ -2462,6 +2483,26 @@ function openDashTrendModal() {
   const yTick = v => Math.abs(v) >= 1000 ? '$' + (Math.round(v / 100) / 10).toFixed(1) + 'k' : '$' + Math.round(v);
   _dashTrendModalChart = new Chart($('dashTrendModalCanvas'), {
     type: 'bar',
+    plugins: [{
+      // Day Change bars labelled in whole $K (same as the mini chart); wider chart allows more bars.
+      id: 'barKLabels',
+      afterDatasetsDraw(chart) {
+        const bars = chart.getDatasetMeta(0).data;
+        if (bars.length > 60) return;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        bars.forEach((bar, i) => {
+          const v = Number(dayArr[i]);
+          if (!isFinite(v)) return;
+          const k = Math.round(v / 1000);
+          ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
+          ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
+          ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+        });
+        ctx.restore();
+      },
+    }],
     data: { labels, datasets: [
       { type: 'bar', label: 'Day Change', data: dayArr,
         backgroundColor: dayArr.map((v, i) => i === estBarIdx
@@ -2477,6 +2518,7 @@ function openDashTrendModal() {
     ] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 14, bottom: 14 } },
       plugins: {
         legend: { display: false },
         tooltip: { enabled: true, mode: 'index', intersect: false,

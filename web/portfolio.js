@@ -161,6 +161,47 @@ async function loadTrends() {
     }
 }
 
+// 2026-10-24, user-directed: mark the highest and lowest point on the Account Value line (dot + "Peak $1,056k" / "Low $1,028k").
+function peakLowPlugin(values, fontPx) {
+    return {
+        id: 'peakLow',
+        afterDatasetsDraw(chart) {
+            let hi = -1, lo = -1;
+            (values || []).forEach((v, i) => {
+                if (v == null || !isFinite(Number(v))) return;
+                if (hi < 0 || v > values[hi]) hi = i;
+                if (lo < 0 || v < values[lo]) lo = i;
+            });
+            if (hi < 0 || hi === lo) return;
+            let cur = values.length - 1;
+            while (cur >= 0 && (values[cur] == null || !isFinite(Number(values[cur])))) cur--;
+            const pts = chart.getDatasetMeta(0).data;
+            const area = chart.chartArea;
+            const ctx = chart.ctx;
+            const fmtK = v => '$' + Math.round(v / 1000).toLocaleString() + 'k';
+            ctx.save();
+            ctx.font = 'bold ' + fontPx + 'px sans-serif';
+            // "Now" = the latest point; when it IS the peak/low, that label just says so instead of drawing a second one.
+            const marks = [[hi, 'Peak', '#1c6c30', 'bottom', -6], [lo, 'Low', '#b21f1f', 'top', 6]];
+            const curMark = marks.find(m => m[0] === cur);
+            if (curMark) curMark[1] += ' (now)';
+            else if (cur >= 0) marks.push([cur, 'Now', '#7F77DD', 'bottom', -6]);
+            marks.forEach(([i, name, col, base, dy]) => {
+                const p = pts[i];
+                if (!p) return;
+                const text = name + ' ' + fmtK(values[i]);
+                const w = ctx.measureText(text).width;
+                const x = Math.min(Math.max(p.x, area.left + w / 2), area.right - w / 2);
+                ctx.fillStyle = col;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2); ctx.fill();
+                ctx.textAlign = 'center'; ctx.textBaseline = base;
+                ctx.fillText(text, x, p.y + dy);
+            });
+            ctx.restore();
+        },
+    };
+}
+
 function renderTrendCharts(data) {
     if (typeof Chart === 'undefined') return;
     const labels = data.dates || [];
@@ -186,6 +227,7 @@ function renderTrendCharts(data) {
     // Account Value chart options: NO legend, x-axis ticks visible, Y on right
     const baseOpts = {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 16, bottom: 16 } },
         plugins: {
             legend:  { display: false },
             tooltip: { enabled: true, mode: 'index', intersect: false },
@@ -211,7 +253,7 @@ function renderTrendCharts(data) {
             borderWidth: 2, tension: 0.25,
         }] },
         options: baseOpts,
-        plugins: [syncHeaderPadding('ovValueHeader')],
+        plugins: [syncHeaderPadding('ovValueHeader'), peakLowPlugin(data.account_value, 9)],
     });
     // Combined Cumulative P&L (line) + Day Change (thin bars overlay)
     if (_trendCharts.daily) _trendCharts.daily.destroy();
@@ -225,6 +267,7 @@ function renderTrendCharts(data) {
     const _lastCum = lastCum;  // kept for compatibility with _finalCum below
     const combinedOpts = {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 12, bottom: 12 } },
         plugins: {
             legend:  { display: false },
             tooltip: { enabled: true, mode: 'index', intersect: false,
@@ -274,7 +317,26 @@ function renderTrendCharts(data) {
               yAxisID: 'y', order: 1 },
         ] },
         options: combinedOpts,
-        plugins: [syncHeaderPadding('ovCumHeader')],
+        plugins: [syncHeaderPadding('ovCumHeader'), {
+            // 2026-10-24, user-directed: Day Change bars labelled in whole $K (9k, -3k, 0k); skipped when too many bars to read.
+            id: 'barKLabels',
+            afterDatasetsDraw(chart) {
+                const bars = chart.getDatasetMeta(0).data;
+                if (bars.length > 31) return;
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+                bars.forEach((bar, i) => {
+                    const v = Number(dayArr[i]);
+                    if (!isFinite(v)) return;
+                    const k = Math.round(v / 1000);
+                    ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
+                    ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
+                    ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+                });
+                ctx.restore();
+            },
+        }],
     });
     // Update the Cum overlay label in the chart header
     // Prefer the post-override cumulative if present (latest-prices toggle).
@@ -433,11 +495,33 @@ function openTrendModal(key, title) {
                  ticks: { font: { size: 10 }, color: '#666', callback: yTick },
                  grid: { color: 'rgba(0,0,0,0.06)' } },
           };
+    const modalBarVals = combined ? combined[0].data : [];
     _trendModalChart = new Chart($('trendModalCanvas'), {
         type,
+        plugins: key === 'value' ? [peakLowPlugin(_lastTrendData.account_value, 11)] : combined ? [{
+            // Day Change bars labelled in whole $K (same as the compact chart); wider chart allows more bars.
+            id: 'barKLabels',
+            afterDatasetsDraw(chart) {
+                const bars = chart.getDatasetMeta(0).data;
+                if (bars.length > 60) return;
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+                bars.forEach((bar, i) => {
+                    const v = Number(modalBarVals[i]);
+                    if (!isFinite(v)) return;
+                    const k = Math.round(v / 1000);
+                    ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
+                    ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
+                    ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+                });
+                ctx.restore();
+            },
+        }] : [],
         data: { labels: modalLabels || labels, datasets: combined ? combined : [dataset] },
         options: {
             responsive: true, maintainAspectRatio: false,
+            layout: { padding: { top: 18, bottom: 18 } },
             plugins: {
                 legend:  { display: false },
                 tooltip: { enabled: true, mode: combined ? 'index' : 'nearest', intersect: false,
@@ -549,16 +633,15 @@ async function loadGroups() {
     state.groupDescriptions = resp.descriptions || {};  // group_name -> group_desc, for display anywhere the group code shows
     const sel = $('groupFilter');
     if (!sel) return;
-    sel.innerHTML = '<option value="">All groups</option>';
+    sel.innerHTML = '<option value="">All Groups</option>';
     for (const g of Object.keys(state.groups).sort()) {
       const o = document.createElement('option');
       o.value = g; o.textContent = state.groupDescriptions[g] || g;
       sel.appendChild(o);
     }
-    if (resp.default && state.groups[resp.default]) {
-      state.filters.group = resp.default;
-      sel.value = resp.default;
-    }
+    // 2026-10-24, user-directed: always open on "All Groups" (the server's saved default group is no longer pre-selected).
+    state.filters.group = '';
+    sel.value = '';
   } catch (e) {
     console.warn('loadGroups failed:', e);
   }
