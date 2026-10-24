@@ -434,7 +434,7 @@ async function loadRiskDial() {
     // Band 6 -> Band 1 warning: a risk dial computed on stale/failed
     // housekeeping is worse than no risk dial (spec 7.2 Band 6).
     const staleWarning = !state.housekeepingOk
-      ? `<div class="rd-stale-warning">Housekeeping flagged stale or failed data — this read may be based on incomplete inputs.</div>`
+      ? `<div class="rd-stale-warning" title="${escapeHtml(state.housekeepingMsg || '')}">Stale data: ${escapeHtml(state.housekeepingMsg || 'the data-freshness check could not run.')} This read may be based on incomplete inputs.</div>`
       : '';
     // TASK_134 A.4 -- severity encoded as a coloured left rail + weight chip,
     // never colour alone. loadRiskDial's caller (drv_market_stat.gauges_fired)
@@ -2053,6 +2053,7 @@ async function loadHousekeeping() {
     state.anchorDate = anchor ? anchor.anchor_date : null;
     const ok = !anchor || !anchor.is_stale;
     state.housekeepingOk = ok;
+    state.housekeepingMsg = ok ? '' : (anchor.message || 'Data is behind the expected market close.');
     if (line) {
       line.innerHTML = `<span class="hk-dot ${ok ? 'ok' : 'bad'}"></span>`
         + (ok ? 'Data current.' : escapeHtml(anchor.message || 'Data behind expected market close.'));
@@ -2060,6 +2061,7 @@ async function loadHousekeeping() {
   } catch (e) {
     console.error('housekeeping (anchor-status) failed:', e);
     state.housekeepingOk = false;
+    state.housekeepingMsg = 'The data-freshness check itself failed (could not reach /api/anchor-status).';
     if (line) line.innerHTML = '<span class="hk-dot bad"></span>Housekeeping check failed.';
   }
   await loadTxnFeedGaps();
