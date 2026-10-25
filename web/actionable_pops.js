@@ -1999,6 +1999,37 @@ function _scoreWord(n) {
   return 'mild sell';
 }
 
+// TASK_154: "3 days: 48% up / 51% down (n=17,400)" + tag for a numbered Technical step; hover = bulleted detail. Display only.
+// Counts signals (a stock firing on several days counts several times). '' when no track record is loaded for the step.
+// Step direction for the win %: +1 buy, -1 sell, 0 none (user list, TASK_154).
+const _STEP_DIR = Object.assign({}, ...['1b','3b','3c','3d','3e','3f','3g','3h','3j','3l','3m','3n','3o','3q','3r','3s'].map(k => ({[k]: 1})), ...['1c','1f','1g','3a','3i','3k','3p'].map(k => ({[k]: -1})));
+function _stepWinHtml(id) {
+  const wr = state.signalWinrate, st = wr && wr.steps && id && wr.steps[id];
+  if (!st || !st.all) return '';
+  // Direction from the step's own action: sell steps win when the stock went DOWN, buy steps when it went UP, the rest are plain "went up".
+  const dir = _STEP_DIR[id] || 0;
+  const win = e => e && e.n_signals >= 30 && e.pct_up != null ? Math.round(dir < 0 ? e.pct_down : e.pct_up) : null;
+  const lbl = dir < 0 ? 'win % (went down)' : dir > 0 ? 'win % (went up)' : 'went up (no buy/sell action)';
+  const pc = e => (e && e.pct_up != null && e.n_signals >= 30) ? Math.round(e.pct_up) + '% up / ' + Math.round(e.pct_down) + '% down' : 'too few past signals';
+  const a3 = st.all['3'];
+  if (!a3) return '';
+  const w = win(a3), thin = a3.n_stocks < 30;
+  const sp = (k, l) => st.splits[k] ? l + ' (3 days): ' + pc(st.splits[k]) + ' (n=' + st.splits[k].n_signals.toLocaleString() + ')' : null;
+  const lines = [
+    '3 days: ' + pc(a3) + ' (n=' + a3.n_signals.toLocaleString() + ')',
+    '1 day: ' + pc(st.all['1']), '2 days: ' + pc(st.all['2']), '4 days: ' + pc(st.all['4']),
+    '10 days (reference only): ' + pc(st.all['10']), '15 days (reference only): ' + pc(st.all['15']),
+    sp('out:bull', 'Bullish outlook stocks'), sp('out:bear', 'Bearish outlook stocks'), sp('out:neu', 'Neutral outlook stocks'),
+    sp('pos:both', 'Above Trade and Trend'), sp('pos:trend_only', 'Above Trend, below Trade'), sp('pos:trade_only', 'Above Trade, below Trend'),
+    thin ? 'Only ' + a3.n_stocks + ' different stocks: thin evidence' : a3.n_stocks.toLocaleString() + ' different stocks',
+    'History ' + (wr.history_from || '?') + ' to ' + (wr.history_to || '?'),
+    'Counts signals, not distinct stocks: a stock that fires on several days counts several times',
+  ].filter(Boolean);
+  const tip = escapeHtml(['Step ' + id + ' track record'].concat(lines.map(l => '• ' + l)).join('\n'));
+  const txt = w == null ? 'too few past signals' : lbl + ': ' + w + '%' + (thin ? ' (thin)' : '');
+  return `<span class="tw-win" title="${tip}">${escapeHtml(id)} &middot; ${escapeHtml(txt)}</span>`;
+}
+
 function _techChainHtml(row) {
   const st = ((row && row.why_card && row.why_card.steps) || []).find(s => s.key === 'technical');
   const lines = (st && st.lines) || [];
@@ -2048,7 +2079,8 @@ function _techChainHtml(row) {
   h += arrow + (ts != null
     ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="${tip('Technical score: ' + ts + ' = ' + _scoreWord(ts), [lbl && 'Call: ' + lbl])}">Score ${ts}${side === 'sell' && lbl ? ' (' + escapeHtml(lbl) + ')' : ''}</span>`
     : '<span class="tw-chain-chip final na" title="No Technical signal">no signal</span>');
-  return `<div class="actpop-tw tw-chain">${h}</div>`;
+  const wins = ((st && st.lines) || []).map(l => _stepWinHtml(l.step)).filter(Boolean);
+  return `<div class="actpop-tw tw-chain">${h}</div>` + wins.map(w => `<div class="actpop-tw tw-stage">${w}</div>`).join('');
 }
 
 function _techStageLinesHtml(row) {

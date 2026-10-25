@@ -264,6 +264,41 @@ def technical_trail(d: dict) -> dict:
     if fall:
         msg = f"A band is falling ({fall}): warning only, not counted as a sell"
         bb_st = next((s for s in out["stages"] if s.get("name") == "Bollinger bands"), None)
+# TASK_154 (2026-10-25): numbered Technical situation ids (1a..3s) so the Action popup can show each one's track record
+# (drv_signal_winrate, etl/derive_signal_winrate.py). Display only. Code -> id tables match the charts in technical_steps.html.
+_S3_BULL = {6: "3b", 5: "3c", 4: "3d", 3: "3e", 2: "3f", 7: "3g", 1: "3h", -1: "3i"}
+_S3_FLAT = {5: "3j", -1: "3k", 4: "3l", 3: "3m", 2: "3n"}
+_S3_FALL = {5: "3o", -1: "3p", 4: "3q", 3: "3r", 2: "3s"}
+
+
+def step_ids(d: dict) -> dict:
+    """{'trend': '1c'|None, 'bands': '2a'|None, 'range': '3b'|None} -- the situation id of each Technical stage."""
+    qe, qj = _n(d.get("trend_trade_rule")), _n(d.get("bb_rng_strk_rule"))
+    out = {"trend": None, "bands": None, "range": None}
+    if qe is None:
+        return out
+    qe = int(qe)
+    exempt = qe == 1 and bool(d.get("bounce_exempt"))
+    out["trend"] = ("1a" if qe in (3, 4) else "1b" if qe == 0 else "1d" if exempt else "1c" if qe == 1
+                    else "1e" if qe == 2 else "1f" if qe == -1 else "1g" if qe == -2 else None)
+    if not (qe in (3, 4) or exempt):
+        return out
+    qj = 0 if qj is None else int(qj)
+    out["bands"] = "2a" if qj >= 3 else "2b" if qj == 2 else "2c" if qj == 1 else "2d" if qj == 0 else "2e" if qj == -1 else "2f"
+    eff = _n(d.get("lrr_idx_eff"))
+    if eff is None:
+        eff = _n(d.get("lrr_idx"))
+    if eff is not None and int(eff) == -1:
+        out["range"] = "3a"
+        return out
+    if qj >= 2:
+        q, tbl = _n(d.get("bull_rr_action")), _S3_BULL
+    else:
+        q, tbl = _n(d.get("not_bull_rr_action")), (_S3_FLAT if qj >= 0 else _S3_FALL)
+    out["range"] = tbl.get(int(q)) if q is not None else None
+    return out
+
+
         if bb_st is None:
             out["stages"].append({"name": "Bollinger bands", "ok": None, "warn": True, "text": msg})
         elif not bb_st.get("warn"):
@@ -275,6 +310,11 @@ def _technical_trail_core(d: dict) -> dict:
     """{'signal': bool, 'stages': [{'name', 'ok': True|False|None, 'text'}], 'flip': [{'label','name','missing':[...]}]}.
 
     Stages: 1 Trend & Trade, 2 Bollinger bands, 3 Range position. ok=None means neutral / not evaluated.
+    ids = step_ids(d)
+    for st in out["stages"]:
+        sid = ids["trend"] if st.get("name") == "Trend & Trade" else ids["bands"] if st.get("name") == "Bollinger bands"             else ids["range"] if st.get("name") == "Range position" else None
+        if sid:
+            st["step"] = sid
     `flip` is only filled when stages 1 and 2 are bullish and no signal came out: the closest buy setups and what each one lacks.
     """
     signal = _n(d.get("td_tn_bb_rr_action")) is not None

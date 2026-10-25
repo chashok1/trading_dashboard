@@ -403,6 +403,27 @@ def list_actionable_sources():
     return [{"source_code": r[0], "base_weight_method": r[1]} for r in rows]
 
 
+@router.get("/api/actionable/signal-winrate")
+def get_signal_winrate():
+    """TASK_154: track record of each Technical step (drv_signal_winrate). Display only.
+    {history_from, history_to, steps: {id: {"all": {h: {...}}, "splits": {key: {...}}}}}; counts signals, not stocks."""
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT step_id, horizon_days, split_key, n_signals, n_stocks, n_followup, pct_up, pct_down,"
+            " history_from, history_to FROM drv_signal_winrate")).fetchall()
+    steps: dict = {}
+    for r in rows:
+        e = {"n_signals": r[3], "n_stocks": r[4], "n_followup": r[5],
+             "pct_up": None if r[6] is None else float(r[6]), "pct_down": None if r[7] is None else float(r[7])}
+        st = steps.setdefault(r[0], {"all": {}, "splits": {}})
+        if r[2] == "all":
+            st["all"][str(r[1])] = e
+        else:
+            st["splits"][r[2]] = e
+    return {"history_from": str(rows[0][8]) if rows else None,
+            "history_to": str(rows[0][9]) if rows else None, "steps": steps}
+
+
 @router.get("/api/actionable/settings")
 def get_actionable_settings():
     """Tunable Actionable-screen settings (F5), fetched once at client

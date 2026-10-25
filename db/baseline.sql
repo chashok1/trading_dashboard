@@ -9463,3 +9463,23 @@ INSERT INTO ref_symbol_short_name (tos_symbol, short_name) VALUES
     ('DGS2:FRED','2Y'), ('TYX:CGI','30Y'), ('MOVE:GIF','MOV'),
     ('GVZ:CGI','GVZ'), ('OVX:CGI','OVX'), ('VXN:CGI','VXN')
 ON CONFLICT (tos_symbol) DO NOTHING;
+
+-- 2026-10-25 TASK_154: drv_signal_winrate -- track record of each Technical step (1a..3s): how often the stock was
+-- UP / DOWN 1,2,3,4 (main) and 10,15 (reference) trading days after the step fired. Display only (Action popup).
+-- It is a HISTORY statistic, not per as_of_date, so unlike other drv_* tables it is replaced WHOLESALE each night by
+-- etl/derive_signal_winrate.py (DELETE all -> INSERT) instead of "DELETE WHERE as_of_date=D". Percentages count signals.
+-- split_key: all | out:bull | out:bear | out:neu | pos:both | pos:trend_only | pos:trade_only (splits at 3 days only).
+CREATE TABLE IF NOT EXISTS drv_signal_winrate (
+    step_id       TEXT        NOT NULL,
+    horizon_days  INT         NOT NULL,
+    split_key     TEXT        NOT NULL DEFAULT 'all',
+    n_signals     INT         NOT NULL,
+    n_stocks      INT         NOT NULL,
+    n_followup    INT         NOT NULL,
+    pct_up        NUMERIC(6,2),
+    pct_down      NUMERIC(6,2),
+    computed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    history_from  DATE,
+    history_to    DATE,
+    PRIMARY KEY (step_id, horizon_days, split_key)
+);

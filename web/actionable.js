@@ -1472,6 +1472,11 @@ async function loadSources() {
         state.sourceScorecard = await fetchJson('/api/actionable/source-scorecard');
       } catch (_) { state.sourceScorecard = {}; }
     })(),
+    // TASK_154: per-step win % track record (drv_signal_winrate) shown in the Action popup's Technical chain.
+    (async () => {
+      try { state.signalWinrate = await fetchJson('/api/actionable/signal-winrate'); }
+      catch (_) { state.signalWinrate = null; }
+    })(),
     // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
     (async () => {
       try {

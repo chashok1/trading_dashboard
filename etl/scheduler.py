@@ -614,6 +614,15 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
+    # TASK_154 (2026-10-25): per-step "win %" track record shown in the Action popup (display only).
+    # History statistic, replaced wholesale, so it rides the nightly job rather than every load.
+    log.info("nightly: signal winrate refresh starting")
+    try:
+        from etl.derive_signal_winrate import run as run_signal_winrate
+        log.info("nightly: signal winrate refresh done: %s", run_signal_winrate())
+    except Exception:
+        log.exception("nightly: signal winrate refresh crashed")
+
     # TASK_147 (2026-09-21): Market Read validation views (v_theme_stance_
     # scorecard, v_sss_sector_scorecard, v_source_breadth_scorecard) are
     # plain SQL views over drv_theme_stance/drv_sss_breadth/drv_source_
