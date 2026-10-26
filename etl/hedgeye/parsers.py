@@ -1360,7 +1360,9 @@ def parse_quarterly_outlook(email: Email) -> Parsed:
 # "1) KOSPI – text..." — number, a short label, an en-dash/em-dash/hyphen
 # separator, then the takeaway itself (up to the next numbered item).
 _TOP3_ITEM = re.compile(
-    r"(\d)\)\s*([^\n–—-]+?)\s*[–—-]\s*(.+?)(?=\n\s*\d\)|\Z)", re.S)
+    r"(?:^|\n)[ \t]*(\d)\)\s*([^\n–—-]+?)\s*[–—-]\s*(.+?)(?=\n\s*\d\)|\Z)", re.S)
+# 2026-10-20 -- the item number must START a line. It used to match "N)" anywhere, so a "(... TREND Level = 709)" in the middle of a
+# sentence of an unnumbered email became a bogus item "9)", and that one false hit stopped the unnumbered fallback below from running.
 
 # Fallback for emails where Hedgeye's <ol><li> renders as bare paragraphs with
 # no visible numbering (e.g. "USD – Post a Counter...\n\nGOLD – ..."). Each
@@ -1369,6 +1371,26 @@ _TOP3_ITEM = re.compile(
 # Ranges..." and "KM" sign-off lines, which aren't short/all-caps.
 _TOP3_ITEM_UNNUMBERED = re.compile(
     r"^\s*([A-Z][A-Z0-9 &/]{0,20})\s*[–—-]\s*(.+?)\s*$", re.S | re.M)
+
+
+def _top3_unnumbered_items(section: str) -> list[tuple[str, str]]:
+    """Items of an unnumbered Top 3 list: a line starting with a short ALL-CAPS label then a dash opens an item.
+    A line right under an item (no blank line between) continues it, unless it is short (a sign-off such as "KM").
+    Anything before the first label (the headline) is ignored. Works for blank-line separated and single-newline layouts."""
+    items: list[list[str]] = []
+    prev_blank = True
+    for raw in section.splitlines():
+        line = raw.strip()
+        if not line:
+            prev_blank = True
+            continue
+        m = _TOP3_ITEM_UNNUMBERED.match(line)
+        if m:
+            items.append([m.group(1).strip(), m.group(2).strip()])
+        elif items and not prev_blank and len(line) >= 25:
+            items[-1][1] += " " + line
+        prev_blank = False
+    return [(label, body) for label, body in items]
 
 
 def parse_macro_show_top3(email: Email) -> Parsed:
@@ -1385,12 +1407,8 @@ def parse_macro_show_top3(email: Email) -> Parsed:
             if label and body:
                 lines.append(f"{num}) {label} – {body}")
         if not lines:
-            for para in re.split(r"\n\s*\n", section.strip()):
-                im = _TOP3_ITEM_UNNUMBERED.match(para.strip())
-                if not im:
-                    continue
-                label = im.group(1).strip()
-                body = re.sub(r"\s+", " ", im.group(2)).strip()
+            for label, body in _top3_unnumbered_items(section):
+                body = re.sub(r"\s+", " ", body).strip()
                 if label and body:
                     lines.append(f"{len(lines) + 1}) {label} – {body}")
     take = "\n".join(lines)[:4000]

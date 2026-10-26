@@ -346,6 +346,26 @@ def test_macro_show_top3_unnumbered():
     assert not p.warnings
 
 
+def test_macro_show_top3_unnumbered_with_paren_number_in_a_sentence():
+    # "(... TREND Level = 709)" in the middle of a sentence is not an item number: the unnumbered items must still parse,
+    # not collapse into one bogus "9) ..." item.
+    pt = (
+        "Hedgeye's top 3 things\n\n"
+        "A headline that is not an item…\n\n"
+        "RATES – a rally that is a nothing burger with supports for 2yr = 4.44% clearly intact\n\n"
+        "QQQ – can it break TREND support? It closed near 26,119 (for QQQ that TREND Level = 709) with #NazVol ripping to 27, "
+        "so immediate-term TRADE Resistance sits at 26,817\n\n"
+        "VIX – if they test a breakdown on an Options Expiration Friday, let them – the rallies can be as quick as the selloffs\n\n"
+        "Immediate-term @Hedgeye Risk Ranges : SP500 = 7611-7852; UST 10yr Yield = 5.06-5.34%\n\nKM\n\n"
+        "Please visit https://app.hedgeye.com/feed_items/1 for more information.\n"
+    )
+    p = parse_macro_show_top3(_email("THE MACRO SHOW: Access Show, Slide Deck & Top 3 Things", pt))
+    lines = p.notes[0]["note_text"].split("\n")
+    assert [ln.split(" – ")[0] for ln in lines] == ["1) RATES", "2) QQQ", "3) VIX"]
+    assert "(for QQQ that TREND Level = 709) with #NazVol" in lines[1]   # the sentence stays whole
+    assert not p.warnings
+
+
 def test_macro_show_top3_falls_back_with_warning():
     pt = "07/06/2026 08:40 AM EDT THE MACRO SHOW: no top-3 section here at all\n"
     p = parse_macro_show_top3(_email("THE MACRO SHOW: no top-3 section here at all", pt))
