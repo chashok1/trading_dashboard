@@ -1,19 +1,17 @@
 """Plain-English Technical reason for a symbol's Technical signal (td_tn_bb_rr_action).
 
-Follows the same decision order as etl/derive.py::_derive_trend_trade_rules_impl
-(Pass 2):
+TASK_155 (2026-10-25): rewritten for the redesigned rules (etl/technical_rules.py -- the SAME classifier that makes the call):
 
-    1. Trend/Trade read (trend_trade_rule QE):  bearish codes (-2, -1, 1) win outright;
-       code 2 (between the lines) is neutral -> no signal; 3/4 are bullish -> continue.
-       Code 1 with bounce_exempt (2026-10-21 bounce exception) also continues, with a warning line.
-    2. Bollinger band streak (bb_rng_strk_rule QJ): a falling band is a warning only (2026-10-21: for buys too).
-    3. Range position (QM bull path when QJ >= 2, QN not-bull path otherwise),
-       with a broken LRR support (lrr_idx = -1) overriding both.
+    Step 1  Trade / Trend lines   S1-a, S1-b, S1-c (sells), S1-d / 1a / 1d / 1e (no Step 1 sell, go to Step 3), 1b (rising dip, Buy Some)
+    Step 2  Bollinger bands       2a..2f -- rising -> 3A, flat -> 3B, falling -> 3C (a falling band is a warning only)
+    Step 3  LRR-TRR range         3a, 3x, 3f, 3h, 3k, 3p, tr -- runs for EVERY stock, with an Above / Below flag
+                                  (Above = above Trade AND Trend, Below = anything else). A Step 3 buy beats the Step 1 sells.
 
-Pure function: takes a dict of the already-derived inputs, returns two lines
-joined by a newline -- line 1 = the situation ("Why"), line 2 = the short
-verdict. The popup (web/actionable.js::_actpopDriverBullets) shows them as
-"Why <line 1>" / "Call <action>: <line 2>". None when there is no signal.
+RULE_HELP below is the ONE place the wording of every rule lives; the popup (tooltip, graph caption), the card and
+web/technical_rules_map.html all repeat it, so edit it here first.
+
+Pure functions: take a dict of the already-derived inputs. explain_technical -> two lines joined by a newline (line 1 = the situation
+"Why", line 2 = the short verdict); the popup shows them as "Why <line 1>" / "Call <action>: <line 2>". technical_trail -> the stage trail.
 """
 from __future__ import annotations
 
@@ -23,6 +21,53 @@ NL = chr(10)
 # Highlight markers, rendered by web/actionable.js::_whyHtml (red / green).
 # Stripped to plain text anywhere the text can't carry markup.
 R, G, E = "{r}", "{g}", "{/}"
+
+# Plain-English wording of every rule (same sentences as web/technical_rules_map.html). "above" / "below" = the action for a stock
+# Above Trade and Trend / Below Trade or below Trend. Step 1 rules only apply to a stock under a line, so "above" is n/a.
+_NA1 = "n/a (this rule only applies to a stock under a Trade or Trend line)"
+RULE_HELP = {
+    "S1-a": {"name": "Below the lowest of the last 5 Trade lines", "when": "Price is below the lowest of the last 5 Trade lines (still above Trend).",
+             "above": _NA1, "below": "Sell All"},
+    "S1-b": {"name": "Below both lines", "when": "Price is below both lines, or the Trade line is below the Trend line and price is less than 1 ATR (14-day) above the Trade line.",
+             "above": _NA1, "below": "Sell All"},
+    "S1-c": {"name": "Just fell below Trade", "when": "Price fell below Trade in the last 3 days, counting today (it was at or above Trade on one of the 2 days before today), is still below it, and is above Trend.",
+             "above": _NA1, "below": "Sell Some"},
+    "S1-d": {"name": "Below Trade, no fresh fall", "when": "Price is below Trade (above Trend) but did not just fall through it and is not under the lowest of the last 5 Trade lines: no Step 1 sell.",
+             "above": _NA1, "below": "No Step 1 sell: Step 3 decides with the Below flag"},
+    "1a": {"name": "Above both lines", "when": "Price is above Trade and above Trend.",
+           "above": "No Step 1 sell: Step 3 decides with the Above flag", "below": "n/a"},
+    "1b": {"name": "Rising dip", "when": "Price is under Trade by less than 1 SD but rising (up day, MACDH rising), above Trend, and not under the lowest of the last 5 Trade lines.",
+           "above": "n/a", "below": "Buy Some"},
+    "1d": {"name": "Bounce exception", "when": "Price is below Trade but closed up 2 days in a row, trades above yesterday's high, and LRR held: the Trade-line sell is skipped.",
+           "above": "n/a", "below": "No Step 1 sell: Step 3 decides with the Below flag"},
+    "1e": {"name": "Between the lines", "when": "Price is above Trade but below Trend.",
+           "above": "n/a", "below": "No Step 1 sell: Step 3 decides with the Below flag"},
+    "2a": {"name": "Bands rising strongly", "when": "Both Bollinger bands are rising steeply.", "above": "the rising-band range rules", "below": "the rising-band range rules"},
+    "2b": {"name": "Bands rising", "when": "The top band is rising steeply and is above the bottom band's slope.", "above": "the rising-band range rules", "below": "the rising-band range rules"},
+    "2c": {"name": "Bands flat, bottom rising", "when": "The bottom band is rising but the top band is not.", "above": "the flat-band range rules", "below": "the flat-band range rules"},
+    "2d": {"name": "Bands flat", "when": "Neither band is rising or falling enough to count.", "above": "the flat-band range rules", "below": "the flat-band range rules"},
+    "2e": {"name": "Bands falling a little", "when": "The top band is falling while the bottom band is not.", "above": "the falling-band range rules", "below": "the falling-band range rules"},
+    "2f": {"name": "Bands falling", "when": "Both bands are falling, or the bottom band is falling faster than the top.", "above": "the falling-band range rules", "below": "the falling-band range rules"},
+    "3a": {"name": "Support broken", "when": "Support broken: price is well below LRR.", "above": "Sell to Min", "below": "Sell All"},
+    "3x": {"name": "Bounce at LRR", "when": "The day's low reached the LRR zone today or in the last 3 days, and price is 25% to 60% of the way up the range.",
+           "above": "Buy More (falling bands: Buy Some)", "below": "Buy To Min (falling bands: Do nothing)"},
+    "3f": {"name": "Fresh touch of LRR", "when": "The day's low reached the LRR zone today, and price is above LRR but under 25% of the range.",
+           "above": "Buy Min", "below": "Do nothing"},
+    "3h": {"name": "Up day, lower half", "when": "Up day and price is 25% to 60% of the range (rising bands: TRR also up 2% or more over 5 days).",
+           "above": "Buy Min", "below": "Do nothing"},
+    "3k": {"name": "Near the top of the range", "when": "Price or the day's high reached 90% of the range.", "above": "Sell Some", "below": "n/a"},
+    "3p": {"name": "Near the top, bands falling", "when": "Price or the day's high reached 90% of the range.", "above": "Sell Some", "below": "n/a"},
+    "tr": {"name": "Falling bands, under a line", "when": "Bands are falling and price is below Trade or below Trend.", "above": "n/a", "below": "Sell All"},
+}
+
+def _rname(sid) -> str:
+    """Plain-English name of a rule (never show the internal id like 3x or S1-c to the user)."""
+    return str((RULE_HELP.get(sid) or {}).get("name") or sid)
+
+
+_CODE_LABEL = {-10:"Sell All", -9: "Sell to Min", -8: "Sell Some", 8: "Buy To Min", 9: "Buy Some", 10: "Buy More"}
+# Step 1 result per rule id (what the rule says by itself, before Step 3). 1b is a buy.
+_S1_CODE = {"S1-a": -10, "S1-b": -10, "S1-c": -8, "1b": 9}
 
 
 def _n(v) -> Optional[float]:
@@ -41,45 +86,18 @@ def _two(why: str, verdict: str) -> str:
     return why + NL + verdict
 
 
-# bull path (QJ >= 2): bull_rr_rule codes
-_BULL = {
-    -1: "Down 1+ SD, below midpoint, low still above LRR: bearish in the bull zone",
-    1:  "At midpoint, up/flat day",
-    2:  "Down day, low at LRR, Trade line positive",
-    3:  "Up day, low above LRR, below midpoint, MACD rising but MACDH not rising",
-    4:  "Up day, low touched LRR, price at or below the midpoint",
-    5:  "Down day, above midpoint",
-    6:  "Up day, low above LRR, below midpoint, MACD rising and MACDH rising",
-    7:  "Touched TRR zone, pulled back, still above midpoint, TRR rising",
-}
-# not-bull path (QJ 0..1): nbull_rr_rule codes
-_NBULL = {
-    -1: "At TRR (top of range), price above the midpoint",
-    2:  "Up day, low above LRR, at/below midpoint, MACD rising but MACDH not rising",
-    3:  "Down day, low at LRR, above Trade and Trend",
-    4:  "Up day, low touched LRR, price at or below the midpoint",
-    5:  "Up day, low above LRR, at/below midpoint, MACD rising and MACDH rising",
-}
+def _label(code, sid: Optional[str] = None) -> Optional[str]:
+    c = _n(code)
+    if c is None:
+        return None
+    if int(c) == 8 and sid in ("3f", "3h"):
+        return "Buy Min"
+    return _CODE_LABEL.get(int(c))
 
 
-def _touch_clause(why: str, d: dict) -> str:
-    """2026-10-22, user: say WHICH of price / the day's high (TRR) / the day's low (LRR) is in the end zone of the range,
-    since "At TRR" / "low touched LRR" read the same whether the price is there now or only the high/low got there."""
-    last, high, low = _n(d.get("last")), _n(d.get("high")), _n(d.get("low"))
-    lrr, trr = _n(d.get("lrr")), _n(d.get("trr"))
-    if None in (last, lrr, trr) or trr <= lrr:
-        return ""
-    rng = trr - lrr
-    top_edge = trr - (_n(d.get("trr_zone")) or 0.20) * rng
-    bot_edge = lrr + (_n(d.get("lrr_zone")) or 0.25) * rng
-    parts = []
-    if "TRR" in why and high is not None and high >= top_edge:
-        parts.append(f"Price {_usd(last)} is in the top zone (TRR {_usd(trr)})" if last >= top_edge else
-                     f"Only the day's high {_usd(high)} reached the top zone (TRR {_usd(trr)}); price {_usd(last)} is below it")
-    if "LRR" in why and low is not None and low <= bot_edge:
-        parts.append(f"Price {_usd(last)} is in the bottom zone (LRR {_usd(lrr)})" if last <= bot_edge else
-                     f"Only the day's low {_usd(low)} reached the bottom zone (LRR {_usd(lrr)}); price {_usd(last)} is above it")
-    return ". ".join(parts)
+def _dir(code) -> int:
+    c = _n(code)
+    return 0 if c is None or c == 0 else (1 if c > 0 else -1)
 
 
 def _tol_txt(d: dict) -> str:
@@ -102,146 +120,169 @@ def _bounce_grade(d: dict) -> str:
 
 
 def _bounce_note(d: dict) -> str:
-    return (f"Price {_usd(d.get('last'))} is below Trade ({_usd(d.get('trade_line'))}){_below_trade_pct(d)}: sell skipped because "
-            f"the stock closed up 2 days in a row, is above yesterday's high and LRR held; {_bounce_grade(d)}. "
+    return (f"Price {_usd(d.get('last'))} is below Trade ({_usd(d.get('trade_line'))}){_below_trade_pct(d)}: the Trade-line sell was skipped because "
+            f"the stock closed up 2 days in a row, is above yesterday's high and LRR held. "
             f"The sell returns on a down day, a fall back under yesterday's high or an LRR break")
+
+
+def _pos(d: dict) -> Optional[int]:
+    last, lrr, trr = _n(d.get("last")), _n(d.get("lrr")), _n(d.get("trr"))
+    if None in (last, lrr, trr) or trr <= lrr:
+        return None
+    return round((last - lrr) / (trr - lrr) * 100)
+
+
+def _hpos(d: dict) -> Optional[int]:
+    high, lrr, trr = _n(d.get("high")), _n(d.get("lrr")), _n(d.get("trr"))
+    if None in (high, lrr, trr) or trr <= lrr:
+        return None
+    return round((high - lrr) / (trr - lrr) * 100)
+
+
+def _band_word(qj: int) -> str:
+    return "rising" if qj >= 2 else ("falling" if qj < 0 else "flat")
+
+
+def _trr_chg(d: dict) -> str:
+    trr, t5 = _n(d.get("trr")), _n(d.get("trr_5d_ago"))
+    if trr is None or not t5:
+        return ""
+    return f"{(trr / t5 - 1) * 100:+.1f}%"
+
+
+def _step1_why(sid: str, d: dict) -> str:
+    last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
+    qe = int(_n(d.get("trend_trade_rule")) or 0)
+    if sid == "S1-a":
+        return (f"Price {_usd(last)} is {R}below{E} the lowest of the last 5 Trade lines ({_usd(d.get('min_trade5_prev'))}); "
+                f"Trade is {_usd(trade)}, Trend {_usd(trend)}")
+    if sid == "S1-b":
+        if qe == -2:
+            return f"Price {_usd(last)} is {R}below{E} Trade ({_usd(trade)}) and Trend ({_usd(trend)})"
+        return f"Trade ({_usd(trade)}) is {R}below{E} Trend ({_usd(trend)}) and price {_usd(last)} is less than 1 ATR above Trade"
+    if sid == "S1-c":
+        return (f"Price {_usd(last)} fell {R}below{E} Trade ({_usd(trade)}) within the last 3 days and is still under it"
+                f"{_below_trade_pct(d)}; it is above Trend ({_usd(trend)})")
+    if sid == "S1-d":
+        return (f"Price {_usd(last)} is below Trade ({_usd(trade)}){_below_trade_pct(d)}, above Trend ({_usd(trend)}); it did not just fall through Trade "
+                f"and is not under the lowest of the last 5 Trade lines ({_usd(d.get('min_trade5_prev'))}), so Step 1 does not sell")
+    if sid == "1d":
+        return _bounce_note(d)
+    if sid == "1e":
+        return f"Price {_usd(last)} is above Trade ({_usd(trade)}) but {R}below{E} Trend ({_usd(trend)})"
+    if sid == "1b":
+        return (f"Price {_usd(last)} is under Trade ({_usd(trade)}) by less than one SD but rising (up day, MACDH up), above Trend ({_usd(trend)}) "
+                f"and not under the lowest Trade line of the last 5 days")
+    ext = " and extended (more than 2 daily SDs away)" if qe == 4 else ""
+    return f"Price {_usd(last)} is above Trade ({_usd(trade)}) and Trend ({_usd(trend)}){ext}"
+
+
+def _step3_why(sid: str, d: dict) -> str:
+    last, lrr, trr = d.get("last"), d.get("lrr"), d.get("trr")
+    pos, hpos = _pos(d), _hpos(d)
+    where = f"price {_usd(last)} is {pos}% of the way up its range ({_usd(lrr)} to {_usd(trr)})" if pos is not None else "range position unknown"
+    if sid == "3a":
+        return f"Price {_usd(last)} is {R}below{E} LRR ({_usd(lrr)}) by more than {_tol_txt(d)} typical daily moves: support broken"
+    if sid == "3x":
+        low, lo_, tr_ = _n(d.get("low")), _n(lrr), _n(trr)
+        today = low is not None and lo_ is not None and tr_ is not None and low <= lo_ + (_n(d.get("lrr_zone")) or 0.25) * (tr_ - lo_)
+        recent = "today" if today else "in the last 3 days"
+        return f"The day's low reached the LRR zone {recent}, and {where}"
+    if sid == "3f":
+        return f"The day's low {_usd(d.get('low'))} reached the LRR zone today and {where}, under 25% and above LRR"
+    if sid == "3h":
+        extra = f"; TRR is {_trr_chg(d)} over 5 days" if _trr_chg(d) else ""
+        return f"Up day and {where}{extra}"
+    if sid in ("3k", "3p"):
+        if pos is not None and pos > 90:
+            return f"Price {_usd(last)} is in the top 10% of its range ({pos}%)"
+        return f"The day's high {_usd(d.get('high'))} reached the top 10% of the range ({hpos}%); price {_usd(last)} is {pos}%"
+    if sid == "tr":
+        return f"Bands are falling and price {_usd(last)} is {R}below{E} Trade ({_usd(d.get('trade_line'))}) or Trend ({_usd(d.get('trend_line'))})"
+    return where
+
+
+def _infer_s1(qe: int, d: dict) -> Optional[str]:
+    """Step 1 rule id from the base category alone (fallback when the stored id is missing)."""
+    if qe == 0:
+        return "1b"
+    if qe in (3, 4):
+        return "1a"
+    if qe == 2:
+        return "1e"
+    if qe in (-2, -1):
+        return "S1-b"
+    if qe == 1:
+        return "1d" if d.get("bounce_exempt") else "S1-d"
+    return None
+
+
+def _action_flag_txt(flag: Optional[str]) -> str:
+    return "above Trade and Trend" if flag == "above" else "below Trade or Trend"
+
+
+def _decider(d: dict):
+    """(step id, kind) of the rule that made the Technical call. kind = 'step1' or 'step3'. (None, None) when there is no call."""
+    act = _n(d.get("td_tn_bb_rr_action"))
+    if act is None:
+        return None, None
+    s1, s3, z = d.get("step1_id"), d.get("step3_id"), _n(d.get("rr_zone_score"))
+    if s1 == "1b":
+        return "1b", "step1"
+    if s3 and z is not None and z == act:
+        return s3, "step3"
+    if s1 in _S1_CODE:
+        return s1, "step1"
+    return (s3, "step3") if s3 else (s1, "step1")
 
 
 def explain_technical(d: dict, bounce_note: bool = True) -> Optional[str]:
     """Why line + verdict line (newline-separated) for the Technical signal, or None.
 
-    Keys used: trend_trade_rule, bb_rng_strk_rule, bb_desc, bull_rr_action,
-    not_bull_rr_action, td_tn_bb_rr_action (None = no signal),
-    lrr_idx_eff / lrr_idx_raw, last, low, lrr, trade_line, trend_line.
+    Keys used: trend_trade_rule, bb_rng_strk_rule, td_tn_bb_rr_action (None = no signal), rr_zone_score, step1_id, step3_id, tech_flag,
+    last, high, low, lrr, trr, trade_line, trend_line, min_trade5_prev, trr_5d_ago, lrr_idx_eff, bounce_exempt, reclaim_buy.
     """
     qe = _n(d.get("trend_trade_rule"))
     if _n(d.get("td_tn_bb_rr_action")) is None or qe is None:
         return None
-    qe = int(qe)
-    last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
+    last, trend = d.get("last"), d.get("trend_line")
     if d.get("reclaim_buy"):
         # 2026-10-21 reclaim buy (etl/derive.py Pass 2b): fill-only, low confidence.
         return _two(f"Price {_usd(last)} is back above a recent Trade line ({_usd(d.get('reclaim_line'))}, one of the last 3) after closing below it "
                     f"2 days ago, on an up day; Trade is well above Trend ({_usd(trend)}) and no other Technical setup matched",
                     "reclaim buy: BUY SOME, low confidence")
-
-    # 1. Trend / Trade read
-    if qe == -2:
-        return _two(f"Price {_usd(last)} {R}below{E} Trade ({_usd(trade)}) and Trend ({_usd(trend)})",
-                    "bearish, overrides all other checks")
-    if qe == -1:
-        return _two(f"Trade ({_usd(trade)}) {R}below{E} Trend ({_usd(trend)}), price {_usd(last)} "
-                    f"above Trade by less than one typical daily move",
-                    "bearish, overrides all other checks")
-    exempt = qe == 1 and bool(d.get("bounce_exempt"))
-    if qe == 1 and not exempt:
-        return _two(f"Price {_usd(last)} {R}below{E} Trade ({_usd(trade)}) by more than half a "
-                    f"typical daily move, above Trend ({_usd(trend)})",
-                    "bearish, overrides range position")
-    if qe == 2:
-        return _two(f"Price {_usd(last)} above Trade ({_usd(trade)}), {R}below{E} Trend ({_usd(trend)})",
-                    "neutral zone, no signal")
-
-    # 2. Bollinger band streak
-    qj = _n(d.get("bb_rng_strk_rule"))
-    qj = 0 if qj is None else int(qj)
-    # 2026-10-21, user: a falling band is a warning only -- no longer stops the range-position read.
-
-    # 3. Range position
-    # Effective break uses the latest price (live intraday / the close), not the
-    # day's low; a low that broke but recovered counts as "touched LRR" (support held).
-    eff = _n(d.get("lrr_idx_eff"))
-    raw = _n(d.get("lrr_idx_raw"))
-    if eff is None:
-        eff = _n(d.get("lrr_idx"))
-    if raw is None:
-        raw = _n(d.get("lrr_idx"))
-    if eff is not None and int(eff) == -1:
-        return _two(f"Price {_usd(last)} {R}below{E} LRR ({_usd(d.get('lrr'))}) by more than "
-                    f"{_tol_txt(d)} typical daily moves",
-                    "broken support overrides bullish Trend, Trade and band")
-    held = ""
-    if raw is not None and int(raw) == -1:
-        lrr_v, last_v = _n(d.get("lrr")), _n(last)
-        if lrr_v is not None and last_v is not None and last_v < lrr_v:
-            # Shallow dip: still under LRR, but by less than the break depth -- these
-            # usually bounce (past-data check, 2026-10-14), so watch rather than sell.
-            held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) and price "
-                    f"{_usd(last)} is still just under it (less than {_tol_txt(d)} typical "
-                    f"daily moves): watch for a bounce or a deeper break. ")
-        else:
-            held = (f"Low {_usd(d.get('low'))} dipped below LRR ({_usd(d.get('lrr'))}) but price "
-                    f"{_usd(last)} recovered: {G}support held{E}. ")
-    if qj >= 2:
-        q = _n(d.get("bull_rr_action"))
-        why = _BULL.get(int(q)) if q is not None else None
+    if not d.get("step1_id"):
+        d = dict(d, step1_id=_infer_s1(int(qe), d))   # rows saved before TASK_155 carry no rule ids
+    sid, kind = _decider(d)
+    if sid is None:
+        return None
+    flag = d.get("tech_flag") or ("above" if int(qe) in (3, 4) else "below")
+    if int(qe) == 0 and _n(d.get("td_tn_bb_rr_action")) < 0:
+        return _two(f"Price {_usd(last)} {R}below{E} LRR ({_usd(d.get('lrr'))}) by more than {_tol_txt(d)} typical daily moves",
+                    "broken support overrides the rising-dip buy")
+    why = _step1_why(sid, d) if kind == "step1" else _step3_why(sid, d)
+    act = _label(d.get("td_tn_bb_rr_action"), sid) or ""
+    if kind == "step1":
+        verdict = f"{_rname(sid)}: {act}" if sid != "1b" else "rising dip under Trade: BUY SOME"
+        s3 = d.get("step3_id")
+        if s3 and _n(d.get("rr_zone_score")) is None and s3 in ("3x", "3f", "3h", "3p", "3k"):
+            verdict += f" (the range rule \"{_rname(s3)}\" says do nothing for a stock {_action_flag_txt(flag)})"
     else:
-        q = _n(d.get("not_bull_rr_action"))
-        why = _NBULL.get(int(q)) if q is not None else None
-    if why:
-        _tc = _touch_clause(why, d)
-        if _tc:
-            why = why + ". " + _tc
-    if exempt:
-        return _two(f"{_bounce_note(d) + '. ' if bounce_note else ''}{held}{why or 'No range-position condition matched'}",
-                    "bounce exception: below Trade but turning up")
-    return _two(f"{held}{why or 'No range-position condition matched'}",
-                "above Trade and Trend" + (", band falling (warning only)" if qj < 0 else ", band not bearish"))
+        s1 = d.get("step1_id")
+        verdict = f"{_rname(sid)} ({_action_flag_txt(flag)}): {act}"
+        if s1 in ("S1-a", "S1-b", "S1-c") and _n(d.get("td_tn_bb_rr_action")) > 0:
+            verdict += f"; this buy beats the Trade/Trend sell (\"{_rname(s1)}\")"
+    return _two(why, verdict)
 
 
 # ---------------------------------------------------------------------------
-# 2026-10-20: stage-by-stage trail of the Technical read + "what would change it" hints.
-# Mirrors the same three stages as explain_technical() above and the bull-path setups in
-# etl/derive.py::_derive_trend_trade_rules_impl (Pass 1 bull_rr_action CASE). Pure function.
-# Used by etl/derive.py (stored as drv_tn_td_bb_rr.tech_trail) and read by etl/why_card.py.
+# Stage-by-stage trail of the Technical read + "what would change it" hints.
+# Mirrors etl/technical_rules.py. Pure function. Stored as drv_tn_td_bb_rr.tech_trail and read by etl/why_card.py.
 # ---------------------------------------------------------------------------
 def _day_word(perf: Optional[float]) -> str:
     if perf is None:
         return "day"
     return "up day" if perf > 0 else ("down day" if perf < 0 else "flat day")
-
-
-def _bull_setups(d: dict) -> list:
-    """Every bull-path buy setup as (action label, name, [(met, what it needs)]), in the same terms as the SQL CASE."""
-    last, high = _n(d.get("last")), _n(d.get("high"))
-    lrr, trr, prev_trr = _n(d.get("lrr")), _n(d.get("trr")), _n(d.get("prev_trr"))
-    perf = _n(d.get("perf1d"))
-    lrr_eff, mrr = _n(d.get("lrr_idx_eff")), _n(d.get("mrr_idx"))
-    trr_idx = _n(d.get("trr_idx"))
-    macd, macdh = _n(d.get("macd_dir")), _n(d.get("macdh_dir"))
-    trade_rule = _n(d.get("trade_rule"))
-    pb = _n(d.get("pullback")) or 0.10
-    if None in (last, lrr, trr) or trr <= lrr:
-        return []
-    mid = (lrr + trr) / 2.0
-    pbd = pb * (trr - lrr)
-    up = perf is not None and perf > 0
-    down = perf is not None and perf < 0
-    return [
-        ("BUY MORE", "bounce from the lower half (up day, MACD and MACDH rising)", [
-            (up, "an up day"), (lrr_eff == 1, f"the day's low to stay above LRR ({_usd(lrr)})"),
-            (mrr == -1, f"price below the range midpoint ({_usd(mid)}, now {_usd(last)})"),
-            (macd is not None and macd > 0, "MACD rising"), (macdh is not None and macdh > 0, "MACDH rising")]),
-        ("BUY SOME", "dip while still above the midpoint (moderate down day)", [
-            (perf == -1, "a moderate down day (not a big drop)"), (mrr == 1, f"price above the range midpoint ({_usd(mid)}, now {_usd(last)})")]),
-        ("BUY SOME", "bounce off LRR (up day, low touched LRR)", [
-            (up, "an up day"), (lrr_eff == 0, f"the day's low to touch LRR ({_usd(lrr)})"),
-            (last <= mid, f"price at or below the range midpoint ({_usd(mid)}, now {_usd(last)})")]),
-        ("BUY TO MIN", "up day below the midpoint (MACD rising, MACDH not)", [
-            (up, "an up day"), (lrr_eff == 1, f"the day's low to stay above LRR ({_usd(lrr)})"),
-            (mrr == -1, f"price below the range midpoint ({_usd(mid)}, now {_usd(last)})"),
-            (macd is not None and macd > 0, "MACD rising"), (macdh is not None and macdh < 0, "MACDH falling")]),
-        ("BUY TO MIN", "down day at LRR with the Trade line positive", [
-            (down, "a down day"), (lrr_eff == 0, f"the day's low to touch LRR ({_usd(lrr)})"),
-            (trade_rule is not None and trade_rule > 0, "price above the Trade line")]),
-        ("BUY MORE", "pullback from the top zone (down day, still above the midpoint, TRR rising)", [
-            (trr_idx is not None and trr_idx >= 0, "the day's high to reach the top zone"), (down, "a down day"),
-            (high is not None and high > last and high - last >= pbd, f"a pullback of at least {_usd(pbd)} from the day's high"),
-            (last > mid, f"price still above the range midpoint ({_usd(mid)}, now {_usd(last)})"),
-            (prev_trr is not None and trr > prev_trr, "TRR higher than the day before")]),
-        ("BUY TO MIN", "price at the midpoint on an up or flat day", [
-            (perf is not None and perf >= 0, "an up or flat day"), (mrr == 0, f"price in the midpoint zone (about {_usd(mid)})")]),
-    ]
 
 
 def _bb_falling_txt(d: dict) -> str:
@@ -257,67 +298,99 @@ def _bb_falling_txt(d: dict) -> str:
     return ", ".join(parts)
 
 
+def step_ids(d: dict) -> dict:
+    """{'trend': 'S1-a'|None, 'bands': '2a'|None, 'range': '3x'|None} -- the rule id of each Technical stage (read from the stored result)."""
+    qj = _n(d.get("bb_rng_strk_rule"))
+    out = {"trend": d.get("step1_id"), "bands": None, "range": d.get("step3_id")}
+    qe = _n(d.get("trend_trade_rule"))
+    if qe is None or qe in (0, 5):
+        return out          # no read, rising dip or neutral dip: the bands / range stages are not part of the call
+    qj = 0 if qj is None else int(qj)
+    out["bands"] = "2a" if qj >= 3 else "2b" if qj == 2 else "2c" if qj == 1 else "2d" if qj == 0 else "2e" if qj == -1 else "2f"
+    return out
+
+
 def technical_trail(d: dict) -> dict:
-    """Same as _technical_trail_core, plus a warning-only 'Bollinger bands' line when the top or bottom band is falling."""
+    """Same as _technical_trail_core, plus a warning-only 'Bollinger bands' line when the top or bottom band is falling, and the
+    rule id / action / help text on every stage the popup draws (step, action, dir, flag, help)."""
     out = _technical_trail_core(d)
     fall = _bb_falling_txt(d)
     if fall:
         msg = f"A band is falling ({fall}): warning only, not counted as a sell"
         bb_st = next((s for s in out["stages"] if s.get("name") == "Bollinger bands"), None)
-# TASK_154 (2026-10-25): numbered Technical situation ids (1a..3s) so the Action popup can show each one's track record
-# (drv_signal_winrate, etl/derive_signal_winrate.py). Display only. Code -> id tables match the charts in technical_steps.html.
-_S3_BULL = {6: "3b", 5: "3c", 4: "3d", 3: "3e", 2: "3f", 7: "3g", 1: "3h", -1: "3i"}
-_S3_FLAT = {5: "3j", -1: "3k", 4: "3l", 3: "3m", 2: "3n"}
-_S3_FALL = {5: "3o", -1: "3p", 4: "3q", 3: "3r", 2: "3s"}
-
-
-def step_ids(d: dict) -> dict:
-    """{'trend': '1c'|None, 'bands': '2a'|None, 'range': '3b'|None} -- the situation id of each Technical stage."""
-    qe, qj = _n(d.get("trend_trade_rule")), _n(d.get("bb_rng_strk_rule"))
-    out = {"trend": None, "bands": None, "range": None}
-    if qe is None:
-        return out
-    qe = int(qe)
-    exempt = qe == 1 and bool(d.get("bounce_exempt"))
-    out["trend"] = ("1a" if qe in (3, 4) else "1b" if qe == 0 else "1d" if exempt else "1c" if qe == 1
-                    else "1e" if qe == 2 else "1f" if qe == -1 else "1g" if qe == -2 else None)
-    if not (qe in (3, 4) or exempt):
-        return out
-    qj = 0 if qj is None else int(qj)
-    out["bands"] = "2a" if qj >= 3 else "2b" if qj == 2 else "2c" if qj == 1 else "2d" if qj == 0 else "2e" if qj == -1 else "2f"
-    eff = _n(d.get("lrr_idx_eff"))
-    if eff is None:
-        eff = _n(d.get("lrr_idx"))
-    if eff is not None and int(eff) == -1:
-        out["range"] = "3a"
-        return out
-    if qj >= 2:
-        q, tbl = _n(d.get("bull_rr_action")), _S3_BULL
-    else:
-        q, tbl = _n(d.get("not_bull_rr_action")), (_S3_FLAT if qj >= 0 else _S3_FALL)
-    out["range"] = tbl.get(int(q)) if q is not None else None
-    return out
-
-
         if bb_st is None:
             out["stages"].append({"name": "Bollinger bands", "ok": None, "warn": True, "text": msg})
         elif not bb_st.get("warn"):
             bb_st.update({"warn": True, "text": bb_st["text"] + "; " + msg})
+    ids = step_ids(d)
+    for st in out["stages"]:
+        sid = ids["trend"] if st.get("name") == "Trend & Trade" else ids["bands"] if st.get("name") == "Bollinger bands" \
+            else ids["range"] if st.get("name") == "Range position" else None
+        if sid:
+            st["step"] = sid
+            if sid in RULE_HELP:
+                st["help"] = RULE_HELP[sid]
     return out
 
 
+def _flip_candidates(d: dict) -> list:
+    """No buy/sell call: the closest Step 3 buy rules and what each still needs, as [{'label','name','missing'}]."""
+    last, high = _n(d.get("last")), _n(d.get("high"))
+    lrr, trr = _n(d.get("lrr")), _n(d.get("trr"))
+    if None in (last, lrr, trr) or trr <= lrr:
+        return []
+    low = _n(d.get("low"))
+    zl = _n(d.get("lrr_zone")) or 0.25
+    pos = (last - lrr) / (trr - lrr) * 100.0
+    zone_today = low is not None and low <= lrr + zl * (trr - lrr)
+    zone_any = zone_today or bool(d.get("zone_recent"))
+    perf = _n(d.get("perf1d"))
+    up = perf is not None and perf > 0
+    qj = _n(d.get("bb_rng_strk_rule")) or 0
+    above = int(_n(d.get("trend_trade_rule")) or 0) in (3, 4)
+    mid = 25 <= pos <= 60
+    lab_x = ("BUY MORE" if above else "BUY TO MIN") if qj >= 0 else ("BUY SOME" if above else None)
+    lab_m = "BUY TO MIN" if above else None
+    cand = []
+    if lab_x:
+        cand.append((lab_x, "bounce at LRR", [(zone_any, "the day's low to reach the LRR zone (today or in the last 3 days)"),
+                                                 (mid, f"price 25% to 60% of the range (now {round(pos)}%)")]))
+    if qj >= 0 and lab_m:
+        cand.append((lab_m, "fresh touch of LRR", [(zone_today, "the day's low to reach the LRR zone today"),
+                                                       (last > lrr and pos < 25, f"price above LRR but under 25% of the range (now {round(pos)}%)")]))
+        t5 = _n(d.get("trr_5d_ago"))
+        extra = [(t5 is not None and trr >= 1.02 * t5, "TRR up 2% or more over 5 days")]
+        cand.append((lab_m, "up day in the lower half", [(up, "an up day"), (mid, f"price 25% to 60% of the range (now {round(pos)}%)")] + (extra if qj >= 2 else [])))
+    res = []
+    for label, name, conds in cand:
+        unmet = [need for ok, need in conds if not ok]
+        if unmet and len(conds) - len(unmet) >= 1:
+            res.append((len(unmet), label, name, unmet))
+    res.sort(key=lambda c: c[0])
+    return [{"label": lb, "name": nm, "missing": um} for _k, lb, nm, um in res[:2]]
+
+
+def _stage(name: str, ok, text: str, sid: Optional[str] = None, code=None, flag: Optional[str] = None, **kw) -> dict:
+    st = {"name": name, "ok": ok, "text": text}
+    st.update(kw)
+    if code is not None or sid in _S1_CODE:
+        c = code if code is not None else _S1_CODE.get(sid)
+        st["action"] = _label(c, sid)
+        st["dir"] = _dir(c)
+        st["score"] = c
+    if flag:
+        st["flag"] = flag
+    return st
+
+
 def _technical_trail_core(d: dict) -> dict:
-    """{'signal': bool, 'stages': [{'name', 'ok': True|False|None, 'text'}], 'flip': [{'label','name','missing':[...]}]}.
+    """{'signal': bool, 'stages': [{'name', 'ok': True|False|None, 'text', 'action', 'dir', 'flag'}], 'flip': [{'label','name','missing':[...]}]}.
 
     Stages: 1 Trend & Trade, 2 Bollinger bands, 3 Range position. ok=None means neutral / not evaluated.
-    ids = step_ids(d)
-    for st in out["stages"]:
-        sid = ids["trend"] if st.get("name") == "Trend & Trade" else ids["bands"] if st.get("name") == "Bollinger bands"             else ids["range"] if st.get("name") == "Range position" else None
-        if sid:
-            st["step"] = sid
-    `flip` is only filled when stages 1 and 2 are bullish and no signal came out: the closest buy setups and what each one lacks.
+    Step 3 runs for every stock except the two dip codes (0 rising dip = Buy Some, 5 neutral dip = no signal).
     """
-    signal = _n(d.get("td_tn_bb_rr_action")) is not None
+    act = _n(d.get("td_tn_bb_rr_action"))
+    signal = act is not None
     qe, qj = _n(d.get("trend_trade_rule")), _n(d.get("bb_rng_strk_rule"))
     last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
     stages: list = []
@@ -326,60 +399,64 @@ def _technical_trail_core(d: dict) -> dict:
         stages.append({"name": "Trend & Trade", "ok": None, "text": "No Trend/Trade data for this stock"})
         return out
     qe = int(qe)
-    if qe in (3, 4):
-        ext = " and extended (more than 2 daily SDs away)" if qe == 4 else ""
-        stages.append({"name": "Trend & Trade", "ok": True,
-                       "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) and Trend ({_usd(trend)}){ext}"})
-    elif qe == 1 and d.get("bounce_exempt"):
-        stages.append({"name": "Trend & Trade", "ok": None, "warn": True, "text": "⚠ " + _bounce_note(d)})
-    elif qe == 2:
-        stages.append({"name": "Trend & Trade", "ok": None,
-                       "text": f"Price {_usd(last)} is above Trade ({_usd(trade)}) but below Trend ({_usd(trend)}): neutral zone, no signal"})
+    flag = d.get("tech_flag") or ("above" if qe in (3, 4) else "below")
+    s1 = d.get("step1_id")
+    if qe == 5:
+        # 2026-10-23, user: same dip as code 0 but the MACD histogram is not rising -> neutral, no signal
+        stages.append(_stage("Trend & Trade", None,
+                             f"Price {_usd(last)} is under Trade ({_usd(trade)}) by less than one SD, up on the day, above Trend ({_usd(trend)}) "
+                             f"and not under the lowest Trade line of the last 5 days, but MACDH is not rising: neutral, no signal"))
         return out
+    if qe == 0:
+        # 2026-10-23, user (SNOW): a rising dip under Trade is BUY SOME, not a sell (a broken LRR support still sells)
+        broke = act is not None and act < 0
+        stages.append(_stage("Trend & Trade", not broke, _step1_why("1b", d) + (": rising dip, buy some" if not broke else ""), "1b", code=act if broke else None))
+        return out
+
+    # 1 Trend & Trade
+    if s1 is None:
+        s1 = _infer_s1(qe, d) or "S1-d"
+    sell1 = s1 in ("S1-a", "S1-b", "S1-c")
+    if s1 == "1d":
+        stages.append(_stage("Trend & Trade", None, "⚠ " + _bounce_note(d), s1, warn=True))
     else:
-        stages.append({"name": "Trend & Trade", "ok": False,
-                       "text": f"Price {_usd(last)} is below Trade ({_usd(trade)}) / Trend ({_usd(trend)}): bearish, overrides everything else"})
-        return out
+        stages.append(_stage("Trend & Trade", False if sell1 else (True if s1 == "1a" else None),
+                             _step1_why(s1, d) + (": " + (_label(_S1_CODE[s1]) or "") if sell1 else ""), s1))
+    # 2 Bollinger bands
     qj = 0 if qj is None else int(qj)
     bb = d.get("bb_desc") or ""
     bb_txt = (" (" + bb + ")") if bb else ""
     if qj >= 2:
-        stages.append({"name": "Bollinger bands", "ok": True, "text": "Bands are rising" + bb_txt})
+        stages.append({"name": "Bollinger bands", "ok": True, "text": "Bands are rising" + bb_txt + ": the rising-band range rules"})
     elif qj >= 0:
-        stages.append({"name": "Bollinger bands", "ok": None, "text": "Bands are not rising enough to call it bullish"})
+        stages.append({"name": "Bollinger bands", "ok": None, "text": "Bands are flat" + bb_txt + ": the flat-band range rules"})
     else:
-        # 2026-10-20: a falling band is a warning only (no sell on its own); see etl/derive.py Pass 2.
+        # 2026-10-20: a falling band is a warning only (no sell on its own); Step 3C has its own rules.
         stages.append({"name": "Bollinger bands", "ok": None, "warn": True,
-                       "text": "Bands are falling" + bb_txt + ": warning only, not counted as a sell or a block on buys"})
-    lrr, trr, last_n = _n(d.get("lrr")), _n(d.get("trr")), _n(last)
-    pos = None
-    if lrr is not None and trr is not None and trr > lrr and last_n is not None:
-        pos = round((last_n - lrr) / (trr - lrr) * 100)
-    perf = _n(d.get("perf1d"))
-    chg = _n(d.get("pct_change"))
-    day_txt = _day_word(perf) + ((" (" + format(chg, "+.1f") + "%)") if chg is not None else "")
-    where = (f"price {_usd(last)} is {pos}% of the way up its range ({_usd(lrr)} to {_usd(trr)})"
-             if pos is not None else "range position unknown")
-    macd, macdh = _n(d.get("macd_dir")), _n(d.get("macdh_dir"))
-    mm = ""
-    if macd is not None and macdh is not None:
-        mm = f"; MACD {'rising' if macd > 0 else 'falling'}, MACDH {'rising' if macdh > 0 else 'falling'}"
-    if signal:
-        why = explain_technical(d, bounce_note=False)   # the Trade-line warning already has its own stage line
-        first = why.split(NL)[0] if why else ""
-        act = _n(d.get("td_tn_bb_rr_action"))
-        ok = True if act is not None and act > 0 else (False if act is not None and act < 0 else None)
-        stages.append({"name": "Range position", "ok": ok,
-                       "text": (first.replace(R, "").replace(G, "").replace(E, "") or f"A setup matched ({day_txt}; {where})")})
+                       "text": "Bands are falling" + bb_txt + ": the falling-band range rules; a falling band alone is a warning, not a sell"})
+    # 3 Range position
+    if d.get("reclaim_buy") and signal:
+        # 2026-10-21 reclaim buy (etl/derive.py Pass 2b): fill-only, low confidence
+        stages.append({"name": "Range position", "ok": True, "text": (explain_technical(d, bounce_note=False) or "").split(NL)[0]})
         return out
+    s3, z = d.get("step3_id"), _n(d.get("rr_zone_score"))
+    chg = _n(d.get("pct_change"))
+    day_txt = _day_word(_n(d.get("perf1d"))) + ((" (" + format(chg, "+.1f") + "%)") if chg is not None else "")
+    if s3:
+        txt = _step3_why(s3, d)
+        if z is None:
+            txt += f": Do nothing for a stock {_action_flag_txt(flag)}"
+        else:
+            txt += f": {_label(z, s3)} ({_action_flag_txt(flag)})"
+            if z > 0 and sell1:
+                txt += f"; this buy beats the Trade/Trend sell (\"{_rname(s1)}\")"
+        stages.append(_stage("Range position", True if z is not None and z > 0 else (False if z is not None and z < 0 else None), txt, s3, code=z, flag=flag))
+        if z is None and not signal:
+            out["flip"] = _flip_candidates(d)
+        return out
+    where = _step3_why("", d)
     stages.append({"name": "Range position", "ok": None,
-                   "text": f"No buy or sell setup matched: {day_txt}; {where}{mm}"})
-    if qe >= 3 and qj >= 2:
-        cand = []
-        for label, name, conds in _bull_setups(d):
-            unmet = [need for ok, need in conds if not ok]
-            if unmet and len(conds) - len(unmet) >= 1:
-                cand.append((len(unmet), label, name, unmet))
-        cand.sort(key=lambda c: c[0])
-        out["flip"] = [{"label": lb, "name": nm, "missing": um} for _k, lb, nm, um in cand[:2]]
+                   "text": f"No Step 3 rule matched ({day_txt}; {where}): Hold"})
+    if not signal:
+        out["flip"] = _flip_candidates(d)
     return out

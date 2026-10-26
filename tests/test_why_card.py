@@ -24,21 +24,22 @@ def test_trail_stages_for_a_bullish_stock_with_no_setup():
     t = technical_trail(NO_SIGNAL)
     assert t["signal"] is False
     assert [s["ok"] for s in t["stages"]] == [True, True, None]
-    assert "No buy or sell setup matched" in t["stages"][2]["text"]
+    assert "No Step 3 rule matched" in t["stages"][2]["text"]
 
 
 def test_trail_names_the_near_miss_and_what_it_lacks():
     flips = technical_trail(NO_SIGNAL)["flip"]
     assert flips and all(f["missing"] for f in flips)
-    # the pullback setup missed only because price closed just under the midpoint
-    pullback = [f for f in flips if "pullback" in f["name"]]
-    assert pullback and any("midpoint" in m for m in pullback[0]["missing"])
+    # the bounce-at-LRR rule (3x) missed only because the day's low never reached the LRR zone
+    bounce = [f for f in flips if f["name"].startswith("bounce at LRR")]
+    assert bounce and any("LRR zone" in m for m in bounce[0]["missing"])
 
 
-def test_trail_bearish_trend_stops_early():
-    d = dict(NO_SIGNAL, trend_trade_rule=-2)
-    t = technical_trail(d)
-    assert len(t["stages"]) == 1 and t["stages"][0]["ok"] is False and t["flip"] == []
+def test_trail_below_both_lines_is_a_step1_sell_stage_and_still_reaches_step3():
+    d = dict(NO_SIGNAL, trend_trade_rule=-2, step1_id="S1-b")
+    st = technical_trail(d)["stages"]
+    assert st[0]["ok"] is False and st[0]["step"] == "S1-b" and st[0]["action"] == "Sell All" and st[0]["dir"] == -1
+    assert st[-1]["name"] == "Range position"   # Step 3 now runs for every stock
 
 
 def test_card_unheld_buy_with_no_technical_signal_is_hold_and_explains_why():
@@ -92,7 +93,7 @@ def test_sss_weight_drop_is_a_warning_not_a_vote():
 def test_bearish_bollinger_is_a_warning_not_a_sell_stage():
     t = technical_trail(dict(NO_SIGNAL, bb_rng_strk_rule=-3, bb_desc="Cnfm Bear Trnd Less"))
     bb = t["stages"][1]
-    assert bb["ok"] is None and bb["warn"] is True and "warning only" in bb["text"]
+    assert bb["ok"] is None and bb["warn"] is True and "warning" in bb["text"] and "not a sell" in bb["text"]
     card = build_why_card(_ctx(trail=t))
     assert any(l.get("warn") for l in card["steps"][1]["lines"])
 
@@ -107,11 +108,11 @@ def test_falling_top_or_bottom_band_is_a_warning_only():
 
 
 def test_bounce_exception_adds_a_below_trade_warning_and_carries_on_to_the_range_stage():
-    d = dict(NO_SIGNAL, trend_trade_rule=1, bounce_exempt=True, last=75.08, trade_line=86.75, trend_line=45.0,
+    d = dict(NO_SIGNAL, trend_trade_rule=1, step1_id="1d", bounce_exempt=True, last=75.08, trade_line=86.75, trend_line=45.0,
              bb_rng_strk_rule=-1, td_tn_bb_rr_action=10, macdh_dir=1)
     t = technical_trail(d)
     first = t["stages"][0]
-    assert first["warn"] is True and "below Trade" in first["text"] and "sell skipped" in first["text"]
+    assert first["warn"] is True and "below Trade" in first["text"] and "sell was skipped" in first["text"]
     assert [s["name"] for s in t["stages"]][:2] == ["Trend & Trade", "Bollinger bands"] and len(t["stages"]) == 3
 
 

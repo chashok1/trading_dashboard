@@ -31,6 +31,12 @@ def page_cockpit():
 
 
 
+@router.get("/technical-rules-map")
+def page_technical_rules_map():
+    """TASK_155: static map of the Technical rules (Step 1 / Step 2 / Step 3); linked from the Action popup."""
+    return FileResponse(WEB_DIR / "technical_rules_map.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/composite-edit")
 def page_composite_edit():
     return FileResponse(WEB_DIR / "composite_edit.html", media_type="text/html; charset=utf-8")

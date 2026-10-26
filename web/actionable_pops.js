@@ -1999,40 +1999,92 @@ function _scoreWord(n) {
   return 'mild sell';
 }
 
-// TASK_154: "3 days: 48% up / 51% down (n=17,400)" + tag for a numbered Technical step; hover = bulleted detail. Display only.
-// Counts signals (a stock firing on several days counts several times). '' when no track record is loaded for the step.
-// Step direction for the win %: +1 buy, -1 sell, 0 none (user list, TASK_154).
-const _STEP_DIR = Object.assign({}, ...['1b','3b','3c','3d','3e','3f','3g','3h','3j','3l','3m','3n','3o','3q','3r','3s'].map(k => ({[k]: 1})), ...['1c','1f','1g','3a','3i','3k','3p'].map(k => ({[k]: -1})));
-function _stepWinHtml(id) {
+// TASK_154 / TASK_155: "3 days: 55% (n=1,265)" next to a fired Technical rule; hover = bulleted detail. Display only.
+// Counts signals (a stock firing on several days counts several times). '' when no track record is loaded for the rule, or the rule
+// does nothing for this stock (a "Do nothing" row shows no win %). dir: +1 buy rule (win = went UP), -1 sell rule (win = went DOWN).
+// flag: 'above' | 'below' -- the headline number is the one for the stock's own Above / Below Trade-and-Trend flag when the history has it.
+function _stepWinHtml(id, flag, dir) {
   const wr = state.signalWinrate, st = wr && wr.steps && id && wr.steps[id];
-  if (!st || !st.all) return '';
-  // Direction from the step's own action: sell steps win when the stock went DOWN, buy steps when it went UP, the rest are plain "went up".
-  const dir = _STEP_DIR[id] || 0;
-  const win = e => e && e.n_signals >= 30 && e.pct_up != null ? Math.round(dir < 0 ? e.pct_down : e.pct_up) : null;
-  const lbl = dir < 0 ? 'win % (went down)' : dir > 0 ? 'win % (went up)' : 'went up (no buy/sell action)';
-  const pc = e => (e && e.pct_up != null && e.n_signals >= 30) ? Math.round(e.pct_up) + '% up / ' + Math.round(e.pct_down) + '% down' : 'too few past signals';
+  if (!st || !st.all || !dir) return '';
+  const lbl = dir < 0 ? 'win % (went down)' : 'win % (went up)';
+  const ok = e => e && e.n_signals >= 30 && e.pct_up != null;
+  const pc = e => ok(e) ? Math.round(e.pct_up) + '% up / ' + Math.round(e.pct_down) + '% down' : 'too few past signals';
   const a3 = st.all['3'];
   if (!a3) return '';
-  const w = win(a3), thin = a3.n_stocks < 30;
-  const sp = (k, l) => st.splits[k] ? l + ' (3 days): ' + pc(st.splits[k]) + ' (n=' + st.splits[k].n_signals.toLocaleString() + ')' : null;
+  const head = (flag && st.splits && st.splits['flag:' + flag]) || a3;
+  const w = ok(head) ? Math.round(dir < 0 ? head.pct_down : head.pct_up) : null, thin = head.n_stocks < 30;
+  const sp = (k, l) => st.splits && st.splits[k] ? l + ' (3 days): ' + pc(st.splits[k]) + ' (n=' + st.splits[k].n_signals.toLocaleString() + ')' : null;
   const lines = [
-    '3 days: ' + pc(a3) + ' (n=' + a3.n_signals.toLocaleString() + ')',
+    '3 days, all stocks: ' + pc(a3) + ' (n=' + a3.n_signals.toLocaleString() + ')',
     '1 day: ' + pc(st.all['1']), '2 days: ' + pc(st.all['2']), '4 days: ' + pc(st.all['4']),
     '10 days (reference only): ' + pc(st.all['10']), '15 days (reference only): ' + pc(st.all['15']),
+    sp('flag:above', 'Above Trade and Trend'), sp('flag:below', 'Below Trade or Trend'),
     sp('out:bull', 'Bullish outlook stocks'), sp('out:bear', 'Bearish outlook stocks'), sp('out:neu', 'Neutral outlook stocks'),
-    sp('pos:both', 'Above Trade and Trend'), sp('pos:trend_only', 'Above Trend, below Trade'), sp('pos:trade_only', 'Above Trade, below Trend'),
-    thin ? 'Only ' + a3.n_stocks + ' different stocks: thin evidence' : a3.n_stocks.toLocaleString() + ' different stocks',
+    sp('band:rise', 'Rising bands'), sp('band:flat', 'Flat bands'), sp('band:fall', 'Falling bands'),
+    thin ? 'Only ' + head.n_stocks + ' different stocks: thin evidence' : head.n_stocks.toLocaleString() + ' different stocks',
     'History ' + (wr.history_from || '?') + ' to ' + (wr.history_to || '?'),
     'Counts signals, not distinct stocks: a stock that fires on several days counts several times',
   ].filter(Boolean);
-  const tip = escapeHtml(['Step ' + id + ' track record'].concat(lines.map(l => '• ' + l)).join('\n'));
-  const txt = w == null ? 'too few past signals' : lbl + ': ' + w + '%' + (thin ? ' (thin)' : '');
-  return `<span class="tw-win" title="${tip}">${escapeHtml(id)} &middot; ${escapeHtml(txt)}</span>`;
+  const meaning = 'Win = ' + (dir < 0 ? 'the stock went down' : 'the stock went up') + ' 3 days later, in ' + (w == null ? 'past cases of this rule' : w + '% of ' + head.n_signals.toLocaleString() + ' past cases of this rule');
+  const tip = escapeHtml(['Track record of this rule', meaning].map((l, i) => i ? '• ' + l : l).concat(lines.map(l => '• ' + l)).join('\n'));
+  const txt = w == null ? 'too few past signals' : 'win ' + w + '%' + (thin ? ' (thin)' : '');
+  return `<span class="tw-win" title="${tip}">3 days &middot; ${escapeHtml(txt)}</span>`;
+}
+
+// TASK_155: the rule's help text (etl/technical_why.py::RULE_HELP, sent in tech_trail as line.help) as a bulleted list.
+function _ruleHelpLines(h) {
+  if (!h) return [];
+  const out = [h.name, 'When: ' + h.when];
+  if (h.above && h.above !== 'n/a') out.push('Above Trade and Trend: ' + h.above);
+  if (h.below && h.below !== 'n/a') out.push('Below Trade or below Trend: ' + h.below);
+  return out;
+}
+function _ruleHelpTip(h) {
+  const l = _ruleHelpLines(h);
+  return l.length ? escapeHtml(l.map((x, i) => i ? '• ' + x : x).join('\n')) : '';
+}
+function _ruleToggleHelp(el) {
+  const box = el && el.closest('.tw-rule') && el.closest('.tw-rule').querySelector('.tw-helpbox');
+  if (box) box.hidden = !box.hidden;
+}
+
+// TASK_155: one row per Technical rule that was checked (Step 1 lines, Bollinger bands, Step 3 range): small picture, rule id + action for
+// the stock's Above / Below flag, the plain-English reason, ⓘ help (hover = bulleted list, click = open it), the 3-day win %.
+function _techRulesHtml(row, st) {
+  const lines = (st && st.lines) || [];
+  const ts = row.tech_score == null ? null : Number(row.tech_score);
+  const mapLink = '<a class="tw-maplink" href="/technical-rules-map" target="_blank" rel="noopener" title="Open the whole Technical rules map in a new tab">How these rules work</a>';
+  const flagTxt = f => f === 'above' ? 'above Trade and Trend' : f === 'below' ? 'below Trade or Trend' : '';
+  const rows = lines.map(l => {
+    const t = String(l.text || ''), i = t.indexOf(': ');
+    const stage = i > 0 ? t.slice(0, i) : '', body = i > 0 ? t.slice(i + 2) : t;
+    const m = l.ok === true ? '<span class="wc-ok">&#10003;</span>' : l.ok === false ? '<span class="wc-no">&#10007;</span>' : '<span class="wc-dash">&ndash;</span>';
+    const h = l.help;
+    const tip = _ruleHelpTip(h);
+    const info = tip ? `<span class="tw-info" role="button" tabindex="0" title="${tip}" onclick="_ruleToggleHelp(this)" onkeydown="if(event.key==='Enter')_ruleToggleHelp(this)">&#9432;</span>` : '';
+    const side = l.dir > 0 ? 'buy' : l.dir < 0 ? 'sell' : '';
+    const act = l.action ? `<span class="tw-act ${side}">${escapeHtml(l.action)}</span>` : '';
+    const fl = l.flag ? `<span class="tw-flag">${escapeHtml(flagTxt(l.flag))}</span>` : '';
+    const win = _stepWinHtml(l.step, l.flag, l.dir);
+    const helpBox = h ? `<div class="tw-helpbox" hidden><ul>${_ruleHelpLines(h).map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`
+      + (/^(S1-[a-d]|3[afhkpx]|tr)$/.test(l.step) ? `<a href="/technical-rules-map#${encodeURIComponent(l.step)}" target="_blank" rel="noopener">See this rule on the map</a>` : '') + '</div>' : '';
+    return `<div class="actpop-tw tw-rule${l.warn ? ' wc-warnline' : ''}">`
+      + `<div class="tw-rbody"><div class="tw-rhead">${m} <b>${escapeHtml(stage)}</b> ${act}${fl} ${info}</div>`
+      + `<div class="tw-rtext">${_whyHtml(body)}</div>${win ? `<div class="tw-rwin">${win}</div>` : ''}${helpBox}</div></div>`;
+  }).join('');
+  const lbl = actionDisplay((row.rr_action || '').toUpperCase()).label || '';
+  const side = actionDisplay((row.rr_action || '').toUpperCase()).side;
+  const fin = ts != null
+    ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="Technical score ${ts}${lbl ? ': ' + escapeHtml(lbl) : ''}">Technical: ${escapeHtml(lbl || String(ts))}</span>`
+    : '<span class="tw-chain-chip final na" title="No Technical signal">no signal</span>';
+  return `<div class="actpop-tw tw-chain">${fin}<span class="tw-chain-gap"></span>${mapLink}</div>${rows}`;
 }
 
 function _techChainHtml(row) {
   const st = ((row && row.why_card && row.why_card.steps) || []).find(s => s.key === 'technical');
   const lines = (st && st.lines) || [];
+  // TASK_155: rows derived with the redesigned rules carry the rule id (line.step) -> one row per rule with picture, help and win %
+  if (lines.some(l => l.step)) return _techRulesHtml(row, st);
   if (!lines.length || row.tn_td_score == null) return '';
   const num = v => (v == null || v === '') ? null : Number(v);
   const tt = num(row.tn_td_score), zone = num(row.zone_score), ts = num(row.tech_score), bbRule = num(row.bb_rng_strk_rule);
@@ -2068,7 +2120,7 @@ function _techChainHtml(row) {
     // 2026-10-23, user: the RR Zone setup is worked out for every stock; after an earlier step ended the chain it is shown greyed, not counted
     h += chip('off', `RR Zone ${zone != null ? zone : '—'}`,
               tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''),
-                  [row.rr_desc, zone == null ? 'No setup in the range right now' : null, 'Not counted: an earlier step ended the chain, so the Technical call does not use it']));
+                  [row.rr_desc, zone == null ? 'No setup in the range right now' : null, 'Not counted: an earlier step ended the chain, so Technical does not use it']));
   } else {
     h += chip(clsOf(l3), `RR Zone ${zone != null ? zone : '—'}`,
               tip('RR Zone (where price sits in its risk range)' + (zone != null ? ': ' + zone + ' = ' + _scoreWord(zone) : ''), [body(l3), row.rr_desc, zone == null && 'No setup in the range right now']));
@@ -2077,9 +2129,9 @@ function _techChainHtml(row) {
   const side = actionDisplay((row.rr_action || '').toUpperCase()).side;
   const lbl = actionDisplay((row.rr_action || '').toUpperCase()).label || '';
   h += arrow + (ts != null
-    ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="${tip('Technical score: ' + ts + ' = ' + _scoreWord(ts), [lbl && 'Call: ' + lbl])}">Score ${ts}${side === 'sell' && lbl ? ' (' + escapeHtml(lbl) + ')' : ''}</span>`
+    ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="${tip('Technical score: ' + ts + ' = ' + _scoreWord(ts), [lbl && 'Technical: ' + lbl])}">Score ${ts}${side === 'sell' && lbl ? ' (' + escapeHtml(lbl) + ')' : ''}</span>`
     : '<span class="tw-chain-chip final na" title="No Technical signal">no signal</span>');
-  const wins = ((st && st.lines) || []).map(l => _stepWinHtml(l.step)).filter(Boolean);
+  const wins = ((st && st.lines) || []).map(l => _stepWinHtml(l.step, l.flag, l.dir)).filter(Boolean);
   return `<div class="actpop-tw tw-chain">${h}</div>` + wins.map(w => `<div class="actpop-tw tw-stage">${w}</div>`).join('');
 }
 
@@ -2128,7 +2180,7 @@ function _actpopDriverBullets(row, side) {
       // three Technical checks (Trend & Trade, Bollinger bands, Range position) live here now, replacing the one-line "Why".
       const _stages = _techChainHtml(row) || _techStageLinesHtml(row);
       noteHtml = (_stages || `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`)
-        + `<div class="actpop-tw"><span class="tw-k">Call</span><b>${escapeHtml(actionLabel)}</b>: ${_whyHtml(tw.verdict)}</div>`
+        + `<div class="actpop-tw"><span class="tw-k">Result</span><b>${escapeHtml(actionLabel)}</b>: ${_whyHtml(tw.verdict)}</div>`
         + (tw.cost ? `<div class="actpop-tw tw-cost">${escapeHtml(tw.cost)}</div>` : '');
     }
     // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technical rules map</title>
+<style>
+/* Layout: one wide flow figure. Left lane = Step 1 (Trade/Trend lines), right lane = Step 3 (LRR/TRR range) behind the band gate, both ending in one final action. */
+:root{--bg:#f5f6f8;--surface:#fff;--fg:#1b2230;--muted:#5d6678;--line:#c9d0dc;--buy:#177a47;--buybg:#e1f2e8;--sell:#b3261e;--sellbg:#f9e3e1;--holdbg:#eceff4;--new:#1f5fbf;--zone:#e9eef7;
+ --sans:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161d;--surface:#1a2029;--fg:#e6e9ef;--muted:#9aa4b5;--line:#364050;--buy:#5cc98b;--buybg:#17331f;--sell:#f08a82;--sellbg:#3a1d1b;--holdbg:#232a35;--new:#7fb0ff;--zone:#212b3a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12161d;--surface:#1a2029;--fg:#e6e9ef;--muted:#9aa4b5;--line:#364050;--buy:#5cc98b;--buybg:#17331f;--sell:#f08a82;--sellbg:#3a1d1b;--holdbg:#232a35;--new:#7fb0ff;--zone:#212b3a;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);margin:0;padding-block:28px 56px;
+ padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:none;width:100%;margin:0;display:flex;flex-direction:column;gap:14px}
+h1{font-size:26px;margin:0;font-weight:600;text-wrap:balance}
+p{margin:0;max-width:none}
+.muted{color:var(--muted)} .small{font-size:13px}
+figure{margin:0;display:flex;flex-direction:column;gap:10px}
+.scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px}
+svg{display:block;min-width:1100px;width:100%;height:auto;color:var(--fg);font-family:var(--sans)}
+figcaption{font-size:13px;color:var(--muted);max-width:none}
+.t{font-size:12.5px;fill:currentColor} .ts{font-size:11.5px;fill:var(--muted)} .tb{font-size:12px;fill:currentColor;font-weight:500}
+.th{font-size:13.5px;font-weight:600;fill:currentColor} .hh{font-size:13px;font-weight:600;fill:var(--surface)}
+.tc{font-size:11px;fill:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.tp{font-size:12.5px;font-weight:600;fill:currentColor} .tn{font-size:12.5px;font-weight:600;fill:currentColor}
+.tagtext{font-size:13px;font-weight:600;fill:var(--bg)}
+.box{fill:var(--surface);stroke:var(--line);stroke-width:1.2} .box2{fill:var(--zone);stroke:var(--line);stroke-width:1.2}
+.hdr{fill:var(--fg)} .thead{fill:var(--holdbg)} .row{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.note{fill:var(--buybg);stroke:var(--buy);stroke-width:1.2} .final{fill:var(--zone);stroke:var(--fg);stroke-width:1.6} .tag{fill:var(--fg)}
+.pill{stroke-width:1.2} .pill.buy{fill:var(--buybg);stroke:var(--buy)} .pill.sell{fill:var(--sellbg);stroke:var(--sell)} .pill.hold{fill:var(--holdbg);stroke:var(--line)} .pill.pass{fill:var(--zone);stroke:var(--new)}
+.ln{stroke:currentColor;stroke-width:1.6;fill:none} .ln2{stroke:currentColor;stroke-width:1.2;fill:none;stroke-dasharray:3 3}
+.dash{stroke:var(--muted);stroke-width:1.2;stroke-dasharray:5 4} .br{stroke:currentColor;stroke-width:1.5;fill:none}
+.zone{fill:var(--zone);stroke:none}
+.price{fill:none;stroke:currentColor;stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.trade{fill:none;stroke:var(--new);stroke-width:2;stroke-dasharray:7 4} .trend{fill:none;stroke:var(--muted);stroke-width:2} .lowest{fill:none;stroke:var(--new);stroke-width:1.6;stroke-dasharray:2 3}
+.mk{stroke-width:2} .mk.sellmin{fill:var(--sellbg);stroke:var(--sell)} .mk.sellall{fill:var(--sell);stroke:var(--sell)} .mk.sellall2{fill:none;stroke:var(--sell)} .mk.buy{fill:var(--buy);stroke:var(--buy)} .mk.dot{fill:currentColor;stroke:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Technical rules flow</h1>
+  <p>How one stock moves through the checks to a final action. The left side reads the Trade and Trend lines. The right side reads where price sits between LRR and TRR, and only runs when the bands are rising. Whether the stock is above both lines or below either one decides the strong or the weak version of a Step 3 action.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1400 1454" role="img" aria-label="Flow of one stock through Step 1 (Trade and Trend lines), the band check, and Step 3 (rising, flat and falling band rules) to a final action" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs><rect x="440" y="16" width="520" height="56" rx="6" class="box2"/>
+<text x="700" y="38" class="th" text-anchor="middle">Today's stock</text>
+<text x="700" y="58" class="ts" text-anchor="middle">price, Trade line, Trend line, last 5 Trade lines, LRR, TRR, TRR trend, bands</text>
+<line x1="560" y1="72" x2="335" y2="100" class="ln" marker-end="url(#ar)"/>
+<line x1="840" y1="72" x2="865" y2="100" class="ln" marker-end="url(#ar)"/>
+<rect x="30" y="100" width="610" height="28" rx="6" class="hdr"/>
+<text x="44" y="119" class="hh" text-anchor="start">STEP 1  ·  Trade and Trend lines</text>
+<rect x="30" y="136" width="610" height="218" rx="6" class="box"/>
+<polyline points="60,250 600,200" class="trade"/>
+<text x="606" y="196" class="ts" text-anchor="start">Trade</text>
+<polyline points="60,266 600,236" class="trend"/>
+<text x="606" y="246" class="ts" text-anchor="start">Trend</text>
+<polyline points="60,258 370,224 600,206" class="lowest"/>
+<text x="60" y="296" class="ts" text-anchor="start">dotted: lowest Trade line of the last 5 days</text>
+<polyline points="60,216 130,196 200,206 270,181 340,190 400,214 460,233 520,251 580,262" class="price"/>
+<circle cx="410" cy="220" r="6" class="mk sellmin"/>
+<text x="410" y="166" class="ts" text-anchor="middle">falls below Trade: Sell Some</text>
+<line x1="410" y1="172" x2="410" y2="212" class="ln2" marker-end="url(#ar)"/>
+<circle cx="428" cy="228" r="6" class="mk sellall"/>
+<text x="500" y="322" class="ts" text-anchor="middle">keeps falling, under the lowest of the last 5 Trade lines: Sell All</text>
+<line x1="470" y1="308" x2="432" y2="236" class="ln2" marker-end="url(#ar)"/>
+<circle cx="525" cy="254" r="6" class="mk sellall2"/>
+<text x="60" y="156" class="ts" text-anchor="start">Price path (example)</text>
+<text x="60" y="342" class="ts" text-anchor="start">light red dot: Sell Some    solid red: Sell All (new)    hollow red: Sell All (existing, below both lines)</text>
+<rect x="30" y="372" width="610" height="24" rx="6" class="thead"/>
+<text x="42" y="389" class="tc" text-anchor="start">Price is...</text>
+<text x="412" y="389" class="tc" text-anchor="start">Action</text>
+<rect id="S1-a" data-step="S1-a" x="30" y="396" width="610" height="44" rx="6" class="row"/>
+<text x="42" y="422.0" class="t" text-anchor="start">Below the lowest of the last 5 Trade lines</text>
+<rect x="404" y="404" width="226" height="28" rx="6" class="pill sell"/>
+<text x="517" y="423" class="tp" text-anchor="middle">SELL ALL  (new)</text>
+<rect id="S1-b" data-step="S1-b" x="30" y="440" width="610" height="54" rx="6" class="row"/>
+<text x="42" y="464.0" class="t" text-anchor="start"><tspan x="42" dy="0">Below both lines, or Trade line below Trend line</tspan><tspan x="42" dy="15">and price less than 1 ATR above the Trade line</tspan></text>
+<rect x="404" y="448" width="226" height="38" rx="6" class="pill sell"/>
+<text x="517" y="467" class="tp" text-anchor="middle">SELL ALL  (existing)</text>
+<rect id="S1-c" data-step="S1-c" x="30" y="494" width="610" height="44" rx="6" class="row"/>
+<text x="42" y="520.0" class="t" text-anchor="start">Fell below Trade in the last 3 days, above Trend</text>
+<rect x="404" y="502" width="226" height="28" rx="6" class="pill sell"/>
+<text x="517" y="521" class="tp" text-anchor="middle">SELL SOME  (new)</text>
+<rect id="S1-d" data-step="S1-d" x="30" y="538" width="610" height="54" rx="6" class="row"/>
+<text x="42" y="569.0" class="t" text-anchor="start">None of the above: no Step 1 sell</text>
+<rect x="404" y="546" width="226" height="38" rx="6" class="pill pass"/>
+<text x="517" y="560" class="tp" text-anchor="middle"><tspan x="517" dy="0">Go to Step 3 with the</tspan><tspan x="517" dy="15">Above / Below flag</tspan></text>
+<text x="335" y="612" class="ts" text-anchor="middle">Checked top to bottom, the first match wins.</text>
+<rect x="30" y="626" width="610" height="52" rx="6" class="note"/>
+<text x="42" y="648" class="tn" text-anchor="start">The bounce buy overrides all the sells in this table:</text>
+<text x="42" y="666" class="ts" text-anchor="start">a bounce at LRR below Trade becomes Buy To Min, not a sell.</text>
+<rect x="700" y="100" width="330" height="54" rx="6" class="box2"/>
+<text x="865" y="122" class="th" text-anchor="middle">STEP 2  ·  Are the Bollinger bands rising?</text>
+<text x="865" y="142" class="ts" text-anchor="middle">rising bands   ·   flat bands   ·   falling bands</text>
+<rect x="1062" y="100" width="308" height="54" rx="6" class="box"/>
+<text x="1216" y="132" class="th" text-anchor="middle">Falling bands</text>
+<line x1="1030" y1="127" x2="1062" y2="127" class="ln" marker-end="url(#ar)"/>
+<text x="1046" y="119" class="ts" text-anchor="middle">falling</text>
+<line x1="865" y1="154" x2="865" y2="172" class="ln" marker-end="url(#ar)"/>
+<text x="877" y="167" class="ts" text-anchor="start">rising</text>
+<rect x="700" y="172" width="670" height="28" rx="6" class="hdr"/>
+<text x="714" y="191" class="hh" text-anchor="start">LRR and TRR range, rising bands</text>
+<rect x="700" y="208" width="670" height="280" rx="6" class="box"/>
+<rect x="800" y="393.5" width="215" height="52.5" rx="6" class="zone"/>
+<rect x="800" y="236.0" width="215" height="21.0" rx="6" class="zone"/>
+<line x1="800" y1="236.0" x2="1015" y2="236.0" class="dash"/>
+<line x1="800" y1="341.0" x2="1015" y2="341.0" class="dash"/>
+<line x1="800" y1="446" x2="1015" y2="446" class="dash"/>
+<text x="792" y="240.0" class="ts" text-anchor="end">TRR  100%</text>
+<text x="792" y="345.0" class="ts" text-anchor="end">Mid  50%</text>
+<text x="792" y="450" class="ts" text-anchor="end">LRR  0%</text>
+<text x="810" y="230.0" class="ts" text-anchor="start">TRR zone (top 10%)</text>
+<polyline points="815,335 845,355 875,405 900,452 915,425 940,400 970,372 1000,360" class="price"/>
+<circle cx="900" cy="452" r="6" class="mk buy"/>
+<text x="826" y="478" class="ts" text-anchor="start">low touched the LRR zone</text>
+<circle cx="1000" cy="360" r="5" class="mk dot"/>
+<line x1="1030" y1="446.0" x2="1030" y2="393.5" class="br"/>
+<line x1="1025" y1="446.0" x2="1030" y2="446.0" class="br"/>
+<line x1="1025" y1="393.5" x2="1030" y2="393.5" class="br"/>
+<text x="1042" y="423.75" class="tb" text-anchor="start">Fresh touch of LRR: under 25%</text>
+<line x1="1030" y1="393.5" x2="1030" y2="320.0" class="br"/>
+<line x1="1025" y1="393.5" x2="1030" y2="393.5" class="br"/>
+<line x1="1025" y1="320.0" x2="1030" y2="320.0" class="br"/>
+<text x="1042" y="360.75" class="tb" text-anchor="start">Bounce at LRR: 25% to 60%</text>
+<line x1="1180" y1="393.5" x2="1180" y2="320.0" class="br"/>
+<line x1="1175" y1="393.5" x2="1180" y2="393.5" class="br"/>
+<line x1="1175" y1="320.0" x2="1180" y2="320.0" class="br"/>
+<text x="1192" y="360.75" class="tb" text-anchor="start">Up day: 25% to 60%, TRR rising</text>
+<line x1="1030" y1="450" x2="1030" y2="474" class="ln2" marker-end="url(#ar)"/>
+<text x="1042" y="470" class="tb" text-anchor="start">Support broken: price far below LRR</text>
+<rect x="700" y="502" width="670" height="38" rx="6" class="thead"/>
+<text x="712" y="525" class="tc" text-anchor="start">Rule</text>
+<text x="780" y="525" class="tc" text-anchor="start">When</text>
+<text x="1121" y="518" class="tc" text-anchor="middle">Above Trade</text>
+<text x="1121" y="532" class="tc" text-anchor="middle">and above Trend</text>
+<text x="1281" y="518" class="tc" text-anchor="middle">Below Trade</text>
+<text x="1281" y="532" class="tc" text-anchor="middle">or below Trend</text>
+<rect id="3a" data-step="3a" x="700" y="540" width="670" height="52" rx="6" class="row"/>
+<text x="780" y="571" class="t" text-anchor="start">Support broken: price well below LRR</text>
+<rect x="1046" y="552" width="150" height="28" rx="6" class="pill sell"/>
+<text x="1121" y="571" class="tp" text-anchor="middle">Sell to Min</text>
+<rect x="1206" y="552" width="150" height="28" rx="6" class="pill sell"/>
+<text x="1281" y="571" class="tp" text-anchor="middle">Sell All</text>
+<rect id="3x" data-step="3x" x="700" y="592" width="670" height="52" rx="6" class="row"/>
+<text x="780" y="614" class="t" text-anchor="start"><tspan x="780" dy="0">Low reached LRR zone (0 or -1) today or in the</tspan><tspan x="780" dy="15">last 3 days. Price 25% to 60% of the range.</tspan></text>
+<rect x="1046" y="604" width="150" height="28" rx="6" class="pill buy"/>
+<text x="1121" y="623" class="tp" text-anchor="middle">Buy More</text>
+<rect x="1206" y="604" width="150" height="28" rx="6" class="pill buy"/>
+<text x="1281" y="623" class="tp" text-anchor="middle">Buy To Min</text>
+<rect id="3f" data-step="3f" x="700" y="644" width="670" height="52" rx="6" class="row"/>
+<text x="780" y="666" class="t" text-anchor="start"><tspan x="780" dy="0">Low reached LRR zone (0 or -1) today. Price</tspan><tspan x="780" dy="15">above LRR and under 25% of the range.</tspan></text>
+<rect x="1046" y="656" width="150" height="28" rx="6" class="pill buy"/>
+<text x="1121" y="675" class="tp" text-anchor="middle">Buy Min</text>
+<rect x="1206" y="656" width="150" height="28" rx="6" class="pill hold"/>
+<text x="1281" y="675" class="tp" text-anchor="middle">Do nothing</text>
+<rect id="3h" data-step="3h" x="700" y="696" width="670" height="52" rx="6" class="row"/>
+<text x="780" y="718" class="t" text-anchor="start"><tspan x="780" dy="0">Up day. Price 25% to 60% of the range.</tspan><tspan x="780" dy="15">TRR up 2% or more over 5 days.</tspan></text>
+<rect x="1046" y="708" width="150" height="28" rx="6" class="pill buy"/>
+<text x="1121" y="727" class="tp" text-anchor="middle">Buy Min</text>
+<rect x="1206" y="708" width="150" height="28" rx="6" class="pill hold"/>
+<text x="1281" y="727" class="tp" text-anchor="middle">Do nothing</text>
+<rect id="3-else" data-step="3-else" x="700" y="748" width="670" height="52" rx="6" class="row"/>
+<text x="780" y="779" class="t" text-anchor="start">None of the above</text>
+<rect x="1046" y="760" width="150" height="28" rx="6" class="pill hold"/>
+<text x="1121" y="779" class="tp" text-anchor="middle">Hold</text>
+<rect x="1206" y="760" width="150" height="28" rx="6" class="pill hold"/>
+<text x="1281" y="779" class="tp" text-anchor="middle">Hold</text>
+<rect x="30" y="740" width="610" height="28" rx="6" class="hdr"/>
+<text x="44" y="759" class="hh" text-anchor="start">Flat bands</text>
+<rect x="30" y="776" width="610" height="210" rx="6" class="box"/>
+<rect x="130" y="915.5" width="200" height="36.5" rx="6" class="zone"/>
+<rect x="130" y="806.0" width="200" height="14.600000000000023" rx="6" class="zone"/>
+<line x1="130" y1="806.0" x2="330" y2="806.0" class="dash"/>
+<text x="124" y="810.0" class="ts" text-anchor="end">TRR 100%</text>
+<line x1="130" y1="879.0" x2="330" y2="879.0" class="dash"/>
+<text x="124" y="883.0" class="ts" text-anchor="end">Mid 50%</text>
+<line x1="130" y1="952.0" x2="330" y2="952.0" class="dash"/>
+<text x="124" y="956.0" class="ts" text-anchor="end">LRR 0%</text>
+<polyline points="142,886.3 175,908.2 210,937.4 230,949.08 255,931.56 285,905.28 315,887.76" class="price"/>
+<circle cx="230" cy="949.08" r="6" class="mk buy"/>
+<line x1="344" y1="952.0" x2="344" y2="915.5" class="br"/>
+<line x1="339" y1="952.0" x2="344" y2="952.0" class="br"/>
+<line x1="339" y1="915.5" x2="344" y2="915.5" class="br"/>
+<text x="356" y="937.75" class="tb" text-anchor="start">Fresh touch of LRR</text>
+<line x1="344" y1="915.5" x2="344" y2="864.4" class="br"/>
+<line x1="339" y1="915.5" x2="344" y2="915.5" class="br"/>
+<line x1="339" y1="864.4" x2="344" y2="864.4" class="br"/>
+<text x="356" y="893.95" class="tb" text-anchor="start">Bounce at LRR</text>
+<line x1="400" y1="915.5" x2="400" y2="864.4" class="br"/>
+<line x1="395" y1="915.5" x2="400" y2="915.5" class="br"/>
+<line x1="395" y1="864.4" x2="400" y2="864.4" class="br"/>
+<text x="412" y="893.95" class="tb" text-anchor="start">Up day</text>
+<line x1="344" y1="820.6" x2="344" y2="806.0" class="br"/>
+<line x1="339" y1="820.6" x2="344" y2="820.6" class="br"/>
+<line x1="339" y1="806.0" x2="344" y2="806.0" class="br"/>
+<text x="356" y="817.3" class="tb" text-anchor="start">Near the top</text>
+<rect x="30" y="994" width="610" height="38" rx="6" class="thead"/>
+<text x="42" y="1017" class="tc" text-anchor="start">Rule</text>
+<text x="102" y="1017" class="tc" text-anchor="start">When</text>
+<text x="420" y="1010" class="tc" text-anchor="middle">Above Trade</text>
+<text x="420" y="1024" class="tc" text-anchor="middle">and above Trend</text>
+<text x="560" y="1010" class="tc" text-anchor="middle">Below Trade</text>
+<text x="560" y="1024" class="tc" text-anchor="middle">or below Trend</text>
+<rect data-step="3x" x="30" y="1032" width="610" height="54" rx="6" class="row"/>
+<text x="102" y="1055" class="t" text-anchor="start"><tspan x="102" dy="0">Low reached LRR zone (0 or -1) today or in the</tspan><tspan x="102" dy="15">last 3 days. Price 25% to 60% of the range.</tspan></text>
+<rect x="358" y="1045" width="124" height="28" rx="6" class="pill buy"/>
+<text x="420" y="1064" class="tp" text-anchor="middle">Buy More</text>
+<rect x="498" y="1045" width="124" height="28" rx="6" class="pill buy"/>
+<text x="560" y="1064" class="tp" text-anchor="middle">Buy To Min</text>
+<rect data-step="3f" x="30" y="1086" width="610" height="54" rx="6" class="row"/>
+<text x="102" y="1109" class="t" text-anchor="start"><tspan x="102" dy="0">Low reached LRR zone (0 or -1) today. Price</tspan><tspan x="102" dy="15">above LRR and under 25% of the range.</tspan></text>
+<rect x="358" y="1099" width="124" height="28" rx="6" class="pill buy"/>
+<text x="420" y="1118" class="tp" text-anchor="middle">Buy Min</text>
+<rect x="498" y="1099" width="124" height="28" rx="6" class="pill hold"/>
+<text x="560" y="1118" class="tp" text-anchor="middle">Do nothing</text>
+<rect data-step="3h" x="30" y="1140" width="610" height="54" rx="6" class="row"/>
+<text x="102" y="1163" class="t" text-anchor="start"><tspan x="102" dy="0">Up day.</tspan><tspan x="102" dy="15">Price 25% to 60% of the range.</tspan></text>
+<rect x="358" y="1153" width="124" height="28" rx="6" class="pill buy"/>
+<text x="420" y="1172" class="tp" text-anchor="middle">Buy Min</text>
+<rect x="498" y="1153" width="124" height="28" rx="6" class="pill hold"/>
+<text x="560" y="1172" class="tp" text-anchor="middle">Do nothing</text>
+<rect id="3k" data-step="3k" x="30" y="1194" width="610" height="54" rx="6" class="row"/>
+<text x="102" y="1226" class="t" text-anchor="start">Price or day's high reached 90% of the range.</text>
+<rect x="358" y="1207" width="124" height="28" rx="6" class="pill sell"/>
+<text x="420" y="1226" class="tp" text-anchor="middle">Sell Some</text>
+<rect x="498" y="1207" width="124" height="28" rx="6" class="pill hold"/>
+<text x="560" y="1226" class="tp" text-anchor="middle">n/a</text>
+<polyline points="700,140 668,140 668,754 640,754" class="ln" marker-end="url(#ar)"/>
+<text x="684" y="134" class="ts" text-anchor="middle">flat</text>
+<rect x="700" y="850" width="670" height="28" rx="6" class="hdr"/>
+<text x="714" y="869" class="hh" text-anchor="start">Falling bands</text>
+<rect x="700" y="886" width="670" height="210" rx="6" class="box"/>
+<rect x="800" y="1025.5" width="200" height="36.5" rx="6" class="zone"/>
+<rect x="800" y="916.0" width="200" height="14.600000000000023" rx="6" class="zone"/>
+<line x1="800" y1="916.0" x2="1000" y2="916.0" class="dash"/>
+<text x="794" y="920.0" class="ts" text-anchor="end">TRR 100%</text>
+<line x1="800" y1="989.0" x2="1000" y2="989.0" class="dash"/>
+<text x="794" y="993.0" class="ts" text-anchor="end">Mid 50%</text>
+<line x1="800" y1="1062.0" x2="1000" y2="1062.0" class="dash"/>
+<text x="794" y="1066.0" class="ts" text-anchor="end">LRR 0%</text>
+<polyline points="812,986.08 845,1012.36 880,1044.48 900,1059.08 925,1047.4 955,1032.8 985,1035.72" class="price"/>
+<circle cx="900" cy="1059.08" r="6" class="mk buy"/>
+<line x1="1014" y1="1025.5" x2="1014" y2="974.4" class="br"/>
+<line x1="1009" y1="1025.5" x2="1014" y2="1025.5" class="br"/>
+<line x1="1009" y1="974.4" x2="1014" y2="974.4" class="br"/>
+<text x="1026" y="1003.95" class="tb" text-anchor="start">Bounce at LRR</text>
+<line x1="1014" y1="930.6" x2="1014" y2="916.0" class="br"/>
+<line x1="1009" y1="930.6" x2="1014" y2="930.6" class="br"/>
+<line x1="1009" y1="916.0" x2="1014" y2="916.0" class="br"/>
+<text x="1026" y="927.3" class="tb" text-anchor="start">Near the top</text>
+<rect x="700" y="1104" width="670" height="38" rx="6" class="thead"/>
+<text x="712" y="1127" class="tc" text-anchor="start">Rule</text>
+<text x="772" y="1127" class="tc" text-anchor="start">When</text>
+<text x="1080" y="1120" class="tc" text-anchor="middle">Above Trade</text>
+<text x="1080" y="1134" class="tc" text-anchor="middle">and above Trend</text>
+<text x="1250" y="1120" class="tc" text-anchor="middle">Below Trade</text>
+<text x="1250" y="1134" class="tc" text-anchor="middle">or below Trend</text>
+<rect data-step="3x" x="700" y="1142" width="670" height="54" rx="6" class="row"/>
+<text x="772" y="1165" class="t" text-anchor="start"><tspan x="772" dy="0">Low reached LRR zone (0 or -1) today or in the</tspan><tspan x="772" dy="15">last 3 days. Price 25% to 60% of the range.</tspan></text>
+<rect x="1018" y="1155" width="124" height="28" rx="6" class="pill buy"/>
+<text x="1080" y="1174" class="tp" text-anchor="middle">Buy Some</text>
+<rect x="1188" y="1155" width="124" height="28" rx="6" class="pill hold"/>
+<text x="1250" y="1174" class="tp" text-anchor="middle">Do nothing</text>
+<rect id="3p" data-step="3p" x="700" y="1196" width="670" height="54" rx="6" class="row"/>
+<text x="772" y="1228" class="t" text-anchor="start">Price or day's high reached 90% of the range.</text>
+<rect x="1018" y="1209" width="124" height="28" rx="6" class="pill sell"/>
+<text x="1080" y="1228" class="tp" text-anchor="middle">Sell Some</text>
+<rect x="1188" y="1209" width="124" height="28" rx="6" class="pill hold"/>
+<text x="1250" y="1228" class="tp" text-anchor="middle">n/a</text>
+<rect id="tr" data-step="tr" x="700" y="1250" width="670" height="54" rx="6" class="row"/>
+<text x="772" y="1282" class="t" text-anchor="start">Price below Trade or below Trend.</text>
+<rect x="1018" y="1263" width="124" height="28" rx="6" class="pill hold"/>
+<text x="1080" y="1282" class="tp" text-anchor="middle">n/a</text>
+<rect x="1188" y="1263" width="124" height="28" rx="6" class="pill sell"/>
+<text x="1250" y="1282" class="tp" text-anchor="middle">Sell All</text>
+<polyline points="1370,127 1388,127 1388,864 1370,864" class="ln" marker-end="url(#ar)"/>
+<line x1="335" y1="1254" x2="335" y2="1354" class="ln" marker-end="url(#ar)"/>
+<line x1="1035" y1="1310" x2="1035" y2="1354" class="ln" marker-end="url(#ar)"/>
+<polyline points="700,812 685,812 685,1354" class="ln" marker-end="url(#ar)"/>
+<polyline points="30,418 14,418 14,1394 30,1394" class="ln" marker-end="url(#ar)"/>
+<rect x="30" y="1354" width="1340" height="80" rx="6" class="final"/>
+<text x="700" y="1386" class="th" text-anchor="middle">FINAL ACTION  for this stock today</text>
+<text x="700" y="1410" class="t" text-anchor="middle">Step 3 result decides the buy or sell.  If Step 3 has no match, Step 1 decides.  If neither has one, Hold.</text></svg></div>
+    <figcaption>Left: Step 1 sells some when price has fallen under the Trade line in the last 3 days (while still above Trend), and sells everything when it keeps falling under the lowest Trade line of the last 5 days. Right: Step 3 reads the range. A bounce from LRR buys, the lower-half up-day entry buys on a strong uptrend, and a break far below LRR sells. Where both sides fire on a bounce, the Step 3 buy wins.</figcaption>
+  </figure>
+  <p class="muted small">Percentages are the share of the way up from LRR (0%) to TRR (100%). Zone 0 and -1 describe the day's low against LRR. Rules approved 2026-10-25 against 163 trading days (Feb to Oct 2026). Bounce exception, rising dip (Buy Some) and neutral dip are unchanged Step 1 cases not drawn here. This page is written by hand from etl/technical_why.py::RULE_HELP: change a rule there and here together.</p>
+</div>
+
+<style>
+svg rect.row.hl{stroke:var(--new);stroke-width:3}
+.backlink{font-size:13px}
+</style>
+<script>
+/* Deep link: /technical-rules-map#3x highlights every row of that rule (all band groups) and scrolls to the first one. */
+(function(){
+  function mark(){
+    document.querySelectorAll('rect.row.hl').forEach(function(r){r.classList.remove('hl');});
+    var id = decodeURIComponent((location.hash||'').slice(1));
+    if(!id) return;
+    var rows = document.querySelectorAll('rect.row[data-step="'+id.replace(/"/g,'')+'"]');
+    rows.forEach(function(r){r.classList.add('hl');});
+    if(rows.length) rows[0].scrollIntoView({block:'center',behavior:'smooth'});
+  }
+  window.addEventListener('hashchange',mark); window.addEventListener('load',mark);
+})();
+</script>
+</body>
+</html>

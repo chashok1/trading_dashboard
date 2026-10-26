@@ -1582,7 +1582,7 @@ def _derive_rr_outlook_from_qe(session: Session, as_of_date: date,
 
     drv_tn_td_bb_rr.trend_trade_rule (QE) maps to outlook labels:
       4→Bullish, 3→Mild Bullish, 2→Light Bullish,
-      1→Neutral, -1→Mild Bearish, -2→Bearish.
+      1→Neutral, 0→Mild Bullish (rising dip under Trade), 5→Neutral (dip under Trade, MACDH not rising), -1→Mild Bearish, -2→Bearish.
 
     Idempotent: drv_rr is rebuilt each derive (BB rows always start NULL);
     this UPDATE repopulates them.  RR-feed rows (source='RR') are never touched.
@@ -1594,6 +1594,8 @@ def _derive_rr_outlook_from_qe(session: Session, as_of_date: date,
                 WHEN  3 THEN 'Mild Bullish'
                 WHEN  2 THEN 'Light Bullish'
                 WHEN  1 THEN 'Neutral'
+                WHEN  0 THEN 'Mild Bullish'
+                WHEN  5 THEN 'Neutral'
                 WHEN -1 THEN 'Mild Bearish'
                 WHEN -2 THEN 'Bearish'
                 ELSE NULL END
@@ -3105,6 +3107,10 @@ def populate_tos_symbol(session: Session, table: str) -> int:
 def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Populate MA-tab rule columns QE, QJ, QM, QN, QR in drv_cat_atomic_input.
 
+    2026-10-25 (TASK_155): Pass 2 is no longer the ref_param_lookup join; the call comes from etl/technical_rules.py
+    (Step 1 Trade/Trend lines + Step 3 range with an Above/Below flag). bull_rr_action / not_bull_rr_action are still
+    written below for the legacy Rule Flow display but nothing in the Technical call reads them any more.
+
     Two-pass UPDATE (idempotent):
       Pass 1: QE (trade_trend_sd_rule), QJ (bb_rng_strk_rule),
               QM (bull_rr_action), QN (not_bull_rr_action).
@@ -3229,7 +3235,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 drr.lrr AS lrr,
                 drr.trr AS trr,
                 prr.trr AS prev_trr,
-                q.high_price AS high_px
+                q.high_price AS high_px,
+                m5.min_trade AS min_trade5
             FROM drv_quote q
             LEFT JOIN drv_rr drr
               ON drr.as_of_date = q.as_of_date AND drr.tos_symbol = q.tos_symbol
@@ -3239,6 +3246,14 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 ORDER BY as_of_date DESC LIMIT 1
             ) prr ON TRUE
             LEFT JOIN _band_slope bsl ON bsl.tos_symbol = q.tos_symbol
+            -- 2026-10-23, user: lowest Trade line of the last 5 trading days (today included), one value per day.
+            LEFT JOIN LATERAL (
+                SELECT MIN(t.v) AS min_trade
+                FROM (SELECT DISTINCT ON (export_date) a_trade_value AS v
+                      FROM hist_td
+                      WHERE tos_symbol = q.tos_symbol AND export_date <= q.as_of_date AND a_trade_value IS NOT NULL
+                      ORDER BY export_date DESC, sequence DESC LIMIT 5) t
+            ) m5 ON TRUE
             LEFT JOIN LATERAL (
                 SELECT a_trend_value, a_trade_value, a_bb_top_slope, a_bb_bot_slope
                 FROM hist_td
@@ -3317,12 +3332,24 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             -- prompted this.
             CASE
                 WHEN c.trend_sd < -:sdtol AND c.trade_sd < -:sdtol THEN -2
-                WHEN c.trade_trend_sd < 0 AND c.trade_sd < 1 THEN -1
+                -- 2026-10-25 (TASK_155): 'price less than 1 ATR above Trade' (was 1 SD); same ATR14 + SD fallback as the LRR break
+                WHEN c.trade_trend_sd < 0 AND COALESCE(c.atr, :atrfb * c.sd_or_median) > 0
+                     AND (c.close - c.a_trade_value) / COALESCE(c.atr, :atrfb * c.sd_or_median) < 1 THEN -1
                 WHEN c.trend_sd > -:sdtol AND c.trade_sd > -:sdtol
                      AND (c.trade_trend_sd > 2
                           OR GREATEST(c.trend_sd, c.trade_sd) > 4) THEN 4
                 WHEN c.trend_sd > -:sdtol AND c.trade_sd > -:sdtol THEN 3
                 WHEN c.trend_sd < -:sdtol AND c.trade_sd > -:sdtol THEN 2
+                -- 2026-10-23, user (SNOW): above Trend and under Trade by 0.5 to 1 SD, but turning up (up day AND MACDH
+                -- rising) and not under the lowest Trade line of the last 5 days -> code 0 (BUY SOME) instead of
+                -- STM. Past 1 SD, not rising, or under all 5 recent Trade lines -> falls through to 1 (STM) as before.
+                WHEN c.trend_sd > -:sdtol AND c.trade_sd < -:sdtol AND c.trade_sd >= -1
+                     AND c.perf1d_sd_rule > 0 AND c.macdh_direction > 0
+                     AND c.min_trade5 IS NOT NULL AND c.close >= c.min_trade5 THEN 0
+                -- 2026-10-23, user: same but the MACD histogram is NOT rising -> code 5 (neutral, no Technical signal).
+                WHEN c.trend_sd > -:sdtol AND c.trade_sd < -:sdtol AND c.trade_sd >= -1
+                     AND c.perf1d_sd_rule > 0
+                     AND c.min_trade5 IS NOT NULL AND c.close >= c.min_trade5 THEN 5
                 ELSE 1
             END,
             CASE
@@ -3445,91 +3472,77 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
               AND q.last_price > p1.h
         """), {"d": as_of_date})
 
-    # Pass 2: QR = td_tn_bb_rr_action
-    # Excel: IFS(QF<0, QF, QF>0, IF(QK<0, QK, QO), TRUE, "")
-    #   QF = ref_param_lookup.seq @ ('tn_td_rule',    QE::text)
-    #   QK = ref_param_lookup.seq @ ('bb_range',      QJ::text)
-    #   QO = if QJ >= 2: ref_param_lookup.seq @ ('bull_rr_rule',  QM::text)
-    #        if QJ >= 0: ref_param_lookup.seq @ ('nbull_rr_rule', QN::text)
-    #        else: NULL
-    # ref_param_lookup.code is TEXT; QE/QJ/QM/QN are NUMERIC integer values,
-    # cast via ::INTEGER::TEXT so '4' matches the seed row code '4' (no decimal).
-    session.execute(text("""
-        WITH base AS (
-            -- QE = trend_trade_rule: the -2..4 Trend/Trade CATEGORY computed in
-            -- Pass 1 (drv_tn_td_bb_rr). This is what tn_td_rule expects (codes
-            -- -2/-1/1/2/3/4). Do NOT use drv_cat_atomic_input.trade_trend_sd_rule
-            -- (the JV trig_ifs output, e.g. 1=">Tn<Td"/seq -9) — that mis-fires
-            -- the Trend/Trade-bearish override and masks the RR signal (bug fix).
-            -- QJ/QM/QN are also in drv_tn_td_bb_rr (inserted in Pass 1 above).
-            SELECT
-                r.as_of_date,
-                r.tos_symbol,
-                r.trend_trade_rule AS qe,
-                r.bb_rng_strk_rule    AS qj,
-                r.bull_rr_action      AS qm_val,
-                r.not_bull_rr_action  AS qn_val,
-                r.bounce_exempt       AS bx,
-                a.macdh_direction     AS mh,
-                COALESCE(r.lrr_idx_eff, a.lrr_idx) AS lrr_idx  -- effective (latest-price) support break
-            FROM drv_tn_td_bb_rr r
-            LEFT JOIN drv_cat_atomic_input a
-              ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
-            WHERE r.as_of_date = :d
-        ),
-        looked_up AS (
-            SELECT
-                b.as_of_date,
-                b.tos_symbol,
-                b.qj,
-                b.bx,
-                b.mh,
-                l_qf.seq AS qf_seq,
-                l_qk.seq AS qk_seq,
-                -- 2026-10-21, user: a falling Bollinger band is a warning only for BUYS too (it already was for sells,
-                -- 2026-10-20), so a negative qj no longer cuts off the range-position path -- it uses the not-bull path
-                -- like qj 0..1. A broken LRR support is still a sell whatever the band does.
-                CASE
-                    WHEN b.qj >= 2 THEN l_qm.seq
-                    -- 2026-09-12, user: broken LRR support -> STM, not-bull
-                    -- path. Handled here rather than in nbull_rr_rule's own
-                    -- lookup table (no STM code exists there, and that table
-                    -- is normally sourced from the Excel Trig workbook) --
-                    -- the bull path's equivalent lives in bull_rr_action's
-                    -- own CASE above instead, since code -1/STM already
-                    -- exists in bull_rr_rule.
-                    WHEN b.lrr_idx = -1 THEN -9
-                    ELSE l_qn.seq
-                END AS qo_seq
-            FROM base b
-            LEFT JOIN ref_param_lookup l_qf
-              ON l_qf.table_name = 'tn_td_rule'
-             AND l_qf.code = (b.qe)::INTEGER::TEXT
-            LEFT JOIN ref_param_lookup l_qk
-              ON l_qk.table_name = 'bb_range'
-             AND l_qk.code = (b.qj)::INTEGER::TEXT
-            LEFT JOIN ref_param_lookup l_qm
-              ON l_qm.table_name = 'bull_rr_rule'
-             AND l_qm.code = (b.qm_val)::INTEGER::TEXT
-            LEFT JOIN ref_param_lookup l_qn
-              ON l_qn.table_name = 'nbull_rr_rule'
-             AND l_qn.code = (b.qn_val)::INTEGER::TEXT
-        )
-        UPDATE drv_tn_td_bb_rr dst
-        SET td_tn_bb_rr_action = CASE
-            -- 2026-10-21: bounce exception (Pass 1b) skips the below-Trade sell (trend_trade_rule 1) and lets the range-position
-            -- path decide. Grade: if MACDH is not rising, the biggest buy (BM, 10) is capped to BS (9); MACDH rising keeps it.
-            WHEN l.qf_seq < 0 AND NOT l.bx THEN l.qf_seq
-            -- 2026-10-20, user: a bearish Bollinger band no longer produces a sell on its own (back-test: no edge, fires on ~1/4 of
-            -- stocks). It is a warning only (technical_trail "warn" stage); the range-position path decides (2026-10-21: for buys too).
-            WHEN l.qf_seq > 0 OR l.bx THEN
-                CASE WHEN l.bx AND COALESCE(l.mh, 0) <= 0 AND l.qo_seq = 10 THEN 9 ELSE l.qo_seq END
-            ELSE NULL
-        END
-        , rr_zone_score = l.qo_seq   -- 2026-10-23, user: the RR Zone setup score for EVERY stock (display only; the call above still gates on Trend/Trade)
-        FROM looked_up l
-        WHERE dst.as_of_date = l.as_of_date AND dst.tos_symbol = l.tos_symbol
-    """), {"d": as_of_date})
+    # Pass 2 (TASK_155, 2026-10-25, user-approved against 163 days of history): the Technical call comes from the redesigned Step 1 / Step 3
+    # rules in etl/technical_rules.py (one classifier, also used by the win % job). Step 1 = Trade / Trend lines (new Sell All under the
+    # lowest of the last 5 Trade lines, Sell Some for a fresh fall under Trade), Step 3 = LRR-TRR range for EVERY stock with an
+    # Above / Below flag. A Step 3 buy beats the Step 1 sells; a Step 3 "Do nothing" does not block them. Rule wording: technical_why.RULE_HELP.
+    import numpy as _np
+    import pandas as _pd
+    from etl.technical_rules import classify as _tech_classify
+    lrr_zone = 0.25
+    try:
+        _lz = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name='range_lrr_zone_pct'"
+        )).first()
+        if _lz and _lz[0] is not None and 0 < float(_lz[0]) < 1:
+            lrr_zone = float(_lz[0])
+    except Exception:
+        pass
+    feat_rows = session.execute(text("""
+        SELECT r.tos_symbol AS s, r.trend_trade_rule AS qe, r.bb_rng_strk_rule AS qj, r.bounce_exempt AS bx,
+               r.lrr_idx_eff AS eff, a.lrr_idx AS lrr_raw, a.perf1d_sd_rule AS p1,
+               q.last_price AS px, q.high_price AS hi, q.low_price AS lo, rr.lrr, rr.trr,
+               m5.v AS min5, p5.trr AS trr5, zr.hit AS zone_recent, fb.hit AS fell3
+        FROM drv_tn_td_bb_rr r
+        LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
+        LEFT JOIN drv_rr rr ON rr.as_of_date = r.as_of_date AND rr.tos_symbol = r.tos_symbol
+        LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
+        -- lowest Trade line of the PREVIOUS five trading days (today not included)
+        LEFT JOIN LATERAL (
+            SELECT MIN(t.v) AS v FROM (SELECT DISTINCT ON (export_date) a_trade_value AS v FROM hist_td
+                WHERE tos_symbol = r.tos_symbol AND export_date < r.as_of_date AND a_trade_value IS NOT NULL
+                ORDER BY export_date DESC, sequence DESC LIMIT 5) t) m5 ON TRUE
+        -- TRR five trading days ago
+        LEFT JOIN LATERAL (SELECT trr FROM drv_rr WHERE tos_symbol = r.tos_symbol AND as_of_date < r.as_of_date
+                           ORDER BY as_of_date DESC LIMIT 1 OFFSET 4) p5 ON TRUE
+        -- the day's low reached the LRR zone on one of the previous 3 days
+        LEFT JOIN LATERAL (
+            SELECT bool_or(pq.low_price <= pr.lrr + :zl * (pr.trr - pr.lrr)) AS hit
+            FROM (SELECT as_of_date, low_price FROM drv_quote WHERE tos_symbol = r.tos_symbol AND as_of_date < r.as_of_date
+                  AND low_price IS NOT NULL ORDER BY as_of_date DESC LIMIT 3) pq
+            JOIN drv_rr pr ON pr.as_of_date = pq.as_of_date AND pr.tos_symbol = r.tos_symbol AND pr.trr > pr.lrr) zr ON TRUE
+        -- 2026-10-26, user: "last 3 days" counts today, so price was at/above that day's Trade line on one of the 2 days before today
+        LEFT JOIN LATERAL (
+            SELECT bool_or(pq.last_price >= pt.a_trade_value) AS hit
+            FROM (SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol = r.tos_symbol AND as_of_date < r.as_of_date
+                  AND last_price IS NOT NULL ORDER BY as_of_date DESC LIMIT 2) pq
+            JOIN drv_technicals pt ON pt.as_of_date = pq.as_of_date AND pt.tos_symbol = r.tos_symbol
+                                  AND pt.a_trade_value IS NOT NULL) fb ON TRUE
+        WHERE r.as_of_date = :d
+    """), {"d": as_of_date, "zl": lrr_zone}).mappings().all()
+    if feat_rows:
+        fr = _pd.DataFrame([dict(x) for x in feat_rows])
+        for _c in ("qe", "qj", "eff", "lrr_raw", "p1", "px", "hi", "lo", "lrr", "trr", "min5", "trr5"):
+            fr[_c] = _pd.to_numeric(fr[_c], errors="coerce")
+        for _c in ("bx", "zone_recent", "fell3"):
+            fr[_c] = fr[_c].fillna(False).astype(bool)
+        fr["up"] = fr["p1"] > 0
+        fr["below5"] = fr["px"] < fr["min5"]
+        fr["trr_up5"] = fr["trr"] >= 1.02 * fr["trr5"]
+        fr["brk"] = fr["eff"].fillna(fr["lrr_raw"]) == -1
+        res = _tech_classify(fr, lrr_zone=lrr_zone)
+
+        def _nn(v):
+            return None if v is None or (isinstance(v, float) and _np.isnan(v)) else v
+        upd2 = [{"d": as_of_date, "s": fr["s"].iat[i], "act": _nn(float(res["code"].iat[i])),
+                 "z": _nn(float(res["s3_code"].iat[i])), "s1": res["s1_id"].iat[i], "s3": res["s3_id"].iat[i],
+                 "fl": res["flag"].iat[i], "m5": _nn(float(fr["min5"].iat[i])), "fb": bool(fr["fell3"].iat[i]),
+                 "zr": bool(fr["zone_recent"].iat[i]), "t5": _nn(float(fr["trr5"].iat[i]))}
+                for i in range(len(fr))]
+        session.execute(text(
+            "UPDATE drv_tn_td_bb_rr SET td_tn_bb_rr_action = :act, rr_zone_score = :z, step1_id = :s1, step3_id = :s3,"
+            " tech_flag = :fl, min_trade5_prev = :m5, fell_below_trade = :fb, zone_recent = :zr, trr_5d_ago = :t5"
+            " WHERE as_of_date = :d AND tos_symbol = :s"), upd2)
 
     # Pass 2b (2026-10-21, user, from OKTA): "reclaim" buy. Fill-only -- runs ONLY where Technical has no signal at all (never overrides a sell or a
     # buy). Today is an up day, price is above Trend, the Trade line is at least 3 SD above Trend (a real uptrend, not two lines on top of each other),
@@ -3575,7 +3588,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                a.perf1d_sd_rule AS perf1d, a.mrr_idx, a.trr_idx, a.macd_direction AS macd_dir,
                a.macdh_direction AS macdh_dir, a.trade_rule,
                r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope,
-               r.bounce_exempt, r.reclaim_buy, r.reclaim_line
+               r.bounce_exempt, r.reclaim_buy, r.reclaim_line,
+               r.rr_zone_score, r.step1_id, r.step3_id, r.tech_flag, r.min_trade5_prev, r.fell_below_trade, r.zone_recent, r.trr_5d_ago
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol

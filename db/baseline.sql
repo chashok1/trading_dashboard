@@ -9483,3 +9483,14 @@ CREATE TABLE IF NOT EXISTS drv_signal_winrate (
     history_to    DATE,
     PRIMARY KEY (step_id, horizon_days, split_key)
 );
+
+-- 2026-10-25 TASK_155: Technical rules redesign (etl/technical_rules.py). Rule ids per stock (step1_id S1-a/S1-b/S1-c/S1-d/1a/1b/1d/1e,
+-- step3_id 3a/3x/3f/3h/3k/3p/tr), the Above/Below flag ('above' = above Trade AND Trend) and the facts the rules read, kept for the Action popup.
+-- split_key of drv_signal_winrate also takes: flag:above | flag:below | band:rise | band:flat | band:fall (3 days only).
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS step1_id TEXT;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS step3_id TEXT;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS tech_flag TEXT;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS min_trade5_prev NUMERIC;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS fell_below_trade BOOLEAN;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS zone_recent BOOLEAN;
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS trr_5d_ago NUMERIC;

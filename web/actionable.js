@@ -3185,11 +3185,12 @@ function _finalCallHtml(row) {
     var _tbIc = '<span class="tech-buy-tag" title="Technical shows a buy here (' + escapeHtml(String(row.rr_action || '')) + '), but the sources keep the call at HOLD. Click the badge for why.">&#9650; Tech buy</span>';
     badgeHtml = badgeHtml ? badgeHtml + ' ' + _tbIc : _tbIc;
   }
-  // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
-  // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
+  // SA (SELL ALL) / BS (BUY SOME) match the HEDGEYE panel's red/green exactly (2026-10-26, user: BM and BS
+  // colors swapped -- BM now takes the standard green); weaker tiers (SS/STM/SO/SW, BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
                     : fcDisp.code === 'SA' ? 'background:#d4537e;'
-                    : fcDisp.code === 'BM' ? 'background:#1d9e75;'
+                    : fcDisp.code === 'BM' ? 'background:#2f9e2f;'
+                    : fcDisp.code === 'BS' ? 'background:#1d9e75;'
                     : '';
   if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px ' + (ltAvoid ? '#b45309' : '#7c3aed') + ';';
   var lowConfSub = isLowConf
@@ -5484,7 +5485,7 @@ function _renderFocusCard() {
     const fcText = fc.label || actionText(fc);
     const fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
     const fcColorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
-    const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;' : fcDisp.code === 'BM' ? 'background:#1d9e75;' : '';
+    const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;' : fcDisp.code === 'BM' ? 'background:#2f9e2f;' : fcDisp.code === 'BS' ? 'background:#1d9e75;' : '';
     $('fcAction').innerHTML = `<span class="act-badge ${fcColorCls}" style="${fcHedgeyeStyle}font-size:16px;padding:4px 14px;" title="${escapeHtml(fc.label || fcText)}">${escapeHtml(fcText)}</span>`;
   }
   $('fcAmt').textContent = fmtUsd(r._amt) || '—';

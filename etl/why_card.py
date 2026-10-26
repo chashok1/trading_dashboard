@@ -116,7 +116,7 @@ def _technical_step(ctx: dict) -> dict:
     rr = ctx.get("rr_action")
     trail = ctx.get("trail") or {}
     stages = trail.get("stages") or []
-    lines = [{"ok": st.get("ok"), "text": f"{st.get('name')}: {st.get('text')}", **({"warn": True} if st.get("warn") else {}), **({"step": st["step"]} if st.get("step") else {})} for st in stages]
+    lines = [{"ok": st.get("ok"), "text": f"{st.get('name')}: {st.get('text')}", **({"warn": True} if st.get("warn") else {}), **{k: st[k] for k in ("step", "action", "dir", "flag", "score", "help") if st.get(k) is not None}} for st in stages]
     if rr:
         tone = _side(rr)
         head = f"{_name(rr)}"
@@ -187,8 +187,7 @@ _RESULT = {
     "tech_sell_reduce": "Technical says sell and sets the sell (its call, e.g. SELL TO MIN); the sources' REDUCE confirms it - the sell goes through.",
     "tech_sell_other": "Technical says sell and overrides the sources' buy, so the call is a sell (lower confidence because they disagree).",
     "tech_buy_reduce": "The sources say reduce but Technical says buy - they conflict, so HOLD.",
-    "tech_buy_new_add": "The sources say add and Technical confirms - a new position is allowed (BUY TO MIN).",
-    "tech_buy": "The sources lean buy and Technical confirms - the buy goes through.",
+    "tech_buy_new_add": "The sources say add and Technical confirms - a new position is allowed (BUY TO MIN).",    "tech_buy": "The sources lean buy and Technical confirms - the buy goes through.",
     "tech_neutral_reduce": "The sources say reduce but Technical has no sell signal - not enough to sell, so HOLD.",
 }
 

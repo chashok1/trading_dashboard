@@ -567,3 +567,26 @@
 .tw-chain-chip.warn { background:#fefce8; border-color:#f59e0b; color:#92400e; }
 .tw-chain-chip.off { background:#fff; border-style:dashed; border-color:#94a3b8; color:#64748b; }  /* 2026-10-23: darker so "not counted" steps read on white */
 .tw-chain-chip.final { font-weight:900; }
+
+/* TASK_155 (2026-10-25): one row per Technical rule in the Action popup: picture + rule id/action + reason + (i) help + 3-day win % */
+.tw-chain .tw-chain-gap { flex:1 1 auto; }
+.tw-maplink { font-size:10.5px; color:var(--accent, #1d4ed8); text-decoration:underline; white-space:nowrap; }
+.actpop-tw.tw-rule { display:flex; gap:8px; align-items:flex-start; margin:3px 0 7px; }
+.tw-rule .tw-graph { flex:0 0 56px; width:56px; height:56px; position:relative; }
+.tw-rule .tw-graph .tg-svg { display:block; background:var(--card-bg, #fff); border:1px solid var(--border, #e5e5e2); border-radius:6px; transform-origin:top left; transition:transform .12s ease; }
+.tw-rule .tw-graph:hover { z-index:5; }
+.tw-rule .tw-graph:hover .tg-svg { transform:scale(2.2); box-shadow:0 4px 14px rgba(0,0,0,.18); }
+.tw-rule .tw-rbody { flex:1 1 auto; min-width:0; }
+.tw-rule .tw-rhead { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.tw-rule .tw-id { font-size:9.5px; font-weight:800; padding:0 5px; border-radius:4px; background:var(--text-1, #1c1917); color:var(--card-bg, #fff); }
+.tw-rule .tw-act { font-size:10px; font-weight:800; padding:0 6px; border-radius:9px; border:1px solid var(--border, #d4d4d8); }
+.tw-rule .tw-act.buy { color:var(--act-buy-strong); background:var(--act-buy-bg); }
+.tw-rule .tw-act.sell { color:var(--act-sell-strong); background:var(--act-sell-strong-bg); }
+.tw-rule .tw-flag { font-size:9.5px; color:var(--text-2, #57534e); }
+.tw-rule .tw-info { cursor:help; font-size:12px; line-height:1; color:var(--accent, #1d4ed8); user-select:none; }
+.tw-rule .tw-rtext { font-size:11px; color:var(--text-2, #57534e); line-height:1.4; }
+.tw-rule .tw-rwin { margin-top:2px; }
+.tw-win { display:inline-block; font-size:10px; font-weight:700; color:var(--text-2, #57534e); cursor:help; border-bottom:1px dotted var(--text-3, #a8a29e); }
+.tw-helpbox { margin-top:3px; padding:4px 8px; border:1px solid var(--border, #e5e5e2); border-radius:6px; background:var(--card-bg, #fff); font-size:10.5px; }
+.tw-helpbox[hidden] { display:none !important; }
+.tw-helpbox ul { margin:0 0 3px; padding-left:16px; }
