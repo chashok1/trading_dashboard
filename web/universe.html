@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Universe — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20261016h">
+  <link rel="stylesheet" href="/static/styles.css?v=20261026a">
   <style>
     /* Page-scoped tokens -- reuses the app's real :root vars (--bg/--card-bg/
        --border/--text-1..3/--accent/--cat1..9, web/styles.css) for chrome and
@@ -99,7 +99,6 @@
       font: inherit; font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 6px;
       cursor: pointer; white-space: nowrap; transition: background .12s ease, color .12s ease;
       display: inline-flex; align-items: center; gap: 4px; }
-    .uv-color-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
     .uv-tab:hover { color: var(--text-1); }
     .uv-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
     .uv-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -218,12 +217,7 @@
       align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; }
     .uv-factor-row:nth-child(odd) { background: var(--card-bg-2, rgba(128,128,128,0.06)); }
     .uv-factor-sub { font-size: 12.5px; color: var(--text-1); }
-    .uv-factor-pill { text-align: center; font-size: 10.5px; font-weight: 700;
-      padding: 3px 4px; border-radius: 4px; }
-    .uv-factor-pill.bull { background: rgba(22,163,74,0.16); color: #16a34a; }
-    .uv-factor-pill.bear { background: rgba(220,38,38,0.16); color: #dc2626; }
-    .uv-factor-pill.neutral { background: rgba(148,163,184,0.16); color: var(--text-3); }
-    .uv-factor-pill.dim { opacity: 0.35; }
+    /* .uv-factor-pill + .uv-color-dot moved to styles.css (shared with the Builder, 2026-10-26) */
     .uv-factor-head { display: grid; grid-template-columns: 1fr repeat(4, 64px);
       gap: 6px; padding: 0 8px 4px; font-size: 10.5px; font-weight: 700;
       color: var(--text-3); text-align: center; }
@@ -642,8 +636,8 @@
        function it needs instead (credited at its own definition). User:
        "Also display the same popover that is being displayed in Actionable
        screen -> Action column -> Action popover" -- 2026-09-06. -->
-  <script src="/static/_common.js?v=1"></script>
+  <script src="/static/_common.js?v=2"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=136"></script>
+  <script src="/static/universe.js?v=138"></script>
 </body>
 </html>

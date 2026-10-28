@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Builder — Trading Dashboard</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css?v=20261026a">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    [hidden] { display: none !important; }
+    .bld-wrap { width: 100%; padding: 8px 16px 24px; }
+    .bld-note { background: var(--mr-warn-bg); color: var(--mr-warn); border: 1px solid #f1d9ad; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px; }
+    .bld-tabs { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+    .bld-tab { border: 1px solid var(--border); background: var(--card-bg); padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+    .bld-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .bld-sp { flex: 1; }
+    .bld-muted { color: var(--text-3); font-size: 12px; }
+    .bld-acct { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+    .bld-acct select { min-width: 280px; font-weight: 600; }
+    /* step 0 sits in the left column: stack its parts */
+    .bld-grid .bld-acct { flex-direction: column; align-items: stretch; gap: 8px; }
+    .bld-grid .bld-acct select { min-width: 0; width: 100%; }
+    .bld-grid .bld-acct .bld-pill { align-self: flex-start; }
+    .bld-grid .bld-acct label { justify-content: space-between; }
+    .bld-grid .bld-acct label input[type=number] { margin-left: auto; text-align: right; }
+    .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 12px; }
+    .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
+    .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
+    .bld-grid { grid-template-columns: 340px minmax(460px, 1.1fr) minmax(480px, 1fr); }
+    .bld-below { margin-top: 4px; }
+    .bld-side { position: sticky; top: 8px; height: calc(100vh - 24px); display: flex; flex-direction: column; margin-bottom: 0; }
+    .bld-side-scroll { flex: 1; min-height: 0; overflow: auto; }
+    .bld-side .bld-t thead th { position: sticky; top: 0; background: var(--card-bg); }
+    @media (max-width: 1000px) { .bld-grid { grid-template-columns: 1fr; } .bld-side { position: static; height: 60vh; } }
+    .bld-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+    .bld-card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+    .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 11px; line-height: 18px; margin-right: 6px; }
+    .bld-card select, .bld-card input[type=number], .bld-card input[type=text], .bld-card input[type=search],
+    .bld-acct select, .bld-acct input[type=number] { padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font: inherit; font-size: 13px; background: #fff; }
+    .bld-acct label { display: inline-flex; align-items: center; gap: 6px; }
+    .bld-acct input[type=number] { width: 120px; text-align: right; }
+    /* source / check tick-boxes: two even columns, box and text on one line */
+    .bld-chks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 4px 0; }
+    .bld-chks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+    .bld-chks input { margin: 0; flex: 0 0 auto; }
+    .bld-chks .bld-muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* step 3: actual mix vs target, factor mix, picks */
+    .bld-mixrow { margin-bottom: 7px; }
+    .bld-mixhead { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 2px; }
+    .bld-mixbar { height: 8px; background: #eceae4; border-radius: 4px; overflow: hidden; }
+    .bld-mixbar span { display: block; height: 100%; border-radius: 4px; }
+    .bld-facs { margin: 6px 0; }
+    .bld-fac { display: grid; grid-template-columns: 96px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 3px; }
+    .bld-fac b { text-align: right; }
+    .bld-pickhead { margin: 10px 0 2px; font-size: 12.5px; }
+    .bld-over { color: #dc2626; font-weight: 700; }
+    .bld-exp input[type=number] { width: 58px; text-align: right; padding: 2px 4px; }
+    .bld-exp input.tgt-over { color: #dc2626; border-color: #dc2626; font-weight: 700; }
+    .bld-quadf { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+    .bld-quadf label { display: inline-flex; align-items: center; gap: 2px; }
+    .bld-quadf input { margin: 0; }
+    .bld-qp { display: inline-block; width: 22px; text-align: center; font-size: 10px; font-weight: 700; border-radius: 3px; margin-right: 2px; }
+    .bld-qp.bull { background: rgba(22,163,74,.16); color: #16a34a; }
+    .bld-qp.bear { background: rgba(220,38,38,.16); color: #dc2626; }
+    .bld-qp.neutral { background: rgba(148,163,184,.18); color: var(--text-3); }
+    .bld-qp.none { background: transparent; color: var(--text-3); }
+    .bld-exp th, .bld-exp td { padding: 3px 6px; }
+    .bld-exp .sec td { background: #f6f6f3; font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); }
+    #pickList .bld-t td { padding: 3px 6px; }
+    #mixRows td:first-child { white-space: nowrap; }
+    #mixRows td:first-child .bld-sw { vertical-align: baseline; }
+    .bld-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 2px 0; }
+    .bld-seg button { border: 0; border-right: 1px solid var(--border); background: #fff; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+    .bld-seg button:last-child { border-right: 0; }
+    .bld-seg button.on { background: var(--accent); color: #fff; }
+    .bld-seg button:disabled { color: var(--text-3); cursor: not-allowed; background: #fafaf9; }
+    .bld-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 5px 0; font-size: 12px; color: var(--text-2); }
+    .bld-line > b { min-width: 74px; display: inline-block; color: var(--text-1); }
+    .bld-btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; margin-right: 6px; }
+    .bld-btn.alt { background: #fff; color: var(--text-1); border: 1px solid var(--border); }
+    .bld-btn.sm { padding: 3px 9px; font-size: 12px; }
+    .bld-btn:disabled { opacity: .5; cursor: not-allowed; }
+    table.bld-t { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    .bld-t th { text-align: left; color: var(--text-2); font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 7px; white-space: nowrap; }
+    .bld-t td { padding: 4px 7px; border-bottom: 1px solid #f0efec; vertical-align: middle; }
+    .bld-t .n { text-align: right; font-variant-numeric: tabular-nums; }
+    .bld-t tr.bucket td { background: #f6f6f3; font-weight: 600; }
+    .bld-t tr.tot td { background: #f6f6f3; font-weight: 600; border-top: 1px solid var(--border); }
+    .bld-t tr.gtot td { background: #eef2ff; font-weight: 700; }
+    .bld-t tr.click { cursor: pointer; }
+    .bld-t tr.click:hover { background: #f6f8ff; }
+    .bld-t tr.zero td { color: var(--text-3); }
+    .bld-t tr.locked input { border-color: var(--accent); background: #eef2ff; }
+    .bld-t input[type=number] { width: 66px; text-align: right; }
+    .bld-up { color: var(--pct-up); } .bld-dn { color: var(--pct-down); } .bld-warn { color: var(--mr-warn); }
+    .bld-amb { background: var(--mr-warn-bg); color: var(--mr-warn); font-weight: 600; }
+    .bld-chip { display: inline-block; min-width: 22px; text-align: center; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 6px; }
+    .bld-chip.B { background: var(--act-buy-strong-bg); color: var(--act-buy-strong); }
+    .bld-chip.S { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+    .bld-chip.H, .bld-chip.dash { background: var(--act-neutral-bg, #f3f4f6); color: var(--act-neutral, #6b7280); }
+    .bld-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .bld-badge.buy { background: var(--act-buy-bg); color: var(--act-buy); }
+    .bld-badge.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+    .bld-badge.neutral { background: var(--act-neutral-bg, #f3f4f6); color: var(--act-neutral, #6b7280); }
+    .bld-pillcell { display: inline-block; width: 40px; }
+    .bld-stack { display: flex; height: 18px; border-radius: 4px; overflow: hidden; margin: 3px 0; font-size: 11px; color: #fff; }
+    .bld-stack span { display: flex; align-items: center; justify-content: flex-start; padding: 0 5px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+    .bld-stackrow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+    .bld-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .bld-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .bld-kpi { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+    .bld-kpi small { color: var(--text-2); display: block; font-size: 11px; }
+    .bld-kpi b { font-size: 18px; }
+    .bld-tip { border-bottom: 1px dotted var(--text-3); cursor: help; position: relative; }
+    .bld-tip:hover::after { content: attr(data-tip); white-space: pre; position: absolute; left: 0; top: 100%; background: #1c1917; color: #fff; padding: 7px 10px; border-radius: 6px; z-index: 20; font-size: 12px; font-weight: 400; min-width: 220px; text-align: left; }
+    .bld-box { padding: 8px; background: #f3f4f6; border-radius: 6px; font-size: 12.5px; margin-top: 8px; }
+    .bld-bars { display: flex; gap: 14px; align-items: flex-end; height: 80px; margin-top: 6px; }
+    .bld-bars div { display: flex; gap: 2px; align-items: flex-end; height: 100%; }
+    .bld-bars span { width: 14px; display: block; border-radius: 2px 2px 0 0; }
+    .bld-disc { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+    .bld-modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    .bld-modal > div { background: #fff; border-radius: 8px; padding: 14px 18px; width: min(900px, 94vw); max-height: 86vh; overflow: auto; }
+  </style>
+</head>
+<body class="builder-page">
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span><h1>Trading Dashboard</h1></div>
+    <nav class="nav-menu"></nav>
+    <div class="controls">
+      <label for="datePicker">As of</label>
+      <select id="datePicker" aria-label="snapshot date"></select>
+      <button id="refreshBtn" class="btn">Refresh</button>
+      <span id="health" class="badge badge-ok" title="API health">●</span>
+    </div>
+  </header>
+
+  <main class="bld-wrap">
+    <div id="bldProblems" class="bld-note" hidden></div>
+    <div class="bld-tabs">
+      <button class="bld-tab on" data-v="build">Build new</button>
+      <button class="bld-tab" data-v="list">My model portfolios <span id="listCount"></span></button>
+      <span class="bld-sp"></span>
+      <span class="bld-muted" id="dataAsOf"></span>
+    </div>
+
+    <!-- VIEW 1: BUILD NEW -->
+    <section id="view-build">
+      <div id="runBanner" class="bld-note" hidden></div>
+      <div class="bld-grid">
+        <!-- column 1: account (step 0) and setup -->
+        <div>
+          <div class="bld-acct">
+            <span><span class="bld-step">0</span><b>Account</b></span>
+            <select id="acctSel" aria-label="account"></select>
+            <span class="bld-pill" id="acctType"></span>
+            <span class="bld-pill" id="acctRun"></span>
+            <span class="bld-muted" id="acctSnap"></span>
+          </div>
+          <div class="bld-card"><h3>Lists to choose from</h3>
+            <div class="bld-muted" style="margin-bottom:4px">Tick lists to see their names in the middle column, then tick the ones you want.</div>
+            <div id="srcBox" class="bld-chks"></div>
+          </div>
+
+          <div class="bld-card"><h3><span class="bld-step">2</span>Warnings <span class="bld-muted">(optional, alert only, never trades)</span></h3>
+            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="drop"> Tell me if the model is down 10% from start</label>
+            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="quad_turn"> Tell me if the Quad check says "transition"</label>
+            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="no_new_risk"> Tell me if the Risk Dial says "No new risk"</label>
+            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="final_call_sell"> Tell me if a holding's Final Call turns Sell</label>
+            <div class="bld-muted">Always on: stale prices or a possible split.</div></div>
+        </div>
+
+        <!-- column 2: names on the ticked lists, filtered; tick the ones you want -->
+        <aside id="srcNames" class="bld-card bld-side">
+          <h3>Names <span class="bld-muted" id="srcNamesCount"></span></h3>
+          <div class="bld-line" style="gap:6px">
+            <select id="srcfSource" title="List"></select>
+            <select id="srcfClass" title="Asset class"></select>
+            <select id="srcfSector" title="Sector (equities)"></select>
+            <select id="srcfIndustry" title="Industry within the sector"></select>
+            <select id="srcfFactor" title="Factor"></select>
+            <span class="bld-quadf" id="srcfQuad" title="Show only names Hedgeye favours (Bull) in the Quad(s) ticked. A stock takes its sector's view.">Quad favored <label><input type="checkbox" value="0">Q1</label><label><input type="checkbox" value="1">Q2</label><label><input type="checkbox" value="2">Q3</label><label><input type="checkbox" value="3">Q4</label></span>
+            <input type="search" id="srcfText" placeholder="Symbol" style="width:90px">
+          </div>
+          <div class="bld-line" style="gap:6px">
+            <button class="bld-btn sm alt" id="selShown">Select all shown</button>
+            <button class="bld-btn sm alt" id="clearPicks">Clear picks</button>
+            <button class="bld-btn sm" id="fillGaps" title="Filter the list to what your targets are still missing; click again for the next gap">Show what's missing</button>
+            <button class="bld-btn sm alt" id="clearFilters">Clear filters</button>
+            <span class="bld-muted" id="srcNamesHint"></span>
+          </div>
+          <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th>Lists</th><th>Asset class</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
+        </aside>
+
+        <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
+        <div>
+          <div class="bld-card"><h3><span class="bld-step">1</span>Picks vs portfolio <span class="bld-muted" id="picksCount"></span></h3>
+            <div class="bld-line"><b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
+              <button class="bld-btn alt" id="setOpen">Open</button><button class="bld-btn" id="setSave">Save as…</button><button class="bld-btn alt" id="setDel">Delete</button>
+              <span class="bld-muted" id="setMsg"></span></div>
+            <div class="bld-line"><b style="min-width:0">Preset</b><select id="preset"></select>
+              <label style="font-size:12px"><input type="checkbox" id="useDial"> Risk Dial trims risky classes into Cash <span class="bld-muted" id="dialNow"></span></label></div>
+            <div class="bld-muted" id="dialNote"></div>
+            <div class="bld-muted" style="margin:2px 0 4px">Type a target % in any Target cell (asset class, beta, Quad, sector, style). Targets guide you; they never pick stocks.</div>
+            <div id="cmpTable"></div>
+            <div id="symTable"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bld-below">
+          <div class="bld-disc">Past results are not a forecast. The Builder never trades and never changes the Actionable Final Call.</div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: LIST -->
+    <section id="view-list" hidden>
+      <div class="bld-card">
+        <div class="bld-line"><label>Account <select id="listAcct"><option value="">All accounts</option></select></label>
+          <label>Status <select id="listStatus"><option value="active">Running + review due</option><option value="all">All</option><option value="closed">Closed</option></select></label></div>
+        <div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Account</th><th>Name</th><th>Mix</th><th>Split</th><th>Period</th><th>Day</th><th class="n">Value</th><th class="n">Return</th><th class="n">vs SPY</th><th class="n">vs account</th><th>Status</th></tr></thead>
+          <tbody id="listRows"></tbody></table></div>
+        <div class="bld-muted" style="margin-top:6px">One running model per account. Click a row for details. "vs account" = the model against that account's own holdings at the start, left untouched.</div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: DETAIL -->
+    <section id="view-detail" hidden>
+      <div class="bld-muted" style="margin-bottom:6px"><a href="#" id="backToList">&larr; My model portfolios</a></div>
+      <div id="detailBody"></div>
+    </section>
+  </main>
+
+  <div id="modalHost"></div>
+
+  <script src="/static/_common.js?v=20261026a"></script>
+  <script src="/static/portfolio_mix.js?v=20261020h5"></script>
+  <script src="/static/builder.js?v=20261028g"></script>
+  <script src="/static/warning_badge.js"></script>
+</body>
+</html>

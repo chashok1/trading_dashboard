@@ -1133,6 +1133,7 @@
     { href: '/',                 label: 'Dashboard' },
     { href: '/actionable',       label: 'Actionable' },
     { href: '/portfolio',        label: 'Portfolio' },
+    { href: '/builder',          label: 'Builder' },
     { href: '/universe',         label: 'Universe' },
     { href: '/rules',            label: 'Rules' },
     { href: '/groups',           label: 'Rule Groups' },
@@ -1213,3 +1214,19 @@ window.SeriesToggle = (function () {
   }
   return { hidden: hidden, defaults: defaults, item: item, bind: bind };
 })();
+
+/* Shared Quad / style-tag helpers (moved out of universe.js 2026-10-26 so the Builder reuses the same wording; behaviour-neutral).
+ * Quad outlook text is compared case-insensitively: ref_quad_outlook carries both 'Bullish' and 'BULLISH'. */
+window.TD_QUAD = {
+  IS_BULLISH: function (v) { return (v || '').toUpperCase() === 'BULLISH'; },
+  IS_BEARISH: function (v) { return (v || '').toUpperCase() === 'BEARISH'; },
+  STANCE_CLASS: function (v) {
+    var u = (v || '').toUpperCase();
+    return u === 'BULLISH' ? 'bull' : (u === 'BEARISH' ? 'bear' : 'neutral');
+  },
+};
+window.TD_STYLE_TAG_ABBR = {
+  'Cyclical': 'Cyc', 'Defensives': 'Def', 'Dividend': 'Div',
+  'High Beta': 'Hi-B', 'Low Beta': 'Lo-B', 'Mid Caps': 'Mid',
+  'Momentum': 'Mom', 'Secular': 'Sec', 'Small Caps': 'Small', 'Value': 'Val',
+};

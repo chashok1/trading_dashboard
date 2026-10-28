@@ -1152,9 +1152,9 @@
   // caught only once the quad filter (which reuses this) returned 0 rows
   // for a quad known to have hundreds of favorable symbols. Uppercased
   // compare now, case-insensitive.
-  const QUAD_IS_BULLISH = v => (v || '').toUpperCase() === 'BULLISH';
-  const QUAD_IS_BEARISH = v => (v || '').toUpperCase() === 'BEARISH';
-  const QUAD_STANCE_CLASS = v => QUAD_IS_BULLISH(v) ? 'bull' : QUAD_IS_BEARISH(v) ? 'bear' : 'neutral';
+  const QUAD_IS_BULLISH = window.TD_QUAD.IS_BULLISH;   // shared helpers live in _common.js
+  const QUAD_IS_BEARISH = window.TD_QUAD.IS_BEARISH;
+  const QUAD_STANCE_CLASS = window.TD_QUAD.STANCE_CLASS;
   async function renderFactorsView() {
     const wrap = $('uvFactorsWrap');
     $('uvSideHeading').textContent = 'Quad factors';
@@ -4446,7 +4446,7 @@
       + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}</div>`
       + `</div>`;
 
-    if (row.stop_breached) {
+    if (false && row.stop_breached) {   // 2026-10-26, user: "Stop breached" line not needed
       const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
       const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
       const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
@@ -4733,11 +4733,7 @@
   // the tag itself for anything not in this map (e.g. a future tag added
   // to the data before this map is updated). User: "Shorten Style names"
   // -- 2026-09-06.
-  const STYLE_TAG_ABBR = {
-    'Cyclical': 'Cyc', 'Defensives': 'Def', 'Dividend': 'Div',
-    'High Beta': 'Hi-B', 'Low Beta': 'Lo-B', 'Mid Caps': 'Mid',
-    'Momentum': 'Mom', 'Secular': 'Sec', 'Small Caps': 'Small', 'Value': 'Val',
-  };
+  const STYLE_TAG_ABBR = window.TD_STYLE_TAG_ABBR;   // shared map lives in _common.js
   function wireStyleTabs() {
     const styleTabs = $('uvStyleTabs');
     styleTabs.innerHTML = '<button class="uv-tab" role="tab" data-style="all" aria-selected="true">All</button>' +

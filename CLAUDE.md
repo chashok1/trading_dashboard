@@ -308,4 +308,5 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Bull-calc analysis (two stacks, duplications, money-first improvements P1–P5) | `docs/audit/bull_calc_analysis.md` |
 | Bull-calc rollout / how to enable + revert (TASK 65–69) — read after a break | `docs/bull_rollout_runbook.md` |
 | Bull-calc logic + data-flow diagrams (feeds→stacks→Final Call; decision tree) | `docs/diagrams/bull_calc_data_flow.svg`, `docs/diagrams/bull_calc_decision_logic.svg` |
+| Portfolio Builder (`/builder`: model portfolio per account — mix by asset class, split by area (Macro and Quad) or recipe, frozen 1–12 months, paper marks vs SPY and the account; never trades, never changes the Final Call) | `docs/portfolio_builder_logic.md`; `etl/derive_model_portfolio.py` (all tunable numbers in `PB_PARAMS`, pure measures/recipes/area fill, `drv_pb_score` + daily marks step), `etl/builder_engine.py`, `etl/builder_data.py`, `etl/builder_store.py`; `api/routers/builder.py`; `web/builder.js`; specs `DESIGN_SPEC_9/10/11.md` |
 

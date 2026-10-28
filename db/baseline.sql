@@ -9494,3 +9494,134 @@ ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS min_trade5_prev N
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS fell_below_trade BOOLEAN;
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS zone_recent BOOLEAN;
 ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS trr_5d_ago NUMERIC;
+
+-- 2026-10-26 Portfolio Builder (DESIGN_SPEC_9/10/11) task 1: fund list, mix presets, account type. Seeds: db/seeds_portfolio_builder.sql.
+-- bucket = asset-class bucket (matches the Portfolio pie); area = the split inside a bucket; outlook_* = the ref_quad_outlook row giving the area its Quad stance.
+-- active=false = not buyable yet (not in the daily TOS export, or too little history).
+CREATE TABLE IF NOT EXISTS ref_pb_universe (
+    tos_symbol        TEXT PRIMARY KEY,
+    bucket            TEXT NOT NULL,
+    area              TEXT NOT NULL,
+    outlook_category  TEXT,
+    outlook_sub       TEXT,
+    active            BOOLEAN NOT NULL DEFAULT TRUE,
+    note              TEXT
+);
+CREATE TABLE IF NOT EXISTS ref_pb_mix_preset (
+    preset_key  TEXT PRIMARY KEY,
+    label       TEXT NOT NULL,
+    sort_order  INT  NOT NULL DEFAULT 0,
+    mix         JSONB NOT NULL,
+    quad_tilt   NUMERIC,
+    note        TEXT,
+    active      BOOLEAN NOT NULL DEFAULT TRUE
+);
+-- Account type (Taxable / IRA / Roth / HSA / 401k): set by the user on Ref Data; used only for the taxable-gain line and 401k paper-only mode.
+ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS account_type TEXT;
+
+-- 2026-10-26 Portfolio Builder tasks 2-8: keep-as-is list, nightly scores, frozen model portfolios and their daily marks.
+-- Positions are write-once; only status / closed_at / warnings / entry fields of user_model_portfolio change.
+CREATE TABLE IF NOT EXISTS ref_account_keep (
+    account_short TEXT NOT NULL,
+    tos_symbol    TEXT NOT NULL,
+    note          TEXT,
+    added_at      TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_short, tos_symbol)
+);
+CREATE TABLE IF NOT EXISTS drv_pb_score (
+    as_of_date      DATE NOT NULL,
+    recipe_key      TEXT NOT NULL,
+    tos_symbol      TEXT NOT NULL,
+    eligible        BOOLEAN NOT NULL DEFAULT FALSE,
+    score           NUMERIC,
+    rank            INT,
+    vol63           NUMERIC,
+    beta            NUMERIC,
+    mom             NUMERIC,
+    quad_stance     NUMERIC,
+    reason          JSONB,
+    excluded_reason TEXT,
+    derived_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, recipe_key, tos_symbol)
+);
+CREATE TABLE IF NOT EXISTS user_model_portfolio (
+    portfolio_id   SERIAL PRIMARY KEY,
+    name           TEXT NOT NULL,
+    account_short  TEXT NOT NULL,
+    account_type   TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    start_date     DATE NOT NULL,
+    end_date       DATE NOT NULL,
+    horizon        TEXT NOT NULL,
+    amount         NUMERIC NOT NULL,
+    cash_at_build  NUMERIC,
+    size_multiplier NUMERIC,
+    mix_target     JSONB,
+    mix_at_build   JSONB,
+    bucket_recipes JSONB,
+    kept           JSONB,
+    settings       JSONB,
+    warnings       JSONB,
+    spy_entry      NUMERIC,
+    entry_final    BOOLEAN NOT NULL DEFAULT FALSE,
+    status         TEXT NOT NULL DEFAULT 'RUNNING',
+    close_reason   TEXT,
+    closed_at      TIMESTAMPTZ,
+    rolled_from_id INT
+);
+CREATE INDEX IF NOT EXISTS ix_user_model_portfolio_acct ON user_model_portfolio(account_short, status);
+CREATE TABLE IF NOT EXISTS user_model_position (
+    portfolio_id      INT NOT NULL,
+    tos_symbol        TEXT NOT NULL,
+    bucket            TEXT,
+    area              TEXT,
+    is_kept           BOOLEAN NOT NULL DEFAULT FALSE,
+    sleeves           JSONB,
+    target_weight     NUMERIC,
+    target_dollars    NUMERIC,
+    entry_price       NUMERIC,
+    shares            NUMERIC,
+    why               TEXT,
+    why_detail        JSONB,
+    final_call_at_build TEXT,
+    PRIMARY KEY (portfolio_id, tos_symbol)
+);
+CREATE TABLE IF NOT EXISTS drv_model_mark (
+    as_of_date     DATE NOT NULL,
+    portfolio_id   INT NOT NULL,
+    value          NUMERIC,
+    cash           NUMERIC,
+    spy_value      NUMERIC,
+    account_ret    NUMERIC,
+    account_mix    JSONB,
+    model_mix      JSONB,
+    stale_count    INT,
+    alerts         JSONB,
+    derived_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, portfolio_id)
+);
+CREATE TABLE IF NOT EXISTS drv_model_position_mark (
+    as_of_date     DATE NOT NULL,
+    portfolio_id   INT NOT NULL,
+    tos_symbol     TEXT NOT NULL,
+    close          NUMERIC,
+    stale_days     INT,
+    value          NUMERIC,
+    ret            NUMERIC,
+    weight_now     NUMERIC,
+    final_call_now TEXT,
+    PRIMARY KEY (as_of_date, portfolio_id, tos_symbol)
+);
+
+-- 2026-10-27: ATR14 used by the Step 1 'less than 1 ATR above Trade' test, shown in the Action popup.
+ALTER TABLE IF EXISTS drv_tn_td_bb_rr ADD COLUMN IF NOT EXISTS atr14 NUMERIC;
+
+-- 2026-10-28 Portfolio Builder saved work: named sets of picks + targets (no tracking, no freezing).
+CREATE TABLE IF NOT EXISTS user_builder_set (
+    set_id        SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL UNIQUE,
+    account_short TEXT,
+    state         JSONB NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

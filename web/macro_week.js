@@ -173,7 +173,8 @@
     var t = ['Next 7 days (day only -- no release times on file)'].concat(
       events.map(function (e) { return '• ' + dayName(e.date) + ' ' + e.date.slice(5) + ' ' + e.name; }),
       ['Source: ref_calendar_event']);
-    return chip('mw-ev', '⚑ ' + esc(first.name) + ' ' + when + (same > 0 ? ' +' + same : ''), t);
+    var soon = first.days != null && first.days <= 3;
+    return chip('mw-ev', '<span class="mw-ev-flag' + (soon ? ' mw-ev-flag-soon' : '') + '">⚑</span> ' + esc(first.name) + ' ' + when + (same > 0 ? ' +' + same : ''), t);
   }
 
   function bookChip(counts, hotN, hot, open) {

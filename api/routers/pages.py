@@ -164,6 +164,12 @@ def page_universe():
     return FileResponse(WEB_DIR / "universe.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/builder")
+def page_builder():
+    """Portfolio Builder (DESIGN_SPEC_9/10/11): model portfolios per account, frozen for 1-12 months."""
+    return FileResponse(WEB_DIR / "builder.html", media_type="text/html; charset=utf-8")
+
+
 # -----------------------------------------------------------------------------
 # Static asset mount — serves web/*.css, web/*.js, etc. under /static/<file>.
 # Mounted via main.py AFTER all routers are included so the page routes above

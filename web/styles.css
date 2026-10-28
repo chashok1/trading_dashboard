@@ -3862,6 +3862,12 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mw-chip.mw-quad { background: #e0ecff; border-color: #93b4f0; color: #1e3a8a; }
 .mw-chip.mw-warn { color: var(--mr-warn); background: var(--mr-warn-bg); border-color: var(--mr-warn); }
 .mw-chip.mw-ev { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+/* 2026-10-27, user-directed: only the flag flashes (red <-> normal) when the next major event is within 3 days. */
+@keyframes mw-ev-flash { 0%, 100% { color: #dc2626; opacity: 1; } 50% { color: #dc2626; opacity: .15; } }
+/* Bigger + wider flag via transform only, so the pill's own width and height do not change. */
+.mw-ev-flag { display: inline-block; transform: scale(1.8, 1.4); transform-origin: left center; margin-right: 0.6em; }
+.mw-ev-flag-soon { color: #dc2626; animation: mw-ev-flash 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .mw-ev-flag-soon { animation: none; } }
 .mw-bear { color: var(--mr-bear); }
 .mw-warn { color: var(--mr-warn); }
 .mw-bull { color: var(--mr-bull); }
@@ -4482,3 +4488,11 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 #rrhClose { border: 0; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text-2, #5b6172); }
 .rrh-body { position: relative; height: 340px; padding: 8px 12px 10px; }
 #rrhMsg { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 12px; color: var(--text-2, #5b6172); }
+
+/* Shared with Universe and the Builder (moved from universe.html 2026-10-26): Quad outlook pills and the B/S/H colour dot. */
+.uv-color-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.uv-factor-pill { text-align: center; font-size: 10.5px; font-weight: 700; padding: 3px 4px; border-radius: 4px; }
+.uv-factor-pill.bull { background: rgba(22,163,74,0.16); color: #16a34a; }
+.uv-factor-pill.bear { background: rgba(220,38,38,0.16); color: #dc2626; }
+.uv-factor-pill.neutral { background: rgba(148,163,184,0.16); color: var(--text-3); }
+.uv-factor-pill.dim { opacity: 0.35; }
