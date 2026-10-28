@@ -6736,6 +6736,18 @@ def yahoo_fetch_quotes_now(auto: bool = Query(False)):
                 return {"skipped": True, "reason": "outside_hours"}
             if auto_trigger_on_cooldown():
                 return {"skipped": True, "reason": "auto_cooldown"}
+            # 2026-10-28, user: a TOSL load must hold off the auto refresh. The tab decides
+            # "stale" from a status it fetched earlier (can predate the TOSL load), so
+            # re-check here against the newest Yahoo pull or TOSL load (same as the scheduler).
+            with session_scope() as s:
+                age_s = s.execute(text(
+                    "SELECT EXTRACT(EPOCH FROM (now() - GREATEST("
+                    " (SELECT MAX(fetched_at) FROM cache_yahoo_quote),"
+                    " (SELECT MAX(processed_at) FROM meta_file_processed"
+                    "   WHERE file_type = 'TOSL'))))"
+                )).scalar()
+            if age_s is not None and float(age_s) < 30 * 60:
+                return {"skipped": True, "reason": "quotes_fresh"}
             mark_auto_trigger_now()
         return fetch_hourly_quotes()
     except Exception as exc:

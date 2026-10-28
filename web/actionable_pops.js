@@ -3,6 +3,20 @@
  * Classic script: loaded BEFORE actionable.js, shares its global scope. Reads the grid `state` at call time only. */
 const $ = (id) => document.getElementById(id);
 
+// 2026-10-28, user: clicking a source name in the Action popup opens that source's Hedgeye page.
+// URLs come from ext_links (GET /api/ext-links, keyed by panel_key); loaded once, so a popup opened
+// before it lands just shows the plain name.
+const _SRC_LINK_KEY = { CALL: 'call', TOP5: 'top5', ETF: 'etf_pro', ETFCHG: 'etf_pro', SSS: 'sss', SSSCHG: 'sss',
+  MACROSHOW: 'macro_show', RR: 'trend_change', RTA: 'alerts', II: 'investing_ideas', IICHG: 'investing_ideas', PS: 'portfolio' };
+let _extLinks = {};
+fetch('/api/ext-links').then(r => r.ok ? r.json() : {}).then(l => { _extLinks = l || {}; }).catch(() => {});
+function _srcNameHtml(label) {
+  const shown = label === 'MACROSHOW' ? 'MS' : label;
+  const l = _extLinks[_SRC_LINK_KEY[String(label || '').toUpperCase()]];
+  if (!l || !l.url) return `<span class="dv-name">${escapeHtml(shown)}</span>`;
+  return `<a class="dv-name dv-name-link" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="Open ${escapeHtml(l.label || shown)} on Hedgeye">${escapeHtml(shown)}</a>`;
+}
+
 // Sign always goes before the $ ("-$188", never "$-188") -- same fix as
 // universe.js's fmtUsd (2026-09-05); both branches here kept whatever sign
 // Math.round(n)/n.toFixed(0) produced glued onto "$" instead of moving it
@@ -2187,7 +2201,7 @@ function _actpopDriverBullets(row, side) {
     // comment; _srcReasonsHtml's grid-column twin of this same treatment.
     noteHtml += _dropPctPillHtml({ action: actUpper, pct_since_drop: pctSinceDrop, drop_conflict: dropConflict, up_streak_3d: upStreak3d });
     return `<div class="actpop-driver ${cls} dv-${_tk(tag)}">
-      <span class="dv-name">${escapeHtml(label)}</span>${hit || '<span></span>'}
+      ${_srcNameHtml(label)}${hit || '<span></span>'}
       <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
       <span class="dv-note">${noteHtml}</span>
       ${tag ? `${_dvMarkHtml(tag, (side === 'buy' || side === 'sell') ? side : winSide)}<span class="dv-tag">${escapeHtml(tag)}</span>` : '<span></span><span></span>'}
@@ -2267,7 +2281,7 @@ function _actpopDriverBullets(row, side) {
   for (const w of sources.filter(s => s.warning_only)) {
     const wd = fmtMD(w.snapshot_date);
     rows.push(`<div class="actpop-driver dv-warn">
-      <span class="dv-name">${escapeHtml(w.source || w.source_code || '?')}</span><span></span>
+      ${_srcNameHtml(w.source || w.source_code || '?')}<span></span>
       <span class="dv-action">Warning</span>
       <span class="dv-note"><div class="actpop-tw wc-warnline">${escapeHtml(String(w.reason || 'weight fell').trim())}${wd ? ' &middot; ' + escapeHtml(wd) : ''}</div></span>
       <span></span><span class="dv-tag">warning only</span>

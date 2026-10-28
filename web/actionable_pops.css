@@ -366,7 +366,7 @@
 .actpop-drivers { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
 
 /* 2026-10-21, user: every driver row is the same six columns -- name | hit-rate % | action | note | tick/cross | tag -- so they line up row to row. */
-.actpop-driver { display:grid; grid-template-columns: 72px 38px 86px minmax(0, 1fr) 16px 62px; align-items:center; column-gap:6px; border-radius:7px; padding:4px 8px; background:#f8fafc; }
+.actpop-driver { display:grid; grid-template-columns: 56px 32px 86px minmax(0, 1fr) 16px 62px; align-items:center; column-gap:6px; border-radius:7px; padding:4px 8px; background:#f8fafc; }
 .actpop-driver .dv-mark { text-align:center; }
 .actpop-driver .dv-tag { text-align:center; justify-self:stretch; white-space:nowrap; }
 .actpop-driver .actpop-hit { justify-self:center; }
@@ -376,6 +376,8 @@
 .actpop-driver.sell { background: var(--act-sell-strong-bg); }
 
 .actpop-driver .dv-name { font-size:10px; font-weight:700; color:#0f172a; white-space:nowrap; }
+.actpop-driver a.dv-name-link { text-decoration:none; }
+.actpop-driver a.dv-name-link:hover { text-decoration:underline; color:#2563eb; }
 
 .actpop-driver .dv-action { font-size:11px; font-weight:800; white-space:nowrap; }
 

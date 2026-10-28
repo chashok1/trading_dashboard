@@ -757,6 +757,12 @@
         icon.textContent = '✓';
         loadTape();
         if (typeof window.reloadMacroAreas === 'function') window.reloadMacroAreas();
+      } else if (auto && d.reason === 'quotes_fresh') {
+        // Tab's status was older than a TOSL load / Yahoo pull: not an error, just reload it.
+        icon.textContent = '⟳';
+        btn.disabled = false;
+        loadTape();
+        return;
       } else if (auto) {
         icon.textContent = '!';
         btn.disabled = false;
