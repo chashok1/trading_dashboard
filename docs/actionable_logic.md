@@ -911,3 +911,7 @@ Replaces most of the Technical rules (the older sections above that describe cod
 - **Win %.** `drv_signal_winrate` is rebuilt from raw prices with the same classifier (new ids S1-a..S1-d, 1a, 1b, 1d, 1e, 2a..2f, 3a, 3x, 3f, 3h, 3k, 3p, tr; extra 3-day splits flag:above|below and band:rise|flat|fall). The popup shows the 3-day share that went up (buy rules) or down (sell rules), for the stock's own flag.
 - **Popup.** One row per rule in the Technical section: small picture (`web/technical_graphs.js`), rule id + action, reason, an (i) help (bulleted: when / above action / below action; wording in `etl/technical_why.py::RULE_HELP`), the win %, and a "How these rules work" link to `/technical-rules-map` (`web/technical_rules_map.html`).
 - **Keep in step.** The map page is hand-written SVG: when a rule changes, edit `RULE_HELP`, `etl/technical_rules.py`, `web/technical_graphs.js` and `web/technical_rules_map.html` together.
+
+## 2026-10-28 - CALL only drives when alone
+
+In `derive_actionable.py` (winner pick), CALL candidates are dropped from the headline contest whenever any other source (RTA, TOP5, SSSCHG, PS, ETF, RR, SSS, II, RTAINFO, MACROSHOW) has an action. CALL still appears in `source_actions` as support/opposition. Rule-group candidates do not count as "another source". Applies to held and not-held symbols.

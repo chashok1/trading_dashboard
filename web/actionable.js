@@ -1293,7 +1293,7 @@ function _legendHtml() {
         (Tech+Sources+Macro) → holds; unheld buys without a ripe Technical wait in the Watchlist.
         Tier 0 — held rows trading below stop (STOP pill), by position $ desc.
         Tier 1 — credible SELLs on held positions (Sources+Technical both sell, or a source-driven
-        exit), by $ at stake desc. LOW CONF sells are never "credible" — they sink to Bottom instead.
+        exit), by $ at stake desc. LOW CONF sells rank the same as any other sell (badge only).
         Tier 2 — BUYs that passed the technical gate, sub-ranked by agreement: 2a = Technical + Sources
         + MACRO all buy-side, 2b = Technical + one other buy-side with nothing opposing, 2c = Technical
         ripe only; each sub-tier ordered by dollar-weighted edge desc (sum of the row's fired rules'
@@ -1308,7 +1308,7 @@ function _legendHtml() {
         promotes an unheld buy; rows whose winning source just landed for this date show a NEW pill
         inside the band instead. Held rows are never gated. Chip filters and symbol search still match
         rows inside the band and auto-expand it on a match — nothing is ever permanently hidden.
-        Bottom — LOW CONF sells, infeasible, or suppressed rows sink last regardless of dollars.
+        Bottom — infeasible or suppressed rows sink last regardless of dollars.
         Click a column header to sort by that column instead; Refresh/date-change restores this default.</div>
     </div>`;
 }
@@ -3426,10 +3426,10 @@ const _TREND_TRADE_BEARISH = ['SA', 'STM', 'SS'];
 
 function _computePriority(row) {
   // Tier -1: SELL ALL on a held position goes above everything, including stop breaches.
-  // (A low-confidence sell is still not "credible", so it keeps sinking to the bottom.)
+  // 2026-10-28, user: LOW CONF no longer demotes a sell -- the badge stays, the user decides.
   var _fcTop = finalCall(row);
   if (row.held_today && _fcTop.feasible && String(_fcTop.code || '').toUpperCase() === 'SA'
-      && !(row.low_confidence && _fcTop.side === 'sell') && !row.suppressed_reason) {
+      && !row.suppressed_reason) {
     return _TIER_SELLALL + _dollarsAtStake(row);
   }
   // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
@@ -3447,7 +3447,8 @@ function _computePriority(row) {
   // computed purely from SELL-side fired composites (see _finalCallHtml's
   // comment on isLowConf) and was wrongly burying legitimate BUY rows that
   // merely had an unrelated unproven SELL rule also fire in the background.
-  if ((row.low_confidence && fc.side === 'sell') || !fc.feasible || row.suppressed_reason) {
+  // 2026-10-28, user: low_confidence no longer sinks a sell to Bottom (badge only).
+  if (!fc.feasible || row.suppressed_reason) {
     return _TIER_BOTTOM + _dollarWeightedScore(row);
   }
 

@@ -1265,6 +1265,12 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 candidates.sort(key=_order)                            # source order
             elif source_order_mode == "measured":
                 # TASK_140 item 5: today's not-held sort (-latest_update,
+        # 2026-10-28, user: CALL only drives the action when no other source
+        # has one. With any other source present CALL still shows in
+        # source_actions (supports/opposes) but cannot win the headline.
+        if any(a["source_code"] != "CALL" for a in candidates if "_group_prio" not in a):
+            candidates = [a for a in candidates if a.get("source_code") != "CALL"]
+
                 # source_order) structurally favours CALL, the highest-
                 # volume/lowest-edge feed. Under 'measured', rank first,
                 # recency as tie-break. 'static' mode keeps the old sort
