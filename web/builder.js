@@ -153,7 +153,8 @@
     $('srcfText').oninput = renderSourceNames;
     $('selShown').onclick = selectShown;
     // fill each held pick's % of its class from the account's holdings (the class totals follow the 'current' mix)
-    $('matchHold').onclick = () => {
+    $('matchHold').onclick = matchHoldings;
+    function matchHoldings() {
       const hold = {};
       ((S.preview && S.preview.account && S.preview.account.holdings) || []).forEach(h => { hold[h.sym] = h.value || 0; });
       const tot = {};
@@ -161,7 +162,7 @@
       S.picks.forEach(p => { p.pct = hold[p.sym] > 0 ? Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100 : null; });
       if (S.preset !== 'current') S.preset = 'current';
       renderSourceNames(); schedule(0);
-    };
+    }
     $('clearPicks').onclick = () => { S.picks = []; renderSourceNames(); schedule(0); };
     renderSourceNames();
   }
@@ -191,7 +192,11 @@
     $('srcfClass').innerHTML = '<option value="">All asset classes</option>' + BUCKETS.map(c => `<option>${esc(c)}</option>`).join('') + '<option value="__missing">No class yet</option>';
     if ([...$('srcfSource').options].some(o => o.value === keep[0])) $('srcfSource').value = keep[0];
     if ([...$('srcfClass').options].some(o => o.value === keep[1])) $('srcfClass').value = keep[1];
+    // 2026-10-29, user: the default list is HELD, so tick every held name that qualifies unless picks already exist
+    const autoPick = S.sources.length === 1 && S.sources[0] === 'HELD' && !S.picks.length;
+    if (autoPick) S.srcNames.forEach(n => setPick(n.sym, true));
     renderSourceNames();
+    if (autoPick && S.picks.length) { S.matchNext = true; schedule(0); }
   }
 
   // industries of the names in the chosen sector (all equity industries when no sector is chosen)
@@ -495,6 +500,7 @@
       if (seq !== S.reqSeq) return;
       S.preview = res;
       render(res);
+      if (S.matchNext) { S.matchNext = false; $('matchHold').click(); }   // auto-picked held names take the account's own weights
     } catch (e) {
       if (seq !== S.reqSeq) return;
       $('cmpTable').innerHTML = `<span class="bld-warn">Could not build: ${esc(e.message)}</span>`;
