@@ -1262,18 +1262,13 @@ function _legendHtml() {
         An effective ADD/INCREASE on a breached row is downgraded to HOLD (suppressed_reason = "STOP BREACHED") —
         breach never auto-forces a sell. Click the STOP chip to filter to these rows.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
-      <div style="color:#475569;">Toggle in the toolbar collapses the grid to only rows with measured
-        positive edge (docs/actionable_playbook.md §3.3): (1) qualifying buys — BM/BMN, feasible, Risk
-        Range bullish, no stop breach, MACRO not SA/STM, any winning source; (2) held SA sells;
-        (3) held stop breaches, whatever the action. Everything else (Watchlist band, HOLD/no-action
-        rows) is hidden. <strong>WEAK SRC</strong> pill = the qualifying buy's winning source measured
-        negative buy-edge in the last validation — size down or skip; see
-        docs/audit/signal_validation_2026-07.md. Not persisted — always starts ON.
-        <strong>Strict</strong> sub-toggle (next to Trade Mode, only shown while it's on; also not
-        persisted, defaults ON): narrows qualifying buys further to exclude macro/index/FX/futures
-        instruments (you can't place a simple buy order on an index or a yield curve) and require the
-        Tradability Score to meet its own 🎯 badge threshold. Turn Strict off to see the original,
-        looser qualifying-buy list.</div>
+      <div style="color:#475569;">Trade (2026-10-28 rules): (1) buys — Final Call BM / BS / BMN and feasible,
+        Technical entry-ripe (RTA skips this), MACRO not SA/STM unless you already hold it, PVV not AVOID, and
+        not a BUY TO MIN (Trade has Buy More and Buy Some only); (2) sells on held positions (SA / SS / STM).
+        Index, futures, FX and Fixed Income never show here or in Trade2 (plain Actionable view only). There is
+        no score cut-off: within the same Final Call action, rows sort by Tradability Score, highest first.
+        <strong>Trade2</strong> = buys that pass the Technical / MACRO tests but are BUY TO MIN or have PVV
+        AVOID. Not persisted — always starts ON.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Conviction filter</div>
       ${row('Any', 'No filter')}
       ${row('Multi', '2+ sources agree on this row')}
@@ -1882,7 +1877,15 @@ const _TECH_GATE_EXEMPT_SRC = ['RTA'];
 // Original (pre-2026-08-25) TASK_124 criteria only -- no tightening passes.
 // Kept standalone (not folded into the strict function below) so the new
 // "Non-Strict" button can compute loose-minus-strict.
+// 2026-10-28, user: Trade / Trade2 rules reset. Shared by both lists: Final Call is BM / BMN / BS and feasible;
+// Technical entry-ripe (RTA skips this); MACRO not Sell All / Sell To Min unless you already hold it;
+// macro instruments (index / futures / FX) and Fixed Income never show (Actionable view only).
+// The stop-breach check, the Tradability Score cut-off and the stop-breach rows are gone.
+function _isTradeModeExcludedClass(r) {
+  return r.is_macro_instrument === true || r.is_macro_instrument === 'true' || _isFixedIncome(r);
+}
 function _isTradeModeQualifyingBuyLoose(r) {
+  if (_isTradeModeExcludedClass(r)) return false;
   const code = (r.final_code || '').toUpperCase();
   // 2026-10-22, user: BS (Buy Some) buys also qualify for Trade.
   if (code !== 'BM' && code !== 'BMN' && code !== 'BS') return false;
@@ -1890,33 +1893,17 @@ function _isTradeModeQualifyingBuyLoose(r) {
   const src = (r.winning_source || '').toString().toUpperCase();
   const tech = (r.rr_action || '').toUpperCase();
   if (_TECH_GATE_EXEMPT_SRC.indexOf(src) === -1 && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
-  if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
-  if (mv === 'SA' || mv === 'STM') return false;
+  if (!r.held_today && (mv === 'SA' || mv === 'STM')) return false;
   return true;
 }
 // Strict criteria -- now the Trade Mode button's ONLY buy gate (see comment
 // block above). Builds on the loose criteria above, plus 5 tightening passes.
 function _isTradeModeQualifyingBuy(r) {
   if (!_isTradeModeQualifyingBuyLoose(r)) return false;
-  const code = (r.final_code || '').toUpperCase();
-  const tech = (r.rr_action || '').toUpperCase();
-  if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
-  if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
-  // 2026-08-27, 3rd Strict-only tightening pass -- closes the RTA
-  // tech-gate EXEMPTION above for Strict mode specifically (the loose
-  // function above keeps it; SSSCHG/TOP5 lost their own exemption
-  // entirely on 2026-09-12, so this pass now only matters for RTA). RTA
-  // bypasses the Technical check entirely on the theory that a same-day
-  // live trigger doesn't need TA to also confirm, but Strict's whole
-  // point is "perfect only" -- require rr_action to actually be
-  // entry-ripe here regardless of source. User: "In Trade + Strict mode,
-  // don't include the ones that technicals are not aligned for today
-  // (AMZN, TJX)."
-  // 2026-10-21, user (after a May-Sep back-test: RTA buys beat the average stock even when Technical was not ripe): RTA is exempt from this
-  // Technical check in Strict too, as it already is in the loose list.
-  const _stSrc = (r.winning_source || '').toString().toUpperCase();
-  if (_TECH_GATE_EXEMPT_SRC.indexOf(_stSrc) === -1 && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
+  // 2026-10-28, user: the Tradability Score cut-off is no longer a Trade test (the score only sorts the
+  // list, within the same Final Call action). The macro-instrument and Technical checks now live in the
+  // shared test above. What separates Trade from Trade2 is the two tests below.
   // 2026-08-27, 4th Strict-only tightening pass -- PVV's own AVOID
   // decision (r.pvv_decision, condition "outlook=Bearish, today=NEUTRAL/
   // NA/DRIFT" -- see _PVV_DECISION_INFO) is a second, independent
@@ -1924,13 +1911,9 @@ function _isTradeModeQualifyingBuy(r) {
   // the other tightening rules here. User: "Also remove PVV -> AVOID
   // from strict mode."
   if (r.pvv_decision === 'AVOID') return false;
-  // 2026-08-28, 5th Strict-only tightening pass -- BUY TO MIN (BMN, a
-  // starter position — not yet held) only qualifies when price is
-  // actually above the Trade line (docs/drv_cat_atomic_input_logic.md's
-  // trade_trend_sd_rule: last_price > trade_line_value). BUY MORE (BM,
-  // adding to an existing position) is unaffected. User: "include BUYTOMIN
-  // only if it is above trade."
-  if (code === 'BMN' && !(r.last_price > r.trade_line_value)) return false;
+  // 2026-10-28, user: every BUY TO MIN (BMN) buy moves to Trade2 -- Trade keeps Buy More and Buy Some only.
+  // (The older "BMN only above the Trade line" test stays removed; the Trade line is scored in the structure term.)
+  if ((r.final_code || '').toUpperCase() === 'BMN') return false;
   return true;
 }
 // 2026-09-15, user: "widen Trade to include SELL SOME rows too" -- was SA
@@ -1942,26 +1925,25 @@ function _isTradeModeHeldSell(r) {
   const code = (r.final_code || '').toUpperCase();
   return code === 'SA' || code === 'SS' || code === 'STM';
 }
-function _isTradeModeStopBreach(r) {
-  return !!r.held_today && !!r.stop_breached;
-}
-// 2026-10-14, user: Fixed Income funds (BUXX / CLOX / CLOZ) are kept out of the main Trade view
-// and shown in Trade2 instead (all their buys / held sells / stop breaches).
+// 2026-10-28, user: the "stop-breach rows" part of Trade is gone (a held stock with a breached stop only shows
+// if its Final Call is a sell).
+// 2026-10-28, user: Fixed Income funds (BUXX / CLOX / CLOZ) and macro instruments show in neither Trade nor
+// Trade2 -- only in the plain Actionable view.
 function _isFixedIncome(r) {
   return (r.asset_class || '').toString().toLowerCase() === 'fixed income';
 }
-// 2026-10-14, user: Fixed Income funds also stay out of the normal view. They show only under
-// Trade2, or when the user is looking one up directly (symbol search / multi-symbol / account).
+// Fixed Income is hidden while Trade or Trade2 is on, unless you are looking one up directly
+// (symbol search / multi-symbol / account).
 function _fiHidden(r) {
   if (!_isFixedIncome(r)) return false;
   const f = state.filters;
-  if (f.trade_mode_diff || f.account || f.symbol_search) return false;
+  if (f.account || f.symbol_search) return false;
   if (f.symbols_multi && f.symbols_multi.length) return false;
-  return true;
+  return !!(f.trade_mode || f.trade_mode_diff);
 }
 function _matchesTradeMode(r) {
-  if (_isFixedIncome(r)) return false;
-  return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
+  if (_isTradeModeExcludedClass(r)) return false;
+  return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSell(r);
 }
 // "My" list (ref_my_stocks) membership -- state.mySymbols is loaded once in
 // loadSources() and kept current by the quick-add popover (see openMyPop).
@@ -1984,9 +1966,8 @@ function _matchesTradeModeDiff(r) {
   // renderGrid's r._watchlisted split below), same as the default view, so
   // hiding them from Trade2 outright wasn't needed; they were never mixed
   // into the main Trade2 rows to begin with.
-  if (_isFixedIncome(r)) {
-    return _isTradeModeQualifyingBuyLoose(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
-  }
+  // 2026-10-28, user: Fixed Income and macro instruments are in neither list (the shared test below also
+  // excludes them); Trade2 = buys that pass the shared test but are Buy To Min or have PVV AVOID.
   return _isTradeModeDiffBuy(r);
 }
 // Numeric hit-rate badge for a qualifying Trade Mode row — the winning
@@ -2602,8 +2583,8 @@ function renderAccountFilter() {
 const _BTN_TIPS = {
   showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Click while Trade, Trade2 or WL is on to switch to this view']],
   actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Click while Trade or Trade2 is on to switch to this view']],
-  tradeModeBtn: ['Trade', ['The strict list: buys worth making now', 'Plus sells on positions you hold, and stop breaches', 'Combine with Trade2 / WL to add their rows']],
-  tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They fail a strict check: timing, tradability, PVV or Trade line', 'Buys only: no sells or stop breaches']],
+  tradeModeBtn: ['Trade', ['Buys worth making now, sorted by Tradability Score within each Final Call action', 'Plus sells on positions you hold', 'Index, futures, FX and Fixed Income never show here', 'Combine with Trade2 / WL to add their rows']],
+  tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They are Buy To Min, or PVV is AVOID', 'Buys only: no sells']],
   watchlistOnlyBtn: ['WL (waiting list)', ['Unheld buy ideas waiting for better entry timing', 'Technical not yet ready (not BS/BM)', 'Never includes positions you hold']],
   heldOnly: ['Held', ['Only symbols you own', 'Narrows whatever view is on']],
   myOnlyBtn: ['My', ['Only symbols on your tracked list', 'Narrows whatever view is on', 'Use the + button to edit the list']],
@@ -3297,7 +3278,7 @@ function _threeWayAgreement(row) {
 function _buildTradabilityPopHtml(row) {
   const sym = row.tos_symbol || '—';
   const score = _buyTradabilityScore(row);
-  const scoreColor = score >= 16 ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
   let h = `<div class="sp-title">\u{1F3AF} ${escapeHtml(sym)} &mdash; Tradability `
         + `<span style="color:${scoreColor};">${score.toFixed(1)}</span></div>`;
   h += `<div style="color:#94a3b8;font-size:9px;margin:-2px 0 6px;">Weighted by this system's own measured trading history — Risk Range position dominates, everything else is a smaller nudge.</div>`;
@@ -3496,20 +3477,13 @@ function _computePriority(row) {
     // makes via tuple ordering. User: "Bring BUY_DIP stocks to the top in
     // Buys." -> "NO ACTION ones are coming in the middle." -> "EX: XLRE &
     // FWONK should be below ETSY."
-    let pvvBonus = 0;
-    const pvv = (row.pvv_decision || '').toUpperCase();
-    if (state.filters.trade_mode) {
-      pvvBonus = pvv === 'BUY_DIP' ? 2000 : (_PVV_BUY_SIDE.indexOf(pvv) !== -1 ? 1000 : 0);
-    } else if (pvv === 'BUY_DIP') {
-      // 2026-10-03 (user): BUY_DIP is always first among the buys, not only in Trade Mode.
-      pvvBonus = 2000;
-    }
-    // 2026-10-03 (user): BUY MORE above BUY SOME above BUY TO MIN. Bigger than tradability's
-    // whole range (~[-30,+210]) so it always wins, smaller than the Trade Mode PVV bonus so
-    // that grouping still comes first there.
+    // 2026-10-28, user: within the same Final Call action, sort by Tradability Score descending. The PVV
+    // grouping bonus (BUY_DIP first) is gone -- PVV is already a +-3 term inside the score.
+    // 2026-10-03 (user): BUY MORE above BUY SOME above BUY TO MIN. The gaps (1000) are bigger than the
+    // whole score range (-24..27, x10 = about 510 wide) so the action always comes first.
     const _bc = String(fc.code || '').toUpperCase();
-    const codeBonus = _bc === 'BM' ? 500 : (_bc === 'BS' ? 250 : 0);
-    return _TIER_BUY + pvvBonus + codeBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
+    const codeBonus = _bc === 'BM' ? 2000 : (_bc === 'BS' ? 1000 : 0);
+    return _TIER_BUY + codeBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
   }
 
   // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.
@@ -4465,7 +4439,7 @@ function _buildActionPopHtml(row) {
       const tScore = _buyTradabilityScore(row);
       const tBreakdown = _tradabilityBreakdown(row);
       const rrItem = tBreakdown.find(it => it.label === 'Risk Range');
-      checklist.push({ agree: tScore >= _TRADABILITY_BADGE_MIN, conflict: tScore < 0,
+      checklist.push({ agree: tScore >= _TRADABILITY_BADGE_MIN, conflict: tScore < _TRADABILITY_BADGE_MIN / 2,   // 2026-10-28: the score is 0..24 now, no negatives
         icon: '🎯', label: 'Tradability',
         reason: tScore.toFixed(1) + ' — ' + (rrItem ? rrItem.detail : 'no breakdown available'),
         sub: tBreakdown });

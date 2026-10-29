@@ -1193,6 +1193,11 @@ def get_actionable(
                rr.rr_desc,
                rr.rr_why,
                rr.rr_bull_bear,
+               rr.trade_trend_sd,
+               -- 2026-10-28: the volatility scale (AC = MIN(sd, median_sd)) the rules engine measures distance from the
+               -- Trade / Trend lines in. A correlated subquery, not a join, to stay under the GEQO join threshold.
+               (SELECT ci.ac FROM drv_cat_atomic_input ci
+                 WHERE ci.tos_symbol = a.tos_symbol AND ci.as_of_date = a.as_of_date LIMIT 1) AS ac,
                _ha.held_accounts, _ha.held_qty, _ha.held_cost,
                hy.company_name,
                si.industry,
@@ -1227,7 +1232,10 @@ def get_actionable(
                -- (XOP the ETF and SPX the index both carry it) -- y_ticker's
                -- format is the reliable signal. NULL rrt.y_ticker (no ref_rrt
                -- row at all) means "not a macro instrument" by default.
-               (rrt.y_ticker LIKE '^%' OR rrt.y_ticker LIKE '%=F' OR rrt.y_ticker LIKE '%=X')
+               -- 2026-10-28, user: every TOS futures symbol starts with '/' (/BTC maps to Yahoo's plain
+               -- 'BTC-USD', which the '=F' test above misses), so those count as macro instruments too.
+               (rrt.y_ticker LIKE '^%' OR rrt.y_ticker LIKE '%=F' OR rrt.y_ticker LIKE '%=X'
+                 OR a.tos_symbol LIKE '/%')
                  AS is_macro_instrument,
                etfchg.event_date AS etfchg_date, etfchg.outlook AS etfchg_outlook,
                etfchg.change_str AS etfchg_desc,

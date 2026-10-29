@@ -1092,13 +1092,11 @@ function _lrrProximityScore(row) {
     if (!turningUp) return -1;
     return Math.max(0, 0.3 - Math.abs(rawPos) / 100);
   }
-  // At/near LRR, tapering linearly to 0 by 40% of the way to TRR — mirrors
-  // 52-BS-BRR's own condition. "about to go up or going up" (pct_change >=
-  // 0) adds a partial bonus on top; still credits "at LRR, flat" since
-  // 52-BS-BRR's proven edge is keyed on the LRR position itself, not
-  // today's tick direction.
-  const base = Math.max(0, 1 - rawPos / 40);
-  return base * (turningUp ? 1 : 0.7);
+  // 2026-10-28, user: engine breakpoints (rules engine brrpct_lrr: weight 3 up to 35% of the
+  // range, 2 to 75%, 1 above) -- +1 at or below 35%, -1 at or above 75%, straight line between
+  // (the score multiplies by 3). Was: full credit at LRR fading to 0 at 40%, which left most
+  // buys at 0. The "turning up" bonus no longer applies above LRR.
+  return Math.max(-1, Math.min(1, 1 - 2 * (rawPos - 35) / 40));
 }
 
 // 2026-08-15: winning source's own buy-family (ADD+INCREASE) win-rate track
@@ -1112,75 +1110,151 @@ function _lrrProximityScore(row) {
 // genuinely bad. Scored on win_rate_20d for the same reason IV/RSI/RVOL
 // are — mean alone would have ranked RR as the best source when it's
 // actually flat-to-negative on the metric that matters.
-function _sourceTrackRecordScore(row) {
-  const src = (row.winning_source || '').toString().toUpperCase();
-  // Buy-family win rate specifically, even on a sell row -- this score
-  // formula stays buy-calibrated by design (see _buyTradabilityScore's
-  // header comment); the Source item's DISPLAYED text picks side-aware
-  // win rate separately (_tradabilityBreakdown), this is just the point
-  // contribution.
-  const sc = ((state.sourceScorecard || {})[src] || {}).buy;
-  const base = (state.factorScorecard || {})['Baseline|All stocks'];
-  if (!sc || sc.win_rate_20d == null || sc.n < 5 || !base || base.win_rate == null) return 0;
-  const delta = (Number(sc.win_rate_20d) - Number(base.win_rate)) * 100;
-  return Math.max(-3, Math.min(6, delta));
+// 2026-10-28, user: MACDH from the custom TOS study (a_macdh_d_brr): value = position in
+// the 120-day MACDH range (0..1), sign = today's direction (+ rose, - fell). Rising from
+// low in the range scores +3 fading to 0 at the top; falling from high scores -3 fading
+// to 0 at the bottom. See memory tos-custom-macd-studies before changing.
+function _macdhPts(row) {
+  if (row.a_macdh_d_brr == null) return 0;
+  const v = Number(row.a_macdh_d_brr);
+  if (v > 0) return 3 * (1 - Math.min(v, 1));
+  if (v < 0) return 3 * Math.max(v, -1);
+  return 0;
 }
 
+// 2026-10-28, user: PVV decision as a +-3 term (see _PVV_DECISION_INFO for the meanings).
+const _PVV_PTS = { BUY_LRR: 3, BUY_DIP: 3, BUY_WATCH: 1.5, TRIM: -1.5,
+  REDUCE: -3, SELL: -3, SELL_WATCH: -3, AVOID: -3 };
+function _pvvPts(row) {
+  return _PVV_PTS[(row.pvv_decision || '').toUpperCase()] || 0;
+}
+
+// 2026-10-28, user: agreement 0 / +1.5 / +3, and -3 when a leg says sell (opposed).
+function _agreementPts(row) {
+  const sub = _buyAgreementSubTier(row);
+  if (sub === 2) return 3;
+  if (sub === 1) return 1.5;
+  const m = (row.macro_value || '').toUpperCase();
+  const s = (row.consolidated_action || '').toUpperCase();
+  const t = (row.rr_action || '').toUpperCase();
+  return (_TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m)) ? -3 : 0;
+}
+
+// 2026-10-28, user: every term is symmetric +-3 and counts the same (Risk Range was x10,
+// Technical +2, Source track record up to +6, and the secondary terms were capped together
+// at -6..+8). Technical and Source track record are removed from the score (Technical
+// still gates Trade separately). Missing data contributes 0, never a penalty.
 function _buyTradabilityScore(row) {
-  // Technical bracket: rr_action (the QS code) already blends Trade/Trend/
-  // BB-streak/MACDH per docs/drv_cat_atomic_input_logic.md. Flat credit for
-  // any entry-ripe code (BS/BM/BMN) rather than tiering BS > BM > BMN —
-  // v_final_call_scorecard shows BS/high-confidence at a NEGATIVE edge on a
-  // small sample (n=64), which doesn't support ranking BS above BM/BMN.
-  const tech = (row.rr_action || '').toUpperCase();
-  const techPts = _ENTRY_RIPE_TECH.indexOf(tech) !== -1 ? 1 : 0;
-  const lrrPts = _lrrProximityScore(row);
-  // 2026-08-15: win-rate delta (pp), not mean-return delta — see
-  // _factorWinRateDelta's header comment for why (IV's mean hides real
-  // downside-tail risk that win rate doesn't).
-  const rsiDelta  = _factorWinRateDelta('RSI', _rsiBucket(row.rsi));
-  const rvolDelta = _factorWinRateDelta('RVOL + direction', _rvolBucket(row.rvol, row.pct_change));
-  // Each delta is a measured win-rate edge in percentage points (typically
-  // -3..+13ish, RSI oversold's ~13pp is the outlier) — clamp so one
-  // outsized bucket can't swamp LRR proximity (the dominant term below);
-  // missing data (null, not enough history yet) contributes 0, never a
-  // penalty.
-  const clamp = v => v == null ? 0 : Math.max(-3, Math.min(6, v));
-  const factorPts = clamp(rsiDelta) + _ivRatioScore(row.iv_ratio) + clamp(rvolDelta)
-    + _sourceTrackRecordScore(row);
-  // 2026-08-15: cap the SUM of every non-LRR, non-agreement term, not just
-  // each one individually. User: "tickers that are not at LRR are above the
-  // ones at LRR" — checked live and confirmed: tech(2) + RSI(6) + IV(3) +
-  // RVOL(6) + source(6) can total 23, well over LRR's own max of 10, so a
-  // stock 50%+ away from LRR with several decent-but-unremarkable secondary
-  // factors was routinely outranking one actually AT LRR. This is the exact
-  // "stacking dilutes the dominant signal" failure mode the whole score
-  // exists to avoid (52-BS-BRR alone beats the multi-factor kitchen-sink
-  // rule) — recreated by accumulation as terms were added one at a time
-  // without rechecking the total. Capped so the combined secondary terms
-  // can nudge/break ties but can never manufacture a bigger swing than a
-  // real LRR gap.
-  const secondaryRaw = techPts * 2 + factorPts;
-  const secondaryPts = Math.max(-6, Math.min(8, secondaryRaw));
-  // 2026-08-15: agreement (2a/2b/2c — Technical+Sources+MACRO 3-way, see
-  // _buyAgreementSubTier) given its OWN dedicated weight, separate from the
-  // capped secondaryPts bucket above. User: "agreeing all three sources
-  // get high score" — full agreement wasn't actually standing out: it only
-  // added +3 inside the shared secondaryPts cap, so once RSI/IV/RVOL/source
-  // already filled that cap on their own (common — many rows hit the 8-pt
-  // ceiling regardless of agreement level), the +3 changed nothing.
-  // Weighted at 60% of LRR's max (agreement is still unvalidated in this
-  // system's own history — v_agreement_scorecard has ZERO rows, unlike LRR's
-  // proven 52-BS-BRR — so it can meaningfully lift a score but can't fully
-  // override a genuinely bad LRR position on its own: 6 < LRR's 10).
-  const agreementPts = _buyAgreementSubTier(row) * 3; // 0, 3, or 6 (2c/2b/2a)
-  // LRR proximity weighted far above everything else (matches its outsized
-  // proven edge vs any combination of the other factors, see 52-BS-BRR note
-  // above) — secondaryPts can add/subtract at most 8/-6, agreementPts up to
-  // 6, both against LRR's own [-10,+10] range. Range roughly [-16, +24] (a
-  // still-falling below-LRR row's -10 LRR term is a real penalty, not a
-  // floor of 0 — see _lrrProximityScore).
-  return lrrPts * 10 + secondaryPts + agreementPts;
+  // 2026-10-28, user: IV and the supporting / opposing lines are disabled in the score (_ivPremiumPts and
+  // _supportOpposePts are kept, just not added).
+  // 2026-10-28, user: every condition is scaled to 0..3 -- no negative numbers, so a weak condition earns
+  // nothing instead of subtracting from the others. Each +-3 term is mapped by (x + 3) / 2 (the old -3 / 0 / +3
+  // become 0 / 1.5 / 3); the Final Call code is already 0..3. Volume, IV and supporting / opposing are not in
+  // the score (_volPts, _ivPremiumPts and _supportOpposePts are kept, not added). Range 0..24.
+  // PVV, the Final Call code and Sources are removed too (user, 2026-10-28; _pvvPts, _fcCodePts and _sourcesPts
+  // are kept, not added). Five terms left, range 0..15.
+  return _s03(_lrrProximityScore(row) * 3) + _s03(_rsiPts(row))
+    + _s03(_macdhPts(row)) + _s03(_agreementPts(row)) + _s03(_trendStructurePts(row));
+}
+function _s03(v) { return (v + 3) / 2; }   // a -3..+3 term onto 0..3
+function _p03(v) { return _s03(v).toFixed(1); }   // the same, as text for the popup
+
+// 2026-10-28, user: ONE formula for the Trade / Trend lines (replaces the separate position, gap and
+// distance terms): the weakest link of three checks -- price vs the Trade line, price vs the Trend line, and
+// Trade vs Trend (the gap). Each check is measured in AC (SD) units, the rules engine's scale, and has the
+// same shape: -3 at or below the line, rising in a straight line to 0 at the engine's lower breakpoint and
+// to +3 at its upper one. Breakpoints: Trade 1..5 SD (trade_rule), Trend 3..12 SD (trend_rule), gap 3..12 SD
+// (trade_trend_sd_rule). Trend above Trade is therefore -3 on the gap check, and barely clearing a line costs.
+// Any missing input = 0.
+function _trendLineCheck(d, lo, hi) {
+  if (d <= 0) return -3;
+  if (d < lo) return -3 + 3 * d / lo;
+  return Math.min(3, 3 * (d - lo) / (hi - lo));
+}
+function _trendChecks(row) {
+  if (row.last_price == null || row.trade_line_value == null || row.trend_line_value == null
+      || row.ac == null || Number(row.ac) <= 0 || row.trade_trend_sd == null) return null;
+  const p = Number(row.last_price), ac = Number(row.ac);
+  return { trade: _trendLineCheck((p - Number(row.trade_line_value)) / ac, 1, 5),
+           trend: _trendLineCheck((p - Number(row.trend_line_value)) / ac, 3, 12),
+           gap:   _trendLineCheck(Number(row.trade_trend_sd), 3, 12) };
+}
+function _trendStructurePts(row) {
+  const c = _trendChecks(row);
+  return c ? Math.min(c.trade, c.trend, c.gap) : 0;
+}
+
+// 2026-10-28, user: score the sources that support vs oppose the buy -- every source that says buy
+// +1, every source that says sell -1 (warning-only sources like "SSS weight fell" are not counted),
+// net capped at +-3. Same buy/sell reading as the Sources column (actionDisplay side).
+function _sourcesLists(row) {
+  const out = { buy: [], sell: [] };
+  for (const e of _sourcesOf(row)) {
+    if (e.warning_only) continue;
+    const sd = actionDisplay((e.action || '').toUpperCase()).side;
+    if (sd === 'buy' || sd === 'sell') out[sd].push((e.source || e.source_code || '?') + ' ' + (e.action || ''));
+  }
+  return out;
+}
+function _sourcesPts(row) {
+  const l = _sourcesLists(row);
+  return Math.max(-3, Math.min(3, l.buy.length - l.sell.length));
+}
+
+// 2026-10-28, user: the "Supporting this BUY" / "Against buying" lists on the Action cell (_signalReasons)
+// as a score term: each line +1 / -1, net capped at +-3. Lines already scored elsewhere (RSI, IV spike, high
+// volume on an up day, price at TRR) and the Rules (edge) lines (not decided yet) are left out so nothing
+// counts twice.
+const _SUPPORT_SCORED_ELSEWHERE = [/^RSI /, /^IV spiked/, /^VLM:/, /^Caution: price at TRR/, /^Rule /, /^Sell rule /];
+function _supportOpposeLines(row) {
+  const sig = _signalReasons(row, 'buy');
+  const keep = s => !_SUPPORT_SCORED_ELSEWHERE.some(re => re.test(s));
+  return { support: sig.buy.filter(keep), oppose: sig.warn.filter(keep) };
+}
+function _supportOpposePts(row) {
+  const l = _supportOpposeLines(row);
+  return Math.max(-3, Math.min(3, l.support.length - l.oppose.length));
+}
+
+// 2026-10-28, user: the Final Call's buy code as a score term -- Buy More +3, Buy Some +1.5,
+// Buy To Min 0. Read-only: it never changes the Final Call itself.
+function _fcCodePts(row) {
+  const c = (row.final_code || '').toUpperCase();
+  return c === 'BM' ? 3 : c === 'BS' ? 1.5 : 0;
+}
+
+// 2026-10-28, user: IV scored from the grid's own rich / cheap labels, a different number per label.
+// Premium = IV / HV - 1 in % (the IV column's iv_to_hv_discount flipped; falls back to d_iv_to_hv).
+// very cheap (<= -30%) +3, cheap (<= -10%) +1.5, fair 0, rich (>= 10%) -1.5, very rich (>= 30%) -3.
+// A historical vol of 10% or less is rounding noise (the grid marks it *), so it scores 0.
+function _ivPremium(row) {
+  if (row.iv_to_hv_discount != null) return -Number(row.iv_to_hv_discount);
+  const ratio = row.d_iv_to_hv != null ? Number(row.d_iv_to_hv) : null;
+  return ratio != null && isFinite(ratio) && ratio > 0 ? (ratio - 1) * 100 : null;
+}
+function _ivPremiumPts(row) {
+  const pr = _ivPremium(row);
+  if (pr == null || (row.hv != null && Number(row.hv) * 100 <= 10)) return 0;
+  return pr >= 30 ? -3 : pr >= 10 ? -1.5 : pr <= -30 ? 3 : pr <= -10 ? 1.5 : 0;
+}
+
+// 2026-10-28, user: RSI and Volume score by where the value sits, not by bucket win rate
+// (the "Neutral" / "Normal" buckets beat the all-stock baseline, so nearly every stock got the
+// full +3 and the terms decided nothing). RSI: breakpoints from the rules engine's rsi_rule
+// (ref_trig_atomic_rule id 45: weight 3 below 45, 2 between 45 and 70, 1 above 70) -- +3 at
+// or below 45, -3 at or above 70, straight line between. Volume: RVOL 0.5 = +3 (quiet
+// pullback), 1.0 = 0, the avoid threshold (default 1.5) = -3 (heavy volume, either
+// direction, is a caution on a buy -- PVV's BUY_DIP vs SELL_WATCH reading).
+const _RSI_PTS_LO = 45, _RSI_PTS_HI = 70;
+function _rsiPts(row) {
+  if (row.rsi == null) return 0;
+  return Math.max(-3, Math.min(3, 3 - 6 * (Number(row.rsi) - _RSI_PTS_LO) / (_RSI_PTS_HI - _RSI_PTS_LO)));
+}
+// 2026-10-28, user: Volume now scores the Vlm column's own label (vlm_action, from the 10 volume rules in
+// etl/derive_v2.py) instead of the RVOL ramp above: Accumulate +3, Watch 0, Avoid -3, no label 0.
+function _volPts(row) {
+  const a = String(row.vlm_action || '').toUpperCase();
+  return a === 'ACCUMULATE' ? 3 : a === 'AVOID' ? -3 : 0;
 }
 
 // Structured breakdown for the tradability badge's popover (2026-08-15:
@@ -1210,81 +1284,63 @@ function _tradabilityBreakdown(row) {
   const turningUpForLrr = row.pct_change != null && Number(row.pct_change) >= 0;
   items.push({
     label: 'Risk Range',
-    detail: rawPos == null ? 'no LRR/TRR data'
+    detail: (rawPos == null ? 'no LRR/TRR data'
       : rawPos < 0
         ? Math.abs(Math.round(rawPos)) + '% BELOW LRR' + (turningUpForLrr ? ' — bouncing, but still under the line' : ' — falling below LRR, be cautious')
-        : Math.round(rawPos) + '% up from LRR' + (rawPos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : rawPos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR'),
+        : Math.round(rawPos) + '% up from LRR' + (rawPos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : rawPos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR'))
+      + ' (' + _p03(_lrrProximityScore(row) * 3) + ' of 3)',
     color: rawPos == null ? '#94a3b8'
       : rawPos < 0 ? (turningUpForLrr ? '#d97706' : '#dc2626')
       : rawPos <= 15 ? '#16a34a' : rawPos <= 40 ? '#d97706' : '#94a3b8',
   });
 
-  const tech = (row.rr_action || '').toUpperCase();
-  const techRipe = _ENTRY_RIPE_TECH.indexOf(tech) !== -1;
-  items.push({
-    label: 'Technical',
-    detail: tech ? (tech + (techRipe ? ' — entry-ripe' : '')) : 'no Technical (QS) code',
-    color: techRipe ? '#16a34a' : '#94a3b8',
-  });
-
   const rsiB = _rsiBucket(row.rsi);
-  const rsiD = _factorWinRateDelta('RSI', rsiB);
+  const rsiP = _rsiPts(row);
   items.push({
     label: 'RSI',
-    detail: (row.rsi != null ? Number(row.rsi).toFixed(1) + ' — ' : '') + (rsiB || 'no data') + (rsiD != null ? ' (' + fmtDelta(rsiD) + ')' : ''),
-    color: _tradabilityDeltaColor(rsiD),
+    detail: (row.rsi != null ? Number(row.rsi).toFixed(1) + ' — ' : '') + (rsiB || 'no data') + (row.rsi != null ? ' (' + _p03(rsiP) + ' of 3)' : ''),
+    color: rsiP > 1 ? '#16a34a' : rsiP < -1 ? '#dc2626' : '#94a3b8',
   });
 
   // IV: self-relative ratio (user's own ThinkOrSwim study — this symbol's
   // own IV vs its own 63-day baseline), not the cross-sectional percentile
   // bucket — see _ivRatioScore's comment for why.
-  const ivRatio = row.iv_ratio != null ? Number(row.iv_ratio) : null;
+  // 2026-10-28, user: IV is not part of the score any more, so it has no line here (the IV column still shows it).
+
+  // 2026-10-28, user: Volume is not part of the score any more, so no line here (the Vlm column still shows it).
+
+  // 2026-10-28, user: MACDH (rising from low in its 120-day range = good, falling from high = bad) and PVV are scored.
+  const mhPts = _macdhPts(row);
   items.push({
-    label: 'IV',
-    detail: ivRatio == null ? 'no data'
-      : ivRatio.toFixed(2) + 'x its own 63-day average'
-        + (ivRatio > 1.15 ? ' — spiked, above the 1.15x red line, be careful'
-           : ivRatio < 1 ? ' — below its own normal range'
-           : ' — elevated but not yet spiked'),
-    color: ivRatio == null ? '#94a3b8' : ivRatio > 1.15 ? '#dc2626' : ivRatio < 1 ? '#16a34a' : '#d97706',
+    label: 'MACDH',
+    detail: row.a_macdh_d_brr == null ? 'no data'
+      : (Number(row.a_macdh_d_brr) > 0 ? 'rising' : 'falling') + ' at ' + Math.round(Math.abs(Number(row.a_macdh_d_brr)) * 100)
+        + '% of its 120-day range (' + _p03(mhPts) + ' of 3)',
+    color: mhPts > 1 ? '#16a34a' : mhPts < -1 ? '#dc2626' : '#94a3b8',
   });
 
-  const rvolB = _rvolBucket(row.rvol, row.pct_change);
-  const rvolD = _factorWinRateDelta('RVOL + direction', rvolB);
+  // 2026-10-28, user: PVV, Sources and the Final Call code are not part of the score any more, so no lines here.
+
+  const tc = _trendChecks(row), tsP = _trendStructurePts(row);
   items.push({
-    label: 'Volume',
-    detail: (rvolB || 'no data') + (rvolD != null ? ' (' + fmtDelta(rvolD) + ')' : ''),
-    color: _tradabilityDeltaColor(rvolD),
+    label: 'Trade / Trend structure',
+    detail: tc ? 'weakest of: Trade ' + _p03(tc.trade) + ', Trend ' + _p03(tc.trend) + ', gap ' + _p03(tc.gap) + ' (' + _p03(tsP) + ' of 3)'
+               : 'no line data (' + _p03(0) + ' of 3)',
+    color: tsP > 0.5 ? '#16a34a' : tsP < -0.5 ? '#dc2626' : '#94a3b8',
   });
 
-  // Winning source's own win-rate track record, side-matched to this row's
-  // actual Final Call (2026-08-20: displayed text was hardcoded buy-family
-  // even on sell rows -- v_source_edge_scorecard computes sell-family win
-  // rate too, direction-aware (hit = fwd20 < 0 for REDUCE/REMOVE), just
-  // wasn't exposed via the API until now). The colored delta (srcD) driving
-  // this item's amber/green still comes from _sourceTrackRecordScore, which
-  // stays buy-calibrated by design (see its own header comment) — only the
-  // win-rate number/label shown below is side-aware.
-  const src = (row.winning_source || '').toString().toUpperCase();
-  const srcSide = finalCall(row).side;
-  const srcSc = ((state.sourceScorecard || {})[src] || {})[srcSide];
-  const srcHasData = !!src && !!srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5;
-  const srcD = _sourceTrackRecordScore(row);
-  items.push({
-    label: 'Source',
-    detail: !src ? 'no winning source'
-      : !srcHasData ? src + (srcSide === 'buy' || srcSide === 'sell' ? ' — not enough ' + srcSide + ' history yet' : ' — no directional read')
-      : src + ': ' + Math.round(srcSc.win_rate_20d * 100) + '% ' + srcSide + ' win rate (n=' + srcSc.n + ') (' + fmtDelta(srcD) + ')',
-    color: _tradabilityDeltaColor(srcHasData ? srcD : null),
-  });
 
-  const subtier = _buyAgreementSubTier(row);
+  // 2026-10-28, user: the supporting / opposing lines are not part of the score any more, so no line here
+  // (the Action cell's ▲ / ⚠ popovers still list them).
+
+  const agrP = _agreementPts(row);
   items.push({
     label: 'Agreement',
-    detail: subtier === 2 ? '3-way — Technical + Sources + MACRO all agree'
-          : subtier === 1 ? 'Partial — 2 of 3 agree, none opposing'
-          : 'Weak/solo — not independently corroborated',
-    color: subtier === 2 ? '#16a34a' : subtier === 1 ? '#d97706' : '#94a3b8',
+    detail: (agrP === 3 ? '3-way — Technical + Sources + MACRO all agree'
+          : agrP === 1.5 ? 'Partial — 2 of 3 agree, none opposing'
+          : agrP === -3 ? 'Opposed — at least one of Technical / Sources / MACRO says sell'
+          : 'Weak/solo — not independently corroborated') + ' (' + _p03(agrP) + ' of 3)',
+    color: agrP === 3 ? '#16a34a' : agrP === 1.5 ? '#d97706' : agrP < 0 ? '#dc2626' : '#94a3b8',
   });
 
   return items;
@@ -1298,7 +1354,10 @@ function _tradabilityBreakdown(row) {
 // top-10% >= 14.00. Set to 12 (~top 15-20%, a bit more permissive than a
 // strict top-10% cutoff so it's not ONLY the near-LRR-plus-agreement rows
 // showing it). Revisit again after a few more weeks of live data.
-const _TRADABILITY_BADGE_MIN = 12;
+// 2026-10-28: re-cut for the new +-3 scale (max 33, 0 = neutral): 8 gives the badge to about half of the
+// day's candidate buys (the old 12 did 54%); green at 12 keeps the old 4-point gap. It no longer gates Trade.
+const _TRADABILITY_BADGE_MIN = 9;
+const _TRADABILITY_GREEN_MIN = 10;
 
 // ── Buy-noise gate (TASK_120 "Buy-noise gate" section) ──────────────────────
 // Diagnosis E.3: ~4,635 ADD recs over 40 anchors (~116/day), 93% unheld —
@@ -1822,7 +1881,7 @@ function _tradabilityIconSvg(size) {
 function _actpopTradIconHtml(row) {
   const score = _buyTradabilityScore(row);
   const meetsMin = score >= _TRADABILITY_BADGE_MIN;
-  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
+  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
   // icon itself goes into .disabled styling (grey, same treatment as a
   // non-buy row before the always-show change) whenever the score doesn't
   // clear _TRADABILITY_BADGE_MIN -- previously stayed "active"-looking
@@ -2486,7 +2545,7 @@ function _actpopNeutralLine(row) {
 // doesn't misread as a sell-side stat.
 function _actpopTradabilityHtml(row) {
   const score = _buyTradabilityScore(row);
-  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
   const items = _tradabilityBreakdown(row).map(it =>
     `<div class="actpop-trad-item"><b style="color:${it.color};">${escapeHtml(it.label)}</b>: `
     + `<span style="color:#374151;">${escapeHtml(it.detail)}</span></div>`).join('');
@@ -2587,6 +2646,7 @@ function _ctrlC(html, extra) { return html ? `<div class="actpop-ctrl-c${extra ?
 // "Stop breached" line (skipped when the stop gated the buy -- the Stop driver row already says it). 2026-08-20: shows the actual line price
 // (trade_line_value / trend_line_value, the same fields the Td/Tn header boxes show).
 function _actpopStopBannerHtml(row) {
+  return '';   // 2026-10-26, user: the "Stop breached" banner is not needed (Technical already reads the Trade/Trend lines)
   if (!(row.stop_breached && !_stopGated(row))) return '';
   const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
   const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';

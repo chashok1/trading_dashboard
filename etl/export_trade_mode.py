@@ -57,7 +57,7 @@ _MACRO_SELL = {"STM", "SA"}
 _SRC_BUY = {"ADD", "INCREASE"}
 _SRC_SELL = {"REDUCE", "REMOVE"}
 _TECH_SELL = {"SA", "STM", "SS", "SO"}
-_TRADABILITY_BADGE_MIN = 12
+_TRADABILITY_BADGE_MIN = 9  # 2026-10-28: re-cut for the +-3 scale (was 12)
 _PVV_BUY_SIDE = ("BUY_LRR", "BUY_DIP", "BUY_WATCH")
 
 
@@ -138,19 +138,172 @@ def _lrr_proximity_score(row):
         if not turning_up:
             return -1
         return max(0, 0.3 - abs(raw_pos) / 100)
-    base = max(0, 1 - raw_pos / 40)
-    return base * (1 if turning_up else 0.7)
+    # Rules engine brrpct_lrr breakpoints (35% / 75%): +1 at or below 35%, -1 at or above 75%.
+    return max(-1, min(1, 1 - 2 * (raw_pos - 35) / 40))
 
 
-def _source_track_record_score(row, source_scorecard, factor_scorecard):
-    src = str(row.get("winning_source") or "").upper()
-    sc = (source_scorecard.get(src) or {}).get("buy")
-    base = factor_scorecard.get("Baseline|All stocks")
-    if (not sc or sc.get("win_rate_20d") is None or (sc.get("n") or 0) < 5
-            or not base or base.get("win_rate") is None):
+def _rsi_pts(row, overbought, oversold):
+    """Rules engine rsi_rule breakpoints (45 / 70): +3 at or below 45, -3 at or above 70,
+    straight line between. overbought/oversold args kept for call-site compatibility."""
+    if row.get("rsi") is None:
         return 0
-    delta = (float(sc["win_rate_20d"]) - float(base["win_rate"])) * 100
-    return max(-3, min(6, delta))
+    return max(-3, min(3, 3 - 6 * (float(row["rsi"]) - 45) / (70 - 45)))
+
+
+def _vol_pts(row, threshold):
+    """The Vlm column's own label (vlm_action): Accumulate +3, Watch 0, Avoid -3, no label 0.
+    `threshold` kept for call-site compatibility (the old RVOL ramp)."""
+    a = str(row.get("vlm_action") or "").upper()
+    return 3 if a == "ACCUMULATE" else -3 if a == "AVOID" else 0
+
+
+def _iv_premium_pts(row):
+    """IV / HV - 1 in % (the grid's rich / cheap labels): very cheap +3, cheap +1.5, fair 0,
+    rich -1.5, very rich -3. Historical vol of 10% or less is rounding noise -> 0."""
+    if row.get("iv_to_hv_discount") is not None:
+        pr = -float(row["iv_to_hv_discount"])
+    else:
+        ratio = row.get("d_iv_to_hv")
+        if ratio is None or float(ratio) <= 0:
+            return 0
+        pr = (float(ratio) - 1) * 100
+    if row.get("hv") is not None and float(row["hv"]) * 100 <= 10:
+        return 0
+    return -3 if pr >= 30 else -1.5 if pr >= 10 else 3 if pr <= -30 else 1.5 if pr <= -10 else 0
+
+
+def _as_list(v):
+    if isinstance(v, str):
+        try:
+            v = json.loads(v)
+        except ValueError:
+            return []
+    return v if isinstance(v, list) else []
+
+
+def _support_oppose_pts(row, factor_scorecard):
+    """Server-side subset of web/actionable_pops.js::_supportOpposePts: +1 per supporting line, -1 per
+    opposing line, net capped at +-3. Lines already scored (RSI, IV, volume, TRR) and Rules are left out,
+    same as the screen. NOT mirrored here (need browser-only state): the 'not investable' volatility-zone
+    lines and the inverting yield curve line for Financials."""
+    sup = opp = 0
+    for f in _as_list(row.get("driver_flags")):
+        v = f.get("verdict")
+        if v in ("headwind", "stretched"):
+            opp += 1
+        elif v == "tailwind":
+            sup += 1
+    if row.get("warn_added_this_leg"):
+        opp += 1
+    sector = row.get("sector")
+    if row.get("sector_stance") is not None and float(row["sector_stance"]) < 0 and sector and sector != "N/A":
+        opp += 1
+    base = factor_scorecard.get("Baseline|All stocks")
+
+    def gated_delta(factor, bucket):
+        r = factor_scorecard.get(f"{factor}|{bucket}")
+        if not r or r.get("win_rate") is None or not base or base.get("win_rate") is None:
+            return None
+        if (r.get("n_symbols") or 0) < 5:
+            return None
+        return (float(r["win_rate"]) - float(base["win_rate"])) * 100
+
+    src = str(row.get("winning_source") or "").upper()
+    d = gated_delta("Winning source", src) if src else None
+    if d is not None and d < -3:
+        opp += 1
+    d = gated_delta("Sector", sector) if sector and sector != "N/A" else None
+    if d is not None and d < -3:
+        opp += 1
+    opp += sum(1 for e in _as_list(row.get("source_actions")) if e.get("warning_only"))
+    wc = row.get("why_card")
+    if isinstance(wc, str):
+        try:
+            wc = json.loads(wc)
+        except ValueError:
+            wc = None
+    if isinstance(wc, dict):
+        for step in wc.get("steps") or []:
+            if step.get("key") == "technical":
+                opp += sum(1 for ln in step.get("lines") or [] if ln.get("warn"))
+    return max(-3, min(3, sup - opp))
+
+
+_ACT_BUY = {"INCREASE", "BS", "BM", "ADD", "BMN", "BW", "BSW", "BR", "BC", "BRW", "B"}
+_ACT_SELL = {"REMOVE", "SA", "REDUCE", "SS", "STM", "OVER_MAX", "SO", "SW", "SWW", "S"}
+
+
+def _sources_pts(row):
+    """Sources saying buy +1 / sell -1 (warning-only skipped), net capped at +-3. Mirrors
+    web/actionable_pops.js::_sourcesPts (buy / sell sets mirror web/actions.js)."""
+    n = 0
+    for e in _as_list(row.get("source_actions")):
+        if e.get("warning_only"):
+            continue
+        a = str(e.get("action") or "").upper()
+        n += 1 if a in _ACT_BUY else -1 if a in _ACT_SELL else 0
+    return max(-3, min(3, n))
+
+
+def _trend_line_check(d, lo, hi):
+    """-3 at or below the line, rising in a straight line to 0 at `lo` and +3 at `hi` (AC / SD units)."""
+    if d <= 0:
+        return -3.0
+    if d < lo:
+        return -3 + 3 * d / lo
+    return min(3.0, 3 * (d - lo) / (hi - lo))
+
+
+def _trend_structure_pts(row):
+    """ONE formula for the Trade / Trend lines (mirrors web/actionable_pops.js::_trendStructurePts): the weakest
+    of three checks -- price vs Trade (1..5 SD, trade_rule), price vs Trend (3..12 SD, trend_rule), and Trade vs
+    Trend, the gap (3..12 SD, trade_trend_sd_rule). Any missing input = 0."""
+    p, a, e, ac, g = (row.get(k) for k in ("last_price", "trade_line_value", "trend_line_value", "ac", "trade_trend_sd"))
+    if None in (p, a, e, ac, g) or float(ac) <= 0:
+        return 0
+    p, a, e, ac, g = float(p), float(a), float(e), float(ac), float(g)
+    return min(_trend_line_check((p - a) / ac, 1, 5), _trend_line_check((p - e) / ac, 3, 12),
+               _trend_line_check(g, 3, 12))
+
+
+def _fc_code_pts(row):
+    """Final Call buy code as a score term: Buy More +3, Buy Some +1.5, Buy To Min 0."""
+    code = str(row.get("final_code") or "").upper()
+    return 3 if code == "BM" else 1.5 if code == "BS" else 0
+
+
+def _macdh_pts(row):
+    """a_macdh_d_brr = position in the 120-day MACDH range (0..1), sign = today's
+    direction. Rising from low in the range scores most, falling from high scores least."""
+    v = row.get("a_macdh_d_brr")
+    if v is None:
+        return 0
+    v = float(v)
+    if v > 0:
+        return 3 * (1 - min(v, 1))
+    if v < 0:
+        return 3 * max(v, -1)
+    return 0
+
+
+_PVV_PTS = {"BUY_LRR": 3, "BUY_DIP": 3, "BUY_WATCH": 1.5, "TRIM": -1.5,
+            "REDUCE": -3, "SELL": -3, "SELL_WATCH": -3, "AVOID": -3}
+
+
+def _pvv_pts(row):
+    return _PVV_PTS.get(str(row.get("pvv_decision") or "").upper(), 0)
+
+
+def _agreement_pts(row):
+    sub = _buy_agreement_sub_tier(row)
+    if sub == 2:
+        return 3
+    if sub == 1:
+        return 1.5
+    m = str(row.get("macro_value") or "").upper()
+    s = str(row.get("consolidated_action") or "").upper()
+    t = str(row.get("rr_action") or "").upper()
+    return -3 if (t in _TECH_SELL or s in _SRC_SELL or m in _MACRO_SELL) else 0
 
 
 def _buy_agreement_sub_tier(row):
@@ -171,23 +324,20 @@ def _buy_agreement_sub_tier(row):
 
 def _buy_tradability_score(row, rsi_overbought, rsi_oversold, rvol_threshold,
                             factor_scorecard, source_scorecard):
-    tech = str(row.get("rr_action") or "").upper()
-    tech_pts = 1 if tech in _ENTRY_RIPE_TECH else 0
-    lrr_pts = _lrr_proximity_score(row)
-    rsi_delta = _factor_win_rate_delta(
-        factor_scorecard, "RSI", _rsi_bucket(row.get("rsi"), rsi_overbought, rsi_oversold))
-    rvol_delta = _factor_win_rate_delta(
-        factor_scorecard, "RVOL + direction",
-        _rvol_bucket(row.get("rvol"), row.get("pct_change"), rvol_threshold))
+    # 2026-10-28, user: every condition is scaled to 0..3 (no negative numbers, so a weak condition earns
+    # nothing instead of subtracting from the others). Each +-3 term is mapped by (x + 3) / 2, so the old
+    # -3 / 0 / +3 become 0 / 1.5 / 3; the Final Call code is already 0..3 and is added as it is. Volume, IV,
+    # supporting / opposing, Technical and Source track record are not in the score (their functions are kept).
+    return (_s03(_lrr_proximity_score(row) * 3)
+            + _s03(_rsi_pts(row, rsi_overbought, rsi_oversold))
+            + _s03(_macdh_pts(row))
+            + _s03(_agreement_pts(row))  # PVV, Final Call code and Sources removed (user, 2026-10-28); functions kept, unused
+            + _s03(_trend_structure_pts(row)))
 
-    def clamp(v):
-        return 0 if v is None else max(-3, min(6, v))
 
-    factor_pts = (clamp(rsi_delta) + _iv_ratio_score(row.get("iv_ratio")) + clamp(rvol_delta)
-                  + _source_track_record_score(row, source_scorecard, factor_scorecard))
-    secondary_pts = max(-6, min(8, tech_pts * 2 + factor_pts))
-    agreement_pts = _buy_agreement_sub_tier(row) * 3
-    return lrr_pts * 10 + secondary_pts + agreement_pts
+def _s03(v):
+    """Map a -3..+3 term onto 0..3."""
+    return (v + 3) / 2
 
 
 def _is_true(v) -> bool:
@@ -196,8 +346,13 @@ def _is_true(v) -> bool:
 
 def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold,
                         factor_scorecard, source_scorecard):
+    # 2026-10-28, user: Trade rules reset -- mirrors web/actionable.js::_isTradeModeQualifyingBuy(Loose).
+    # BM / BMN / BS, feasible, Technical ripe (RTA skips), MACRO not SA/STM unless held; macro instruments and
+    # Fixed Income excluded; PVV not AVOID; BMN only above the Trade line. No stop-breach test, no score cut-off.
     code = str(row.get("final_code") or "").upper()
-    if code not in ("BM", "BMN"):
+    if code not in ("BM", "BMN", "BS"):
+        return False
+    if _is_true(row.get("is_macro_instrument")) or str(row.get("asset_class") or "").lower() == "fixed income":
         return False
     if not _is_true(row.get("fc_feasible")):
         return False
@@ -205,52 +360,34 @@ def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold
     tech = str(row.get("rr_action") or "").upper()
     if src not in _TECH_GATE_EXEMPT_SRC and tech not in _ENTRY_RIPE_TECH:
         return False
-    if row.get("stop_breached"):
-        return False
     mv = str(row.get("macro_value") or "").upper()
-    if mv in ("SA", "STM"):
+    if mv in ("SA", "STM") and not row.get("held_today"):
         return False
     if strict:
-        if _is_true(row.get("is_macro_instrument")):
-            return False
-        score = _buy_tradability_score(row, rsi_overbought, rsi_oversold, rvol_threshold,
-                                        factor_scorecard, source_scorecard)
-        if score < _TRADABILITY_BADGE_MIN:
-            return False
-        # 2026-08-27, 3rd Strict-only tightening pass -- closes the RTA
-        # tech-gate EXEMPTION above for Strict mode specifically (non-strict
-        # keeps it; SSSCHG/TOP5 lost their own exemption entirely
-        # 2026-09-12), mirroring web/actionable.js's own
-        # _isTradeModeQualifyingBuy change (see module docstring).
-        # User: "In Trade + Strict mode, don't include the ones that
-        # technicals are not aligned for today (AMZN, TJX)."
-        if tech not in _ENTRY_RIPE_TECH:
-            return False
         # 2026-08-27, 4th Strict-only tightening pass -- mirrors
         # web/actionable.js's own _isTradeModeQualifyingBuy change (see
         # module docstring). User: "Also remove PVV -> AVOID from strict
         # mode."
         if str(row.get("pvv_decision") or "").upper() == "AVOID":
             return False
-        # 2026-08-28, 5th Strict-only tightening pass -- mirrors
-        # web/actionable.js's own _isTradeModeQualifyingBuy change (see
-        # module docstring). BUY TO MIN (BMN, a starter position -- not yet
-        # held) only qualifies when price is actually above the Trade line.
-        # User: "include BUYTOMIN only if it is above trade."
+        # 2026-10-28, user: every Buy To Min (BMN) moves to Trade2 -- Trade keeps Buy More and Buy Some only.
+        # (The "BMN only above the Trade line" test stays removed.) Mirrors web/actionable.js.
         if code == "BMN":
-            last_price = row.get("last_price")
-            trade_line = row.get("trade_line_value")
-            if last_price is None or trade_line is None or not (last_price > trade_line):
-                return False
+            return False
     return True
 
 
 def _is_held_sa_sell(row) -> bool:
-    return bool(row.get("held_today")) and str(row.get("final_code") or "").upper() == "SA"
+    """Held sell (SA / SS / STM), mirrors web/actionable.js::_isTradeModeHeldSell. Macro instruments and
+    Fixed Income are excluded, same as the screen."""
+    if _is_true(row.get("is_macro_instrument")) or str(row.get("asset_class") or "").lower() == "fixed income":
+        return False
+    return bool(row.get("held_today")) and str(row.get("final_code") or "").upper() in ("SA", "SS", "STM")
 
 
 def _is_stop_breach(row) -> bool:
-    return bool(row.get("held_today")) and bool(row.get("stop_breached"))
+    # 2026-10-28, user: stop-breach rows are no longer part of Trade.
+    return False
 
 
 def _get_ac_for_symbol(tos_symbol: str, as_of_date) -> "float | None":
@@ -320,9 +457,11 @@ def build_trade_mode_export(strict: bool = True) -> dict:
     # each tier still broken by Tradability Score descending. User: "Bring
     # BUY_DIP stocks to the top in Buys." -> "NO ACTION ones are coming in
     # the middle."
+    # 2026-10-28, user: within the same Final Call action, sort by Tradability Score descending (the PVV
+    # grouping is gone -- PVV is already a +-3 term in the score). Action order: Buy More, Buy Some, Buy To Min.
     def _buy_sort_key(r):
-        pvv = str(r.get("pvv_decision") or "").upper()
-        return (pvv == "BUY_DIP", pvv in _PVV_BUY_SIDE, r.get("_tradability_score", 0))
+        code = str(r.get("final_code") or "").upper()
+        return ({"BM": 2, "BS": 1}.get(code, 0), r.get("_tradability_score", 0))
     buys.sort(key=_buy_sort_key, reverse=True)
     as_of_date = rows[0].get("as_of_date") if rows else None
     return {"buys": buys, "sells": sells, "breaches": breaches, "as_of_date": as_of_date}
