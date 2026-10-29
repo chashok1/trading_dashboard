@@ -38,16 +38,28 @@ def test_vroc_is_none_without_a_volume_14_rows_back():
     assert _studies_series(_rows([10.0] * 21, vols), 21)[20]["vroc"] is None
 
 
-def test_spike_study_up_then_down_markers():
+def test_spike_study_flat_series_has_no_arrows_and_ratio_one():
     from api.routers.dash import _spike_study
-    vals = [1.0] * 70 + [1.3] + [1.2] + [0.5] * 3
-    avg, thr, mk = _spike_study(vals)
-    assert mk[70] == "up" and mk[71] is None
-    assert mk[72] == "down"
-    assert abs(thr[70] - avg[70] * 1.15) < 1e-9
+    sm, white, red, ratio, mk = _spike_study([1.0] * 100)
+    assert not any(mk) and abs(ratio[-1] - 1.0) < 1e-9
+    assert abs(white[-1] - 1.0) < 1e-9 and abs(red[-1] - 1.15) < 1e-9
+
+
+def test_spike_study_spike_then_normalize():
+    from api.routers.dash import _spike_study
+    vals = [1.0] * 80 + [2.0] * 8 + [0.5] * 40
+    mk = _spike_study(vals)[4]
+    assert mk.count("up") == 1 and mk.count("down") == 1
+    assert mk.index("up") < mk.index("down")
+
+
+def test_spike_study_normal_threshold_scales_the_white_line_for_hv():
+    from api.routers.dash import _spike_study
+    white = _spike_study([1.0] * 100, 63, 1.15, 0.95, 3, 5)[1]
+    assert abs(white[-1] - 0.95) < 1e-9
 
 
 def test_spike_study_needs_enough_history():
     from api.routers.dash import _spike_study
-    avg, thr, mk = _spike_study([1.0] * 10 + [5.0])
-    assert avg[-1] is None and mk[-1] is None
+    sm, white, red, ratio, mk = _spike_study([1.0] * 10 + [5.0])
+    assert white[-1] is None and ratio[-1] is None and mk[-1] is None

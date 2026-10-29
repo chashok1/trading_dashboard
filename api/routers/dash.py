@@ -3558,46 +3558,65 @@ def _studies_series(rows, days):
     e12, e26 = _ema(closes, 12), _ema(closes, 26)
     macd = [(a - b) if a is not None and b is not None else None for a, b in zip(e12, e26)]
     sig = _ema(macd, 9)
-    hv_in = [r[6] if len(r) > 6 else None for r in rows]
-    iv_avg, iv_thr, iv_mk = _spike_study([r[4] for r in rows])
-    hv_avg, hv_thr, hv_mk = _spike_study(hv_in)
+    hv_in, _last = [], None
+    for r in rows:                       # a day missing from the TOS export carries the previous HV forward (the averages need no gaps)
+        _last = r[6] if len(r) > 6 and r[6] is not None else _last
+        hv_in.append(_last)
+    iv_sm, iv_avg, iv_thr, iv_rt, iv_mk = _spike_study([r[4] for r in rows], 63, 1.15, 1.0, 4, 5)       # A_IV_Spikes(63, 1.15, 1, 4, 5)
+    hv_sm, hv_avg, hv_thr, hv_rt, hv_mk = _spike_study(hv_in, 63, 1.15, 0.95, 3, 5)                       # A_HV_Spike(63, 1.15, 0.95, 3, 5)
     out = []
     for i, r in enumerate(rows):
         v, v14 = r[2], (rows[i - 14][2] if i >= 14 else None)
         out.append({
-            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": r[4], "iv_ratio": r[5],
+            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": r[4], "iv_ratio": iv_rt[i],
             "macd": macd[i], "signal": sig[i],
             "hist": (macd[i] - sig[i]) if macd[i] is not None and sig[i] is not None else None,
             "vroc": ((v - v14) / v14 * 100.0) if v is not None and v14 else None,
-            "iv_avg": iv_avg[i], "iv_thr": iv_thr[i], "iv_spike": iv_mk[i],
-            "hv": hv_in[i], "hv_avg": hv_avg[i], "hv_thr": hv_thr[i], "hv_spike": hv_mk[i],
-            "hv_ratio": (hv_in[i] / hv_avg[i]) if hv_in[i] is not None and hv_avg[i] else None,
+            "iv_sm": iv_sm[i], "iv_avg": iv_avg[i], "iv_thr": iv_thr[i], "iv_spike": iv_mk[i],
+            "hv": hv_in[i], "hv_sm": hv_sm[i], "hv_avg": hv_avg[i], "hv_thr": hv_thr[i], "hv_spike": hv_mk[i],
+            "hv_ratio": hv_rt[i],
         })
     return out[-days:]
 
 
-_SPIKE_LEN, _SPIKE_MULT = 63, 1.15
+def _mean_full(xs, n):
+    """Mean of the last n values; None unless the window is full and has no gaps (thinkscript Average over NaN data)."""
+    w = xs[-n:]
+    return sum(w) / n if len(w) == n and None not in w else None
 
 
-def _spike_study(vals):
-    """Rolling 63-day average, the upper line (1.15 x average) and spike markers for a volatility series.
-    Read from the user's TOS A_IV_Spikes chart: ratio = value / 63-day average; the upper line is 1.15 x the average.
-    'up' when the ratio first reaches 1.15; 'down' when it later falls back below 1.0 (INFERRED -- the studies' own
-    arrow rules were not available)."""
-    avg, thr, mk, live = [], [], [], False
-    for i, v in enumerate(vals):
-        win = [x for x in vals[max(0, i - _SPIKE_LEN + 1):i + 1] if x is not None]
-        a = sum(win) / len(win) if len(win) >= _SPIKE_LEN * 0.8 else None
-        avg.append(a)
-        thr.append(a * _SPIKE_MULT if a is not None else None)
-        m = None
-        if a and v is not None:
-            if not live and v >= a * _SPIKE_MULT:
-                live, m = True, "up"
-            elif live and v < a:
-                live, m = False, "down"
-        mk.append(m)
-    return avg, thr, mk
+def _spike_study(vals, length=63, spike_thr=1.15, normal_thr=1.0, smooth_len=4, exclude=5):
+    """The user's TOS "Implied Volatility Spike & Normalization Detector" (A_IV_Spikes(63, 1.15, 1, 4, 5);
+    A_HV_Spike(63, 1.15, 0.95, 3, 5) is the same code with other inputs), translated line for line:
+      ivSmooth = Average(v, smoothLen); avgExcl = Average(ivSmooth[excludeDays], length); avgNormal = Average(ivSmooth, length)
+      spike = preSpikeRatio[1] <= spikeThr and preSpikeRatio > spikeThr   (preSpikeRatio = ivSmooth / avgExcl)
+      wasSpiked: set by a spike, cleared when ivSmooth / avgNormal crosses below normalThr
+      avgIV = avgNormal while wasSpiked else avgExcl;  ratio = ivSmooth / avgIV
+      normalize = wasSpiked[1] and ratio[1] >= normalThr and ratio < normalThr
+    Plots: grey = ivSmooth, white dashed = avgIV * normalThr, red dashed = avgIV * spikeThr, up/down arrows at ivSmooth.
+    Returns (smoothed, white line, red line, ratio, markers)."""
+    n = len(vals)
+    sm = [_mean_full(vals[:i + 1], smooth_len) for i in range(n)]
+    avg_norm = [_mean_full(sm[:i + 1], length) for i in range(n)]
+    avg_excl = [avg_norm[i - exclude] if i >= exclude else None for i in range(n)]
+    pre = [sm[i] / avg_excl[i] if sm[i] is not None and avg_excl[i] else None for i in range(n)]
+    nrm = [sm[i] / avg_norm[i] if sm[i] is not None and avg_norm[i] else None for i in range(n)]
+    was, white, red, ratio, mk = False, [], [], [], []
+    ratio_prev, was_prev = None, False
+    for i in range(n):
+        spike = i > 0 and pre[i - 1] is not None and pre[i] is not None and pre[i - 1] <= spike_thr < pre[i]
+        cross_dn = i > 0 and nrm[i - 1] is not None and nrm[i] is not None and nrm[i - 1] >= normal_thr > nrm[i]
+        was_prev = was
+        was = True if spike else (False if cross_dn else was)
+        a = avg_norm[i] if was else avg_excl[i]
+        white.append(a * normal_thr if a is not None else None)
+        red.append(a * spike_thr if a is not None else None)
+        r = sm[i] / a if sm[i] is not None and a else None
+        ratio.append(r)
+        normalize = was_prev and ratio_prev is not None and r is not None and ratio_prev >= normal_thr > r
+        mk.append("up" if spike else "down" if normalize else None)
+        ratio_prev = r
+    return sm, white, red, ratio, mk
 
 
 @router.get("/api/actionable/studies")
@@ -3611,7 +3630,7 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
             SELECT as_of_date, last_price, volume, rsi, imp_volatility, iv_ratio
               FROM (SELECT * FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT :n) t
              ORDER BY as_of_date
-        """), {"sym": sym, "n": days + 70}).fetchall()    # 70 warm-up rows: MACD settling + the 63-day averages
+        """), {"sym": sym, "n": days + 110}).fetchall()    # warm-up rows: MACD settling + 63-day averages (+ smoothing and the 5 excluded days)
         hvmap = {r[0]: _f(r[1]) for r in s.execute(text("""
             SELECT DISTINCT ON (export_date) export_date, historical_vol FROM hist_td
              WHERE tos_symbol = :sym ORDER BY export_date, sequence DESC

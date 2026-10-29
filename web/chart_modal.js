@@ -337,8 +337,8 @@
       { h: 115, title: 'RSI (14, 70, 30)', series: [{ k: 'rsi', color: '#9ca3af', fmt: f1 }], refs: [30, 70] },
       { h: 140, title: 'MACD (12, 26, 9)', series: [{ k: 'hist', bars: true, signed: true, fmt: f3 }, { k: 'macd', color: '#22d3ee', fmt: f3 }, { k: 'signal', color: '#e7d9a8', fmt: f3 }], zero: true, zeroColor: '#8b5cf6' },
       { h: 100, title: 'Volume Rate Of Change (14)', series: [{ k: 'vroc', color: '#f59e0b', fmt: f1 }], zero: true, zeroColor: '#ef4444' },
-      { h: 130, title: 'Implied Volatility', mk: 'iv_spike', mkv: 'iv', series: [{ k: 'iv', color: '#22d3ee', fmt: f3 }, { k: 'iv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'iv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'iv_ratio', nodraw: true, fmt: function (v) { return 'IV Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }] },
-      { h: 130, title: 'Historical Volatility (20)', mk: 'hv_spike', mkv: 'hv', series: [{ k: 'hv', color: '#d946ef', fmt: f3 }, { k: 'hv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'hv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'hv_ratio', nodraw: true, fmt: function (v) { return 'Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }], axis: true }
+      { h: 130, title: 'Implied Volatility', mk: 'iv_spike', mkv: 'iv_sm', series: [{ k: 'iv', color: '#22d3ee', fmt: f3 }, { k: 'iv_sm', color: '#9ca3af', fmt: f3 }, { k: 'iv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'iv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'iv_ratio', nodraw: true, fmt: function (v) { return 'IV Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }] },
+      { h: 130, title: 'Historical Volatility (20)', mk: 'hv_spike', mkv: 'hv_sm', series: [{ k: 'hv', color: '#d946ef', fmt: f3 }, { k: 'hv_sm', color: '#9ca3af', fmt: f3 }, { k: 'hv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'hv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'hv_ratio', nodraw: true, fmt: function (v) { return 'Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }], axis: true }
     ];
     var n = pts.length;
     el.innerHTML = P.map(function (o, pi) { return '<div class="st-h" style="' + _SH + '">' + _sHead(pts, o, n - 1) + '</div>' + _sPanel(pts, o); }).join('');
