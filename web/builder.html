@@ -27,7 +27,7 @@
     .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 12px; }
     .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
     .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
-    .bld-grid { grid-template-columns: 255px minmax(540px, .88fr) minmax(480px, 1.12fr); }
+    .bld-grid { grid-template-columns: 255px minmax(437px, .71fr) minmax(480px, 1.12fr); }
     .bld-below { margin-top: 4px; }
     /* 2026-10-28, user: Names scrolls with the page like the other panels (was pinned: position:sticky + a fixed viewport height) */
     .bld-side { display: flex; flex-direction: column; margin-bottom: 0; }
@@ -207,7 +207,7 @@
        the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
        columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
     @media (min-width: 1001px) {
-      .bld-wrap { display: grid; grid-template-columns: 255px minmax(540px, .88fr) minmax(480px, 1.12fr); column-gap: 16px; row-gap: 0; align-items: start;
+      .bld-wrap { display: grid; grid-template-columns: 255px minmax(437px, .71fr) minmax(480px, 1.12fr); column-gap: 16px; row-gap: 0; align-items: start;
         /* rows: problems, banner, buttons, left-column cards, disclaimer. The tall Names/Picks cards span rows 3-4; the 1fr
            row 4 soaks up their extra height so the buttons' row stays short and Account sits right under the buttons. */
         grid-template-rows: auto auto auto 1fr auto; }
