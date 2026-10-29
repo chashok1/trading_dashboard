@@ -152,6 +152,7 @@
     $('srcfFactor').title = FACTOR_TIP;
     $('srcfText').oninput = renderSourceNames;
     $('selShown').onclick = selectShown;
+    $('srcNamesRows').addEventListener('click', e => { const t = e.target.closest('[data-ftype]'); if (t) toggleFilter(t.dataset.ftype, t.dataset.fval); });
     // fill each held pick's % of its class from the account's holdings (the class totals follow the 'current' mix)
     $('matchHold').onclick = matchHoldings;
     function matchHoldings() {
@@ -212,6 +213,30 @@
   const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${esc(sym)}</span>`; };
   const picked = sym => S.picks.find(p => p.sym === sym);
 
+  // 2026-10-29: tags on each Names row are click-to-filter (same filters as the bar above the list; click again to clear)
+  const STYLE_TO_FACTOR = { 'defensives': 'defensive', 'dividend': 'defensive', 'low beta': 'lowbeta', 'cyclical': 'offensive', 'small caps': 'offensive',
+    'high beta': 'highbeta', 'mid caps': 'mid', 'secular': 'growth', 'value': 'value', 'momentum': 'mom' };
+  const filterSel = { src: 'srcfSource', cls: 'srcfClass', sector: 'srcfSector', factor: 'srcfFactor' };
+  const ftag = (type, val, html, tip) => {
+    const el = type === 'quad' ? null : $(filterSel[type]);
+    const on = type === 'quad' ? !!$('srcfQuad').querySelector(`input[value="${val}"]:checked`) : (el && el.value === val);
+    return `<span class="bld-ftag${on ? ' on' : ''}" data-ftype="${type}" data-fval="${esc(val)}" title="${esc(tip)}">${html}</span>`;
+  };
+  function toggleFilter(type, val) {
+    if (type === 'quad') {
+      const c = $('srcfQuad').querySelector(`input[value="${val}"]`);
+      if (c) c.checked = !c.checked;
+    } else {
+      const el = $(filterSel[type]);
+      if (!el) return;
+      if (el.value === val) el.value = '';
+      else if ([...el.options].some(o => o.value === val)) el.value = val;
+      else return;
+      if (type === 'sector') fillIndustries('');
+    }
+    renderSourceNames();
+  }
+
   function shownNames() {
     const all = S.srcNames || [];
     const sc = $('srcfSector').value, ind = $('srcfIndustry').value;
@@ -237,6 +262,7 @@
   }
 
   function renderSourceNames() {
+    markActiveFilters();
     const all = S.srcNames || [];
     const rows = shownNames();
     $('srcNamesCount').textContent = all.length ? `${all.length} names` + (rows.length !== all.length ? ` · showing ${rows.length}` : '') : '';
@@ -245,10 +271,10 @@
     $('srcNamesRows').innerHTML = rows.map(n => {
       const b = bucketOf(n), on = !!picked(n.sym);
       const cls = b ? esc(b) : `<select data-assign="${esc(n.sym)}"><option value="">Choose...</option>${BUCKETS.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
-      const st = (n.styles || []).map(esc).join(', ') || '<span class="bld-muted">-</span>';
+      const st = (n.styles || []).map(t => { const f = STYLE_TO_FACTOR[String(t).toLowerCase()]; return f ? ftag('factor', f, esc(t), 'Filter: ' + ((FACTORS.find(x => x[0] === f) || [])[1] || f) + ' (a group of related tags)') : esc(t); }).join(', ') || '<span class="bld-muted">-</span>';
       return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${!b ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : 'Add to picks'}"></td>` +
-        `<td>${symHtml(n.sym)}</td><td>${esc(n.sources.join(', '))}</td><td>${cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? esc(n.sector) : '<span class="bld-muted">-</span>'}</td>` +
-        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}" title="Q${i + 1}: ${w || 'no view'}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td></tr>`;
+        `<td>${symHtml(n.sym)}</td><td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
+        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td></tr>`;
     }).join('') || '<tr><td colspan="9" class="bld-muted">No names match.</td></tr>';
     $('srcNamesRows').querySelectorAll('[data-pick]').forEach(c => c.onchange = () => { setPick(c.dataset.pick, c.checked); renderSourceNames(); schedule(0); });
     $('srcNamesRows').querySelectorAll('[data-assign]').forEach(sel => sel.onchange = () => {
@@ -277,7 +303,7 @@
     return '<div class="bld-viz">' + rows.map(r => {
       const pv = r.pv, tv = r.tv;
       const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#6b7fd7'));
-      return `<div class="vrow"><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
+      return `<div class="vrow${r.flt ? ' bld-frow' : ''}"${r.flt ? ` data-ftype="${r.flt[0]}" data-fval="${esc(r.flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
         `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
         `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div></div>`;
     }).join('') + '</div>';
@@ -310,13 +336,13 @@
     const tgtCell = (attr, tv, dec) => `<td class="n"><input type="number" min="0" step="${dec ? 0.05 : 1}" ${attr} value="${tv == null ? '' : tv}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}"></td>`;
     // One row. pv / hv = percent picked / held (null = nothing there). key = target key (null: no target cell);
     // asset = asset class name (its target is the mix you chose; judged against the mix after the Risk Dial).
-    const R = (label, pv, hv, tip, key, asset) => {
+    const R = (label, pv, hv, tip, key, asset, flt) => {
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : tv;
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : '<td></td>');
-      if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null });
+      if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
-      return `<tr><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
+      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
         `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
     };
     const generalTip = 'Asset class rows are % of the account. Everything below is % of the invested money on that side. Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
@@ -327,7 +353,7 @@
       const placed = (res.positions || []).filter(p => p.bucket === b).reduce((a, p) => a + p.value, 0) / amt * 100;
       placedTotal += placed;
       heldInvested += cur[b] || 0;
-      t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b);
+      t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
     t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td></tr>`;
     t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed');
@@ -338,12 +364,12 @@
     t += `<tr><td class="bld-tip" data-tip="Weighted average beta against SPY (SPY = 1.00). Names with no beta are left out.">Portfolio beta</td>${tgtCell('data-tgt="beta"', bt, true)}` +
       `<td class="n">${hasPick && P.beta != null ? `<b class="${bt != null ? judge(P.beta, bt, true) : ''}">${P.beta.toFixed(2)}</b>` : dash}</td><td class="n">${hasHeld ? fb(H.beta) : dash}</td>` +
       `${bt != null ? gapCell(P.beta, bt, true, 2, true) : gapCell(P.beta, H.beta, hasHeld, 2, false)}</tr>`;
-    t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta') + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta');
+    t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta', ['factor', 'lowbeta']) + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta', ['factor', 'highbeta']);
     t += sec('Quad favored (Bull)');
     for (const q of ['Q1', 'Q2', 'Q3', 'Q4']) {
       const pq = (P.quad || {})[q], hq = (H.quad || {})[q];
       const tip = `${q} outlook. Picks: Bull ${bd(pq, 'bull').toFixed(0)}%, Neutral ${bd(pq, 'neutral').toFixed(0)}%, Bear ${bd(pq, 'bear').toFixed(0)}%, no view ${bd(pq, 'none').toFixed(0)}%. Portfolio: Bull ${bd(hq, 'bull').toFixed(0)}%, Neutral ${bd(hq, 'neutral').toFixed(0)}%, Bear ${bd(hq, 'bear').toFixed(0)}%, no view ${bd(hq, 'none').toFixed(0)}%`;
-      t += R(q, hasPick ? bd(pq, 'bull') : null, hasHeld ? bd(hq, 'bull') : null, tip, 'quad:' + q);
+      t += R(q, hasPick ? bd(pq, 'bull') : null, hasHeld ? bd(hq, 'bull') : null, tip, 'quad:' + q, undefined, ['quad', String(['Q1', 'Q2', 'Q3', 'Q4'].indexOf(q))]);
     }
     t += sec('Sectors · equities');
     const sv = k => Math.max((P.sector || {})[k] || 0, (H.sector || {})[k] || 0, tgtOf('sector:' + k) || 0);
@@ -351,10 +377,10 @@
     Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => allSec.add(k.slice(7)));
     Object.values(S.nameCache).forEach(n => { if (n.bucket === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) allSec.add(n.sector); });
     [...allSec].sort((a, b) => sv(b) - sv(a) || a.localeCompare(b))
-      .forEach(s => { t += R(esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, null, 'sector:' + s); });
+      .forEach(s => { t += R(esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, null, 'sector:' + s, undefined, [BUCKETS.includes(s) ? 'cls' : 'sector', s]); });   // rows named after an asset class (no real sector) filter by asset class
     t += sec('Style');
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
-      .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0]); });
+      .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0], undefined, ['factor', f[0]]); });
     // 2026-10-28, user: show the sections in three columns. Cut the rows at each section break, one small table per section.
     const parts = t.split(/\u0001([^\u0002]*)\u0002/);          // ['', title1, rows1, title2, rows2, ...]
     const tables = {};
@@ -383,6 +409,7 @@
   // targets typed on the other rows are guides only: redraw the table, no server call
   function bindCmp() {
     const host = $('cmpTable');
+    if (!host.dataset.fbound) { host.dataset.fbound = '1'; host.addEventListener('click', e => { if (e.target.closest('input,select,button')) return; const t = e.target.closest('[data-ftype]'); if (t) focusFilter(t.dataset.ftype, t.dataset.fval, e.ctrlKey || e.metaKey); }); }
     host.querySelectorAll('[data-tgt]').forEach(i => i.onchange = () => {
       const k = i.dataset.tgt;
       if (i.value === '') delete S.targets[k]; else S.targets[k] = Math.max(0, parseFloat(i.value) || 0);
@@ -390,6 +417,29 @@
       bindCmp();
     });
     host.querySelectorAll('[data-tgt-asset]').forEach(i => i.onchange = () => setAssetTarget(i.dataset.tgtAsset, i.value));
+    markActiveFilters();
+  }
+
+  // plain click on a comparison row/bar = only that filter; Ctrl+click = add it to the others; clicking the sole active one clears it
+  function focusFilter(type, val, add) {
+    if (add) return toggleFilter(type, val);
+    const was = filterIsOn(type, val);
+    const others = ['srcfSource', 'srcfClass', 'srcfSector', 'srcfIndustry', 'srcfFactor', 'srcfText'].some(id => $(id).value && !(filterSel[type] === id && was))
+      || [...$('srcfQuad').querySelectorAll('input:checked')].some(c => !(type === 'quad' && was && c.value === val));
+    ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor', 'srcfText'].forEach(id => { $(id).value = ''; });
+    fillIndustries('');
+    $('srcfQuad').querySelectorAll('input').forEach(c => { c.checked = false; });
+    if (was && !others) renderSourceNames(); else toggleFilter(type, val);
+  }
+
+  // 2026-10-29: rows and bars in the comparison are click-to-filter for the Names list; the active ones are highlighted
+  function filterIsOn(type, val) {
+    if (type === 'quad') return !!$('srcfQuad').querySelector(`input[value="${val}"]:checked`);
+    const el = $(filterSel[type]);
+    return !!el && el.value === val;
+  }
+  function markActiveFilters() {
+    document.querySelectorAll('#cmpTable [data-ftype]').forEach(e => e.classList.toggle('on', filterIsOn(e.dataset.ftype, e.dataset.fval)));
   }
 
   // "Show what's missing": the target rows still short of their target, biggest shortfall first; each click filters the names list to the next one

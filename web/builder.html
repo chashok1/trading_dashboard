@@ -109,6 +109,12 @@
     .bld-stack span { display: flex; align-items: center; justify-content: flex-start; padding: 0 5px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
     .bld-stackrow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
     .bld-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .bld-frow { cursor: pointer; }
+    .bld-t tr.bld-frow:hover td:first-child, .bld-viz .vrow.bld-frow:hover .vlab { text-decoration: underline; }
+    .bld-t tr.bld-frow.on > td:first-child, .bld-viz .vrow.bld-frow.on .vlab { font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+    .bld-ftag { cursor: pointer; }
+    .bld-ftag:hover { text-decoration: underline; }
+    .bld-ftag.on { font-weight: 700; text-decoration: underline; }
     .bld-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 10px; }
     .bld-kpi { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
     .bld-kpi small { color: var(--text-2); display: block; font-size: 11px; }
@@ -359,7 +365,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261029i"></script>
+  <script src="/static/builder.js?v=20261029m"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>
