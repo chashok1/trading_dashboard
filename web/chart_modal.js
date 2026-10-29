@@ -361,7 +361,7 @@
   window.mountActpopStudies = async function (el, sym) {
     if (!el || !sym) return;
     var tok = el._tok = (el._tok || 0) + 1;
-    var note = function (t) { el.innerHTML = '<div style="color:#94a3b8;font:11px Arial,sans-serif;padding:8px;">' + t + '</div>'; };
+    var note = function (t) { el.innerHTML = '<div style="color:#94a3b8;font:11px Arial,sans-serif;padding:8px;">' + t + '</div>'; if (window.fitActpopNotes) window.fitActpopNotes(); };
     note('Loading studies...');
     try {
       var res = await fetch('/api/actionable/studies?symbol=' + encodeURIComponent(sym) + '&days=130');
@@ -374,7 +374,22 @@
       // Line the top of the Volume bar (its values strip) up with the top of the price chart on the left.
       var wrap = el.closest && el.closest('.actpop-wrap'), pc = wrap && wrap.querySelector('.actpop-gchart'), v0 = el.querySelector('.st-h');
       if (pc && v0) el.style.marginTop = Math.max(0, (parseFloat(el.style.marginTop) || 0) + pc.getBoundingClientRect().top - v0.getBoundingClientRect().top) + 'px';
+      if (window.fitActpopNotes) window.fitActpopNotes();
     } catch (e) { if (tok === el._tok) note('Studies not available.'); }
+  };
+
+  // Notes (right column, under the graphs): fill down to the bottom of the left side when the left is taller than the graphs,
+  // but never less than two graphs tall (the cap used when the left side is the shorter one).
+  window.fitActpopNotes = function () {
+    var wrap = document.querySelector('#sourcePop .actpop-wrap');
+    if (!wrap) return;
+    var left = wrap.querySelector('.actpop'), st = wrap.querySelector('.actpop-studies'), nt = wrap.querySelector('.actpop-notes'),
+        sc = nt && nt.querySelector('.actpop-notes-scroll');
+    if (!left || !st || !nt || !sc) return;
+    sc.style.maxHeight = '262px';     // measure the box's own padding/border with the default cap first
+    var gap = parseFloat(getComputedStyle(wrap).rowGap) || 0, chrome = nt.offsetHeight - sc.offsetHeight;
+    var free = left.offsetHeight - st.offsetHeight - (parseFloat(st.style.marginTop) || 0) - gap - chrome;
+    sc.style.maxHeight = Math.max(262, Math.floor(free)) + 'px';
   };
 
   function _loadChart(containerEl, tvSym) {

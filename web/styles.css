@@ -3394,7 +3394,7 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .uv-actpop-shell td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 
 /* 2026-10-29: Action popup = left (the original 828px popup, unchanged) + right studies column, same width again. */
-.actpop-wrap { display: grid; grid-template-columns: 828px 800px; align-items: start; gap: 8px; width: max-content; }
+.actpop-wrap { display: grid; grid-template-columns: 828px 800px; grid-template-rows: auto 1fr; align-items: start; gap: 8px; width: max-content; }
 /* Notes: right column, directly under the graphs, about two graphs tall (the IV + HV panels), scrolls when longer. */
 .actpop-wrap > .actpop-notes { grid-column: 2; grid-row: 2; box-sizing: border-box; width: 800px; margin-top: 0; padding: 5px 6px 6px; }
 .actpop-wrap > .actpop-notes .actpop-notes-scroll { max-height: 262px; }

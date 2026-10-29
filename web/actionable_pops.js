@@ -1440,7 +1440,7 @@ async function showNotesPop(el, sym, desc) {
 function _actpopNotesHtml(notes) {
   if (!notes || !notes.length) return '';
   // 2026-10-29, user: full notes in a scrollable panel (was top 3, cut at 160 chars).
-  let h = '<span class="actpop-notes-h">Notes</span><div class="actpop-notes-scroll">';
+  let h = '<div class="actpop-notes-scroll">';   // 2026-10-29, user: no "Notes" header row
   for (const n of notes) {
     const dt = fmtMD(n.note_date) || '';
     const src = (n.source_type || '').replace(/_/g, ' ');
@@ -1465,7 +1465,7 @@ async function _actpopLoadNotes(sym) {
     _notesCache.set(sym, notes);
   }
   const el = box();
-  if (el) el.innerHTML = _actpopNotesHtml(notes);
+  if (el) { el.innerHTML = _actpopNotesHtml(notes); if (window.fitActpopNotes) window.fitActpopNotes(); }
 }
 
 function _popInteractive() { const p = $('sourcePop'); return !!p && p.style.display !== 'none' && p.style.pointerEvents === 'auto'; }
@@ -2982,17 +2982,20 @@ function _buildActionPopHtmlV2(row) {
   const _pill = `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`;
   // 2026-10-23, user: the header pill must be the same size as the one below. In the header it is a flex item that inherits the symbol line's 22px line-height (so it was taller); line-height:normal makes it the same height as the inline one.
   const _pillHdr = _pill.replace('<span class="actpop-call', '<span style="line-height:normal;" class="actpop-call');
-  h += `<div class="actpop-symline" style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;height:18px;line-height:18px;"><div style="display:flex;align-items:center;min-width:0;"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
+  // 2026-10-29, user: the top header row (symbol + action + company + close) now sits BELOW the price chart.
+  const _hdrRow = `<div class="actpop-symline" style="position:absolute;left:0;right:0;top:-7px;z-index:1;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:800;color:#0f172a;height:18px;line-height:18px;"><div style="display:flex;align-items:center;min-width:0;"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span>`
     // 2026-10-23, user: the action pill sits between the symbol and the company name
     + `<span style="margin-left:10px;display:inline-flex;align-items:center;">${_pillHdr}</span>`
     // 2026-10-22, user: symbol always shown; company name bigger, in the outlook colour (falls back to the display name when it differs from the symbol)
     + ((row.company_name || (row.rr_name && row.rr_name !== sym))
         ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
     + `</div><div style="display:flex;align-items:center;gap:10px;">`
-    + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:18px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`
-    + `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:10px 0 6px;"><div class="scm-own-svg"></div></div>`;
-  h += `<div class="actpop-top"><div class="actpop-head">
-    <div class="actpop-sym"><div class="actpop-symline"><span style="color:${_symOutlookColor(row)}">${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
+    + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:18px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`;
+  const _chartRow = `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:4px 0 24px;"><div class="scm-own-svg"></div></div>`;   // 24px below = the 6px it had + the 18px the header row used to take, so nothing below it moves
+  h += _chartRow;
+  // 2026-10-29, user: the duplicate symbol + action line that used to sit here is blanked out (kept as empty space so nothing below it moves).
+  h += `<div class="actpop-top"><div class="actpop-head" style="position:relative;">${_hdrRow}
+    <div class="actpop-sym"><div class="actpop-symline" aria-hidden="true" style="visibility:hidden;"><span>${escapeHtml(sym)}</span><span style="margin-left:8px;">${_pill}</span></div>`
     // price / shares / earnings share one fixed band with the right-hand control groups
     // (.actpop-px-group and .actpop-ctrl-c have the same top and height, contents centered)
     + `<div class="actpop-px-group">${pxTxt}${ownLine}${(_at || tradeAmtTxt) ? `<div class="actpop-own actpop-acct-line" style="display:flex;align-items:center;gap:6px;">${_at}${tradeAmtTxt}</div>` : ''}</div>`   // 2026-10-23, user: "Bought 10/22" tag and "sell $6K" on ONE line
@@ -3090,7 +3093,7 @@ function _buildActionPopHtmlV2(row) {
   // Analyst notes (same feed as the SYMBOL-cell hover); filled async by _actpopLoadNotes.
   const _nc = _notesCache.get(row.tos_symbol);
   // 2026-10-29, user: Notes now take the full width along the bottom (both sides), so the block sits under the two columns.
-  const _notesBlock = `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span class="actpop-notes-h">Notes</span> loading&hellip;'}</div>`;
+  const _notesBlock = `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span style="color:#94a3b8;">Loading notes&hellip;</span>'}</div>`;
 
   h += `</div>`;
   // 2026-10-29, user: popup is twice as wide; the existing content above is untouched (left), studies charts go on the right.

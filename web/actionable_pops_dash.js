@@ -7,7 +7,7 @@
  * The rows and settings it reads are fetched once from the same /api endpoints the Actionable screen uses. */
 (function () {
   'use strict';
-  var POPS_URL = '/static/actionable_pops.js?v=20261029j';
+  var POPS_URL = '/static/actionable_pops.js?v=20261029m';
   var api = null, loading = null, rows = {};
   var popState = {
     date: null, anchorDate: null, rows: [], allRows: [], filters: { trade_mode: false, act_only: false },
