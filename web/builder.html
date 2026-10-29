@@ -227,6 +227,28 @@
     body.builder-page input:not([type=checkbox]):not([type=radio]):not([type=range]), body.builder-page select, body.builder-page button { height: 22px; padding-top: 0; padding-bottom: 0; line-height: 20px; font-size: 12px; box-sizing: border-box; }
     body.builder-page .bld-tab, body.builder-page .bld-seg button, body.builder-page .bld-btn { padding-top: 0; padding-bottom: 0; }
     body.builder-page .bld-card .bld-t td input:not([type=checkbox]), body.builder-page .bld-card .bld-t td select, body.builder-page .bld-card .bld-t td button { height: 18px; line-height: 16px; font-size: 11px; }
+    .bld-tsum { font-size: 9.5px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); }
+    /* no gap under the menu bar or above the panels */
+    body.builder-page main.bld-wrap { margin-top: 0; padding-top: 4px; }
+    body.builder-page .bld-tabs { margin-bottom: 4px; }
+    .bld-cnt { margin: -4px 0 4px; font-size: 11px; }
+    .bld-cnt:has(span:empty) { display: none; }
+    /* live picks strip: allocation bars + gap-to-target bars */
+    .bld-viz { margin: 2px 0 8px; font-size: 11px; }
+    .bld-viz .vrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+    .bld-viz .vlab { width: 92px; flex: 0 0 auto; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bld-viz .vstack { flex: 1; display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: #eceae4; }
+    .bld-viz .vstack span { display: block; height: 100%; color: #fff; font-size: 9.5px; line-height: 14px; padding-left: 3px; overflow: hidden; white-space: nowrap; }
+    .bld-viz .vtrack { flex: 1; position: relative; height: 10px; background: #eceae4; border-radius: 3px; }
+    .bld-viz .vfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+    .bld-viz .vtick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text-1); }
+    .bld-viz .vnum { width: 92px; flex: 0 0 auto; text-align: right; color: var(--text-2); white-space: nowrap; }
+    .bld-viz .vhead { font-weight: 700; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
+    .bld-viz .vlab { width: 80px; }
+    .bld-viz .vtrack2 { flex: 1; position: relative; height: 12px; background: #f1f0ec; border-radius: 3px; }
+    .bld-viz .vtrack2 .vfill { position: absolute; left: 0; top: 0; height: 7px; border-radius: 3px; }
+    .bld-viz .vtrack2 .vhold { position: absolute; left: 0; bottom: 0; height: 4px; border-radius: 2px; background: #9ca3af; }
+    .bld-viz .vtrack2 .vtick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-1); }
 </style>
 </head>
 <body class="builder-page">
@@ -276,7 +298,6 @@
 
         <!-- column 2: names on the ticked lists, filtered; tick the ones you want -->
         <aside id="srcNames" class="bld-card bld-side">
-          <h3>Names <span class="bld-muted" id="srcNamesCount"></span></h3>
           <div class="bld-line" style="gap:6px">
             <select id="srcfSource" title="List"></select>
             <select id="srcfClass" title="Asset class"></select>
@@ -289,8 +310,10 @@
           <div class="bld-line" style="gap:6px">
             <button class="bld-btn sm alt" id="selShown">Select all shown</button>
             <button class="bld-btn sm alt" id="clearPicks">Clear picks</button>
+            <button class="bld-btn sm" id="matchHold" title="Fill each pick's % from what the account holds, so the picks copy your holdings class by class">Match my holdings</button>
             <button class="bld-btn sm" id="fillGaps" title="Filter the list to what your targets are still missing; click again for the next gap">Show what's missing</button>
             <button class="bld-btn sm alt" id="clearFilters">Clear filters</button>
+            <span class="bld-muted" id="srcNamesCount"></span>
             <span class="bld-muted" id="srcNamesHint"></span>
           </div>
           <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th>Lists</th><th>Asset class</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
@@ -298,14 +321,11 @@
 
         <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
         <div>
-          <div class="bld-card"><h3>Picks vs portfolio <span class="bld-muted" id="picksCount"></span></h3>
+          <div class="bld-card"><div class="bld-muted bld-cnt"><span id="picksCount"></span></div>
             <div class="bld-line"><b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
               <button class="bld-btn alt" id="setOpen">Open</button><button class="bld-btn" id="setSave">Save as…</button><button class="bld-btn alt" id="setDel">Delete</button>
               <span class="bld-muted" id="setMsg"></span></div>
-            <div class="bld-line"><b style="min-width:0">Preset</b><select id="preset"></select>
-              <label style="font-size:12px"><input type="checkbox" id="useDial"> Risk Dial trims risky classes into Cash <span class="bld-muted" id="dialNow"></span></label></div>
-            <div class="bld-muted" id="dialNote"></div>
-            <div class="bld-muted" style="margin:2px 0 4px">Type a target % in any Target cell (asset class, beta, Quad, sector, style). Targets guide you; they never pick stocks.</div>
+            <div class="bld-line"><b style="min-width:0">Preset</b><select id="preset"></select></div>
             <div id="cmpTable"></div>
             <div id="symTable"></div>
           </div>
@@ -339,7 +359,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261028x"></script>
+  <script src="/static/builder.js?v=20261029g"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

@@ -74,7 +74,6 @@
     $('refreshBtn').onclick = reloadAll;
     $('backToList').onclick = e => { e.preventDefault(); showView('list'); };
     $('preset').onchange = () => { S.preset = $('preset').value; if (S.preset !== 'custom') S.mix = null; schedule(); };
-    $('useDial').onchange = () => { S.useDial = $('useDial').checked; schedule(); };
     document.querySelectorAll('[data-warn]').forEach(c => c.onchange = () => { S.warn[c.dataset.warn] = c.checked; });
     $('acctSel').onchange = () => { S.acct = $('acctSel').value; S.amount = null; S.targets = {}; S.seeded = null; S.preset = 'current'; S.mix = null; loadSourceNames(); schedule(0); };
     try {
@@ -153,6 +152,16 @@
     $('srcfFactor').title = FACTOR_TIP;
     $('srcfText').oninput = renderSourceNames;
     $('selShown').onclick = selectShown;
+    // fill each held pick's % of its class from the account's holdings (the class totals follow the 'current' mix)
+    $('matchHold').onclick = () => {
+      const hold = {};
+      ((S.preview && S.preview.account && S.preview.account.holdings) || []).forEach(h => { hold[h.sym] = h.value || 0; });
+      const tot = {};
+      S.picks.forEach(p => { if (hold[p.sym] > 0) tot[p.bucket] = (tot[p.bucket] || 0) + hold[p.sym]; });
+      S.picks.forEach(p => { p.pct = hold[p.sym] > 0 ? Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100 : null; });
+      if (S.preset !== 'current') S.preset = 'current';
+      renderSourceNames(); schedule(0);
+    };
     $('clearPicks').onclick = () => { S.picks = []; renderSourceNames(); schedule(0); };
     renderSourceNames();
   }
@@ -240,6 +249,7 @@
     $('srcNamesRows').querySelectorAll('[data-assign]').forEach(sel => sel.onchange = () => {
       if (!sel.value) return;
       S.assign[sel.dataset.assign] = sel.value;
+      api('/api/builder/asset-class', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sym: sel.dataset.assign, bucket: sel.value }) }).catch(() => {});   // remembered for every screen
       setPick(sel.dataset.assign, true);
       renderSourceNames(); schedule(0);
     });
@@ -250,6 +260,22 @@
     const fin = res.mix_final || {}, cur = res.mix_current || {}, amt = res.amount || 1;
     return BUCKETS.filter(b => (fin[b] || 0) > 0.04 || (cur[b] || 0) > 0.04 ||
       (res.positions || []).some(p => p.bucket === b && p.value / amt > 0.0004));
+  }
+
+  // bars above each grid: one row per line of the grid. Bar = picks (green within 5 pts of the target, amber short, red over),
+  // thin grey bar = portfolio, black line = target. Shown from the start, before anything is picked.
+  function barBlock(rows) {
+    rows = (rows || []).filter(r => r.pv != null || r.hv != null || r.tv != null);
+    if (!rows.length) return '';
+    const scale = Math.max(10, ...rows.map(r => Math.max(r.pv || 0, r.hv || 0, r.tv || 0))) * 1.15;
+    const w = v => Math.min(Math.max(v, 0) / scale * 100, 100);
+    return '<div class="bld-viz">' + rows.map(r => {
+      const pv = r.pv, tv = r.tv;
+      const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#6b7fd7'));
+      return `<div class="vrow"><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
+        `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
+        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div></div>`;
+    }).join('') + '</div>';
   }
 
   // One comparison table: factor names down the left, "Your picks" and "My portfolio" side by side, then the gap.
@@ -264,7 +290,9 @@
     const gapTd = (g, dec) => (g == null || !hasPick || !hasHeld) ? '<td></td>'
       : `<td class="n ${Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn')}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 0)}${dec ? '' : ' pts'}</td>`;
     // a section break: the rows after it become their own small table (laid out in three columns, see the end of this function)
-    const sec = t => `\u0001${t}\u0002`;
+    let curKey = '';
+    const vizRows = {};
+    const sec = t => { curKey = t.split(' ·')[0]; vizRows[curKey] = []; return `\u0001${t}\u0002`; };
     const chosen = res.mix_target || {};
     const judge = (pv, tv, dec) => { const tol = dec ? 0.05 : 5; return pv > tv + tol ? 'bld-over' : (pv < tv - tol ? 'bld-warn' : 'bld-up'); };
     // gap = picks minus its reference (the target if one is set, else the portfolio); coloured against a target
@@ -281,6 +309,7 @@
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : tv;
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : '<td></td>');
+      if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null });
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
         `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
@@ -326,12 +355,12 @@
     const tables = {};
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
-      tables[title.split(' ·')[0]] = `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title}</th>` +
+      tables[title.split(' ·')[0]] = barBlock(vizRows[title.split(' ·')[0]]) + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title}</th>` +
         `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${first && S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Port&shy;folio</th><th class="n">Gap</th></tr></thead><tbody>${parts[i + 1]}</tbody></table>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
-    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Style')}</div><div>${T('Risk')}${T('Quad favored (Bull)')}</div><div>${T('Sectors')}</div></div>`;   // keys are the title up to " ·"
+    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Risk')}</div><div>${T('Style')}${T('Quad favored (Bull)')}</div><div>${T('Sectors')}</div></div>`;   // keys are the title up to " ·"
   }
 
   const tgtOf = key => (S.targets[key] == null ? null : S.targets[key]);
@@ -421,7 +450,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}${(fin[b] || 0) > 0 ? ` <span class="bld-muted">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
+      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
@@ -503,9 +532,8 @@
       S.acct = st.acct || r.account || S.acct;
       if ([...$('acctSel').options].some(o => o.value === S.acct)) $('acctSel').value = S.acct;
       S.picks = st.picks || []; S.assign = st.assign || {}; S.targets = st.targets || {};
-      S.preset = st.preset || 'current'; S.mix = st.mix || null; S.useDial = !!st.useDial; S.amount = st.amount || null;
+      S.preset = st.preset || 'current'; S.mix = st.mix || null; S.useDial = false; S.amount = st.amount || null;
       S.sources = st.sources || []; S.seeded = S.acct;
-      $('useDial').checked = S.useDial;
       renderSources();
       $('preset').value = S.preset;
       $('setMsg').textContent = 'Opened "' + r.name + '"';
@@ -572,11 +600,6 @@
     const cur = res.mix_current || {}, tgt = res.mix_target || {}, fin = res.mix_final || {};
     if (S.preset === 'custom' && !S.mix) S.mix = Object.assign({}, tgt);
     $('preset').value = S.preset;
-    const r = res.risk || {};
-    $('dialNow').textContent = r.multiplier != null ? `(now ×${r.multiplier.toFixed(2)}${r.label ? ', ' + r.label : ''})` : '(no reading)';
-    $('dialNote').textContent = !S.useDial ? 'Risk Dial not applied.' :
-      (r.applied ? `${r.label || 'Risk Dial'} ×${r.multiplier.toFixed(2)}: Equities ${(tgt.Equities || 0).toFixed(0)}% becomes ${(fin.Equities || 0).toFixed(0)}%, Cash ${(tgt.Cash || 0).toFixed(0)}% becomes ${(fin.Cash || 0).toFixed(0)}% (kept holdings are never trimmed).` :
-        (r.multiplier == null ? 'Risk Dial unavailable, full size.' : 'Risk Dial says full size: nothing trimmed.'));
   }
 
   // ---------------------------------------------------------------- proposal
@@ -738,10 +761,10 @@
   function prefill(d) {
     const req = (d.settings && d.settings.req) || {};
     S.acct = d.account; S.horizon = req.horizon || d.horizon; S.preset = req.preset || 'balanced'; S.mix = req.mix || null;
-    S.useDial = req.use_risk_dial === true; S.amount = null;
+    S.useDial = false; S.amount = null;
     S.picks = req.manual ? (req.picks || []).map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct == null ? null : p.pct })) : [];
     renderSourceNames();
-    $('acctSel').value = S.acct; $('useDial').checked = S.useDial;
+    $('acctSel').value = S.acct;
     showView('build');
     schedule(0);
   }

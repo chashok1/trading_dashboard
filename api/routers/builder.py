@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
+from sqlalchemy import text
 
 from api._helpers import _resolve_date, expected_market_close_date
 from etl import builder_data as bd
@@ -112,12 +113,30 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
         pvals = {x["sym"]: float(x["value"]) for x in res["positions"]}
         hvals = {k: float(h["value"]) for k, h in acct["holdings"].items() if h.get("value")} if account != "ALL" else {}
         info = bd.name_info(s, d, sorted(set(pvals) | set(hvals)), ctx["problems"])
+        for k, h in acct["holdings"].items():       # held names take the class the account side already resolved
+            if k in info and h.get("bucket") in BUCKETS:
+                info[k]["bucket"] = h["bucket"]
         for x in res["positions"]:      # the asset class you gave a name wins
             if x["sym"] in info and x.get("bucket") in BUCKETS:
                 info[x["sym"]]["bucket"] = x["bucket"]
         res["outlooks"] = {k: v.get("outlook") for k, v in info.items() if v.get("outlook")}
         res["exposure"] = {"picked": bd.exposure(pvals, info), "held": bd.exposure(hvals, info)}
     return res
+
+
+@router.post("/api/builder/asset-class")
+def post_asset_class(body: dict = Body(...)):
+    """Remember the asset class you chose for a name that had none (ref_sector). A class already on file is never overwritten."""
+    sym = (body.get("sym") or "").strip().upper()
+    bucket = body.get("bucket")
+    if not sym or bucket not in BUCKETS:
+        raise HTTPException(status_code=400, detail="Give a symbol and one of the asset classes.")
+    label = {"Currency": "FX"}.get(bucket, bucket)      # the label ref_sector uses for that class
+    with session_scope() as s:
+        s.execute(text("INSERT INTO ref_sector (ticker, asset_class) VALUES (:t, :a) "
+                       "ON CONFLICT (ticker) DO UPDATE SET asset_class = EXCLUDED.asset_class "
+                       "WHERE ref_sector.asset_class IS NULL"), {"t": sym, "a": label})
+    return {"sym": sym, "bucket": bucket}
 
 
 @router.get("/api/builder/sources")

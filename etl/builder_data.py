@@ -605,6 +605,8 @@ def load_context(session, d: date, account: str, horizon: str, problems: Optiona
     for s, h in merged["holdings"].items():
         if h.get("price") is None and funds.get(s):
             h["price"] = funds[s]["price"]
+        elif funds.get(s) and funds[s].get("price") is None and h.get("price"):
+            funds[s]["price"] = float(h["price"])      # not in the TOS export (e.g. a mutual fund): use the broker's price
     mult, label = risk_dial(session, d)
     ctx = {
         "D": d, "funds": funds, "outlook": outlook_map(session, problems), "quad": quad_context(session, d, horizon, problems),

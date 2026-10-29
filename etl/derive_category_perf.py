@@ -145,6 +145,14 @@ def _build_category_map(session: Session, as_of_date: date, symbols: set) -> dic
                                  "styles": styles, "source": "drv_ma"}
         have.add(r["tos_symbol"])
 
+    # a name in drv_ma with no usable asset class takes the one on file in ref_sector (when it has one)
+    blank = [t for t, v in out.items() if v["asset_class"] is None]
+    if blank:
+        for r in session.execute(text("SELECT ticker, asset_class FROM ref_sector WHERE ticker = ANY(:syms) "
+                                      "AND asset_class IS NOT NULL"), {"syms": blank}).mappings().all():
+            if r["asset_class"] in _ASSET_CLASS_SET:
+                out[r["ticker"]]["asset_class"] = r["asset_class"]
+
     missing = [s for s in syms if s not in have]
     if missing:
         # Fallback: ref_sector (broader universe, ~961 tickers, same
