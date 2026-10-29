@@ -1455,6 +1455,8 @@ async function _actpopLoadNotes(sym) {
   // Also mounts the popup's candle chart (this is the one post-render hook the grid and the dashboard both already call).
   const _gc = document.querySelector('#sourcePop .actpop-gchart');
   if (_gc && window.mountRrChart) window.mountRrChart(_gc, _gc.dataset.sym);
+  const _st = document.querySelector('#sourcePop .actpop-studies');
+  if (_st && window.mountActpopStudies) window.mountActpopStudies(_st, _st.dataset.sym);
   const box = () => document.querySelector('#sourcePop .actpop-notes[data-sym="' + CSS.escape(sym) + '"]');
   let notes;
   if (_notesCache.has(sym)) notes = _notesCache.get(sym);
@@ -3091,7 +3093,8 @@ function _buildActionPopHtmlV2(row) {
 
 
   h += `</div>`;
-  return h;
+  // 2026-10-29, user: popup is twice as wide; the existing content above is untouched (left), studies charts go on the right.
+  return `<div class="actpop-wrap">${h}<div class="actpop-studies" data-sym="${escapeHtml(sym)}"></div></div>`;
 }
 
 function _actionTagHtml(r, noOver) {

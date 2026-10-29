@@ -261,6 +261,108 @@
   }
   window.mountRrChart = function (el, sym) { if (el && sym) _loadOwn(el, sym); };
 
+  // ── Studies panels (Action popup, right side): Volume / RSI / MACD / Volume ROC / IV, one shared date axis ──
+  // Data: GET /api/actionable/studies (daily rows; MACD and Volume ROC calculated server-side). Plain SVG, TOS-like dark look.
+  var SW = 800, SPL = 6, SPR = 54;
+  function _sFmt(v, d) { return v == null ? '' : Number(v).toFixed(d == null ? 2 : d); }
+  function _sVol(v) { return v == null ? '' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'k' : String(Math.round(v)); }
+  function _sPanel(pts, o) {
+    var H = o.h, PT = 8, PB = o.axis ? 16 : 3, n = pts.length, iw = SW - SPL - SPR, slot = iw / n;
+    var xOf = function (i) { return SPL + (i + 0.5) * slot; };
+    var all = [];
+    o.series.forEach(function (s) { if (s.nodraw) return; pts.forEach(function (p) { if (p[s.k] != null) all.push(p[s.k]); }); });
+    (o.refs || []).forEach(function (r) { all.push(r); });
+    if (o.zero) all.push(0);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    if (o.floor0) lo = 0;
+    if (!isFinite(lo) || hi === lo) { lo = (isFinite(lo) ? lo : 0) - 1; hi = lo + 2; }
+    var pad = (hi - lo) * 0.06; if (!o.floor0) lo -= pad; hi += pad;
+    var yOf = function (v) { return PT + (hi - v) / (hi - lo) * (H - PT - PB); };
+    var g = '<rect width="' + SW + '" height="' + H + '" fill="#1b1b1b"/>';
+    for (var q = 0; q < 5; q++) { var gy = PT + q * (H - PT - PB) / 4; g += '<line x1="' + SPL + '" x2="' + (SW - SPR) + '" y1="' + gy + '" y2="' + gy + '" stroke="#2a2a2a" stroke-dasharray="1 3"/>'; }
+    (o.refs || []).forEach(function (r) { g += '<line x1="' + SPL + '" x2="' + (SW - SPR) + '" y1="' + yOf(r) + '" y2="' + yOf(r) + '" stroke="#d6c58a" stroke-width="1"/>'; });
+    if (o.zero) g += '<line x1="' + SPL + '" x2="' + (SW - SPR) + '" y1="' + yOf(0) + '" y2="' + yOf(0) + '" stroke="' + (o.zeroColor || '#8b5a2b') + '"/>';
+    o.series.forEach(function (s) {
+      if (s.nodraw) return;
+      if (s.bars) {
+        var base = yOf(Math.max(lo, 0)), bw = Math.max(1, slot * 0.7);
+        pts.forEach(function (p, i) {
+          var v = p[s.k]; if (v == null) return;
+          var col = s.signed ? (v >= 0 ? '#22c55e' : '#ef4444') : '#1f6f9f', y = yOf(v);
+          g += '<rect x="' + (xOf(i) - bw / 2) + '" y="' + Math.min(y, base) + '" width="' + bw + '" height="' + Math.max(1, Math.abs(base - y)) + '" fill="' + col + '"/>';
+        });
+      } else {
+        var d = '', on = false;
+        pts.forEach(function (p, i) { var v = p[s.k]; if (v == null) { on = false; return; } d += (on ? 'L' : 'M') + xOf(i).toFixed(1) + ' ' + yOf(v).toFixed(1); on = true; });
+        g += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="' + (s.w || 1.3) + '"/>';
+      }
+    });
+    // Right-axis tag with the latest value of each line (the name + pointer values are in the strip above the panel).
+    o.series.forEach(function (s) {
+      var last = null; for (var i = n - 1; i >= 0; i--) { if (pts[i][s.k] != null) { last = pts[i][s.k]; break; } }
+      if (s.nodraw || last == null || (s.bars && !s.tag)) return;
+      g += '<rect x="' + (SW - SPR + 2) + '" y="' + (yOf(last) - 7) + '" width="' + (SPR - 4) + '" height="14" fill="' + (s.color || '#475569') + '"/>'
+        + '<text x="' + (SW - SPR + 5) + '" y="' + (yOf(last) + 3.5) + '" font-size="10" font-weight="700" fill="#000">' + (s.fmt ? s.fmt(last) : _sFmt(last)) + '</text>';
+    });
+    if (o.axis) {
+      var step = Math.max(1, Math.round(n / 9));
+      for (var j = 0; j < n; j += step) g += '<text x="' + xOf(j) + '" y="' + (H - 3) + '" font-size="9" fill="#9ca3af" text-anchor="middle" font-family="Arial,sans-serif">' + Number(pts[j].date.slice(5, 7)) + '/' + Number(pts[j].date.slice(8, 10)) + '</text>';
+    }
+    g += '<line class="st-x" x1="-10" x2="-10" y1="0" y2="' + H + '" stroke="#9ca3af" stroke-dasharray="2 2"/>';
+    return '<svg width="' + SW + '" height="' + H + '" viewBox="0 0 ' + SW + ' ' + H + '" style="display:block;" font-family="Arial,sans-serif">' + g + '</svg>';
+  }
+  // Values strip above each panel (like TOS): study name + the values at the pointer's date (latest day when the pointer is away).
+  function _sHead(pts, o, i) {
+    var p = pts[i], h = '<b style="color:#e5e7eb;">' + o.title + '</b>';
+    o.series.forEach(function (s) {
+      var v = p[s.k]; if (v == null) return;
+      var col = s.signed ? (v >= 0 ? '#22c55e' : '#ef4444') : (s.hc || s.color || '#cbd5e1');
+      h += ' <span style="color:' + col + ';">' + (s.fmt ? s.fmt(v) : _sFmt(v)) + '</span>';
+    });
+    (o.refs || []).forEach(function (r) { h += ' <span style="color:#d6c58a;">' + r + '</span>'; });
+    return h + '<span style="float:right;color:#9ca3af;">' + p.date.slice(5, 7) + '/' + p.date.slice(8, 10) + '</span>';
+  }
+  var _SH = 'font:11px Arial,sans-serif;color:#9ca3af;background:#262626;padding:2px 6px;border-top:1px solid #3a3a3a;white-space:nowrap;overflow:hidden;';
+  function _drawStudies(el, pts) {
+    var f1 = function (v) { return _sFmt(v, 1); }, f3 = function (v) { return _sFmt(v, 3); };
+    var P = [
+      { h: 100, title: 'Volume', series: [{ k: 'volume', bars: true, fmt: _sVol, tag: true, color: '#1f6f9f', hc: '#7fb8dd' }], floor0: true },
+      { h: 115, title: 'RSI (14, 70, 30)', series: [{ k: 'rsi', color: '#9ca3af', fmt: f1 }], refs: [30, 70] },
+      { h: 140, title: 'MACD (12, 26, 9)', series: [{ k: 'hist', bars: true, signed: true, fmt: f3 }, { k: 'macd', color: '#22d3ee', fmt: f3 }, { k: 'signal', color: '#e7d9a8', fmt: f3 }], zero: true, zeroColor: '#8b5cf6' },
+      { h: 100, title: 'Volume Rate Of Change (14)', series: [{ k: 'vroc', color: '#f59e0b', fmt: f1 }], zero: true, zeroColor: '#ef4444' },
+      { h: 130, title: 'Implied Volatility', series: [{ k: 'iv', color: '#22d3ee', fmt: function (v) { return _sFmt(v, 4); } }, { k: 'iv_ratio', nodraw: true, fmt: function (v) { return 'IV Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }], axis: true }
+    ];
+    var n = pts.length;
+    el.innerHTML = P.map(function (o, pi) { return '<div class="st-h" style="' + _SH + '">' + _sHead(pts, o, n - 1) + '</div>' + _sPanel(pts, o); }).join('');
+    var heads = el.querySelectorAll('.st-h'), svgs = el.querySelectorAll('svg'), slot = (SW - SPL - SPR) / n;
+    var put = function (i, x) {
+      Array.prototype.forEach.call(heads, function (hd, pi) { hd.innerHTML = _sHead(pts, P[pi], i); });
+      Array.prototype.forEach.call(svgs, function (sv) { var l = sv.querySelector('.st-x'); l.setAttribute('x1', x); l.setAttribute('x2', x); });
+    };
+    el.onmousemove = function (e) {
+      var r = svgs[0].getBoundingClientRect(), x = e.clientX - r.left;
+      if (x < SPL || x > SW - SPR) return put(n - 1, -10);
+      var i = Math.max(0, Math.min(n - 1, Math.floor((x - SPL) / slot)));
+      put(i, SPL + (i + 0.5) * slot);
+    };
+    el.onmouseleave = function () { put(n - 1, -10); };
+  }
+  window.mountActpopStudies = async function (el, sym) {
+    if (!el || !sym) return;
+    var tok = el._tok = (el._tok || 0) + 1;
+    var note = function (t) { el.innerHTML = '<div style="color:#94a3b8;font:11px Arial,sans-serif;padding:8px;">' + t + '</div>'; };
+    note('Loading studies...');
+    try {
+      var res = await fetch('/api/actionable/studies?symbol=' + encodeURIComponent(sym) + '&days=130');
+      if (!res.ok) { if (tok === el._tok) note('Studies not available.'); return; }
+      var js = await res.json();
+      var pts = (js.points || []).filter(function (x) { return x.close != null; });
+      if (tok !== el._tok) return;
+      if (pts.length < 20) { note('Not enough daily history for studies.'); return; }
+      _drawStudies(el, pts);
+    } catch (e) { if (tok === el._tok) note('Studies not available.'); }
+  };
+
   function _loadChart(containerEl, tvSym) {
     containerEl.innerHTML = '';
     var wrapper = document.createElement('div');

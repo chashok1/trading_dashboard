@@ -3393,6 +3393,12 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .uv-actpop-shell td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
 .uv-actpop-shell td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 
+/* 2026-10-29: Action popup = left (the original 828px popup, unchanged) + right studies column, same width again. */
+.actpop-wrap { display: flex; align-items: flex-start; gap: 8px; }
+.actpop-wrap > .actpop { flex: 0 0 828px; }
+.actpop-studies { flex: 0 0 828px; padding: 6px 0; background: #fff; }
+/* Taller than the window (or wider) -> the popup itself scrolls instead of clipping. */
+#sourcePop:has(.actpop-wrap) { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; }
 .actpop { width: 828px; padding: 6px; }  /* 2026-10-02: was 662px -- header gained company/price/own/earnings + the Trade/Trend bar */
 .actpop-head { display: flex; align-items: center; column-gap: 14px; }
 /* 2026-10-03: the divider moved from .actpop-head to .actpop-top so the warning/notes lines sit above it */

@@ -3539,6 +3539,67 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
         }
 
 
+def _ema(vals, n):
+    """EMA seeded with the first value (None-safe: a None carries the previous EMA forward)."""
+    k, out, prev = 2.0 / (n + 1), [], None
+    for v in vals:
+        if v is None:
+            out.append(prev)
+            continue
+        prev = v if prev is None else v * k + prev * (1 - k)
+        out.append(prev)
+    return out
+
+
+def _studies_series(rows, days):
+    """rows: [(date, close, volume, rsi, iv, iv_ratio)] ascending, with warm-up rows in front. Returns the last `days`
+    points with MACD(12,26,9) and volume rate of change (14) calculated from the closes / volumes."""
+    closes = [r[1] for r in rows]
+    e12, e26 = _ema(closes, 12), _ema(closes, 26)
+    macd = [(a - b) if a is not None and b is not None else None for a, b in zip(e12, e26)]
+    sig = _ema(macd, 9)
+    out = []
+    for i, r in enumerate(rows):
+        v, v14 = r[2], (rows[i - 14][2] if i >= 14 else None)
+        out.append({
+            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": r[4], "iv_ratio": r[5],
+            "macd": macd[i], "signal": sig[i],
+            "hist": (macd[i] - sig[i]) if macd[i] is not None and sig[i] is not None else None,
+            "vroc": ((v - v14) / v14 * 100.0) if v is not None and v14 else None,
+        })
+    return out[-days:]
+
+
+@router.get("/api/actionable/studies")
+def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400)):
+    """Daily Volume / RSI / MACD / Volume ROC / IV series for one symbol (Action popup 'studies' panels).
+    Source: drv_technicals daily rows; MACD and Volume ROC are calculated here (the stored a_macd_* are custom direction studies)."""
+    sym = symbol.upper().strip()
+    def _f(v): return float(v) if v is not None else None
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT as_of_date, last_price, volume, rsi, imp_volatility, iv_ratio
+              FROM (SELECT * FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT :n) t
+             ORDER BY as_of_date
+        """), {"sym": sym, "n": days + 60}).fetchall()
+        # Stored daily volume can be an early-day capture (e.g. 17 shares). Volume only grows during a day, so the largest
+        # capture per date across the TOS files is the closest to the real total.
+        vmax = {r[0]: _f(r[1]) for r in s.execute(text("""
+            SELECT d, MAX(v) FROM (
+                SELECT export_date AS d, volume AS v FROM hist_tl WHERE tos_symbol = :sym
+                UNION ALL SELECT export_date, volume FROM hist_tw WHERE tos_symbol = :sym
+                UNION ALL SELECT as_of_date, volume FROM drv_technicals WHERE tos_symbol = :sym
+            ) u GROUP BY d
+        """), {"sym": sym}).fetchall()}
+    vols = sorted(v for v in (vmax.get(r[0], _f(r[2])) for r in rows) if v)
+    floor = vols[len(vols) // 2] * 0.1 if vols else 0
+    def _vol(d, v0):
+        v = vmax.get(d) or v0
+        return v if v and v >= floor else None      # still implausibly low -> a gap, not a spike
+    data = [(r[0], _f(r[1]), _vol(r[0], _f(r[2])), _f(r[3]), _f(r[4]), _f(r[5])) for r in rows]
+    return {"symbol": sym, "points": _studies_series(data, days)}
+
+
 @router.get("/api/actionable/rr-history")
 def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int = Query(60, ge=10, le=180)):
     """Time-series driven by drv_rr dates; price from drv_quote, trend/trade from latest hist_td."""
