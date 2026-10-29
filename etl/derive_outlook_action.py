@@ -822,6 +822,48 @@ def _action_sss_change(action: Optional[str], held: bool) -> tuple[Optional[str]
 
 _TOP5_WEIGHT = {"long": 1.0, "short": -1.0}
 
+_OUTDATED = "OUTDATED"          # reason prefix; derive_actionable keeps these rows visible but out of the winner pick
+_TOP5_ACTIVE_WEEKDAYS = 3       # 2026-10-29, user: TOP5 can drive a few days (longer than same-day RTA)
+
+
+def _weekdays_back(d, n):
+    """d minus n weekdays (weekday-based; exchange holidays are not skipped)."""
+    while n > 0:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:
+            n -= 1
+    return d
+
+
+def _broken_since_call(session, items, as_of_date):
+    """items: [(sym, call_date, dir)] dir=+1 buy / -1 sell. Returns {sym: date} where the price crossed to the wrong side of
+    Trade or Trend after the call (it was on the right side of both on the call date). Uses drv_technicals daily rows."""
+    if not items:
+        return {}
+    syms = sorted({i[0] for i in items})
+    lo = min(i[1] for i in items)
+    rows = session.execute(text(
+        "SELECT tos_symbol, as_of_date, last_price, a_trade_value, a_trend_value FROM drv_technicals "
+        "WHERE tos_symbol = ANY(:s) AND as_of_date BETWEEN :lo AND :hi ORDER BY tos_symbol, as_of_date"),
+        {"s": syms, "lo": lo, "hi": as_of_date}).fetchall()
+    by = {}
+    for sym, d, px, trade, trend in rows:
+        by.setdefault(sym, []).append((d, px, trade, trend))
+    out = {}
+    for sym, call_d, dr in items:
+        base_ok = False
+        for d, px, trade, trend in by.get(sym, []):
+            if px is None or trade is None or trend is None:
+                continue
+            ok = (px > max(trade, trend)) if dr > 0 else (px < min(trade, trend))
+            bad = (px < max(trade, trend)) if dr > 0 else (px > min(trade, trend))
+            if d <= call_d:
+                base_ok = ok
+            elif base_ok and bad:
+                out[sym] = d
+                break
+    return out
+
 
 def _action_top5(side: Optional[str], held: bool) -> tuple[Optional[str], str]:
     """TOP5 (Hedgeye's daily Top-5 most-actionable list) — independent
@@ -1351,6 +1393,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                       FROM ranked WHERE rk = 1
                 """)).fetchall()
 
+                rta_broken = _broken_since_call(session, [
+                    (r[0], r[4], 1 if (r[2] or "").strip().lower() == "buy" else -1)
+                    for r in rta_rows if r[1] == "long" and (r[2] or "").strip().lower() in ("buy", "sell", "sell-some")], as_of_date)
                 rta_batch = []
                 for rsym, rside, rkind, ralert_ts, rsnap in rta_rows:
                     rheld = rsym in holdings
@@ -1358,6 +1403,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     if ract is None:
                         continue
                     rweight = _RTA_WEIGHT.get((rside, (rkind or "").strip().lower()), 0)
+                    if rside == "long" and rsym in rta_broken:
+                        ract, rweight = "HOLD", 0
+                        rreason = f"{_OUTDATED}: {rreason}; price broke Trade/Trend on {rta_broken[rsym]:%m/%d} (informational)"
                     rta_batch.append({
                         "d": as_of_date, "sym": rsym, "sc": sc,
                         "base": rweight, "prev": None, "prev_d": None,
@@ -1443,6 +1491,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                       FROM ranked WHERE rk = 1
                 """)).fetchall()
 
+                top5_active_from = _weekdays_back(as_of_date, _TOP5_ACTIVE_WEEKDAYS)
+                top5_broken = _broken_since_call(session, [
+                    (r[0], r[3], 1 if (r[1] or "").strip().lower() == "long" else -1) for r in top5_rows], as_of_date)
                 top5_batch = []
                 for tsym, tside, trank, tsnap in top5_rows:
                     theld = tsym in holdings
@@ -1450,6 +1501,13 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     if tact is None:
                         continue
                     tweight = _TOP5_WEIGHT.get((tside or "").strip().lower(), 0.0)
+                    # Past the active window it stays listed (lookback_days) but informational only.
+                    if tsnap < top5_active_from:
+                        tact, tweight = "HOLD", 0.0
+                        treason = f"{_OUTDATED}: {treason}; call from {tsnap:%m/%d}, past {_TOP5_ACTIVE_WEEKDAYS} days (informational)"
+                    elif tsym in top5_broken:
+                        tact, tweight = "HOLD", 0.0
+                        treason = f"{_OUTDATED}: {treason}; price broke Trade/Trend on {top5_broken[tsym]:%m/%d} (informational)"
                     top5_batch.append({
                         "d": as_of_date, "sym": tsym, "sc": sc,
                         "base": tweight, "prev": None, "prev_d": None,

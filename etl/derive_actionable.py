@@ -1255,6 +1255,11 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 unproven_sell_suppressed = True
                 candidates = _kept
 
+        # 2026-10-29, user: an outdated TOP5/RTA call (window passed or price broke Trade/Trend since) stays visible in
+        # source_actions but cannot drive the headline.
+        candidates = [a for a in candidates
+                      if not (a.get("action_reason") or "").startswith("OUTDATED")]
+
         winning_source = None
         winning_priority = None
         winning_source_rank = None

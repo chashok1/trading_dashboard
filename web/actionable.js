@@ -7,7 +7,6 @@
 // rule (see applyColumnVisibility()) rather than per-cell DOM edits.
 const COL_STORAGE_KEY = 'act_cols_v1';
 const TOGGLEABLE_COLS = [
-  { id: 'pos',       label: 'POS$' },
   { id: 'chg',       label: '%CHG' },
   { id: 'macro',     label: 'MACRO' },
   { id: 'pvv',       label: 'PVV' },
@@ -4989,14 +4988,14 @@ function renderGrid() {
 }
 
 // Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
-// gate). One <tr><td colspan> spanning every grid column (24 — keep in sync
+// gate). One <tr><td colspan> spanning every grid column (21 — keep in sync
 // with the <th data-col> count in actionable.html); clicking toggles
 // state.watchlistExpanded and re-renders.
 function _watchlistBandRowEl(count, expanded) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 24;
+  td.colSpan = 21;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -5022,7 +5021,7 @@ function _actionedBandRowEl(count, expanded, rows) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 24;
+  td.colSpan = 21;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -5225,22 +5224,20 @@ function _buildRowEl(r) {
     if (_selAmt != null) posStr = `${_posAcctAmt(_selAmt)} (${_posAcctAmt(Number(r.current_position_dollar) || 0)})`;
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
-      <td data-col="lt" style="padding:4px 2px; text-align:center;">${r.conviction_hold
+      <td data-col="bulk" style="padding:4px 4px; text-align:center; line-height:1.5;">
+        <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
+        <div>${r.conviction_hold
           ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction ${r.conviction_direction === 'AVOID' ? 'avoid' : 'hold'} — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">${r.conviction_direction === 'AVOID' ? '🚫' : '🔭'}</span>`
-          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}
-      </td>
-      <td data-col="watch" style="padding:4px 2px; text-align:center;">${r.watch_id
+          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}</div>
+        <div>${r.watch_id
           ? (r.watch_triggered
               ? `<span class="watch-quick-btn watch-scope-btn watch-scope-triggered" data-sym="${escapeHtml(r.tos_symbol)}" title="Triggered: ${escapeHtml(r.watch_triggered_reason || '')}${r.watch_reviewed ? ' (reviewed)' : ' — click to review'}">🔔</span>`
               : `<span class="watch-quick-btn watch-scope-btn watch-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Watching — ${escapeHtml(_watchConfigSummary(r))}\n\nClick to view/stop.">🔔</span>`)
-          : `<span class="watch-quick-btn watch-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder. Gets a combined email if it fires and you haven't reviewed it before the close-time digest.">🔔</span>`}
-      </td>
-      <td data-col="bulk" style="padding:4px 6px; text-align:center;">
-        <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
+          : `<span class="watch-quick-btn watch-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder. Gets a combined email if it fires and you haven't reviewed it before the close-time digest.">🔔</span>`}</div>
       </td>
       <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
       <td data-col="amt" class="num">
+        <div style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</div>
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}
         ${r.stop_signal ? (

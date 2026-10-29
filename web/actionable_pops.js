@@ -1439,16 +1439,16 @@ async function showNotesPop(el, sym, desc) {
 // top 3 inline. Filled after the popover is shown (async) and only if it is still open.
 function _actpopNotesHtml(notes) {
   if (!notes || !notes.length) return '';
-  let h = '<span class="actpop-notes-h">Notes</span>';
-  for (const n of notes.slice(0, 3)) {
+  // 2026-10-29, user: full notes in a scrollable panel (was top 3, cut at 160 chars).
+  let h = '<span class="actpop-notes-h">Notes</span><div class="actpop-notes-scroll">';
+  for (const n of notes) {
     const dt = fmtMD(n.note_date) || '';
     const src = (n.source_type || '').replace(/_/g, ' ');
     const sk = n.signal_kind ? ' ' + String(n.signal_kind).toUpperCase() : '';
     let txt = (n.note_text || '').trim();
-    if (txt.length > 160) txt = txt.slice(0, 160).replace(/\s+\S*$/, '') + '\u2026';
     h += `<div class="actpop-note"><b>${escapeHtml(dt)}</b> ${escapeHtml(src)}${escapeHtml(sk)} &mdash; ${escapeHtml(txt)}</div>`;
   }
-  return h;
+  return h + '</div>';
 }
 
 async function _actpopLoadNotes(sym) {
@@ -2147,8 +2147,9 @@ function _techRulesHtml(row, st) {
   }).join('');
   const lbl = actionDisplay((row.rr_action || '').toUpperCase()).label || '';
   const side = actionDisplay((row.rr_action || '').toUpperCase()).side;
+  // The row's own name + action cells already say "Technical / SELL SOME", so the chip is only kept for "no signal".
   const fin = ts != null
-    ? `<span class="tw-chain-chip final ${side === 'buy' ? 'ok' : side === 'sell' ? 'no' : 'na'}" title="Technical score ${ts}${lbl ? ': ' + escapeHtml(lbl) : ''}">Technical: ${escapeHtml(lbl || String(ts))}</span>`
+    ? ''
     : '<span class="tw-chain-chip final na" title="No Technical signal">no signal</span>';
   return `<div class="actpop-tw tw-chain">${fin}<span class="tw-chain-gap"></span>${mapLink}</div>${rows}`;
 }
@@ -2252,9 +2253,20 @@ function _actpopDriverBullets(row, side) {
       // 2026-10-23, user: the "Why this action" card's Sources / Technical sections were duplicates of this list, so the card's
       // three Technical checks (Trend & Trade, Bollinger bands, Range position) live here now, replacing the one-line "Why".
       const _stages = _techChainHtml(row) || _techStageLinesHtml(row);
-      noteHtml = (_stages || `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`)
-        + `<div class="actpop-tw"><span class="tw-k">Result</span><b>${escapeHtml(actionLabel)}</b>: ${_whyHtml(tw.verdict)}</div>`
+      // 2026-10-29, user: result + cost line go on top (no "Result" label), checks below.
+      // Then "Technical: <action>" chip + "How these rules work" link (the chain row) first, result + cost right under it, checks below.
+      // Action name is already on the chip above, so drop the bold prefix and the trailing ": <Action>" the backend appends.
+      const _verdict = String(tw.verdict || '').replace(/:\s*[A-Za-z ]+$/, m => m.slice(1).trim().toLowerCase() === String(actionLabel).trim().toLowerCase() ? '' : m);
+      // The "How these rules work" link shares the result line (right side) instead of taking its own line.
+      const _lk = (/<a class="tw-maplink".*?<\/a>/.exec(_stages || '') || [''])[0];
+      const _resCost = `<div class="actpop-tw" style="display:flex;justify-content:space-between;gap:8px;"><span style="font-weight:700;">${_whyHtml(_verdict)}</span>${_lk}</div>`
         + (tw.cost ? `<div class="actpop-tw tw-cost">${escapeHtml(tw.cost)}</div>` : '');
+      const _body = _stages || `<div class="actpop-tw"><span class="tw-k">Why</span>${_whyHtml(tw.why)}</div>`;
+      const _hasChain = _body.startsWith('<div class="actpop-tw tw-chain">');
+      const _cut = _hasChain ? _body.indexOf('</div>') + 6 : 0;
+      // Chain row is dropped when it holds only the link (now on the result line); kept when it shows the "no signal" pill.
+      const _keepChain = _hasChain && _body.slice(0, _cut).includes('tw-chain-chip');
+      noteHtml = (_keepChain ? _body.slice(0, _cut) : '') + _resCost + _body.slice(_cut);
     }
     // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header
     // comment; _srcReasonsHtml's grid-column twin of this same treatment.
