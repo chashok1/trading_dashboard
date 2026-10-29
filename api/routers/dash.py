@@ -3552,12 +3552,15 @@ def _ema(vals, n):
 
 
 def _studies_series(rows, days):
-    """rows: [(date, close, volume, rsi, iv, iv_ratio)] ascending, with warm-up rows in front. Returns the last `days`
+    """rows: [(date, close, volume, rsi, iv, iv_ratio, hv)] ascending, with warm-up rows in front. Returns the last `days`
     points with MACD(12,26,9) and volume rate of change (14) calculated from the closes / volumes."""
     closes = [r[1] for r in rows]
     e12, e26 = _ema(closes, 12), _ema(closes, 26)
     macd = [(a - b) if a is not None and b is not None else None for a, b in zip(e12, e26)]
     sig = _ema(macd, 9)
+    hv_in = [r[6] if len(r) > 6 else None for r in rows]
+    iv_avg, iv_thr, iv_mk = _spike_study([r[4] for r in rows])
+    hv_avg, hv_thr, hv_mk = _spike_study(hv_in)
     out = []
     for i, r in enumerate(rows):
         v, v14 = r[2], (rows[i - 14][2] if i >= 14 else None)
@@ -3566,8 +3569,35 @@ def _studies_series(rows, days):
             "macd": macd[i], "signal": sig[i],
             "hist": (macd[i] - sig[i]) if macd[i] is not None and sig[i] is not None else None,
             "vroc": ((v - v14) / v14 * 100.0) if v is not None and v14 else None,
+            "iv_avg": iv_avg[i], "iv_thr": iv_thr[i], "iv_spike": iv_mk[i],
+            "hv": hv_in[i], "hv_avg": hv_avg[i], "hv_thr": hv_thr[i], "hv_spike": hv_mk[i],
+            "hv_ratio": (hv_in[i] / hv_avg[i]) if hv_in[i] is not None and hv_avg[i] else None,
         })
     return out[-days:]
+
+
+_SPIKE_LEN, _SPIKE_MULT = 63, 1.15
+
+
+def _spike_study(vals):
+    """Rolling 63-day average, the upper line (1.15 x average) and spike markers for a volatility series.
+    Read from the user's TOS A_IV_Spikes chart: ratio = value / 63-day average; the upper line is 1.15 x the average.
+    'up' when the ratio first reaches 1.15; 'down' when it later falls back below 1.0 (INFERRED -- the studies' own
+    arrow rules were not available)."""
+    avg, thr, mk, live = [], [], [], False
+    for i, v in enumerate(vals):
+        win = [x for x in vals[max(0, i - _SPIKE_LEN + 1):i + 1] if x is not None]
+        a = sum(win) / len(win) if len(win) >= _SPIKE_LEN * 0.8 else None
+        avg.append(a)
+        thr.append(a * _SPIKE_MULT if a is not None else None)
+        m = None
+        if a and v is not None:
+            if not live and v >= a * _SPIKE_MULT:
+                live, m = True, "up"
+            elif live and v < a:
+                live, m = False, "down"
+        mk.append(m)
+    return avg, thr, mk
 
 
 @router.get("/api/actionable/studies")
@@ -3581,7 +3611,11 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
             SELECT as_of_date, last_price, volume, rsi, imp_volatility, iv_ratio
               FROM (SELECT * FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT :n) t
              ORDER BY as_of_date
-        """), {"sym": sym, "n": days + 60}).fetchall()
+        """), {"sym": sym, "n": days + 70}).fetchall()    # 70 warm-up rows: MACD settling + the 63-day averages
+        hvmap = {r[0]: _f(r[1]) for r in s.execute(text("""
+            SELECT DISTINCT ON (export_date) export_date, historical_vol FROM hist_td
+             WHERE tos_symbol = :sym ORDER BY export_date, sequence DESC
+        """), {"sym": sym}).fetchall()}
         # Stored daily volume can be an early-day capture (e.g. 17 shares). Volume only grows during a day, so the largest
         # capture per date across the TOS files is the closest to the real total.
         vmax = {r[0]: _f(r[1]) for r in s.execute(text("""
@@ -3596,7 +3630,7 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
     def _vol(d, v0):
         v = vmax.get(d) or v0
         return v if v and v >= floor else None      # still implausibly low -> a gap, not a spike
-    data = [(r[0], _f(r[1]), _vol(r[0], _f(r[2])), _f(r[3]), _f(r[4]), _f(r[5])) for r in rows]
+    data = [(r[0], _f(r[1]), _vol(r[0], _f(r[2])), _f(r[3]), _f(r[4]), _f(r[5]), hvmap.get(r[0])) for r in rows]
     return {"symbol": sym, "points": _studies_series(data, days)}
 
 

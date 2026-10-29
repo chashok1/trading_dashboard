@@ -36,3 +36,18 @@ def test_vroc_is_percent_change_vs_14_rows_back():
 def test_vroc_is_none_without_a_volume_14_rows_back():
     vols = [100.0] * 6 + [None] + [100.0] * 14
     assert _studies_series(_rows([10.0] * 21, vols), 21)[20]["vroc"] is None
+
+
+def test_spike_study_up_then_down_markers():
+    from api.routers.dash import _spike_study
+    vals = [1.0] * 70 + [1.3] + [1.2] + [0.5] * 3
+    avg, thr, mk = _spike_study(vals)
+    assert mk[70] == "up" and mk[71] is None
+    assert mk[72] == "down"
+    assert abs(thr[70] - avg[70] * 1.15) < 1e-9
+
+
+def test_spike_study_needs_enough_history():
+    from api.routers.dash import _spike_study
+    avg, thr, mk = _spike_study([1.0] * 10 + [5.0])
+    assert avg[-1] is None and mk[-1] is None

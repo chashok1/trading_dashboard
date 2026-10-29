@@ -294,8 +294,15 @@
       } else {
         var d = '', on = false;
         pts.forEach(function (p, i) { var v = p[s.k]; if (v == null) { on = false; return; } d += (on ? 'L' : 'M') + xOf(i).toFixed(1) + ' ' + yOf(v).toFixed(1); on = true; });
-        g += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="' + (s.w || 1.3) + '"/>';
+        g += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="' + (s.w || 1.3) + '"' + (s.dash ? ' stroke-dasharray="4 3"' : '') + '/>';
       }
+    });
+    // Spike arrows: red up-arrow where the ratio first reaches 1.15, blue down-arrow where it falls back under its average.
+    if (o.mk) pts.forEach(function (p, i) {
+      var m = p[o.mk], v = p[o.mkv]; if (!m || v == null) return;
+      var x = xOf(i), y = yOf(v) + (m === 'up' ? 9 : -9);
+      g += m === 'up' ? '<path d="M' + x + ' ' + (y - 5) + 'L' + (x - 3.5) + ' ' + (y + 3) + 'L' + (x + 3.5) + ' ' + (y + 3) + 'Z" fill="#ef4444"/>'
+                      : '<path d="M' + x + ' ' + (y + 5) + 'L' + (x - 3.5) + ' ' + (y - 3) + 'L' + (x + 3.5) + ' ' + (y - 3) + 'Z" fill="#22d3ee"/>';
     });
     // Right-axis tag with the latest value of each line (the name + pointer values are in the strip above the panel).
     o.series.forEach(function (s) {
@@ -330,7 +337,8 @@
       { h: 115, title: 'RSI (14, 70, 30)', series: [{ k: 'rsi', color: '#9ca3af', fmt: f1 }], refs: [30, 70] },
       { h: 140, title: 'MACD (12, 26, 9)', series: [{ k: 'hist', bars: true, signed: true, fmt: f3 }, { k: 'macd', color: '#22d3ee', fmt: f3 }, { k: 'signal', color: '#e7d9a8', fmt: f3 }], zero: true, zeroColor: '#8b5cf6' },
       { h: 100, title: 'Volume Rate Of Change (14)', series: [{ k: 'vroc', color: '#f59e0b', fmt: f1 }], zero: true, zeroColor: '#ef4444' },
-      { h: 130, title: 'Implied Volatility', series: [{ k: 'iv', color: '#22d3ee', fmt: function (v) { return _sFmt(v, 4); } }, { k: 'iv_ratio', nodraw: true, fmt: function (v) { return 'IV Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }], axis: true }
+      { h: 130, title: 'Implied Volatility', mk: 'iv_spike', mkv: 'iv', series: [{ k: 'iv', color: '#22d3ee', fmt: f3 }, { k: 'iv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'iv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'iv_ratio', nodraw: true, fmt: function (v) { return 'IV Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }] },
+      { h: 130, title: 'Historical Volatility (20)', mk: 'hv_spike', mkv: 'hv', series: [{ k: 'hv', color: '#d946ef', fmt: f3 }, { k: 'hv_avg', color: '#e5e7eb', dash: true, fmt: f3 }, { k: 'hv_thr', color: '#ef4444', dash: true, fmt: f3 }, { k: 'hv_ratio', nodraw: true, fmt: function (v) { return 'Ratio ' + _sFmt(v, 2); }, hc: '#f87171' }], axis: true }
     ];
     var n = pts.length;
     el.innerHTML = P.map(function (o, pi) { return '<div class="st-h" style="' + _SH + '">' + _sHead(pts, o, n - 1) + '</div>' + _sPanel(pts, o); }).join('');
@@ -360,6 +368,9 @@
       if (tok !== el._tok) return;
       if (pts.length < 20) { note('Not enough daily history for studies.'); return; }
       _drawStudies(el, pts);
+      // Line the top of the Volume bar (its values strip) up with the top of the price chart on the left.
+      var wrap = el.closest && el.closest('.actpop-wrap'), pc = wrap && wrap.querySelector('.actpop-gchart'), v0 = el.querySelector('.st-h');
+      if (pc && v0) el.style.marginTop = Math.max(0, (parseFloat(el.style.marginTop) || 0) + pc.getBoundingClientRect().top - v0.getBoundingClientRect().top) + 'px';
     } catch (e) { if (tok === el._tok) note('Studies not available.'); }
   };
 
