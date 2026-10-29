@@ -3089,12 +3089,12 @@ function _buildActionPopHtmlV2(row) {
 
   // Analyst notes (same feed as the SYMBOL-cell hover); filled async by _actpopLoadNotes.
   const _nc = _notesCache.get(row.tos_symbol);
-  h += `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span class="actpop-notes-h">Notes</span> loading&hellip;'}</div>`;
-
+  // 2026-10-29, user: Notes now take the full width along the bottom (both sides), so the block sits under the two columns.
+  const _notesBlock = `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span class="actpop-notes-h">Notes</span> loading&hellip;'}</div>`;
 
   h += `</div>`;
   // 2026-10-29, user: popup is twice as wide; the existing content above is untouched (left), studies charts go on the right.
-  return `<div class="actpop-wrap">${h}<div class="actpop-studies" data-sym="${escapeHtml(sym)}"></div></div>`;
+  return `<div class="actpop-wrap">${h}<div class="actpop-studies" data-sym="${escapeHtml(sym)}"></div>${_notesBlock}</div>`;
 }
 
 function _actionTagHtml(r, noOver) {

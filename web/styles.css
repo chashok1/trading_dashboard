@@ -3394,9 +3394,12 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .uv-actpop-shell td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 
 /* 2026-10-29: Action popup = left (the original 828px popup, unchanged) + right studies column, same width again. */
-.actpop-wrap { display: flex; align-items: flex-start; gap: 8px; }
-.actpop-wrap > .actpop { flex: 0 0 828px; }
-.actpop-studies { flex: 0 0 828px; padding: 6px 0; background: #fff; }
+.actpop-wrap { display: grid; grid-template-columns: 828px 800px; align-items: start; gap: 8px; width: max-content; }
+/* Notes: full width under both columns; the scroll area is taller since the popup is twice as wide. */
+.actpop-wrap > .actpop-notes { grid-column: 1 / -1; box-sizing: border-box; margin-top: 0; padding: 5px 6px 6px; }
+.actpop-wrap > .actpop-notes .actpop-notes-scroll { max-height: 220px; }
+.actpop-wrap > .actpop { width: 828px; }
+.actpop-studies { width: 800px; padding: 6px 0; background: #fff; }   /* = the graphs' width (SW in chart_modal.js), so full-width Notes end where the graphs end */
 /* Taller than the window (or wider) -> the popup itself scrolls instead of clipping. */
 #sourcePop:has(.actpop-wrap) { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; }
 .actpop { width: 828px; padding: 6px; }  /* 2026-10-02: was 662px -- header gained company/price/own/earnings + the Trade/Trend bar */
