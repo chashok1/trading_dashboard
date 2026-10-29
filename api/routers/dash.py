@@ -1218,6 +1218,10 @@ def get_actionable(
                si.sp500 AS idx_sp500, si.nasdaq AS idx_nasdaq,
                si.dow AS idx_dow, si.russell AS idx_russell,
                pv.decision AS pvv_decision, pv.detail AS pvv_detail,
+               vsp.iv_ratio AS vs_iv_ratio, vsp.iv_spiked AS vs_iv_spiked, vsp.iv_event AS vs_iv_event,
+               vsp.iv_spike_days_ago AS vs_iv_spike_ago, vsp.iv_norm_days_ago AS vs_iv_norm_ago,
+               vsp.hv_ratio AS vs_hv_ratio, vsp.hv_spiked AS vs_hv_spiked, vsp.hv_spike_days_ago AS vs_hv_spike_ago,
+               vsp.px_chg_5d AS vs_px_chg_5d, vsp.stress AS vs_stress,
                bg.drift_flag AS bb_rr_drift_flag,
                bg.ape_top_med20 AS bb_rr_ape_top_med20,
                bg.ape_bottom_med20 AS bb_rr_ape_bottom_med20,
@@ -1357,6 +1361,8 @@ def get_actionable(
                ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
         LEFT JOIN drv_pvv pv
                ON pv.tos_symbol = a.tos_symbol AND pv.as_of_date = a.as_of_date
+        LEFT JOIN drv_vol_spike vsp
+               ON vsp.tos_symbol = a.tos_symbol AND vsp.as_of_date = a.as_of_date
         LEFT JOIN drv_bb_rr_gap bg
                ON bg.tos_symbol = a.tos_symbol AND bg.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
@@ -3558,65 +3564,30 @@ def _studies_series(rows, days):
     e12, e26 = _ema(closes, 12), _ema(closes, 26)
     macd = [(a - b) if a is not None and b is not None else None for a, b in zip(e12, e26)]
     sig = _ema(macd, 9)
-    hv_in, _last = [], None
-    for r in rows:                       # a day missing from the TOS export carries the previous HV forward (the averages need no gaps)
-        _last = r[6] if len(r) > 6 and r[6] is not None else _last
-        hv_in.append(_last)
-    iv_sm, iv_avg, iv_thr, iv_rt, iv_mk = _spike_study([r[4] for r in rows], 63, 1.15, 1.0, 4, 5)       # A_IV_Spikes(63, 1.15, 1, 4, 5)
+    hv_in = _carry_forward([r[6] if len(r) > 6 else None for r in rows])     # a day missing from the TOS export carries the previous value forward
+    iv_in = _carry_forward([r[4] for r in rows])
+    iv_sm, iv_avg, iv_thr, iv_rt, iv_mk = _spike_study(iv_in, 63, 1.15, 1.0, 4, 5)       # A_IV_Spikes(63, 1.15, 1, 4, 5)
     hv_sm, hv_avg, hv_thr, hv_rt, hv_mk = _spike_study(hv_in, 63, 1.15, 0.95, 3, 5)                       # A_HV_Spike(63, 1.15, 0.95, 3, 5)
+    vs = _vs_build_rows([r[0] for r in rows], closes, iv_in, hv_in)      # per-day state (spiked / stress / normalized), same as drv_vol_spike
+    def _iv_state(x):
+        return 'stress' if x['stress'] else 'spiked' if x['iv_spiked'] else 'normalized' if (x['iv_norm_days_ago'] is not None and x['iv_norm_days_ago'] <= 5) else None
     out = []
     for i, r in enumerate(rows):
         v, v14 = r[2], (rows[i - 14][2] if i >= 14 else None)
         out.append({
-            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": r[4], "iv_ratio": iv_rt[i],
+            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": iv_in[i], "iv_ratio": iv_rt[i],
             "macd": macd[i], "signal": sig[i],
             "hist": (macd[i] - sig[i]) if macd[i] is not None and sig[i] is not None else None,
             "vroc": ((v - v14) / v14 * 100.0) if v is not None and v14 else None,
             "iv_sm": iv_sm[i], "iv_avg": iv_avg[i], "iv_thr": iv_thr[i], "iv_spike": iv_mk[i],
             "hv": hv_in[i], "hv_sm": hv_sm[i], "hv_avg": hv_avg[i], "hv_thr": hv_thr[i], "hv_spike": hv_mk[i],
             "hv_ratio": hv_rt[i],
+            "iv_state": _iv_state(vs[i]), "hv_state": "spiked" if vs[i]["hv_spiked"] else None,
         })
     return out[-days:]
 
 
-def _mean_full(xs, n):
-    """Mean of the last n values; None unless the window is full and has no gaps (thinkscript Average over NaN data)."""
-    w = xs[-n:]
-    return sum(w) / n if len(w) == n and None not in w else None
-
-
-def _spike_study(vals, length=63, spike_thr=1.15, normal_thr=1.0, smooth_len=4, exclude=5):
-    """The user's TOS "Implied Volatility Spike & Normalization Detector" (A_IV_Spikes(63, 1.15, 1, 4, 5);
-    A_HV_Spike(63, 1.15, 0.95, 3, 5) is the same code with other inputs), translated line for line:
-      ivSmooth = Average(v, smoothLen); avgExcl = Average(ivSmooth[excludeDays], length); avgNormal = Average(ivSmooth, length)
-      spike = preSpikeRatio[1] <= spikeThr and preSpikeRatio > spikeThr   (preSpikeRatio = ivSmooth / avgExcl)
-      wasSpiked: set by a spike, cleared when ivSmooth / avgNormal crosses below normalThr
-      avgIV = avgNormal while wasSpiked else avgExcl;  ratio = ivSmooth / avgIV
-      normalize = wasSpiked[1] and ratio[1] >= normalThr and ratio < normalThr
-    Plots: grey = ivSmooth, white dashed = avgIV * normalThr, red dashed = avgIV * spikeThr, up/down arrows at ivSmooth.
-    Returns (smoothed, white line, red line, ratio, markers)."""
-    n = len(vals)
-    sm = [_mean_full(vals[:i + 1], smooth_len) for i in range(n)]
-    avg_norm = [_mean_full(sm[:i + 1], length) for i in range(n)]
-    avg_excl = [avg_norm[i - exclude] if i >= exclude else None for i in range(n)]
-    pre = [sm[i] / avg_excl[i] if sm[i] is not None and avg_excl[i] else None for i in range(n)]
-    nrm = [sm[i] / avg_norm[i] if sm[i] is not None and avg_norm[i] else None for i in range(n)]
-    was, white, red, ratio, mk = False, [], [], [], []
-    ratio_prev, was_prev = None, False
-    for i in range(n):
-        spike = i > 0 and pre[i - 1] is not None and pre[i] is not None and pre[i - 1] <= spike_thr < pre[i]
-        cross_dn = i > 0 and nrm[i - 1] is not None and nrm[i] is not None and nrm[i - 1] >= normal_thr > nrm[i]
-        was_prev = was
-        was = True if spike else (False if cross_dn else was)
-        a = avg_norm[i] if was else avg_excl[i]
-        white.append(a * normal_thr if a is not None else None)
-        red.append(a * spike_thr if a is not None else None)
-        r = sm[i] / a if sm[i] is not None and a else None
-        ratio.append(r)
-        normalize = was_prev and ratio_prev is not None and r is not None and ratio_prev >= normal_thr > r
-        mk.append("up" if spike else "down" if normalize else None)
-        ratio_prev = r
-    return sm, white, red, ratio, mk
+from etl.vol_spike import spike_study as _spike_study, _carry_forward, build_rows as _vs_build_rows   # the user's TOS spike detector (shared with etl/vol_spike.py)
 
 
 @router.get("/api/actionable/studies")
@@ -3626,15 +3597,16 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
     sym = symbol.upper().strip()
     def _f(v): return float(v) if v is not None else None
     with session_scope() as s:
-        rows = s.execute(text("""
-            SELECT as_of_date, last_price, volume, rsi, imp_volatility, iv_ratio
-              FROM (SELECT * FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT :n) t
-             ORDER BY as_of_date
+        # Day spine, price, IV and HV come from hist_td exactly like etl/vol_spike.py (drv_vol_spike), so this chart and the grid chip agree.
+        td = s.execute(text("""
+            SELECT export_date, last_price, imp_volatility, historical_vol
+              FROM (SELECT DISTINCT ON (export_date) export_date, last_price, imp_volatility, historical_vol
+                      FROM hist_td WHERE tos_symbol = :sym ORDER BY export_date DESC, sequence DESC LIMIT :n) t
+             ORDER BY export_date
         """), {"sym": sym, "n": days + 110}).fetchall()    # warm-up rows: MACD settling + 63-day averages (+ smoothing and the 5 excluded days)
-        hvmap = {r[0]: _f(r[1]) for r in s.execute(text("""
-            SELECT DISTINCT ON (export_date) export_date, historical_vol FROM hist_td
-             WHERE tos_symbol = :sym ORDER BY export_date, sequence DESC
-        """), {"sym": sym}).fetchall()}
+        tech = {r[0]: (_f(r[1]), _f(r[2])) for r in s.execute(text(
+            "SELECT as_of_date, volume, rsi FROM drv_technicals WHERE tos_symbol = :sym"), {"sym": sym}).fetchall()}
+        rows = [(r[0], r[1], (tech.get(r[0]) or (None, None))[0], (tech.get(r[0]) or (None, None))[1], r[2], None, r[3]) for r in td]
         # Stored daily volume can be an early-day capture (e.g. 17 shares). Volume only grows during a day, so the largest
         # capture per date across the TOS files is the closest to the real total.
         vmax = {r[0]: _f(r[1]) for r in s.execute(text("""
@@ -3649,7 +3621,7 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
     def _vol(d, v0):
         v = vmax.get(d) or v0
         return v if v and v >= floor else None      # still implausibly low -> a gap, not a spike
-    data = [(r[0], _f(r[1]), _vol(r[0], _f(r[2])), _f(r[3]), _f(r[4]), _f(r[5]), hvmap.get(r[0])) for r in rows]
+    data = [(r[0], _f(r[1]), _vol(r[0], r[2]), r[3], _f(r[4]), _f(r[5]), _f(r[6])) for r in rows]
     return {"symbol": sym, "points": _studies_series(data, days)}
 
 

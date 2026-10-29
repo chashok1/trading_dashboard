@@ -7657,6 +7657,32 @@ CREATE INDEX IF NOT EXISTS ix_drv_pvv_tos_symbol
 CREATE INDEX IF NOT EXISTS ix_drv_pvv_decision
     ON drv_pvv(as_of_date, decision);
 
+-- 2026-10-29: drv_vol_spike -- where each symbol's IV / HV stands in the user's TOS spike studies (A_IV_Spikes(63,1.15,1,4,5),
+-- A_HV_Spike(63,1.15,0.95,3,5)); etl/vol_spike.py. Informational: a chip on the Actionable IV cell + a factor-scorecard test;
+-- never changes consolidated_action. iv_spiked/hv_spiked = the study's wasSpiked state that day; *_event = the arrow printed
+-- that day ('up' spike / 'down' normalized); *_days_ago = trading days since the last spike / normalized arrow. stress = IV
+-- spiked (or a fresh spike arrow) while the price fell >= 3% over 5 days. Idempotent: DELETE WHERE as_of_date -> INSERT.
+CREATE TABLE IF NOT EXISTS drv_vol_spike (
+    as_of_date         DATE NOT NULL,
+    tos_symbol         TEXT NOT NULL,
+    iv                 NUMERIC,
+    iv_ratio           NUMERIC,
+    iv_spiked          BOOLEAN,
+    iv_event           TEXT,
+    iv_spike_days_ago  INTEGER,
+    iv_norm_days_ago   INTEGER,
+    hv                 NUMERIC,
+    hv_ratio           NUMERIC,
+    hv_spiked          BOOLEAN,
+    hv_event           TEXT,
+    hv_spike_days_ago  INTEGER,
+    px_chg_5d          NUMERIC,
+    stress             BOOLEAN,
+    derived_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_vol_spike_tos_symbol ON drv_vol_spike(tos_symbol, as_of_date);
+
 -- =====================================================
 -- 2026-07-15 TASK_126: sliding look-ahead window over the monthly quad
 -- calendar, replacing the month now/next ramp + quarterly one-hot blend in
@@ -7815,6 +7841,9 @@ CREATE INDEX IF NOT EXISTS ix_drv_factor_snapshot_date ON drv_factor_snapshot(as
 -- price DROP" is checked honestly instead of baked into a "win" definition
 -- that assumes the decision is always right.
 ALTER TABLE drv_factor_snapshot ADD COLUMN IF NOT EXISTS pvv_decision TEXT;
+-- 2026-10-29: IV / HV spike state from drv_vol_spike (etl/vol_spike.py), tested here before it is allowed to drive anything.
+ALTER TABLE drv_factor_snapshot ADD COLUMN IF NOT EXISTS iv_spike_state TEXT;
+ALTER TABLE drv_factor_snapshot ADD COLUMN IF NOT EXISTS hv_spike_state TEXT;
 
 -- v_factor_scorecard - unpivots drv_factor_snapshot's per-factor bucket columns
 -- into one (factor, bucket) row per group, with the same raw (non-direction-
@@ -7881,6 +7910,14 @@ WITH unpivoted AS (
     SELECT as_of_date, tos_symbol, 'PVV decision', pvv_decision,
            fwd_5d_pct, fwd_20d_pct
     FROM drv_factor_snapshot WHERE pvv_decision IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'IV spike state', iv_spike_state,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE iv_spike_state IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'HV spike state', hv_spike_state,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE hv_spike_state IS NOT NULL
     UNION ALL
     SELECT as_of_date, tos_symbol, 'Baseline', 'All stocks',
            fwd_5d_pct, fwd_20d_pct

@@ -1553,6 +1553,45 @@ function _factorEdgeTag(factor, bucket, standalone) {
 
 
 
+// 2026-10-29: IV / HV spike state (drv_vol_spike, from the user's TOS A_IV_Spikes / A_HV_Spike studies). Informational chip in
+// the IV cell + sortable/filterable state; never changes the Final Call. Stress = IV spike while the price is falling.
+function _volSpikeState(r) {
+  if (r.vs_stress) return 'IV stress';
+  if (r.vs_iv_spiked) return 'IV spiked';
+  if (r.vs_hv_spiked) return 'HV spiked';
+  if (r.vs_iv_norm_ago != null && Number(r.vs_iv_norm_ago) <= 5) return 'IV normalized';
+  return 'None';
+}
+const _VS_RANK = { 'IV stress': 4, 'IV spiked': 3, 'HV spiked': 2, 'IV normalized': 1, 'None': 0 };
+const _VS_BUCKET = { 'IV stress': 'IV spike + price falling (stress)', 'IV spiked': 'IV spiked (active)',
+                     'IV normalized': 'IV just normalized (<=5d)', 'None': 'No IV spike' };
+function _volSpikeChipHtml(r) {
+  const st = r._vs_state || _volSpikeState(r);
+  if (st === 'None') return '';
+  const n = r.vs_iv_spike_ago, nn = r.vs_iv_norm_ago;
+  const look = {
+    'IV stress':     ['#fee2e2', '#b91c1c', 'IV STRESS'],
+    'IV spiked':     ['#fef3c7', '#92400e', 'IV SPIKE' + (n != null ? ' ' + n + 'd' : '')],
+    'HV spiked':     ['#f3e8ff', '#6b21a8', 'HV SPIKE' + (r.vs_hv_spike_ago != null ? ' ' + r.vs_hv_spike_ago + 'd' : '')],
+    'IV normalized': ['#cffafe', '#155e75', 'IV NORM' + (nn != null ? ' ' + nn + 'd' : '')],
+  }[st];
+  const fx = (k, f) => { const v = (state.factorScorecard || {})[f + '|' + k]; return v && v.avg_fwd_20d != null ? v : null; };
+  const me = fx(_VS_BUCKET[st], 'IV spike state'), base = fx('No IV spike', 'IV spike state');
+  const pct = v => (Number(v) >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+  const nl = String.fromCharCode(10);
+  const lines = [];
+  if (r.vs_iv_ratio != null) lines.push(`IV ratio ${Number(r.vs_iv_ratio).toFixed(2)} (today's IV vs its 63-day average)`);
+  if (r.vs_iv_spiked) lines.push(`IV spiked ${n != null ? n + ' trading days ago' : 'recently'}, still above normal`);
+  else if (nn != null && Number(nn) <= 5) lines.push(`IV normalized ${nn} trading days ago (fear fading)`);
+  if (r.vs_hv_ratio != null) lines.push(`HV ratio ${Number(r.vs_hv_ratio).toFixed(2)}${r.vs_hv_spiked ? ' (HV spiked: the stock is really moving)' : ''}`);
+  if (r.vs_px_chg_5d != null) lines.push(`Price ${pct(r.vs_px_chg_5d)} over the last 5 trading days`);
+  if (st === 'IV stress') lines.push('Stress = IV spiked while the price fell 3% or more in 5 days');
+  if (me && base) lines.push(`History (this app, since late May): after "${_VS_BUCKET[st]}" the next 20 days averaged ${pct(me.avg_fwd_20d)} vs ${pct(base.avg_fwd_20d)} with no IV spike (n=${me.n})`);
+  lines.push('Information only: does not change the Final Call');
+  const tip = escapeHtml('IV / HV spike (your TOS studies)' + nl + lines.map(l => '• ' + l).join(nl));
+  return `<div style="line-height:1.3;margin-top:1px;"><span style="font-size:8px;font-weight:700;padding:0 3px;border-radius:3px;background:${look[0]};color:${look[1]};white-space:nowrap;cursor:help;" title="${tip}">${look[2]}</span></div>`;
+}
+
 // TASK_142: amber "EDGE DATA <date>" header chip, shown only when
 // drv_rule_outcome (the table behind the Rules-edge pills) is stale per its
 // ref_freshness_contract row. Never hides the pills themselves — just marks
@@ -1784,6 +1823,8 @@ async function loadActionable(opts) {
       r._watchlisted = _buyNoiseGated(r);
       r._priority = _computePriority(r);
       r._pvv_rank = _pvvRank(r.pvv_decision);
+      r._vs_state = _volSpikeState(r);
+      r._vs_rank = _VS_RANK[r._vs_state];
     });
     // TASK_153: latest live-advice check (LIVE column + Today's actions panel).
     // Own try/catch -- a live-advice failure must never block the grid.
@@ -3805,7 +3846,30 @@ function _buildIvPopHtml(r) {
   let html = '<div class="sp-title">Volatility</div><table>';
   for (const [k, v] of rows)
     html += `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
-  return html + '</table>';
+  return html + _volSpikePopRows(r) + '</table>';
+}
+
+// 2026-10-29: "Spike studies" section of the IV popup (drv_vol_spike -- the user's TOS A_IV_Spikes / A_HV_Spike).
+function _volSpikePopRows(r) {
+  if (r.vs_iv_ratio == null && r.vs_hv_ratio == null) return '';
+  const st = r._vs_state || _volSpikeState(r);
+  const pct = v => (Number(v) >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+  const col = { 'IV stress': '#b91c1c', 'IV spiked': '#92400e', 'HV spiked': '#6b21a8', 'IV normalized': '#155e75', 'None': '#64748b' }[st];
+  const d = n => n != null ? n + ' trading day' + (Number(n) === 1 ? '' : 's') + ' ago' : '—';
+  const row = (k, v) => `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
+  let h = '<tr><td class="sp-sec" colspan="2">Spike studies (TOS)</td></tr>';
+  h += row('State', `<span style="color:${col};font-weight:700;">${st === 'None' ? 'No spike' : st}</span>`);
+  if (r.vs_iv_ratio != null) h += row('IV ratio', Number(r.vs_iv_ratio).toFixed(2));
+  if (r.vs_iv_spike_ago != null) h += row('Last IV spike', d(r.vs_iv_spike_ago));
+  if (r.vs_iv_norm_ago != null) h += row('Last IV normalized', d(r.vs_iv_norm_ago));
+  if (r.vs_hv_ratio != null) h += row('HV ratio', Number(r.vs_hv_ratio).toFixed(2));
+  if (r.vs_hv_spike_ago != null) h += row('Last HV spike', d(r.vs_hv_spike_ago));
+  if (r.vs_px_chg_5d != null) h += row('Price, 5 days', pct(r.vs_px_chg_5d));
+  const sc = state.factorScorecard || {};
+  const me = sc['IV spike state|' + _VS_BUCKET[st]], base = sc['IV spike state|No IV spike'];
+  if (me && base && me.avg_fwd_20d != null && base.avg_fwd_20d != null)
+    h += `<tr><td colspan="2" style="font-size:9px;color:#64748b;white-space:normal;">History: next 20 days averaged ${pct(me.avg_fwd_20d)} after this state vs ${pct(base.avg_fwd_20d)} with no IV spike (n=${me.n}). Information only.</td></tr>`;
+  return h;
 }
 
 // ---- rich Warn/Buy-signal popover (2026-08-12) ------------------------------
@@ -5313,6 +5377,7 @@ function _buildRowEl(r) {
           + `<span style="color:#cbd5e1;">/</span>`
           + `<span style="color:#000;">${fmt(ivVal)}</span>`
           + `</div>`
+          + _volSpikeChipHtml(r)
           + (edgeTag ? `<div style="line-height:1.2;">${edgeTag}</div>` : '');
       })()}</td>
       <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}${_macdCaret(r.a_macdh_d_brr)}</td>

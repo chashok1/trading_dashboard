@@ -3842,6 +3842,12 @@ def _derive_all_impl(session: Session, as_of_date: date,
             return 0
         return derive_pvv(session, as_of_date, parent_run_id)
     counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
+    # drv_vol_spike (2026-10-29): IV / HV spike state from the user's TOS spike studies + the "stress" flag; held symbols with a
+    # fresh spike/stress get an auto Watch alert. Informational only. See etl/vol_spike.py.
+    def _drv_vol_spike_runner(session, as_of_date, parent_run_id=None):
+        from etl.vol_spike import derive_vol_spike
+        return derive_vol_spike(session, as_of_date, parent_run_id)
+    counts["drv_vol_spike"] = _safe("drv_vol_spike", _drv_vol_spike_runner)
     # Parm-lookup Pass-3 (QF/QG/QK/QL/QO/QP/QQ/QS/QT) — runs AFTER
     # trend_trade_rules has populated QE/QJ/QM/QN/QR.
     def _drv_cat_atomic_input_pass3(session, as_of_date, parent_run_id=None):
