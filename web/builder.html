@@ -27,12 +27,13 @@
     .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 12px; }
     .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
     .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
-    .bld-grid { grid-template-columns: 340px minmax(460px, 1.1fr) minmax(480px, 1fr); }
+    .bld-grid { grid-template-columns: 255px minmax(540px, .88fr) minmax(480px, 1.12fr); }
     .bld-below { margin-top: 4px; }
-    .bld-side { position: sticky; top: 8px; height: calc(100vh - 24px); display: flex; flex-direction: column; margin-bottom: 0; }
+    /* 2026-10-28, user: Names scrolls with the page like the other panels (was pinned: position:sticky + a fixed viewport height) */
+    .bld-side { display: flex; flex-direction: column; margin-bottom: 0; }
     .bld-side-scroll { flex: 1; min-height: 0; overflow: auto; }
     .bld-side .bld-t thead th { position: sticky; top: 0; background: var(--card-bg); }
-    @media (max-width: 1000px) { .bld-grid { grid-template-columns: 1fr; } .bld-side { position: static; height: 60vh; } }
+    @media (max-width: 1000px) { .bld-grid { grid-template-columns: 1fr; }  }
     .bld-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
     .bld-card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
     .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 11px; line-height: 18px; margin-right: 6px; }
@@ -41,10 +42,10 @@
     .bld-acct label { display: inline-flex; align-items: center; gap: 6px; }
     .bld-acct input[type=number] { width: 120px; text-align: right; }
     /* source / check tick-boxes: two even columns, box and text on one line */
-    .bld-chks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 4px 0; }
+    .bld-chks { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 4px 0; }
     .bld-chks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
     .bld-chks input { margin: 0; flex: 0 0 auto; }
-    .bld-chks .bld-muted { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bld-chks .bld-muted { white-space: normal; line-height: 1.25; }
     /* step 3: actual mix vs target, factor mix, picks */
     .bld-mixrow { margin-bottom: 7px; }
     .bld-mixhead { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 2px; }
@@ -121,7 +122,112 @@
     .bld-disc { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
     .bld-modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
     .bld-modal > div { background: #fff; border-radius: 8px; padding: 14px 18px; width: min(900px, 94vw); max-height: 86vh; overflow: auto; }
-  </style>
+
+    /* ── Polish pass 2026-10-28 (styling only; no layout or behaviour change) ── */
+    .bld-wrap { padding: 12px 20px 28px; }
+    .bld-grid { gap: 16px; }
+    /* tabs: segmented control */
+    .bld-tabs { gap: 0; margin-bottom: 14px; }
+    .bld-tab { border-radius: 0; border-right-width: 0; padding: 7px 18px; font-weight: 600; color: var(--text-2); transition: background .15s, color .15s; }
+    .bld-tab:first-child { border-radius: 8px 0 0 8px; }
+    .bld-tab:nth-child(2) { border-radius: 0 8px 8px 0; border-right-width: 1px; }
+    .bld-tab:not(.on):hover { background: #f4f6fb; color: var(--text-1); }
+    .bld-tab.on { box-shadow: 0 1px 3px rgba(37,99,235,.35); }
+    /* cards */
+    .bld-card, .bld-acct { border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 4px 14px rgba(15,23,42,.04); border-color: #e5e7ee; margin-bottom: 14px; }
+    .bld-card h3 { display: flex; align-items: center; gap: 4px; margin: -2px -2px 12px; padding-bottom: 9px; border-bottom: 1px solid #eef0f5; font-size: 11.5px; font-weight: 700; letter-spacing: .07em; color: var(--text-1); }
+    .bld-card h3 .bld-muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .bld-step { width: 20px; height: 20px; line-height: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px rgba(37,99,235,.35); }
+    .bld-muted { line-height: 1.45; }
+    /* inputs */
+    .bld-card select, .bld-card input[type=number], .bld-card input[type=text], .bld-card input[type=search],
+    .bld-acct select, .bld-acct input[type=number] { padding: 5px 8px; border-radius: 7px; border-color: #d6dae4; transition: border-color .15s, box-shadow .15s; }
+    .bld-card select:hover, .bld-acct select:hover, .bld-card input:hover { border-color: #aeb6c8; }
+    .bld-card select:focus, .bld-acct select:focus, .bld-card input:focus, .bld-acct input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+    .bld-card input[type=checkbox], .bld-acct input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+    .bld-chks label:hover, .bld-card > label:hover { color: var(--text-1); }
+    .bld-pill { background: #eef1f7; color: var(--text-2); padding: 3px 11px; font-weight: 500; }
+    /* buttons */
+    .bld-btn { border-radius: 8px; font-weight: 600; box-shadow: 0 1px 2px rgba(37,99,235,.3); transition: filter .15s, background .15s, transform .05s; }
+    .bld-btn:hover:not(:disabled) { filter: brightness(1.08); }
+    .bld-btn:active:not(:disabled) { transform: translateY(1px); }
+    .bld-btn.alt { box-shadow: none; border-color: #d6dae4; }
+    .bld-btn.alt:hover:not(:disabled) { background: #f4f6fb; filter: none; }
+    .bld-btn.sm { border-radius: 7px; padding: 4px 11px; }
+    /* filter / action rows in the Names card */
+    .bld-side .bld-line { gap: 8px; margin: 8px 0; }
+    .bld-side .bld-line select { max-width: 150px; }
+    .bld-quadf { background: #f6f7fb; border: 1px solid #e5e7ee; border-radius: 7px; padding: 3px 9px; gap: 8px; }
+    /* tables */
+    table.bld-t { font-size: 11px; }
+    .bld-t th { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 700; padding: 5px 8px; border-bottom: 1px solid #e5e7ee; background: #fafbfd; }
+    .bld-t td { padding: 2px 8px; border-bottom: 1px solid #f1f2f6; }
+    .bld-card .bld-t td input:not([type=checkbox]), .bld-card .bld-t td select, .bld-card .bld-t td button { padding: 0 5px; height: 18px; line-height: 16px; font-size: 11px; box-sizing: border-box; border-radius: 4px; }
+    .bld-card .bld-t td .bld-btn.sm { padding: 0 8px; }
+    .bld-t tbody tr:hover { background: #f6f8ff; }
+    .bld-side .bld-t tbody tr:nth-child(even):not(:hover) { background: #fbfbfd; }
+    .bld-side .bld-t td:nth-child(3) { color: var(--text-3); font-size: 11.5px; }
+    .bld-side .bld-t td:nth-child(8) { color: var(--text-2); font-size: 12px; }
+    .bld-side .bld-t thead th { box-shadow: 0 1px 0 #e5e7ee; z-index: 2; }
+    .bld-qp { width: 24px; padding: 1px 0; border-radius: 5px; margin-right: 3px; font-weight: 700; }
+    /* targets vs portfolio comparison */
+    .bld-exp th, .bld-exp td { padding: 2px 8px; }
+    .bld-exp .sec td { background: #f3f5fa; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .07em; border-top: 1px solid #e5e7ee; border-left: 3px solid var(--accent); padding-top: 7px; padding-bottom: 7px; }
+    .bld-exp input[type=number] { width: 64px; border-radius: 6px; background: #fbfbfd; }
+    .bld-exp input[type=number]:focus { background: #fff; }
+    .bld-t .bld-sw { width: 11px; height: 11px; border-radius: 3px; }
+    .bld-mixbar { height: 9px; border-radius: 5px; }
+    /* helper text and boxes */
+    .bld-note { border-radius: 8px; padding: 8px 12px; }
+    .bld-box { border-radius: 8px; background: #f4f6fb; }
+    .bld-kpi { border-radius: 10px; padding: 9px 12px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+    .bld-kpi b { font-size: 19px; }
+    .bld-disc { text-align: center; padding: 6px 0 2px; }
+    .bld-modal > div { border-radius: 12px; box-shadow: 0 18px 50px rgba(15,23,42,.28); }
+
+    /* 2026-10-28, user: the comparison sections (asset class, risk, Quad, sectors, style) sit in three columns */
+    .bld-cmp3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px 20px; align-items: start; }
+    .bld-cmp3 > div { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .bld-cmp3 .bld-exp th:first-child { white-space: normal; border-left: 3px solid var(--accent); background: #f3f5fa; color: var(--text-2); letter-spacing: .05em; }
+    .bld-cmp3 .bld-exp th.n { font-size: 10px; white-space: normal; line-height: 1.15; vertical-align: bottom; }
+    .bld-cmp3 .bld-exp input[type=number] { width: 74px; }
+    /* the symbol table below: two columns (every class but Equities on the left, Equities on the right) */
+    .bld-sym2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 14px 20px; align-items: start; margin-top: 10px; }
+    .bld-sym2 > div { min-width: 0; overflow-x: auto; }
+    /* same column widths in every grid so Target / Picks / Portfolio / Gap line up from one grid to the next */
+    .bld-cmp3 table.bld-exp { table-layout: fixed; width: 100%; }
+    .bld-cmp3 .bld-exp th:nth-child(2), .bld-cmp3 .bld-exp td:nth-child(2) { width: 86px; }
+    .bld-cmp3 .bld-exp th:nth-child(3), .bld-cmp3 .bld-exp td:nth-child(3) { width: 54px; }
+    .bld-cmp3 .bld-exp th:nth-child(4), .bld-cmp3 .bld-exp td:nth-child(4) { width: 66px; }
+    .bld-cmp3 .bld-exp th:nth-child(5), .bld-cmp3 .bld-exp td:nth-child(5) { width: 58px; }
+    .bld-cmp3 .bld-exp td:first-child { overflow: hidden; text-overflow: ellipsis; }
+    .bld-cmp3 .bld-exp td, .bld-cmp3 .bld-exp th { padding-left: 5px; padding-right: 5px; }
+    .bld-side .bld-t td:nth-child(8) { white-space: normal; }
+    /* 2026-10-28, user: the Build new / My model portfolios buttons sit at the top of the left column, level with
+       the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
+       columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
+    @media (min-width: 1001px) {
+      .bld-wrap { display: grid; grid-template-columns: 255px minmax(540px, .88fr) minmax(480px, 1.12fr); column-gap: 16px; row-gap: 0; align-items: start;
+        /* rows: problems, banner, buttons, left-column cards, disclaimer. The tall Names/Picks cards span rows 3-4; the 1fr
+           row 4 soaks up their extra height so the buttons' row stays short and Account sits right under the buttons. */
+        grid-template-rows: auto auto auto 1fr auto; }
+      .bld-wrap > #bldProblems { grid-column: 1 / -1; grid-row: 1; }
+      .bld-wrap > .bld-tabs { grid-column: 1; grid-row: 3; flex-wrap: nowrap; gap: 6px; }
+      .bld-tabs .bld-tab, .bld-tabs .bld-tab:first-child, .bld-tabs .bld-tab:nth-child(2) { border-radius: 8px; border-width: 1px; width: auto; flex: 1 1 0; padding-left: 8px; padding-right: 8px; white-space: nowrap; text-align: center; }
+      #view-build { display: contents; }
+      #view-build > #runBanner { grid-column: 1 / -1; grid-row: 2; }
+      #view-build > .bld-grid { display: contents; }
+      .bld-grid > :nth-child(1) { grid-column: 1; grid-row: 4; }
+      .bld-grid > .bld-side { grid-column: 2; grid-row: 3 / span 2; }
+      .bld-grid > :nth-child(3) { grid-column: 3; grid-row: 3 / span 2; }
+      #view-build > .bld-below { grid-column: 1 / -1; grid-row: 5; }
+      #view-list, #view-detail { grid-column: 1 / -1; grid-row: 4; }
+    }
+      /* compact control boxes everywhere on this screen (grids stay 18px, set above) */
+    body.builder-page input:not([type=checkbox]):not([type=radio]):not([type=range]), body.builder-page select, body.builder-page button { height: 22px; padding-top: 0; padding-bottom: 0; line-height: 20px; font-size: 12px; box-sizing: border-box; }
+    body.builder-page .bld-tab, body.builder-page .bld-seg button, body.builder-page .bld-btn { padding-top: 0; padding-bottom: 0; }
+    body.builder-page .bld-card .bld-t td input:not([type=checkbox]), body.builder-page .bld-card .bld-t td select, body.builder-page .bld-card .bld-t td button { height: 18px; line-height: 16px; font-size: 11px; }
+</style>
 </head>
 <body class="builder-page">
   <header class="topbar">
@@ -139,9 +245,7 @@
     <div id="bldProblems" class="bld-note" hidden></div>
     <div class="bld-tabs">
       <button class="bld-tab on" data-v="build">Build new</button>
-      <button class="bld-tab" data-v="list">My model portfolios <span id="listCount"></span></button>
-      <span class="bld-sp"></span>
-      <span class="bld-muted" id="dataAsOf"></span>
+      <button class="bld-tab" data-v="list">Portfolios <span id="listCount"></span></button>
     </div>
 
     <!-- VIEW 1: BUILD NEW -->
@@ -151,7 +255,7 @@
         <!-- column 1: account (step 0) and setup -->
         <div>
           <div class="bld-acct">
-            <span><span class="bld-step">0</span><b>Account</b></span>
+            <span><b>Account</b></span>
             <select id="acctSel" aria-label="account"></select>
             <span class="bld-pill" id="acctType"></span>
             <span class="bld-pill" id="acctRun"></span>
@@ -162,7 +266,7 @@
             <div id="srcBox" class="bld-chks"></div>
           </div>
 
-          <div class="bld-card"><h3><span class="bld-step">2</span>Warnings <span class="bld-muted">(optional, alert only, never trades)</span></h3>
+          <div class="bld-card"><h3>Warnings <span class="bld-muted">(optional, alert only, never trades)</span></h3>
             <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="drop"> Tell me if the model is down 10% from start</label>
             <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="quad_turn"> Tell me if the Quad check says "transition"</label>
             <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="no_new_risk"> Tell me if the Risk Dial says "No new risk"</label>
@@ -194,7 +298,7 @@
 
         <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
         <div>
-          <div class="bld-card"><h3><span class="bld-step">1</span>Picks vs portfolio <span class="bld-muted" id="picksCount"></span></h3>
+          <div class="bld-card"><h3>Picks vs portfolio <span class="bld-muted" id="picksCount"></span></h3>
             <div class="bld-line"><b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
               <button class="bld-btn alt" id="setOpen">Open</button><button class="bld-btn" id="setSave">Save as…</button><button class="bld-btn alt" id="setDel">Delete</button>
               <span class="bld-muted" id="setMsg"></span></div>
@@ -226,7 +330,7 @@
 
     <!-- VIEW 3: DETAIL -->
     <section id="view-detail" hidden>
-      <div class="bld-muted" style="margin-bottom:6px"><a href="#" id="backToList">&larr; My model portfolios</a></div>
+      <div class="bld-muted" style="margin-bottom:6px"><a href="#" id="backToList">&larr; Portfolios</a></div>
       <div id="detailBody"></div>
     </section>
   </main>
@@ -235,7 +339,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261028g"></script>
+  <script src="/static/builder.js?v=20261028x"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

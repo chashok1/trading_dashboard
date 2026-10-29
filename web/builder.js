@@ -7,8 +7,10 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tipAttr = lines => esc(lines.filter(Boolean).map(l => '• ' + l).join('\n')).replace(/\n/g, '&#10;');
-  const usd = n => (n == null || isNaN(n)) ? '-' : (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString();
-  const sgnUsd = n => (n == null || isNaN(n)) ? '-' : (n > 0 ? '+' : n < 0 ? '−' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
+  // 2026-10-28, user: amounts shown in K ($442.8K); under $1,000 stays in dollars, $1M and over in M
+  const kfmt = a => a >= 1e6 ? (a / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(1) + 'K' : Math.round(a).toLocaleString();
+  const usd = n => (n == null || isNaN(n)) ? '-' : (n < 0 ? '-$' : '$') + kfmt(Math.abs(n));
+  const sgnUsd = n => (n == null || isNaN(n)) ? '-' : (n > 0 ? '+' : n < 0 ? '−' : '') + '$' + kfmt(Math.abs(n));
   const pct = (x, d = 1) => (x == null || isNaN(x)) ? '-' : (x * 100).toFixed(d) + '%';
   const sgnPct = (x, d = 1) => (x == null || isNaN(x)) ? '-' : (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(d) + '%';
   const cls = x => x == null ? '' : (x > 0 ? 'bld-up' : x < 0 ? 'bld-dn' : '');
@@ -34,7 +36,7 @@
 
   const S = {
     date: null, accounts: [], acct: '', horizon: '3M', preset: 'current', seeded: null, mix: null, amount: null, useDial: false,
-    srcNames: [], nameCache: {}, picks: [], assign: {}, targets: {}, gapIdx: null, namesSeq: 0, sources: [], srcList: [], warn: {}, presets: {}, preview: null,
+    srcNames: [], outlooks: {}, nameCache: {}, picks: [], assign: {}, targets: {}, gapIdx: null, namesSeq: 0, sources: [], srcList: [], warn: {}, presets: {}, preview: null,
     reqSeq: 0, timer: null, detail: null, chart: null,
   };
 
@@ -101,10 +103,9 @@
       if (pr.problems && pr.problems.length) problems(pr.problems);
       const ac = await api(withDate('/api/builder/accounts'));
       S.accounts = ac.accounts || [];
-      $('dataAsOf').textContent = 'Data as of ' + ac.as_of + (ac.data_stale ? ' (behind market close)' : ' ✓');
       if (ac.problems && ac.problems.length) problems(ac.problems);
-      const opts = S.accounts.map(a => `<option value="${esc(a.short)}">${esc(a.short)}${a.type && a.type !== 'OTHER' ? ' · ' + esc(a.type) : ''} · ${usd(a.value)}</option>`);
-      opts.push(`<option value="ALL">Whole book (preview only) · ${usd(ac.whole_book_value)}</option>`);
+      const opts = S.accounts.map(a => `<option value="${esc(a.short)}">${esc(a.short)}${a.type && a.type !== 'OTHER' ? ' · ' + esc(a.type) : ''}</option>`);   // 2026-10-28: the Amount box below already shows the value
+      opts.push(`<option value="ALL">Whole book (preview only)</option>`);
       $('acctSel').innerHTML = opts.join('');
       if (!S.acct || ![...$('acctSel').options].some(o => o.value === S.acct)) S.acct = S.accounts.length ? S.accounts.slice().sort((x, y) => y.value - x.value)[0].short : 'ALL';
       $('acctSel').value = S.acct;
@@ -193,6 +194,8 @@
   }
 
   const bucketOf = n => (n && (n.bucket || S.assign[n.sym])) || null;
+  // symbol text coloured by its Hedgeye outlook (same colours as the other screens); plain when unknown
+  const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${esc(sym)}</span>`; };
   const picked = sym => S.picks.find(p => p.sym === sym);
 
   function shownNames() {
@@ -230,7 +233,7 @@
       const cls = b ? esc(b) : `<select data-assign="${esc(n.sym)}"><option value="">Choose...</option>${BUCKETS.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
       const st = (n.styles || []).map(esc).join(', ') || '<span class="bld-muted">-</span>';
       return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${!b ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : 'Add to picks'}"></td>` +
-        `<td><b>${esc(n.sym)}</b></td><td>${esc(n.sources.join(', '))}</td><td>${cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? esc(n.sector) : '<span class="bld-muted">-</span>'}</td>` +
+        `<td>${symHtml(n.sym)}</td><td>${esc(n.sources.join(', '))}</td><td>${cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? esc(n.sector) : '<span class="bld-muted">-</span>'}</td>` +
         `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}" title="Q${i + 1}: ${w || 'no view'}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td></tr>`;
     }).join('') || '<tr><td colspan="9" class="bld-muted">No names match.</td></tr>';
     $('srcNamesRows').querySelectorAll('[data-pick]').forEach(c => c.onchange = () => { setPick(c.dataset.pick, c.checked); renderSourceNames(); schedule(0); });
@@ -260,7 +263,8 @@
     const bd = (q, w) => ((q || {})[w] || 0);
     const gapTd = (g, dec) => (g == null || !hasPick || !hasHeld) ? '<td></td>'
       : `<td class="n ${Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn')}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 0)}${dec ? '' : ' pts'}</td>`;
-    const sec = t => `<tr class="sec"><td colspan="5">${t}</td></tr>`;
+    // a section break: the rows after it become their own small table (laid out in three columns, see the end of this function)
+    const sec = t => `\u0001${t}\u0002`;
     const chosen = res.mix_target || {};
     const judge = (pv, tv, dec) => { const tol = dec ? 0.05 : 5; return pv > tv + tol ? 'bld-over' : (pv < tv - tol ? 'bld-warn' : 'bld-up'); };
     // gap = picks minus its reference (the target if one is set, else the portfolio); coloured against a target
@@ -281,8 +285,8 @@
       return `<tr><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
         `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
     };
-    let t = `<table class="bld-t bld-exp"><thead><tr><th class="bld-tip" data-tip="${esc('Asset class rows are % of the account. Everything below is % of the invested money on that side. Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.')}"></th>` +
-      `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Portfolio</th><th class="n">Gap</th></tr></thead><tbody>`;
+    const generalTip = 'Asset class rows are % of the account. Everything below is % of the invested money on that side. Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
+    let t = '';
     t += sec('Asset class · % of the account');
     let placedTotal = 0, heldInvested = 0;
     for (const b of mixBuckets(res)) {
@@ -307,7 +311,7 @@
       const tip = `${q} outlook. Picks: Bull ${bd(pq, 'bull').toFixed(0)}%, Neutral ${bd(pq, 'neutral').toFixed(0)}%, Bear ${bd(pq, 'bear').toFixed(0)}%, no view ${bd(pq, 'none').toFixed(0)}%. Portfolio: Bull ${bd(hq, 'bull').toFixed(0)}%, Neutral ${bd(hq, 'neutral').toFixed(0)}%, Bear ${bd(hq, 'bear').toFixed(0)}%, no view ${bd(hq, 'none').toFixed(0)}%`;
       t += R(q, hasPick ? bd(pq, 'bull') : null, hasHeld ? bd(hq, 'bull') : null, tip, 'quad:' + q);
     }
-    t += sec('Sectors');
+    t += sec('Sectors · equities');
     const sv = k => Math.max((P.sector || {})[k] || 0, (H.sector || {})[k] || 0, tgtOf('sector:' + k) || 0);
     const allSec = new Set(Object.keys(P.sector || {}).concat(Object.keys(H.sector || {})));
     Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => allSec.add(k.slice(7)));
@@ -317,7 +321,17 @@
     t += sec('Style');
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
       .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0]); });
-    return t + '</tbody></table>';
+    // 2026-10-28, user: show the sections in three columns. Cut the rows at each section break, one small table per section.
+    const parts = t.split(/\u0001([^\u0002]*)\u0002/);          // ['', title1, rows1, title2, rows2, ...]
+    const tables = {};
+    for (let i = 1; i < parts.length; i += 2) {
+      const title = parts[i], first = i === 1;
+      tables[title.split(' ·')[0]] = `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title}</th>` +
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${first && S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Port&shy;folio</th><th class="n">Gap</th></tr></thead><tbody>${parts[i + 1]}</tbody></table>`;
+    }
+    const T = k => tables[k] || '';
+    // 2026-10-28, user: the five grids stay in three columns
+    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Style')}</div><div>${T('Risk')}${T('Quad favored (Bull)')}</div><div>${T('Sectors')}</div></div>`;   // keys are the title up to " ·"
   }
 
   const tgtOf = key => (S.targets[key] == null ? null : S.targets[key]);
@@ -398,30 +412,36 @@
       return { sym, pk, pos, h, bucket, hold: h ? h.value : 0, model: pos ? pos.value : 0, kept: !!(h && h.kept), trade: (vsBy[sym] || {}).trade || '' };
     });
     const dash = '<span class="bld-muted">-</span>';
-    let t = `<table class="bld-t bld-exp"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
+    const head = `<table class="bld-t bld-exp"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
       if (!mine.length) continue;
+      let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
       t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}${(fin[b] || 0) > 0 ? ` <span class="bld-muted">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
-          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:54px" title="% of ${esc(b)}"> % ` +
+          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"> % ` +
             `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : '<span class="bld-muted">not buyable</span>'} <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}><td><b>${esc(r.sym)}</b></td><td class="n">${pCell}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}><td>${symHtml(r.sym)}</td><td class="n">${pCell}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
           `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`;
       });
+      side[b === 'Equities' ? 'right' : 'left'] += t;
     }
-    return t + '</tbody></table>';
+    const tbl = rowsHtml => rowsHtml ? head + rowsHtml + '</tbody></table>' : '';
+    return `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right)}</div></div>`;
   }
 
   // ---------------------------------------------------------------- step 2: your picks, actual mix, factor mix
   function renderPicks(res) {
+    Object.assign(S.outlooks, res.outlooks || {});
     $('picksCount').textContent = S.picks.length ? `${S.picks.length} picked` : '';
     $('cmpTable').innerHTML = compareTable(res);
     bindCmp();
@@ -615,6 +635,7 @@
   }
 
   function renderDetail(d) {
+    Object.assign(S.outlooks, d.outlooks || {});
     const k = d.kpis, ai = d.account_info || {};
     const stat = d.status === 'REVIEW_DUE' ? 'review due' : d.status.toLowerCase();
     let h = `<h3 style="margin:0 0 8px">${esc(d.name)} · account ${esc(d.account)} (${esc(d.account_type || 'OTHER')}) · day ${d.day} of ${d.total_days || '?'} · frozen since ${esc(d.start)} · ends ${esc(d.end)} · ${esc(stat)}${d.close_reason ? ' (' + esc(d.close_reason) + ')' : ''}</h3>`;
@@ -641,13 +662,13 @@
     } else if (ai.active === false) h += '<div class="bld-card bld-muted">Account inactive: the model keeps marking on its frozen shares.</div>';
     // holdings
     h += `<div class="bld-card"><h3>Holdings</h3><div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Fund</th><th>Area</th><th class="n">Shares</th><th class="n">Entry</th><th class="n">Now</th><th class="n">Return</th><th class="n">Weight now</th><th>Final Call now</th><th>Why here</th></tr></thead><tbody>` +
-      d.positions.map(p => `<tr><td><b>${esc(p.sym)}</b>${p.is_kept ? ' &#128274;' : ''}${p.stale_days ? ` <span class="bld-warn" title="No new price for ${p.stale_days} day(s)">&#9679;</span>` : ''}</td><td>${esc(p.area || '')}</td><td class="n">${p.shares == null ? '' : Math.round(p.shares)}</td><td class="n">${p.entry == null ? '' : p.entry.toFixed(2)}</td><td class="n">${p.close == null ? '' : p.close.toFixed(2)}</td><td class="n ${cls(p.ret)}">${sgnPct(p.ret)}</td><td class="n">${pct(p.weight_now, 1)}</td>` +
+      d.positions.map(p => `<tr><td>${symHtml(p.sym)}${p.is_kept ? ' &#128274;' : ''}${p.stale_days ? ` <span class="bld-warn" title="No new price for ${p.stale_days} day(s)">&#9679;</span>` : ''}</td><td>${esc(p.area || '')}</td><td class="n">${p.shares == null ? '' : Math.round(p.shares)}</td><td class="n">${p.entry == null ? '' : p.entry.toFixed(2)}</td><td class="n">${p.close == null ? '' : p.close.toFixed(2)}</td><td class="n ${cls(p.ret)}">${sgnPct(p.ret)}</td><td class="n">${pct(p.weight_now, 1)}</td>` +
         `<td>${p.final_now ? `<span class="bld-badge ${/^(SA|SS|STM|SO|SW|SWW|REMOVE|REDUCE)$/.test(p.final_now) ? 'sell' : /^(BM|BS|BMN|BW|BSW|INCREASE|ADD)$/.test(p.final_now) ? 'buy' : 'neutral'}">${esc(ACT_LABEL[p.final_now] || p.final_now)}</span>` : '-'}</td><td><span class="bld-tip" data-tip="${tipAttr(p.why_detail)}">${esc(p.why || '')}</span></td></tr>`).join('') + '</tbody></table></div></div>';
     // vs account
     const va = d.vs_account;
     if (va) {
       h += `<div class="bld-card"><h3>vs your account <span class="bld-muted">(${esc(d.account)} holdings only, no scaling)</span></h3><div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Fund</th><th>Area</th><th class="n">Model $</th><th class="n">You hold $</th><th class="n">Gap $</th><th>Trade to match</th><th class="n">Tax if sold</th></tr></thead><tbody>` +
-        va.rows.map(r => `<tr><td>${esc(r.sym)}${r.kept ? ' &#128274;' : ''}</td><td>${esc(r.area || '')}</td><td class="n">${r.model == null ? '—' : usd(r.model)}</td><td class="n">${usd(r.hold)}</td><td class="n">${r.gap == null ? '—' : sgnUsd(r.gap)}</td><td>${esc(r.trade)}${r.trade.startsWith('Buy') || r.trade.startsWith('Sell') ? ' <span class="bld-muted">(only if you want to match, not advice)</span>' : ''}</td><td class="n">${r.tax == null ? '' : sgnUsd(r.tax) + (r.tax >= 0 ? ' gain' : ' loss')}</td></tr>`).join('') +
+        va.rows.map(r => `<tr><td>${symHtml(r.sym)}${r.kept ? ' &#128274;' : ''}</td><td>${esc(r.area || '')}</td><td class="n">${r.model == null ? '—' : usd(r.model)}</td><td class="n">${usd(r.hold)}</td><td class="n">${r.gap == null ? '—' : sgnUsd(r.gap)}</td><td>${esc(r.trade)}${r.trade.startsWith('Buy') || r.trade.startsWith('Sell') ? ' <span class="bld-muted">(only if you want to match, not advice)</span>' : ''}</td><td class="n">${r.tax == null ? '' : sgnUsd(r.tax) + (r.tax >= 0 ? ' gain' : ' loss')}</td></tr>`).join('') +
         `</tbody></table></div><div style="margin-top:6px"><b>Matches model: ${va.match_pct == null ? '-' : va.match_pct.toFixed(0) + '%'}</b>${va.tax ? ` · selling to match would realise about <b>${sgnUsd(va.tax.gain)}</b> gain / <b>${sgnUsd(va.tax.loss)}</b> loss (estimate, not tax advice)` : ''}${va.paper_only ? ' · 401k: paper-only, plan funds only' : ''}</div></div>`;
     }
     // promise

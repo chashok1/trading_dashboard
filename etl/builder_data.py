@@ -246,6 +246,9 @@ def name_info(session, d: date, syms: list, problems: Optional[list] = None, uni
         log.warning("name_info: pie map unavailable: %s", e)
         ac, sec = {}, {}
     om = outlook_map(session, problems)
+    own = {r[0]: next((x for x in r[1:] if x), None) for r in _q(
+        session, "SELECT tos_symbol, rr_outlook, etf_outlook, call_outlook FROM drv_outlooks "
+                 "WHERE as_of_date = :d AND tos_symbol = ANY(:s)", {"d": d, "s": list(syms)}, None, "drv_outlooks")}
     uni, bucket_of = [], {}
     for sym in syms:
         b = _bucket_of(ac.get(sym))
@@ -268,7 +271,7 @@ def name_info(session, d: date, syms: list, problems: Optional[list] = None, uni
             cat, sub = "Asset Class", ("USD" if b == "Currency" else b)
         q = om.get(outlook_key(cat, sub)) if b else None
         reason = f.get("reason")
-        out[sym] = {"sym": sym, "bucket": b, "sector": sector, "industry": ind.get(sym), "usable": True, "status": "Usable" if reason is None else "Usable (%s)" % reason,
+        out[sym] = {"sym": sym, "bucket": b, "sector": sector, "industry": ind.get(sym), "outlook": own.get(sym), "usable": True, "status": "Usable" if reason is None else "Usable (%s)" % reason,
                     "quad": [_quad_word(x) for x in q] if q else [None] * 4,
                     "beta": f.get("beta"), "styles": f.get("styles") or [], "final_code": f.get("final_code"),
                     "mom": f.get("mom"), "above_trend": f.get("above_trend"), "price": f.get("price")}

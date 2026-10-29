@@ -115,6 +115,7 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
         for x in res["positions"]:      # the asset class you gave a name wins
             if x["sym"] in info and x.get("bucket") in BUCKETS:
                 info[x["sym"]]["bucket"] = x["bucket"]
+        res["outlooks"] = {k: v.get("outlook") for k, v in info.items() if v.get("outlook")}
         res["exposure"] = {"picked": bd.exposure(pvals, info), "held": bd.exposure(hvals, info)}
     return res
 
@@ -183,6 +184,9 @@ def get_portfolio(pid: int, date: Optional[str] = Query(None)):
     d = _resolve_date(date)
     with session_scope() as s:
         out = bs.detail(s, d, pid)
+        if out is not None:
+            syms = {x["sym"] for x in (out.get("positions") or [])} | {x["sym"] for x in ((out.get("vs_account") or {}).get("rows") or [])}
+            out["outlooks"] = {k: v["outlook"] for k, v in bd.name_info(s, d, sorted(syms), []).items() if v.get("outlook")} if syms else {}
     if out is None:
         raise HTTPException(status_code=404, detail="Model portfolio not found")
     return out
