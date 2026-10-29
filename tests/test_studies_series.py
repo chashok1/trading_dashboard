@@ -63,3 +63,15 @@ def test_spike_study_needs_enough_history():
     from api.routers.dash import _spike_study
     sm, white, red, ratio, mk = _spike_study([1.0] * 10 + [5.0])
     assert white[-1] is None and ratio[-1] is None and mk[-1] is None
+
+
+def test_volume_averages_10d_and_63d():
+    out = _studies_series(_rows([10.0] * 100, [100.0] * 100), 5)
+    assert abs(out[-1]["vol_avg10"] - 100.0) < 1e-9 and abs(out[-1]["vol_avg63"] - 100.0) < 1e-9
+
+
+def test_volume_average_ignores_gaps_but_needs_enough_data():
+    vols = [100.0] * 100
+    vols[95] = None
+    assert abs(_studies_series(_rows([10.0] * 100, vols), 1)[0]["vol_avg10"] - 100.0) < 1e-9
+    assert _studies_series(_rows([10.0] * 30, [100.0] * 30), 1)[0]["vol_avg63"] is None

@@ -3557,6 +3557,15 @@ def _ema(vals, n):
     return out
 
 
+def _sma_gaps(vals, n, min_frac=0.7):
+    """Simple average of the last n values, ignoring gaps; None unless at least min_frac of the window has a value."""
+    out = []
+    for i in range(len(vals)):
+        w = [x for x in vals[max(0, i - n + 1):i + 1] if x is not None]
+        out.append(sum(w) / len(w) if len(w) >= n * min_frac and i >= n - 1 else None)
+    return out
+
+
 def _studies_series(rows, days):
     """rows: [(date, close, volume, rsi, iv, iv_ratio, hv)] ascending, with warm-up rows in front. Returns the last `days`
     points with MACD(12,26,9) and volume rate of change (14) calculated from the closes / volumes."""
@@ -3568,6 +3577,10 @@ def _studies_series(rows, days):
     iv_in = _carry_forward([r[4] for r in rows])
     iv_sm, iv_avg, iv_thr, iv_rt, iv_mk = _spike_study(iv_in, 63, 1.15, 1.0, 4, 5)       # A_IV_Spikes(63, 1.15, 1, 4, 5)
     hv_sm, hv_avg, hv_thr, hv_rt, hv_mk = _spike_study(hv_in, 63, 1.15, 0.95, 3, 5)                       # A_HV_Spike(63, 1.15, 0.95, 3, 5)
+    # Volume averages: TOS's own (hist_tw volume_avg_10d / volume_avg_3m) when we have them, else calculated from the volumes.
+    calc10, calc63 = _sma_gaps([r[2] for r in rows], 10), _sma_gaps([r[2] for r in rows], 63)
+    vol_avg10 = [r[7] if len(r) > 7 and r[7] is not None else calc10[i] for i, r in enumerate(rows)]
+    vol_avg63 = [r[8] if len(r) > 8 and r[8] is not None else calc63[i] for i, r in enumerate(rows)]
     vs = _vs_build_rows([r[0] for r in rows], closes, iv_in, hv_in)      # per-day state (spiked / stress / normalized), same as drv_vol_spike
     def _iv_state(x):
         return 'stress' if x['stress'] else 'spiked' if x['iv_spiked'] else 'normalized' if (x['iv_norm_days_ago'] is not None and x['iv_norm_days_ago'] <= 5) else None
@@ -3575,7 +3588,7 @@ def _studies_series(rows, days):
     for i, r in enumerate(rows):
         v, v14 = r[2], (rows[i - 14][2] if i >= 14 else None)
         out.append({
-            "date": r[0].isoformat(), "close": r[1], "volume": v, "rsi": r[3], "iv": iv_in[i], "iv_ratio": iv_rt[i],
+            "date": r[0].isoformat(), "close": r[1], "volume": v, "vol_avg10": vol_avg10[i], "vol_avg63": vol_avg63[i], "rsi": r[3], "iv": iv_in[i], "iv_ratio": iv_rt[i],
             "macd": macd[i], "signal": sig[i],
             "hist": (macd[i] - sig[i]) if macd[i] is not None and sig[i] is not None else None,
             "vroc": ((v - v14) / v14 * 100.0) if v is not None and v14 else None,
@@ -3606,7 +3619,11 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
         """), {"sym": sym, "n": days + 110}).fetchall()    # warm-up rows: MACD settling + 63-day averages (+ smoothing and the 5 excluded days)
         tech = {r[0]: (_f(r[1]), _f(r[2])) for r in s.execute(text(
             "SELECT as_of_date, volume, rsi FROM drv_technicals WHERE tos_symbol = :sym"), {"sym": sym}).fetchall()}
-        rows = [(r[0], r[1], (tech.get(r[0]) or (None, None))[0], (tech.get(r[0]) or (None, None))[1], r[2], None, r[3]) for r in td]
+        tw = {r[0]: (_f(r[1]), _f(r[2])) for r in s.execute(text("""
+            SELECT DISTINCT ON (export_date) export_date, volume_avg_10d, volume_avg_3m FROM hist_tw
+             WHERE tos_symbol = :sym ORDER BY export_date, sequence DESC
+        """), {"sym": sym}).fetchall()}      # TOS's own 10-day and 3-month volume averages
+        rows = [(r[0], r[1], (tech.get(r[0]) or (None, None))[0], (tech.get(r[0]) or (None, None))[1], r[2], None, r[3], (tw.get(r[0]) or (None, None))[0], (tw.get(r[0]) or (None, None))[1]) for r in td]
         # Stored daily volume can be an early-day capture (e.g. 17 shares). Volume only grows during a day, so the largest
         # capture per date across the TOS files is the closest to the real total.
         vmax = {r[0]: _f(r[1]) for r in s.execute(text("""
@@ -3621,7 +3638,7 @@ def get_studies(symbol: str = Query(...), days: int = Query(130, ge=20, le=400))
     def _vol(d, v0):
         v = vmax.get(d) or v0
         return v if v and v >= floor else None      # still implausibly low -> a gap, not a spike
-    data = [(r[0], _f(r[1]), _vol(r[0], r[2]), r[3], _f(r[4]), _f(r[5]), _f(r[6])) for r in rows]
+    data = [(r[0], _f(r[1]), _vol(r[0], r[2]), r[3], _f(r[4]), _f(r[5]), _f(r[6]), r[7], r[8]) for r in rows]
     return {"symbol": sym, "points": _studies_series(data, days)}
 
 

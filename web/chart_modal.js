@@ -307,7 +307,7 @@
     // Right-axis tag with the latest value of each line (the name + pointer values are in the strip above the panel).
     o.series.forEach(function (s) {
       var last = null; for (var i = n - 1; i >= 0; i--) { if (pts[i][s.k] != null) { last = pts[i][s.k]; break; } }
-      if (s.nodraw || last == null || (s.bars && !s.tag)) return;
+      if (s.nodraw || s.notag || last == null || (s.bars && !s.tag)) return;
       g += '<rect x="' + (SW - SPR + 2) + '" y="' + (yOf(last) - 7) + '" width="' + (SPR - 4) + '" height="14" fill="' + (s.color || '#475569') + '"/>'
         + '<text x="' + (SW - SPR + 5) + '" y="' + (yOf(last) + 3.5) + '" font-size="10" font-weight="700" fill="#000">' + (s.fmt ? s.fmt(last) : _sFmt(last)) + '</text>';
     });
@@ -336,7 +336,9 @@
   function _drawStudies(el, pts) {
     var f1 = function (v) { return _sFmt(v, 1); }, f3 = function (v) { return _sFmt(v, 3); };
     var P = [
-      { h: 100, title: 'Volume', series: [{ k: 'volume', bars: true, fmt: _sVol, tag: true, color: '#1f6f9f', hc: '#7fb8dd' }], floor0: true },
+      { h: 100, title: 'Volume', series: [{ k: 'volume', bars: true, fmt: _sVol, tag: true, color: '#1f6f9f', hc: '#7fb8dd' },
+        { k: 'vol_avg10', color: '#fbbf24', w: 0.8, notag: true, fmt: function (v) { return '10d ' + _sVol(v); } },
+        { k: 'vol_avg63', color: '#f472b6', w: 0.8, notag: true, fmt: function (v) { return '3m ' + _sVol(v); } }], floor0: true },
       { h: 115, title: 'RSI (14, 70, 30)', series: [{ k: 'rsi', color: '#9ca3af', fmt: f1 }], refs: [30, 70] },
       { h: 140, title: 'MACD (12, 26, 9)', series: [{ k: 'hist', bars: true, signed: true, fmt: f3 }, { k: 'macd', color: '#22d3ee', fmt: f3 }, { k: 'signal', color: '#e7d9a8', fmt: f3 }], zero: true, zeroColor: '#8b5cf6' },
       { h: 100, title: 'Volume Rate Of Change (14)', series: [{ k: 'vroc', color: '#f59e0b', fmt: f1 }], zero: true, zeroColor: '#ef4444' },
