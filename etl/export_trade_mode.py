@@ -372,8 +372,12 @@ def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold
             return False
         # 2026-10-28, user: every Buy To Min (BMN) moves to Trade2 -- Trade keeps Buy More and Buy Some only.
         # (The "BMN only above the Trade line" test stays removed.) Mirrors web/actionable.js.
+        # 2026-10-29, user: except a Buy To Min that PVV or the Tradability icon positively flags as a buy (stays in Trade; PVV AVOID was
+        # rejected above). LIVE is not part of the nightly job (it needs the intraday live check), so only the screen applies that part.
         if code == "BMN":
-            return False
+            score = _buy_tradability_score(row, rsi_overbought, rsi_oversold, rvol_threshold, factor_scorecard, source_scorecard)
+            if str(row.get("pvv_decision") or "").upper() not in _PVV_BUY_SIDE and score < _TRADABILITY_BADGE_MIN:
+                return False
     return True
 
 

@@ -1953,8 +1953,18 @@ function _isTradeModeQualifyingBuy(r) {
   if (r.pvv_decision === 'AVOID') return false;
   // 2026-10-28, user: every BUY TO MIN (BMN) buy moves to Trade2 -- Trade keeps Buy More and Buy Some only.
   // (The older "BMN only above the Trade line" test stays removed; the Trade line is scored in the structure term.)
-  if ((r.final_code || '').toUpperCase() === 'BMN') return false;
+  // 2026-10-29, user: except a Buy To Min that PVV, LIVE or the Tradability icon positively flags as a buy -- that one stays in Trade
+  // (PVV AVOID was rejected above, so it still goes to Trade2).
+  if ((r.final_code || '').toUpperCase() === 'BMN' && !_isTradeBuyConfirmed(r)) return false;
   return true;
+}
+// A buy that PVV (BUY_LRR / BUY_DIP / BUY_WATCH), LIVE (dip buy / buy back / buy idea) or the 🎯 Tradability icon (score at/above its badge
+// minimum) positively backs.
+function _isTradeBuyConfirmed(r) {
+  if (_PVV_BUY_SIDE.includes(r.pvv_decision)) return true;
+  const lv = r._live;
+  if (lv && (lv.signal === 'DIP_BUY_STRONG' || lv.signal === 'BUY_BACK' || lv.signal === 'BUY_IDEA') && _liveShown(lv)) return true;
+  return _buyTradabilityScore(r) >= _TRADABILITY_BADGE_MIN;
 }
 // 2026-09-15, user: "widen Trade to include SELL SOME rows too" -- was SA
 // (full exit) only; now also SS/STM (partial sell-some/trim) on a held
