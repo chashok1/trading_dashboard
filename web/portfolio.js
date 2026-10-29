@@ -334,10 +334,11 @@ function renderTrendCharts(data) {
                 bars.forEach((bar, i) => {
                     const v = Number(dayArr[i]);
                     if (!isFinite(v)) return;
-                    const k = Math.round(v / 1000);
+                    // 2026-10-28, user: under $1k shows the dollar amount ($99, -$461) instead of rounding to 0k.
+                    const txt = Math.abs(v) < 1000 ? (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)) : Math.round(v / 1000) + 'k';
                     ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
                     ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
-                    ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+                    ctx.fillText(txt, bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
                 });
                 ctx.restore();
             },
@@ -528,10 +529,11 @@ function openTrendModal(key, title) {
                 bars.forEach((bar, i) => {
                     const v = Number(modalBarVals[i]);
                     if (!isFinite(v)) return;
-                    const k = Math.round(v / 1000);
+                    // 2026-10-28, user: under $1k shows the dollar amount ($99, -$461) instead of rounding to 0k.
+                    const txt = Math.abs(v) < 1000 ? (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)) : Math.round(v / 1000) + 'k';
                     ctx.fillStyle = v >= 0 ? colorPos : colorNeg;
                     ctx.textBaseline = v >= 0 ? 'bottom' : 'top';
-                    ctx.fillText((k === 0 ? '0' : k) + 'k', bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
+                    ctx.fillText(txt, bar.x, v >= 0 ? bar.y - 2 : bar.y + 2);
                 });
                 ctx.restore();
             },
