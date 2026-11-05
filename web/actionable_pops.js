@@ -2990,6 +2990,8 @@ function _buildActionPopHtmlV2(row) {
     + ((row.company_name || (row.rr_name && row.rr_name !== sym))
         ? `<span style="margin-left:10px;font-size:15px;font-weight:600;color:${_symOutlookColor(row)};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(row.company_name || row.rr_name)}">${escapeHtml(row.company_name || row.rr_name)}</span>` : '')
     + `</div><div style="display:flex;align-items:center;gap:10px;">`
+    // 2026-11-05, user: link to Yahoo's quote page, where its "What's happening with X" AI summary is shown
+    + (/^cash|\*\*/i.test(sym) ? '' : `<a href="https://finance.yahoo.com/quote/${encodeURIComponent((window.yahooTicker || (s => s))(sym))}/" target="_blank" rel="noopener noreferrer" title="Open ${escapeHtml(sym)} on Yahoo Finance (what's happening summary)" style="font-size:12px;font-weight:600;color:#5f259f;text-decoration:none;">Yahoo &#8599;</a>`)
     + `<span data-actpop-close="1" title="Close" style="cursor:pointer;font-size:18px;font-weight:400;line-height:1;color:#94a3b8;padding:0 2px;">&times;</span></div></div>`;
   const _chartRow = `<div class="actpop-gchart" data-sym="${escapeHtml(sym)}" data-reserve="1" style="position:relative;height:300px;background:#1b1b1b;margin:4px 0 24px;"><div class="scm-own-svg"></div></div>`;   // 24px below = the 6px it had + the 18px the header row used to take, so nothing below it moves
   h += _chartRow;
