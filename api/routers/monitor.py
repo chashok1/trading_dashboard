@@ -738,45 +738,6 @@ async def live_stream():
 
 import os as _os
 
-# Windows Startup folder — no admin required, runs at login for current user
-_STARTUP_DIR      = Path(_os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-_STARTUP_SCHED    = _STARTUP_DIR / "TradingDashboard-ETLScheduler.bat"
-_STARTUP_APP      = _STARTUP_DIR / "TradingDashboard-TradingApp.bat"
-
-# Full runner bats in project root (called by the startup launchers)
-_RUN_SCHED_BAT    = PROJECT_ROOT / "run_etl_scheduler.bat"
-_RUN_APP_BAT      = PROJECT_ROOT / "run_trading_app.bat"
-
-
-def _ensure_runner_bats() -> None:
-    """Write the runner bat files into the project root if missing.
-
-    These are tiny shims that just chain into the canonical top-level
-    launchers in the project root:
-      - ETL Scheduler  → run_scheduler.bat   (keep-alive wrapper)
-      - Trading App    → start.bat           (uvicorn with --reload-dir api)
-    We always rewrite these on every register call so a project-level
-    update to start.bat / run_scheduler.bat doesn't get bypassed.
-    """
-    root = PROJECT_ROOT
-    _RUN_SCHED_BAT.write_text(
-        f'@echo off\r\ncd /d "{root}"\r\n'
-        f'call "{root}\\run_scheduler.bat"\r\n'
-    )
-    _RUN_APP_BAT.write_text(
-        f'@echo off\r\ncd /d "{root}"\r\n'
-        f'call "{root}\\start.bat"\r\n'
-    )
-
-
-def _write_startup_launcher(startup_file: Path, target_bat: Path, title: str) -> None:
-    """Write a small launcher into the Windows Startup folder."""
-    _STARTUP_DIR.mkdir(parents=True, exist_ok=True)
-    startup_file.write_text(
-        f'@echo off\r\nstart "{title}" "{target_bat}"\r\n'
-    )
-
-
 def _pid_is_alive(pid: int) -> bool:
     """Cross-platform check whether `pid` corresponds to a running process."""
     if not pid or pid <= 0:
@@ -1006,43 +967,6 @@ def get_scheduler_levels():
     """
     return {"levels": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]}
 
-
-@router.get("/api/monitor/startup")
-def get_startup_status():
-    """Report whether the Windows startup launchers for the scheduler and
-    trading app are registered. Used by File Monitor → Auto-start tiles."""
-    sched_file = _STARTUP_DIR / "TradingDashboard_Scheduler.bat"
-    app_file   = _STARTUP_DIR / "TradingDashboard_App.bat"
-    return {
-        "scheduler_registered": sched_file.exists(),
-        "app_registered":       app_file.exists(),
-        "startup_dir":          str(_STARTUP_DIR),
-    }
-
-
-@router.post("/api/monitor/startup/register")
-def register_startup(task: str):
-    """Write startup launchers into the Windows Startup folder (no admin needed)."""
-    _ensure_runner_bats()
-    try:
-        if task in (None, "scheduler"):
-            _write_startup_launcher(_STARTUP_SCHED, _RUN_SCHED_BAT, "ETL Scheduler")
-        if task in (None, "app"):
-            _write_startup_launcher(_STARTUP_APP, _RUN_APP_BAT, "Trading App")
-        label = ("ETL Scheduler" if task == "scheduler"
-                 else "Trading App" if task == "app"
-                 else "both")
-        return {"success": True, "message": f"Registered {label} in Startup folder"}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-
-
-@router.post("/api/monitor/startup/unregister")
-def unregister_startup():
-    """Remove startup launchers from the Windows Startup folder."""
-    for f in (_STARTUP_SCHED, _STARTUP_APP):
-        f.unlink(missing_ok=True)
-    return {"success": True, "message": "Removed from Startup folder"}
 
 @router.post("/api/monitor/reprocess")
 def reprocess_file(file_path: str = Query(...),

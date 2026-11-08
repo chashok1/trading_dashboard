@@ -178,45 +178,6 @@ async function loadSchedulerStatus() {
     }
 }
 
-async function loadStartupStatus() {
-    try {
-        const resp = await fetch('/api/monitor/startup');
-        const s = await resp.json();
-        renderStartupStatus(s);
-    } catch (e) {
-        renderStartupStatus(null);
-    }
-}
-
-function renderStartupStatus(s) {
-    const schedDot  = $('startupSchedDot');
-    const schedText = $('startupSchedText');
-    const appDot    = $('startupAppDot');
-    const appText   = $('startupAppText');
-    const regSchedBtn = $('registerSchedBtn');
-    const regAppBtn   = $('registerAppBtn');
-    const unregBtn    = $('unregisterBtn');
-
-    const unknown = !s;
-    const schedOn = s && s.scheduler_registered;
-    const appOn   = s && s.app_registered;
-
-    // ETL Scheduler dot + button
-    schedDot.style.background = unknown ? 'var(--text-3)' : schedOn ? 'var(--bull)' : 'var(--bear)';
-    schedText.textContent = unknown ? 'ETL: ?' : schedOn ? 'ETL: ON' : 'ETL: OFF';
-    schedText.style.color = unknown ? 'var(--text-2)' : schedOn ? 'var(--bull)' : 'var(--bear)';
-    regSchedBtn.style.display = (!unknown && !schedOn) ? '' : 'none';
-
-    // Trading App dot + button
-    appDot.style.background = unknown ? 'var(--text-3)' : appOn ? 'var(--bull)' : 'var(--bear)';
-    appText.textContent = unknown ? 'App: ?' : appOn ? 'App: ON' : 'App: OFF';
-    appText.style.color = unknown ? 'var(--text-2)' : appOn ? 'var(--bull)' : 'var(--bear)';
-    regAppBtn.style.display = (!unknown && !appOn) ? '' : 'none';
-
-    // Unregister shown when either is ON
-    unregBtn.style.display = (!unknown && (schedOn || appOn)) ? '' : 'none';
-}
-
 function renderSchedulerStatus(s) {
     const dot      = $('schedulerDot');
     const text     = $('schedulerText');
@@ -1104,46 +1065,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    async function doRegister(task, btnId, label) {
-        $(btnId).disabled = true;
-        $(btnId).textContent = label + '...';
-        try {
-            const resp = await fetch(`/api/monitor/startup/register?task=${task}`, { method: 'POST' });
-            if (resp.ok) {
-                await loadStartupStatus();
-            } else {
-                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-                alert(`Failed to register ${task} auto-start: ${err.detail || resp.statusText}`);
-            }
-        } catch (e) {
-            alert(`Failed to register ${task} auto-start: ${e}`);
-        } finally {
-            $(btnId).disabled = false;
-            $(btnId).textContent = label;
-        }
-    }
-
-    $('registerSchedBtn')?.addEventListener('click', () => doRegister('scheduler', 'registerSchedBtn', 'Enable auto-start'));
-    $('registerAppBtn')?.addEventListener('click', () => doRegister('app', 'registerAppBtn', 'Enable auto-start'));
-
-    $('unregisterBtn')?.addEventListener('click', async () => {
-        if (!confirm('Disable Windows auto-start for the scheduler and trading app?')) return;
-        $('unregisterBtn').disabled = true;
-        try {
-            const resp = await fetch('/api/monitor/startup/unregister', { method: 'POST' });
-            if (resp.ok) {
-                await loadStartupStatus();
-            } else {
-                const err = await resp.json().catch(() => ({}));
-                alert('Failed to unregister: ' + (err.detail || resp.statusText));
-            }
-        } catch (e) {
-            alert('Error: ' + e.message);
-        } finally {
-            $('unregisterBtn').disabled = false;
-        }
-    });
-
     document.getElementById('runMissingDerivesBtn')?.addEventListener('click', () => runMissingDerives(false));
     document.getElementById('forceRederiveBtn')?.addEventListener('click', () => runMissingDerives(true));
 
@@ -1151,7 +1072,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // These calls were lost in a prior truncation; without them the page
     // stays blank because nothing fetches data on initial DOMContentLoaded.
     loadAll();
-    loadStartupStatus();
     startAutoRefresh();
     startSchedulerOutputRefresh();
     startLiveStream();

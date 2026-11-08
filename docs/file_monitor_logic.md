@@ -306,13 +306,3 @@ with optional filters by `log_level` and `file_name` (ILIKE prefix match).
 The Scheduler Output panel in the UI displays logs colour-coded by level
 (ERROR = red, WARNING = amber, INFO = neutral). Clicking a file name cell in
 the schedule grid opens a popup showing logs filtered to that file_type.
-
-## Auto-start launchers
-
-`/api/monitor/startup` reports whether the two Windows Startup-folder bat
-files (`TradingDashboard-ETLScheduler.bat` and `TradingDashboard-TradingApp.bat`)
-exist. `POST /api/monitor/startup/register` writes them; `POST
-/api/monitor/startup/unregister` removes them. The launchers call
-`run_scheduler.bat` and `start.bat` in the project root respectively — they
-are rewritten on every register call so project-level changes to those scripts
-are always picked up.

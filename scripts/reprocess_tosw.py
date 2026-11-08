@@ -6,6 +6,8 @@ Run from project root:
     python reprocess_tosw.py [--no-derive]
 """
 import sys
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 import logging
 from pathlib import Path
 from sqlalchemy import text

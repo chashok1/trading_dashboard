@@ -6,7 +6,7 @@ REM  Idempotent. Safe to run repeatedly.
 REM ============================================================
 
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 if not exist .venv\Scripts\activate.bat (
     echo ERROR: .venv missing. Run setup.bat first.
@@ -36,7 +36,7 @@ if exist "etl\working\scheduler_heartbeat.txt" (
 
 echo.
 echo === Step 3: Migrate transactions tables PK (so NULL qty/price load) ===
-python migrate_transactions_pk.py
+python scripts\migrate_transactions_pk.py
 if errorlevel 1 (
     echo Migration failed. Bailing.
     exit /b 1

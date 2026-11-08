@@ -55,6 +55,7 @@ trading-dashboard/
   web/    per-screen .html + .js, shared styles.css + _common.js
   docs/   design docs (+ docs/diagrams/*.svg, docs/audit/*.md)
 ```
+> **New files never go in the root:** helper `.bat` → `bat/`, one-off scripts → `scripts/`, logs → `logs/` (ignored), data/exports → `data/` (ignored), notes → `docs/`. Launch `.bat`s (`start`, `run_scheduler`, `setup`, `backup_db`, `fetch_vix9d`) stay in the root; `fetch_vix9d.bat` is scheduled in Windows, so don't move it.
 > Root-level loose scripts (`check_*`, `debug_*`, `fix_*`, `test_*`, `verify_*`,
 > `_trash_2026-05-12/`, `docs_backup_2026-05-20/`, `*.log`) are throwaway/cruft, not part
 > of the settled layout. See `docs/audit/unused_code_report.md`.

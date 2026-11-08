@@ -10,7 +10,7 @@ Safe to re-run — checks current PK state and only acts if it's the old form.
 """
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import text
 from etl.db import session_scope
