@@ -68,10 +68,11 @@ def test_card_rules_step_flags_mixed_groups():
     assert any("Low confidence" in l["text"] for l in rules["lines"])
 
 
-def test_card_stop_breach_is_explained():
+def test_stop_breach_does_not_block_a_confirmed_buy():
     fc = _compute_final_call("INCREASE", "BS", True, 5000, 1000, stop_breached=True)
+    assert fc["final_side"] == "buy" and fc["fc_reason"] != "stop_breach"
     card = build_why_card(_ctx(fc=fc, held_today=True, held_dollar=5000, stop_breached=True, stop_signal="TD SA", rr_action="BS"))
-    assert "below its stop" in card["result"] and card["steps"][2]["tone"] == "warn"
+    assert not any("Stop breached" in l["text"] for st in card["steps"] for l in st["lines"])
 
 
 def test_every_final_call_branch_has_a_reason_code():

@@ -99,10 +99,15 @@ def test_3p_top_of_range_falling_bands_is_sell_some():
 
 
 # ---- Precedence -------------------------------------------------------------------------------------------------
-def test_step3_buy_beats_step1_sell():
-    r = run(qe=1, below5=True, zone_recent=True)     # S1-a sell, but 3x bounce buy for a below-flag stock
-    assert r.s1_id == "S1-a" and r.s3_id == "3x"
-    assert r.code == 8
+def test_step1_sell_ends_the_read_even_when_step3_would_buy():
+    r = run(qe=1, below5=True, zone_recent=True)     # S1-a sell; the 3x bounce buy is still evaluated but does not change the action
+    assert r.s1_id == "S1-a" and r.s3_id == "3x" and r.s3_code == 8
+    assert r.code == -10
+
+
+def test_step1_sell_all_below_both_lines_beats_bounce_buy():
+    r = run(qe=-1, zone_recent=True)
+    assert r.s1_id == "S1-b" and r.code == -10
 
 
 def test_step1_sell_stands_when_step3_says_do_nothing():

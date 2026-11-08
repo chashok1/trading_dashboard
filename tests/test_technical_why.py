@@ -1,6 +1,6 @@
 """Plain-English Technical reason (etl/technical_why.py, TASK_155 rules). Pure, no DB."""
 from etl.technical_rules import STEP_SIDE
-from etl.technical_why import RULE_HELP, explain_technical
+from etl.technical_why import RULE_HELP, explain_technical, technical_trail
 
 
 def _plain(t):
@@ -48,11 +48,12 @@ def test_s1c_names_the_fresh_fall_and_sell_some():
     assert "within the last 3 days" in txt and "Sell Some" in txt
 
 
-def test_step3_buy_beats_step1_sell_is_said_in_the_verdict():
-    d = base(trend_trade_rule=1, step1_id="S1-c", step3_id="3x", rr_zone_score=8, td_tn_bb_rr_action=8, tech_flag="below")
-    why, verdict = explain_technical(d).split("\n")
-    assert "Bounce at LRR" in verdict and "Buy To Min" in verdict and "beats the Trade/Trend sell" in verdict and "S1-c" not in verdict
-    assert "LRR zone" in why
+def test_step1_sell_decides_and_step3_is_shown_as_not_used():
+    d = base(trend_trade_rule=1, step1_id="S1-c", step3_id="3x", rr_zone_score=8, td_tn_bb_rr_action=-8, tech_flag="below")
+    verdict = explain_technical(d).split("\n")[1]
+    assert "Sell Some" in verdict and "beats" not in verdict
+    stages = technical_trail(d)["stages"]
+    assert stages[-1]["unused"] and "not used" in stages[-1]["text"]
 
 
 def test_step1_sell_with_step3_do_nothing_says_so():
@@ -93,3 +94,9 @@ def test_every_rule_the_classifier_can_produce_has_help_text():
     for sid in STEP_SIDE:
         assert sid in RULE_HELP, sid
         assert RULE_HELP[sid]["when"] and RULE_HELP[sid]["above"] and RULE_HELP[sid]["below"], sid
+
+
+def test_between_lines_step1_shows_atr_distance():
+    d = base(trend_trade_rule=2, step1_id="1e", last=28.57, trade_line=26.74, trend_line=35.35, atr14=0.91)
+    txt = technical_trail(d)["stages"][0]["text"]
+    assert "2.0 ATRs above Trade" in txt and "under 2" in txt

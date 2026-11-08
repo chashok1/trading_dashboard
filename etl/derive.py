@@ -3208,6 +3208,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     # the stored daily bands (etl/band_slope.py), not taken from the TOS script. Symbols with too
     # little history keep the TOS value (COALESCE below).
     from etl.band_slope import load_band_slope_table
+    from etl.technical_rules import S1B_ATR_MULT
     load_band_slope_table(session, as_of_date)
 
     # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
@@ -3332,9 +3333,9 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             -- prompted this.
             CASE
                 WHEN c.trend_sd < -:sdtol AND c.trade_sd < -:sdtol THEN -2
-                -- 2026-10-25 (TASK_155): 'price less than 1 ATR above Trade' (was 1 SD); same ATR14 + SD fallback as the LRR break
+                -- 2026-10-25 (TASK_155): 'price less than 1 ATR above Trade' (was 1 SD); 2026-10-27, user: now :atrmult (2.0) ATRs; same ATR14 + SD fallback as the LRR break
                 WHEN c.trade_trend_sd < 0 AND COALESCE(c.atr, :atrfb * c.sd_or_median) > 0
-                     AND (c.close - c.a_trade_value) / COALESCE(c.atr, :atrfb * c.sd_or_median) < 1 THEN -1
+                     AND (c.close - c.a_trade_value) / COALESCE(c.atr, :atrfb * c.sd_or_median) < :atrmult THEN -1
                 WHEN c.trend_sd > -:sdtol AND c.trade_sd > -:sdtol
                      AND (c.trade_trend_sd > 2
                           OR GREATEST(c.trend_sd, c.trade_sd) > 4) THEN 4
@@ -3439,9 +3440,15 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
-           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol, "atrfb": atr_fallback, "pullback": pullback})
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol, "lrrtol": lrr_tol, "atrfb": atr_fallback, "atrmult": S1B_ATR_MULT, "pullback": pullback})
 
     rows_pass1 = result.rowcount or 0
+
+    # 2026-10-27, user: keep the ATR14 the Step 1 "less than 1 ATR above Trade" test used, so the popup can show the distance.
+    session.execute(text("""
+        UPDATE drv_tn_td_bb_rr r SET atr14 = bsl.atr
+        FROM _band_slope bsl WHERE r.as_of_date = :d AND bsl.tos_symbol = r.tos_symbol
+    """), {"d": as_of_date})
 
     # Pass 1b (2026-10-21, user): bounce exception. A stock BELOW Trade by more than the tolerance (trend_trade_rule = 1) is
     # normally a sell that skips every later check. When it is above Trend, closed UP two days in a row (yesterday's close
@@ -3589,7 +3596,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                a.macdh_direction AS macdh_dir, a.trade_rule,
                r.a_bb_top_slope AS bb_top_slope, r.a_bb_bot_slope AS bb_bot_slope,
                r.bounce_exempt, r.reclaim_buy, r.reclaim_line,
-               r.rr_zone_score, r.step1_id, r.step3_id, r.tech_flag, r.min_trade5_prev, r.fell_below_trade, r.zone_recent, r.trr_5d_ago
+               r.rr_zone_score, r.step1_id, r.step3_id, r.tech_flag, r.min_trade5_prev, r.fell_below_trade, r.zone_recent, r.trr_5d_ago,
+               r.atr14
         FROM drv_tn_td_bb_rr r
         LEFT JOIN drv_cat_atomic_input a ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
         LEFT JOIN drv_quote q ON q.as_of_date = r.as_of_date AND q.tos_symbol = r.tos_symbol
@@ -3943,6 +3951,19 @@ def _derive_all_impl(session: Session, as_of_date: date,
     except Exception:
         log.exception("derive_symbol_tier import failed (non-fatal)")
         counts["drv_symbol_tier"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # Portfolio Builder (DESIGN_SPEC_9/10/11): nightly fund scores, then the daily paper marks of every
+    # frozen model portfolio. After drv_actionable (Final Call) and the risk-dial / quad-check steps.
+    # Non-critical and additive: never touches the Final Call.
+    try:
+        from etl.derive_model_portfolio import derive_pb_score, derive_model_marks
+        counts["drv_pb_score"] = _safe("drv_pb_score", derive_pb_score)
+        counts["drv_model_mark"] = _safe("drv_model_mark", derive_model_marks)
+    except Exception:
+        log.exception("derive_model_portfolio import failed (non-fatal)")
+        counts["drv_pb_score"] = 0
         try: session.rollback()
         except Exception: pass
 

@@ -77,6 +77,19 @@ def _action_display(code: Optional[str]) -> tuple[str, str, str]:
                                (str(code), "", "neutral"))
 
 
+def _is_ps_rank_reduce(a) -> bool:
+    """A PS REDUCE that comes from the rank getting worse (not a drop from the list)."""
+    return (str(a["source_code"]).upper() == "PS" and a["action"] == "REDUCE"
+            and str(a.get("action_reason") or "").startswith("rank degraded"))
+
+
+def _is_warning_only(a, rr_action=None) -> bool:
+    """Shown but never counted: an SSS weight-fell REDUCE, or a PS rank-degraded REDUCE (2026-10-26, user: warning only, always)."""
+    if str(a["source_code"]).upper() == "SSS" and a["action"] == "REDUCE":
+        return True
+    return _is_ps_rank_reduce(a)
+
+
 def _compute_final_call(
     consolidated_action: Optional[str],
     rr_action: Optional[str],
@@ -143,13 +156,8 @@ def _compute_final_call(
     # said). Takes priority over the at-Max / gate checks below. Breach ≠
     # auto-sell — REMOVE/REDUCE/HOLD rows are left untouched here, just
     # flagged via drv_actionable.stop_breached.
-    if stop_breached and ca in ("ADD", "INCREASE"):
-        lbl, code, side = _action_display("HOLD")
-        return {
-            "final_action": lbl, "final_code": code, "final_side": side,
-            "fc_strength": 0, "fc_confidence": "gate", "fc_feasible": True,
-            "fc_reason": "stop_breach",
-        }
+    # 2026-10-26, user: REMOVED -- a breached stop no longer turns an ADD/INCREASE into HOLD. Technical already reads price vs the
+    # Trade/Trend lines, so the stop was double-counting it. stop_breached is still computed and stored (live advice, trade mode).
 
     # ── Helper classifiers ──────────────────────────────────────────────
     is_held    = held_today
@@ -1086,8 +1094,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # 2026-10-20, user: an SSS "weight fell" REDUCE is a WARNING only -- it no longer competes for the consolidated action
         # or counts as sell evidence. It stays in source_actions (flag warning_only) so the grid and popup can show it.
         # SSS "dropped from list" is a REMOVE and is unchanged.
+        # 2026-10-26, user: a PS "rank degraded" REDUCE is a warning only (like SSS weight-fell): shown, never counted.
         src_all = src_actions
-        src_actions = [a for a in src_all if not (str(a["source_code"]).upper() == "SSS" and a["action"] == "REDUCE")]
+        _rr_now = rr_action_map.get(sym)
+        src_actions = [a for a in src_all if not _is_warning_only(a, _rr_now)]
         # ─── Evaluate rule groups against this symbol's fired composites ───
         # Build composite_results = {composite_code: True} from drv_stks.
         fired_composites = set()
@@ -1255,6 +1265,12 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 unproven_sell_suppressed = True
                 candidates = _kept
 
+        # 2026-10-28, user: CALL only drives the action when no other source
+        # has one. With any other source present CALL still shows in
+        # source_actions (supports/opposes) but cannot win the headline.
+        if any(a["source_code"] != "CALL" for a in candidates if "_group_prio" not in a):
+            candidates = [a for a in candidates if a.get("source_code") != "CALL"]
+
         # 2026-10-29, user: an outdated TOP5/RTA call (window passed or price broke Trade/Trend since) stays visible in
         # source_actions but cannot drive the headline.
         candidates = [a for a in candidates
@@ -1270,12 +1286,6 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 candidates.sort(key=_order)                            # source order
             elif source_order_mode == "measured":
                 # TASK_140 item 5: today's not-held sort (-latest_update,
-        # 2026-10-28, user: CALL only drives the action when no other source
-        # has one. With any other source present CALL still shows in
-        # source_actions (supports/opposes) but cannot win the headline.
-        if any(a["source_code"] != "CALL" for a in candidates if "_group_prio" not in a):
-            candidates = [a for a in candidates if a.get("source_code") != "CALL"]
-
                 # source_order) structurally favours CALL, the highest-
                 # volume/lowest-edge feed. Under 'measured', rank first,
                 # recency as tie-break. 'static' mode keeps the old sort
@@ -1389,7 +1399,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         source_actions_payload = []
         for a in sorted(src_all, key=lambda x: src_priority.get(x["source_code"], 999)):
             source_actions_payload.append({
-                "warning_only": bool(str(a["source_code"]).upper() == "SSS" and a["action"] == "REDUCE"),
+                "warning_only": _is_warning_only(a, rr_action_map.get(sym)),
                 "source":      a["source_code"],
                 "action":      a["action"],
                 "weight":      float(a["base_weight"]) if a["base_weight"] is not None else None,
@@ -1426,9 +1436,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # never count as a breach.
         stop_breached = False
         if held_today and stop_signal_val in ("TD STM", "TN SA"):
-            stop_breached = True
-            if consolidated in ("ADD", "INCREASE"):
-                suppressed = "STOP BREACHED"
+            stop_breached = True   # flag only (2026-10-26): no longer overrides suppressed_reason or the Final Call
 
         # ─── Proximity-to-stop (2026-08-20) ────────────────────────────
         # Only meaningful for a held position not already breached -- an

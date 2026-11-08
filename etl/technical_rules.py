@@ -29,6 +29,7 @@ import pandas as pd
 
 SA, STM, SS, BMN, BS, BM = -10.0, -9.0, -8.0, 8.0, 9.0, 10.0
 POS_LO, POS_HI, POS_TOP = 25.0, 60.0, 90.0   # % of the LRR-TRR range
+S1B_ATR_MULT = 2.0                           # 2026-10-27, user: Trade below Trend and price less than this many ATRs above Trade = Sell All (was 1)
 LRR_ZONE = 0.25                              # bottom share of the range = "LRR zone" (ref_settings range_lrr_zone_pct)
 
 # Every step id this module can produce, with the side of its action (+1 buy, -1 sell) for the win %. Per-flag side: (above, below).
@@ -117,12 +118,11 @@ def classify(df: pd.DataFrame, lrr_zone: float = LRR_ZONE) -> pd.DataFrame:
     ]
     s3_id, s3_code = _first_match(ix, rules)
 
-    # Final: a Step 3 buy wins over every Step 1 sell; otherwise the stronger sell of the two; otherwise no signal.
+    # Final (2026-10-27, user): a Step 1 sell (S1-a / S1-b / S1-c) ENDS the Technical read -- Step 3 is still evaluated and shown
+    # (s3_id / s3_code) but does not change the action. Only when Step 1 gives no sell does Step 3 decide (buy, sell, or no signal).
     # Rising dip (qe 0) keeps its old call (Buy Some, or Sell To Min when support is broken); neutral dip / no read = no signal.
     sell1 = s1_code.where(s1_code < 0)
-    sell3 = s3_code.where(s3_code < 0)
-    worst = pd.concat([sell1, sell3], axis=1).min(axis=1, skipna=True)
-    final = s3_code.where(s3_code > 0, worst)
+    final = sell1.where(sell1.notna(), s3_code)
     final = final.where(qe != 0, pd.Series(np.where(brk, STM, BS), index=ix))
     final = final.where(qe.notna() & (qe != 5))
     return pd.DataFrame({"s1_id": s1_id, "s1_code": s1_code, "s3_id": s3_id, "s3_code": s3_code,

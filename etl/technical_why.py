@@ -28,7 +28,7 @@ _NA1 = "n/a (this rule only applies to a stock under a Trade or Trend line)"
 RULE_HELP = {
     "S1-a": {"name": "Below the lowest of the last 5 Trade lines", "when": "Price is below the lowest of the last 5 Trade lines (still above Trend).",
              "above": _NA1, "below": "Sell All"},
-    "S1-b": {"name": "Below both lines", "when": "Price is below both lines, or the Trade line is below the Trend line and price is less than 1 ATR (14-day) above the Trade line.",
+    "S1-b": {"name": "Below both lines", "when": "Price is below both lines, or the Trade line is below the Trend line and price is less than 2 ATRs (14-day) above the Trade line.",
              "above": _NA1, "below": "Sell All"},
     "S1-c": {"name": "Just fell below Trade", "when": "Price fell below Trade in the last 3 days, counting today (it was at or above Trade on one of the 2 days before today), is still below it, and is above Trend.",
              "above": _NA1, "below": "Sell Some"},
@@ -150,6 +150,15 @@ def _trr_chg(d: dict) -> str:
     return f"{(trr / t5 - 1) * 100:+.1f}%"
 
 
+def _atr_dist(d: dict) -> str:
+    """' (2.0 ATRs above Trade; Sell All if under 1)' -- how far price is above the Trade line in ATR14 (empty when unknown)."""
+    atr, last, trade = _n(d.get("atr14")), _n(d.get("last")), _n(d.get("trade_line"))
+    if not atr or atr <= 0 or last is None or trade is None:
+        return ""
+    k = (last - trade) / atr
+    return f" ({k:.1f} ATR{'' if abs(k - 1) < 0.05 else 's'} above Trade; Step 1 sells All if under 2)"
+
+
 def _step1_why(sid: str, d: dict) -> str:
     last, trade, trend = d.get("last"), d.get("trade_line"), d.get("trend_line")
     qe = int(_n(d.get("trend_trade_rule")) or 0)
@@ -159,7 +168,8 @@ def _step1_why(sid: str, d: dict) -> str:
     if sid == "S1-b":
         if qe == -2:
             return f"Price {_usd(last)} is {R}below{E} Trade ({_usd(trade)}) and Trend ({_usd(trend)})"
-        return f"Trade ({_usd(trade)}) is {R}below{E} Trend ({_usd(trend)}) and price {_usd(last)} is less than 1 ATR above Trade"
+        return (f"Trade ({_usd(trade)}) is {R}below{E} Trend ({_usd(trend)}) and price {_usd(last)} is less than 2 ATRs above Trade"
+                f"{_atr_dist(d)}")
     if sid == "S1-c":
         return (f"Price {_usd(last)} fell {R}below{E} Trade ({_usd(trade)}) within the last 3 days and is still under it"
                 f"{_below_trade_pct(d)}; it is above Trend ({_usd(trend)})")
@@ -169,7 +179,7 @@ def _step1_why(sid: str, d: dict) -> str:
     if sid == "1d":
         return _bounce_note(d)
     if sid == "1e":
-        return f"Price {_usd(last)} is above Trade ({_usd(trade)}) but {R}below{E} Trend ({_usd(trend)})"
+        return f"Price {_usd(last)} is above Trade ({_usd(trade)}) but {R}below{E} Trend ({_usd(trend)}){_atr_dist(d)}"
     if sid == "1b":
         return (f"Price {_usd(last)} is under Trade ({_usd(trade)}) by less than one SD but rising (up day, MACDH up), above Trend ({_usd(trend)}) "
                 f"and not under the lowest Trade line of the last 5 days")
@@ -217,6 +227,15 @@ def _infer_s1(qe: int, d: dict) -> Optional[str]:
     return None
 
 
+def _mark_unused(stages: list, sell1: bool, s1) -> None:
+    """2026-10-27, user: Steps 2 and 3 are still evaluated and shown, but when Step 1 already sold they do not change the action."""
+    if not sell1:
+        return
+    for st in stages[1:]:
+        st["unused"] = True
+        st["text"] = (st.get("text") or "") + f" [not used: Step 1 (\"{_rname(s1)}\") already decided the sell]"
+
+
 def _action_flag_txt(flag: Optional[str]) -> str:
     return "above Trade and Trend" if flag == "above" else "below Trade or Trend"
 
@@ -229,6 +248,8 @@ def _decider(d: dict):
     s1, s3, z = d.get("step1_id"), d.get("step3_id"), _n(d.get("rr_zone_score"))
     if s1 == "1b":
         return "1b", "step1"
+    if s1 in _S1_CODE:   # 2026-10-27: a Step 1 sell ends the read; Step 3 never decides then
+        return s1, "step1"
     if s3 and z is not None and z == act:
         return s3, "step3"
     if s1 in _S1_CODE:
@@ -268,10 +289,7 @@ def explain_technical(d: dict, bounce_note: bool = True) -> Optional[str]:
         if s3 and _n(d.get("rr_zone_score")) is None and s3 in ("3x", "3f", "3h", "3p", "3k"):
             verdict += f" (the range rule \"{_rname(s3)}\" says do nothing for a stock {_action_flag_txt(flag)})"
     else:
-        s1 = d.get("step1_id")
         verdict = f"{_rname(sid)} ({_action_flag_txt(flag)}): {act}"
-        if s1 in ("S1-a", "S1-b", "S1-c") and _n(d.get("td_tn_bb_rr_action")) > 0:
-            verdict += f"; this buy beats the Trade/Trend sell (\"{_rname(s1)}\")"
     return _two(why, verdict)
 
 
@@ -448,15 +466,15 @@ def _technical_trail_core(d: dict) -> dict:
             txt += f": Do nothing for a stock {_action_flag_txt(flag)}"
         else:
             txt += f": {_label(z, s3)} ({_action_flag_txt(flag)})"
-            if z > 0 and sell1:
-                txt += f"; this buy beats the Trade/Trend sell (\"{_rname(s1)}\")"
         stages.append(_stage("Range position", True if z is not None and z > 0 else (False if z is not None and z < 0 else None), txt, s3, code=z, flag=flag))
+        _mark_unused(stages, sell1, s1)
         if z is None and not signal:
             out["flip"] = _flip_candidates(d)
         return out
     where = _step3_why("", d)
     stages.append({"name": "Range position", "ok": None,
                    "text": f"No Step 3 rule matched ({day_txt}; {where}): Hold"})
+    _mark_unused(stages, sell1, s1)
     if not signal:
         out["flip"] = _flip_candidates(d)
     return out

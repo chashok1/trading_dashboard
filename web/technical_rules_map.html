@@ -75,7 +75,7 @@ figcaption{font-size:13px;color:var(--muted);max-width:none}
 <rect x="404" y="404" width="226" height="28" rx="6" class="pill sell"/>
 <text x="517" y="423" class="tp" text-anchor="middle">SELL ALL  (new)</text>
 <rect id="S1-b" data-step="S1-b" x="30" y="440" width="610" height="54" rx="6" class="row"/>
-<text x="42" y="464.0" class="t" text-anchor="start"><tspan x="42" dy="0">Below both lines, or Trade line below Trend line</tspan><tspan x="42" dy="15">and price less than 1 ATR above the Trade line</tspan></text>
+<text x="42" y="464.0" class="t" text-anchor="start"><tspan x="42" dy="0">Below both lines, or Trade line below Trend line</tspan><tspan x="42" dy="15">and price less than 2 ATRs above the Trade line</tspan></text>
 <rect x="404" y="448" width="226" height="38" rx="6" class="pill sell"/>
 <text x="517" y="467" class="tp" text-anchor="middle">SELL ALL  (existing)</text>
 <rect id="S1-c" data-step="S1-c" x="30" y="494" width="610" height="44" rx="6" class="row"/>
@@ -282,7 +282,7 @@ figcaption{font-size:13px;color:var(--muted);max-width:none}
 <rect x="30" y="1354" width="1340" height="80" rx="6" class="final"/>
 <text x="700" y="1386" class="th" text-anchor="middle">FINAL ACTION  for this stock today</text>
 <text x="700" y="1410" class="t" text-anchor="middle">Step 3 result decides the buy or sell.  If Step 3 has no match, Step 1 decides.  If neither has one, Hold.</text></svg></div>
-    <figcaption>Left: Step 1 sells some when price has fallen under the Trade line in the last 3 days (while still above Trend), and sells everything when it keeps falling under the lowest Trade line of the last 5 days. Right: Step 3 reads the range. A bounce from LRR buys, the lower-half up-day entry buys on a strong uptrend, and a break far below LRR sells. Where both sides fire on a bounce, the Step 3 buy wins.</figcaption>
+    <figcaption>Left: Step 1 sells some when price has fallen under the Trade line in the last 3 days (while still above Trend), and sells everything when it keeps falling under the lowest Trade line of the last 5 days. Right: Step 3 reads the range. A bounce from LRR buys, the lower-half up-day entry buys on a strong uptrend, and a break far below LRR sells. A Step 1 sell ends the read: Step 3 is still evaluated and shown in the popup, but it does not change the action (2026-10-27).</figcaption>
   </figure>
   <p class="muted small">Percentages are the share of the way up from LRR (0%) to TRR (100%). Zone 0 and -1 describe the day's low against LRR. Rules approved 2026-10-25 against 163 trading days (Feb to Oct 2026). Bounce exception, rising dip (Buy Some) and neutral dip are unchanged Step 1 cases not drawn here. This page is written by hand from etl/technical_why.py::RULE_HELP: change a rule there and here together.</p>
 </div>

@@ -25,7 +25,7 @@ import pandas as pd
 from sqlalchemy import text
 
 from etl.db import get_engine, session_scope
-from etl.technical_rules import LRR_ZONE, classify as classify_rules
+from etl.technical_rules import LRR_ZONE, S1B_ATR_MULT, classify as classify_rules
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def _load(engine, win: str = MEDIAN_SD_WINDOW) -> pd.DataFrame:
 
 def trend_trade_code(df: pd.DataFrame, sd_tol: float = SD_TOL) -> pd.Series:
     """The Step 1 base category (trend_trade_rule), rebuilt from raw prices -- mirrors the CASE in etl/derive.py Pass 1.
-    -2 below both, -1 Trade below Trend and price < 1 ATR above Trade, 4/3 above both (4 = extended), 2 between lines,
+    -2 below both, -1 Trade below Trend and price < S1B_ATR_MULT (2) ATRs above Trade, 4/3 above both (4 = extended), 2 between lines,
     0 rising dip, 5 neutral dip, 1 below Trade. NaN when the Trade / Trend line or the SD is missing."""
     px, tv, tn, sdm = df["px"], df["tv"], df["tn"], df["sdm"]
     good = sdm > 0
@@ -130,7 +130,7 @@ def trend_trade_code(df: pd.DataFrame, sd_tol: float = SD_TOL) -> pd.Series:
     near_dip = (trend_sd > -sd_tol) & (trade_sd < -sd_tol) & (trade_sd >= -1) & df["up"] & (px >= df["tvmin5"])
     conds = [
         (trend_sd < -sd_tol) & (trade_sd < -sd_tol),
-        (tt_sd < 0) & (atr_e > 0) & ((px - tv) / atr_e < 1),
+        (tt_sd < 0) & (atr_e > 0) & ((px - tv) / atr_e < S1B_ATR_MULT),
         (trend_sd > -sd_tol) & (trade_sd > -sd_tol) & ((tt_sd > 2) | (np.fmax(trend_sd, trade_sd) > 4)),
         (trend_sd > -sd_tol) & (trade_sd > -sd_tol),
         (trend_sd < -sd_tol) & (trade_sd > -sd_tol),
@@ -193,7 +193,8 @@ def classify(df: pd.DataFrame, lrr_zone: float = LRR_ZONE) -> dict:
     lab = {}
     for sid in ("S1-a", "S1-b", "S1-c", "S1-d", "1a", "1b", "1d", "1e"):
         lab[sid] = res["s1_id"] == sid
-    p2 = qe.notna() & ~qe.isin([0, 5])           # stocks that go through the band gate and Step 3
+    sold1 = (res["s1_code"] < 0).fillna(False)   # 2026-10-27: a Step 1 sell ends the read, so Steps 2 / 3 do not drive the action
+    p2 = qe.notna() & ~qe.isin([0, 5]) & ~sold1  # stocks that go through the band gate and Step 3
     lab["2a"] = p2 & (qj >= 3)
     lab["2b"] = p2 & (qj == 2)
     lab["2c"] = p2 & (qj == 1)
@@ -201,7 +202,7 @@ def classify(df: pd.DataFrame, lrr_zone: float = LRR_ZONE) -> dict:
     lab["2e"] = p2 & (qj == -1)
     lab["2f"] = p2 & (qj <= -2)
     for sid in ("3a", "3x", "3f", "3h", "3k", "3p", "tr"):
-        lab[sid] = res["s3_id"] == sid
+        lab[sid] = (res["s3_id"] == sid) & ~sold1
     out = {k: (v.fillna(False).astype(bool) & valid) for k, v in lab.items()}
     out["_flag_above"] = pd.Series(res["flag"] == "above", index=df.index)
     return out

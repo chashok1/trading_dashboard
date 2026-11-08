@@ -59,7 +59,7 @@ def _sources_step(ctx: dict) -> dict:
     warn = [x for x in all_srcs if x.get("warning_only")]   # SSS weight fell: shown, never counted
     srcs = [x for x in all_srcs if not x.get("warning_only")]
     win = str(ctx.get("winning_source") or "")
-    wlines = [{"ok": None, "warn": True, "text": f"Warning only - SSS weight fell{' on ' + _md(w.get('snapshot_date')) if _md(w.get('snapshot_date')) else ''}: {str(w.get('reason') or '').strip()}"} for w in warn]
+    wlines = [{"ok": None, "warn": True, "text": f"Warning only - {w.get('source') or 'SSS'} {'rank got worse' if w.get('source') == 'PS' else 'weight fell'}{' on ' + _md(w.get('snapshot_date')) if _md(w.get('snapshot_date')) else ''}: {str(w.get('reason') or '').strip()}"} for w in warn]
     if not srcs:
         return {"key": "sources", "title": "Sources", "tone": "warn" if warn else "neutral",
                 "text": "No source (SSS, CALL, Top-5, RR ...) is recommending anything for this stock.", "lines": wlines}
@@ -80,7 +80,7 @@ def _sources_step(ctx: dict) -> dict:
     fc_side = (ctx.get("fc") or {}).get("final_side") or _side(ctx.get("consolidated"))
     win_side = next((_side(s.get("action")) for s in srcs if str(s.get("source") or "") == win), None)
     tech_overrides = bool(win_side and fc_side != "neutral" and win_side != fc_side and _side(ctx.get("rr_action")) == fc_side)
-    win_drove = not ctx.get("stop_breached") and not tech_overrides
+    win_drove = not tech_overrides   # 2026-10-26: a breached stop no longer overrides the winning source
     lines = []
     for s in srcs:
         is_win = str(s.get("source") or "") == win
@@ -107,8 +107,6 @@ def _sources_step(ctx: dict) -> dict:
         head += f" - {win} drove it"
     elif win and tech_overrides:
         head += f" - Technical overrode {win}"
-    elif win and ctx.get("stop_breached"):
-        head += f" - the breached stop overrode {win}"
     return {"key": "sources", "title": "Sources", "tone": tone, "text": head, "ref": ref, "lines": wlines}
 
 
@@ -132,10 +130,7 @@ def _position_step(ctx: dict) -> dict:
     dollar = ctx.get("held_dollar")
     lines = [{"ok": None, "text": (f"You have a position: {_usd(dollar)}" if held else "No position ($0)")}]
     tone = "neutral"
-    if ctx.get("stop_breached"):
-        tone = "warn"
-        lines.append({"ok": False, "text": f"Stop breached ({ctx.get('stop_signal') or 'stop'}): a buy/add is downgraded to HOLD"})
-    elif ctx.get("stop_signal"):
+    if ctx.get("stop_signal") and not ctx.get("stop_breached"):   # 2026-10-26: no "Stop breached" line (Technical covers it)
         lines.append({"ok": None, "text": f"Stop signal: {ctx.get('stop_signal')}"})
     tmax = ctx.get("target_max")
     try:
