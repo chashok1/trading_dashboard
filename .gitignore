@@ -73,3 +73,10 @@ etl/working/
 /TEST_REPORT_*.md
 /AGENT_RESULT*.md
 /agent_watch.log
+backups/
+
+# Claude working folders (files for Claude / files from Claude)
+Claude Inputs/
+Claude outputs/
+temp_compare/
+data/
