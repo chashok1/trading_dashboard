@@ -210,8 +210,35 @@
 
   const bucketOf = n => (n && (n.bucket || S.assign[n.sym])) || null;
   // symbol text coloured by its Hedgeye outlook (same colours as the other screens); plain when unknown
-  const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${esc(sym)}</span>`; };
+  const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${window.symbolLink ? window.symbolLink(esc(sym), sym) : esc(sym)}</span>`; };
   const picked = sym => S.picks.find(p => p.sym === sym);
+
+  // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
+  const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const copyBtn = (kind, syms, tip) => `<button type="button" class="bld-copy" data-copy="${kind}"${syms ? ` data-syms="${esc(syms.join(','))}"` : ''} title="${esc(tip)}">${COPY_SVG}</button>`;
+  async function copyText(text) {
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) { /* fall back below */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
+  }
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('.bld-copy');
+    if (!b) return;
+    const k = b.dataset.copy;
+    const syms = k === 'shown' ? shownNames().map(n => n.sym) : k === 'picks' ? S.picks.map(p => p.sym) : (b.dataset.syms || '').split(',').filter(Boolean);
+    if (!syms.length) { b.title = 'Nothing to copy'; return; }
+    const ok = await copyText(syms.join(','));
+    const old = b.title;
+    b.classList.toggle('ok', ok);
+    b.title = ok ? 'Copied ' + syms.length + ' symbols' : 'Copy failed: the browser blocked clipboard access';
+    setTimeout(() => { b.classList.remove('ok'); b.title = old; }, 1800);
+  });
 
   // 2026-10-29: tags on each Names row are click-to-filter (same filters as the bar above the list; click again to clear)
   const STYLE_TO_FACTOR = { 'defensives': 'defensive', 'dividend': 'defensive', 'low beta': 'lowbeta', 'cyclical': 'offensive', 'small caps': 'offensive',
@@ -305,7 +332,8 @@
       const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#6b7fd7'));
       return `<div class="vrow${r.flt ? ' bld-frow' : ''}"${r.flt ? ` data-ftype="${r.flt[0]}" data-fval="${esc(r.flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
         `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
-        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div></div>`;
+        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div>` +
+        `<span class="vpct" title="Picks ${pv == null ? '-' : pv.toFixed(0) + '%'}, portfolio ${r.hv == null ? '-' : r.hv.toFixed(0) + '%'}${tv != null && tv > 0 ? ', target ' + tv.toFixed(0) + '%' : ''}"><b>${pv == null ? '' : pv.toFixed(0)}</b>${r.hv == null ? '' : '<i>' + (pv == null ? '' : ' / ') + r.hv.toFixed(0) + '</i>'}%</span></div>`;
     }).join('') + '</div>';
   }
 
@@ -376,8 +404,8 @@
     const allSec = new Set(Object.keys(P.sector || {}).concat(Object.keys(H.sector || {})));
     Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => allSec.add(k.slice(7)));
     Object.values(S.nameCache).forEach(n => { if (n.bucket === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) allSec.add(n.sector); });
-    [...allSec].sort((a, b) => sv(b) - sv(a) || a.localeCompare(b))
-      .forEach(s => { t += R(esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, null, 'sector:' + s, undefined, [BUCKETS.includes(s) ? 'cls' : 'sector', s]); });   // rows named after an asset class (no real sector) filter by asset class
+    [...allSec].filter(s => s === 'Equities' || !BUCKETS.includes(s)).sort((a, b) => sv(b) - sv(a) || a.localeCompare(b))   // Fixed Income / Gold / Currency are in the Asset class grid; 'Equities' here = equities with no sector
+      .forEach(s => { t += R(s === 'Equities' ? 'No sector' : esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, s === 'Equities' ? 'Equities with no sector assigned (not a filter: Equities is in the Asset class grid)' : null, 'sector:' + s, undefined, s === 'Equities' ? undefined : ['sector', s]); });
     t += sec('Style');
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
       .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0], undefined, ['factor', f[0]]); });
@@ -505,7 +533,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
+      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk

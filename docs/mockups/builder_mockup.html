@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Builder mockup v3 - accounts, asset allocation, areas (illustrative numbers)</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--border:#e5e5e2;--t1:#1c1917;--t2:#57534e;--t3:#a8a29e;--accent:#1d4ed8;
+--up:#0f9d58;--down:#e5484d;--neu:#6b7280;--warn:#b45309;--warnbg:#fdf3e3;--cat1:#2563eb;--cat2:#0d9488;
+--buy:#15803d;--buybg:#dcfce7;--sell:#b91c1c;--sellbg:#fee2e2;--hold:#4b5563;--holdbg:#f3f4f6;
+--act-buy-strong:#2a5a3d;--act-buy-strong-bg:#d6eadd;--act-sell-strong:#9e3636;--act-sell-strong-bg:#f4e6e6;--act-neutral:#6b7280;--act-neutral-bg:#f3f4f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font:14px/1.45 system-ui,Segoe UI,sans-serif}
+.nav{background:#1c1917;color:#d6d3d1;padding:10px 16px;display:flex;gap:18px;font-size:13px}
+.nav b{color:#fff}.nav .on{color:#fff;border-bottom:2px solid #60a5fa;padding-bottom:2px}
+.wrap{padding:14px 16px;width:100%}
+.note{background:var(--warnbg);color:var(--warn);border:1px solid #f1d9ad;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;align-items:center}
+.tab{border:1px solid var(--border);background:var(--card);padding:6px 14px;border-radius:6px;cursor:pointer;font:inherit}
+.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sp{flex:1}.muted{color:var(--t3);font-size:12px}
+.view{display:none}.view.on{display:block}
+.grid{display:grid;grid-template-columns:420px 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--t2)}
+.step{display:inline-block;background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;line-height:20px;margin-right:6px}
+label{display:block;margin:6px 0;font-size:13px}
+select,input[type=text],input[type=number]{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:5px;font:inherit;background:#fff}
+.seg{display:flex;gap:0}.seg button{flex:1;border:1px solid var(--border);background:#fff;padding:6px;cursor:pointer;font:inherit}
+.seg button:first-child{border-radius:5px 0 0 5px}.seg button:last-child{border-radius:0 5px 5px 0}
+.seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;color:var(--t2);font-weight:600;border-bottom:1px solid var(--border);padding:5px 8px;white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid #f0efec}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600}
+.b-buy{background:var(--buybg);color:var(--buy)}.b-sell{background:var(--sellbg);color:var(--sell)}.b-hold{background:var(--holdbg);color:var(--hold)}
+.up{color:var(--up)}.dn{color:var(--down)}.warn{color:var(--warn)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px}
+.kpi small{color:var(--t2);display:block;font-size:12px}.kpi b{font-size:20px}
+.q{border-bottom:1px dotted var(--t3);cursor:help;position:relative}
+.q:hover::after{content:attr(data-tip);white-space:pre;position:absolute;left:0;top:100%;background:#1c1917;color:#fff;padding:8px 10px;border-radius:6px;z-index:5;font-size:12px;font-weight:400;min-width:220px}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 16px;font:inherit;cursor:pointer;margin-right:6px}
+.btn.alt{background:#fff;color:var(--t1);border:1px solid var(--border)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.disc{font-size:12px;color:var(--t3);margin-top:8px}
+.bars{display:flex;gap:18px;align-items:flex-end;height:90px;margin-top:6px}
+.bars div{display:flex;gap:3px;align-items:flex-end;height:100%}
+.bars span{width:16px;display:block;border-radius:2px 2px 0 0}
+tr.click{cursor:pointer}tr.click:hover{background:#f6f8ff}
+.acct{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.acct select{width:auto;min-width:300px;font-weight:600}
+.pill{background:var(--holdbg);border-radius:10px;padding:2px 10px;font-size:12px}
+.mix td{padding:4px 6px}.mix input[type=range]{width:100%}
+.stack{display:flex;height:18px;border-radius:4px;overflow:hidden;margin:3px 0;font-size:11px;color:#fff}
+.stack span{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden}
+.stackrow{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;font-size:12px;color:var(--t2)}
+tr.bucket td{background:#f6f6f3;font-weight:600}
+tr.tot td{background:#f6f6f3;font-weight:600;border-top:1px solid var(--border)}
+tr.gtot td{background:#eef2ff;font-weight:700}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.lock{font-size:12px}
+.amb{background:var(--warnbg);color:var(--warn);font-weight:600}
+/* Universe-style small tab groups (reuse of .uv-tabs.small look) */
+.uvt{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin:2px 0}
+.uvt button{border:0;border-right:1px solid var(--border);background:#fff;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
+.uvt button:last-child{border-right:0}
+.uvt button.on{background:var(--accent);color:#fff}
+.uvt button:disabled{color:var(--t3);cursor:not-allowed;background:#fafaf9}
+/* area chips: B/S/H like Universe's colour dots, Q pills like .uv-factor-pill */
+.chip{display:inline-block;min-width:22px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px}
+.chip.B{background:var(--act-buy-strong-bg);color:var(--act-buy-strong)}
+.chip.S{background:var(--act-sell-strong-bg);color:var(--act-sell-strong)}
+.chip.H{background:var(--act-neutral-bg);color:var(--act-neutral)}
+.fp{display:inline-block;width:38px;text-align:center;border-radius:4px;font-size:11px;padding:1px 0}
+.fp.bull{background:#e0f2f0;color:#0d9488}.fp.bear{background:#fbe9e1;color:#c2410c}.fp.neutral{background:#f3f4f6;color:#6b7280}
+.fp.dim{opacity:.35}
+.areas input[type=number]{width:70px;padding:2px 6px;text-align:right}
+.areas tr.zero td{color:var(--t3)}
+.areas tr.locked input{border-color:var(--accent);background:#eef2ff}
+.chipline{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0;font-size:12px;color:var(--t2)}
+.chipline b{min-width:78px;display:inline-block;color:var(--t1)}
+</style></head><body>
+<div class="nav"><b>Trading Dashboard</b><span>Dashboard</span><span>Actionable</span><span>Portfolio</span><span class="on">Builder</span><span>Universe</span><span>Rules</span></div>
+<div class="wrap">
+<div class="note">MOCKUP v3 (spec 11): account → mix by asset class → split each bucket by area (Macro and Quad) → funds. Layout and wording only. All numbers and stances are illustrative (the database could not be read in the design session).</div>
+<div class="tabs">
+  <button class="tab on" data-v="v1">Build new</button>
+  <button class="tab" data-v="v2">My model portfolios (3)</button>
+  <span class="sp"></span><span class="muted">Data as of Fri 2026-10-23 ✓</span>
+</div>
+
+<!-- VIEW 1: BUILD NEW -->
+<div class="view on" id="v1">
+ <div class="acct">
+  <span><span class="step">0</span><b>Account</b></span>
+  <select id="acctSel"><option value="FA">F-A · Fidelity · Taxable · $412,300</option><option value="IRA">IRA · Schwab · IRA · $236,800</option><option value="HSA">HSA · Schwab · HSA · $88,400</option><option value="WB">Whole book (preview only) · $737,500</option></select>
+  <span class="pill" id="acctType">Type: Taxable</span>
+  <span class="pill" id="acctRun">Running model: none</span>
+  <span class="pill"><span class="lock">🔒</span> Kept: <b>AAPL, MSFT ($61,200)</b> <a href="#" onclick="return false">edit</a></span>
+  <span class="muted">Positions file: Thu 2026-10-22</span>
+ </div>
+ <div class="grid">
+ <div>
+  <div class="card"><h3><span class="step">1</span>How long</h3>
+   <div class="seg" id="period"><button>1M</button><button class="on">3M</button><button>6M</button><button>12M <span class="muted">untested</span></button></div>
+   <div class="muted" style="margin-top:6px">Ends Fri 2027-01-23. Nothing changes until then.</div></div>
+
+  <div class="card"><h3><span class="step">2</span>Mix by asset class</h3>
+   <label>Preset<select id="preset">
+     <option value="cur">My current mix</option><option value="gro">Growth 80/15/5</option><option value="bal" selected>Balanced 60/30/10</option>
+     <option value="def">Defensive 40/50/10</option><option value="aw">All-weather 30/55/7.5/7.5</option><option value="qt">Quad-tilted (Balanced, shifted by the Quad)</option><option value="cus">Custom</option></select></label>
+   <table class="mix"><thead><tr><th>Bucket</th><th>Stance</th><th class="n">Now</th><th style="width:38%">Target</th><th class="n">%</th><th class="n">$ change</th></tr></thead><tbody id="mixRows"></tbody></table>
+   <div style="margin-top:8px">
+    <div class="stackrow"><span>Current</span><div class="stack" id="barCur"></div></div>
+    <div class="stackrow"><span>Target</span><div class="stack" id="barTgt"></div></div>
+   </div>
+   <label style="margin-top:8px"><input type="checkbox" id="dial" checked> Risk Dial trims risky buckets into Cash <span class="muted">(now ×0.70, Caution)</span></label>
+   <div class="muted" id="dialNote"></div>
+  </div>
+
+  <div class="card"><h3><span class="step">3</span>Split each bucket</h3>
+   <div style="font-weight:600;margin-bottom:4px"><span class="sw" style="background:#2a78d6"></span>Equities <span class="muted" id="eqAmt"></span></div>
+   <div class="chipline"><b>Split</b><span class="uvt" id="splitMode"><button class="on" data-m="area">By area (Macro and Quad)</button><button data-m="recipe">By recipe</button></span></div>
+   <div id="areaCtl">
+    <div class="chipline"><b>Quad</b><span class="uvt" id="quadBtns"><button class="on" data-q="all" title="The expected Quad mix over your 3 months">Qd</button><button data-q="1" title="Assume Quad 1">Q1</button><button data-q="2" title="Assume Quad 2">Q2</button><button data-q="3" title="Assume Quad 3">Q3</button><button data-q="4" title="Assume Quad 4">Q4</button></span>
+     <span class="muted" id="quadNote">Qd = Q2 71%, Q1 29% over your 3 months</span></div>
+    <div class="chipline"><b>Flavour</b><span class="uvt" id="flavBtns">
+      <button class="on" data-f="all">All</button>
+      <button data-f="def" title="Funds tagged Def, Lo-B or Div">Defensive</button>
+      <button data-f="off" title="Funds tagged Cyc, Hi-B or Small">Offensive</button>
+      <button data-f="val" title="Funds tagged Val">Value</button>
+      <button data-f="gro" title="Funds tagged Sec">Growth</button>
+      <button data-f="mid" title="Funds tagged Mid" disabled>Mid</button>
+      <button disabled title="Mom = RSI above 65 today. Changes daily, so not used for a months-long hold. Use the Momentum pick rule instead.">Mom</button></span></div>
+    <div class="chipline"><b>Pick inside</b><select style="width:auto" id="pickRule"><option>Low volatility</option><option>Low beta</option><option>Momentum</option></select>
+     <button class="btn sm" id="fillBtn">Fill from Macro and Quad</button><button class="btn sm alt" id="resetBtn">Reset</button></div>
+   </div>
+   <div id="recipeCtl" hidden>
+    <div class="chipline"><b>Recipe</b><select style="width:auto"><option>Momentum: strongest trends</option><option>Low volatility: calmest funds</option><option>Low beta: moves less than the market</option></select> <span class="muted">Positions</span> <input type="number" value="8" style="width:60px"></div>
+    <div class="muted">Ranks all equity funds; no sector above 40% of the bucket.</div>
+   </div>
+   <hr style="border:0;border-top:1px solid var(--border);margin:10px 0">
+   <div style="font-weight:600;margin-bottom:4px"><span class="sw" style="background:#008300"></span>Fixed Income <span class="muted">30% = $123,700</span></div>
+   <div class="chipline"><b>Split</b><span class="uvt"><button class="on">By area (Macro and Quad)</button><button>Core</button><button>Low volatility</button></span></div>
+   <div class="muted">Areas: Long Bond, IG Credit, HY Credit, Short duration (same table, shown under Equities on the right when selected).</div>
+   <div class="muted" style="margin-top:6px">Gold → GLD · Commodities → GSG · Crypto → IBIT · Currency → UUP (one area, one fund each; only if above 0%). Cash stays cash.</div>
+   <label><input type="checkbox" checked> Skip funds the Final Call sells <span class="muted">(Universe "Color S")</span></label>
+  </div>
+
+  <div class="card"><h3><span class="step">4</span>Warnings <span class="muted">(optional, alert only, never trades)</span></h3>
+   <label><input type="checkbox"> Tell me if the model is down 10% from start</label>
+   <label><input type="checkbox"> Tell me if the Quad check says "transition"</label>
+   <label><input type="checkbox"> Tell me if the Risk Dial says "No new risk"</label>
+   <div class="muted">Always on: stale prices or a possible split.</div></div>
+ </div>
+
+ <div>
+  <div class="card" id="areaCard"><h3>Equities by area <span class="muted">(edit any %: it locks; Fill re-spreads the rest)</span></h3>
+   <table class="areas"><thead><tr><th>Area</th><th>Macro</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th class="n">Base</th><th class="n">Fill</th><th class="n">Your %</th><th class="n">$</th><th>Fund</th></tr></thead><tbody id="areaRows"></tbody></table>
+   <div class="muted" id="areaTot" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card"><h3>Proposed model · F-A · 3 months · ends Fri 2027-01-23</h3>
+   <div><b>Balanced 60/30/10</b> · Equities by area (Qd), Low volatility inside · Fixed Income by area · $412,300 · after Risk Dial: Equities <b>42%</b>, Fixed Income <b>30%</b>, Cash <b>28%</b></div>
+   <table style="margin-top:8px"><thead><tr><th>Fund</th><th>Area</th><th class="n">Weight</th><th class="n">Model $</th><th class="n">You hold now $</th><th>Final Call</th><th>Why here</th></tr></thead><tbody id="rows"></tbody></table>
+   <div style="margin-top:10px;padding:8px;background:var(--holdbg);border-radius:6px;font-size:13px">
+    <div><b>Skipped because of a Sell call (0)</b></div>
+    <div><b>Held, not in model (3):</b> NVDA $31,800 · GLD $16,500 · IBIT $12,400 <span class="muted">(not kept; the model holds none)</span></div>
+    <div><b>Taxable:</b> selling to match would realise about <b>+$14,800</b> gain <span class="muted">(estimate from cost basis, not tax advice)</span></div>
+   </div>
+  </div>
+  <div class="card"><h3>What would have happened</h3>
+   <div class="kpis" style="margin:0 0 6px"><div class="kpi"><small>Periods tested</small><b>1</b></div><div class="kpi"><small>Beat SPY</small><b>1 of 1</b></div><div class="kpi"><small>Average vs SPY</small><b class="up">+0.4%</b></div><div class="kpi"><small>Calmer than SPY</small><b>1 of 1</b></div></div>
+   <div class="muted">"By area" needs the stored monthly Quad mix, which only exists from Sep 2026, so only 1 past 3-month period can be replayed. Too few periods to mean much.</div>
+   <div class="disc">Applies your chosen mix, areas and pick rule mechanically. Past results only, not a forecast.</div></div>
+  <button class="btn">Accept and freeze for F-A</button><button class="btn alt">Copy list</button>
+ </div></div></div>
+
+<!-- VIEW 2: LIST -->
+<div class="view" id="v2"><div class="card">
+ <div style="display:flex;gap:10px;margin-bottom:8px"><label style="margin:0">Account <select style="width:auto"><option>All accounts</option><option>F-A</option><option>IRA</option><option>HSA</option></select></label>
+ <label style="margin:0">Status <select style="width:auto"><option>Running + review due</option><option>All</option><option>Closed</option></select></label></div>
+ <table>
+ <thead><tr><th>Account</th><th>Name</th><th>Mix</th><th>Split</th><th>Period</th><th>Day</th><th class="n">Value</th><th class="n">Return</th><th class="n">vs SPY</th><th class="n">vs account</th><th>Status</th></tr></thead>
+ <tr class="click" onclick="show('v3')"><td>F-A</td><td>F-A Balanced Area 3M Oct-26</td><td>60/30/10</td><td>Area · Qd · Low vol</td><td>Oct 23 – Jan 23</td><td>3 / 63</td><td class="n">$412,900</td><td class="n up">+0.8%</td><td class="n up">+0.3%</td><td class="n dn">−0.2%</td><td>Running</td></tr>
+ <tr class="click"><td>F-A</td><td>F-A Growth Mom 1M Sep-26</td><td>80/15/5</td><td>Recipe · Momentum</td><td>Sep 25 – Oct 23</td><td>done</td><td class="n">$409,100</td><td class="n up">+2.1%</td><td class="n up">+0.9%</td><td class="n up">+1.4%</td><td class="muted">Closed (replaced)</td></tr>
+ <tr class="tot"><td>F-A total</td><td colspan="5" class="muted">running model only · all periods paper gain +$8,950</td><td class="n">$412,900</td><td class="n up">+0.8%</td><td></td><td></td><td></td></tr>
+ <tr class="click"><td>HSA</td><td>HSA Defensive Area 6M Oct-26</td><td>40/50/10</td><td>Area · Q2 · Defensive</td><td>Oct 23 – Apr 23</td><td>3 / 126</td><td class="n">$88,400</td><td class="n up">+0.2%</td><td class="n dn">−0.3%</td><td class="n up">+0.1%</td><td>Running</td></tr>
+ <tr class="tot"><td>HSA total</td><td colspan="5" class="muted">running model only · all periods paper gain +$180</td><td class="n">$88,400</td><td class="n up">+0.2%</td><td></td><td></td><td></td></tr>
+ <tr class="tot"><td>IRA total</td><td colspan="5" class="muted">no model yet</td><td class="n">—</td><td></td><td></td><td></td><td></td></tr>
+ <tr class="gtot"><td>All accounts</td><td colspan="5"><span class="q" data-tip="• Funds in 2+ running models:&#10;• XLI: 2 models, $31,400 (6% of all)&#10;• IEF: 2 models, $52,300 (10% of all)&#10;• Nothing over the 20% household note">Same fund in several accounts: 2 funds</span></td><td class="n">$501,300</td><td class="n up">+0.7%</td><td colspan="3" class="muted">value-weighted, running models</td></tr>
+ </table><div class="muted" style="margin-top:8px">One running model per account. Click a row for details.</div></div></div>
+
+<!-- VIEW 3: DETAIL -->
+<div class="view" id="v3">
+ <div class="muted" style="margin-bottom:6px"><a href="#" onclick="show('v2');return false">← My model portfolios</a></div>
+ <h3 style="margin:0 0 8px">F-A Balanced Area 3M Oct-26 · account F-A (Taxable) · day 3 of 63 · frozen since Fri 2026-10-23</h3>
+ <div class="kpis"><div class="kpi"><small>Return</small><b class="up">+0.8%</b></div><div class="kpi"><small>vs SPY</small><b class="up">+0.3%</b></div><div class="kpi"><small>vs account F-A</small><b class="dn">−0.2%</b></div><div class="kpi"><small>Worst drop</small><b class="dn">−1.1%</b></div><div class="kpi"><small>Swings (model vs SPY)</small><b>8% vs 13%</b></div><div class="kpi"><small>Alerts</small><b>0</b></div></div>
+ <div class="card"><h3>Allocation drift <span class="muted">(F-A, today; click Equities for areas)</span></h3>
+  <table><thead><tr><th>Bucket</th><th class="n">Target</th><th class="n">Model now</th><th class="n">Account now</th><th class="n">Account vs target</th></tr></thead><tbody id="drift"></tbody></table>
+  <div style="margin-top:8px">
+   <div class="stackrow"><span>Target</span><div class="stack" id="dTgt"></div></div>
+   <div class="stackrow"><span>Model now</span><div class="stack" id="dMod"></div></div>
+   <div class="stackrow"><span>Account now</span><div class="stack" id="dAcc"></div></div>
+  </div>
+  <div id="driftAreas" hidden style="margin-top:10px">
+   <table><thead><tr><th>Equities area</th><th>Macro at build</th><th>Macro now</th><th class="n">Target</th><th class="n">Model now</th><th class="n">Account now</th><th class="n">Gap</th></tr></thead>
+    <tr><td>Information Technology</td><td><span class="chip B">B</span></td><td><span class="chip B">B</span></td><td class="n">35.3%</td><td class="n">36.0%</td><td class="n">52.0%</td><td class="n amb">+16.7 pts</td></tr>
+    <tr><td>Industrials</td><td><span class="chip B">B</span></td><td><span class="chip H">H</span> <span class="muted">(display only)</span></td><td class="n">12.4%</td><td class="n">12.1%</td><td class="n">0.0%</td><td class="n amb">−12.4 pts</td></tr>
+    <tr><td>Utilities</td><td><span class="chip S">S</span></td><td><span class="chip S">S</span></td><td class="n">0.0%</td><td class="n">0.0%</td><td class="n">3.1%</td><td class="n">+3.1 pts</td></tr>
+   </table></div>
+  <div class="muted">Amber = 5 points or more away from target. Drift is not good or bad, so no green or red. "Macro now" never changes the frozen model.</div></div>
+ <div class="card"><h3>vs your account <span class="muted">(F-A holdings only)</span></h3><table><thead><tr><th>Fund</th><th>Area</th><th class="n">Model $</th><th class="n">You hold $</th><th class="n">Gap $</th><th>Trade to match</th><th class="n">Tax if sold</th></tr></thead>
+  <tr><td>AAPL <span class="lock">🔒</span></td><td>Info Tech</td><td class="n">38,000</td><td class="n">38,000</td><td class="n">0</td><td class="muted">Kept</td><td></td></tr>
+  <tr><td>XLI</td><td>Industrials</td><td class="n">21,500</td><td class="n">0</td><td class="n up">+21,500</td><td>Buy 152 sh <span class="muted">(only if you want to match, not advice)</span></td><td></td></tr>
+  <tr><td>NVDA</td><td>Info Tech</td><td class="n">—</td><td class="n">31,800</td><td class="n">—</td><td class="muted">Held, not in model</td><td class="n">+9,400 gain</td></tr></table>
+  <div style="margin-top:6px"><b>Matches model: 41%</b></div></div>
+ <div class="card"><h3>Promise check <span class="muted">(fills in as days pass; final at the end)</span></h3>
+  <div>✓ Equities by area: favoured areas beating Sell areas? <b>+0.6%</b> so far</div><div>✓ Low volatility inside areas: calmer than SPY? <b>9% vs 13%</b></div><div>• Funds beating SPY: <b>6 of 11</b></div></div>
+ <button class="btn alt" disabled title="Enabled from the end date">End-of-period review</button> <span class="muted">Roll over · Change mix, areas or recipes · Close (available from Jan 23)</span>
+</div>
+</div>
+<script>
+/* ---------- Step 2: mix ---------- */
+const B=[["Equities","#2a78d6",71,"B"],["Fixed Income","#008300",12,"H"],["Gold","#eda100",4,"H"],["Commodities","#eb6834",0,"B"],["Crypto","#4a3aa7",3,"H"],["Currency","#e87ba4",0,"S"]];
+const P={cur:[71,12,4,0,3,0],gro:[80,15,0,0,0,0],bal:[60,30,0,0,0,0],def:[40,50,0,0,0,0],aw:[30,55,7.5,7.5,0,0],qt:[66,24,0,0,0,0]};
+const KEPT_EQ=15, VAL=412300, CUR_CASH=10;
+let tgt=P.bal.slice(), eqDollars=173200;
+function fmt(n){return (n>0?'+':n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString()}
+function seg(vals,cash){const all=vals.map((v,i)=>[B[i][0],B[i][1],v]).concat([["Cash","#898781",cash]]);
+ return all.filter(a=>a[2]>0).map(a=>`<span style="width:${a[2]}%;background:${a[1]}" title="${a[0]} ${a[2]}%">${a[2]>=6?a[0]+' '+a[2]+'%':''}</span>`).join('')}
+function renderMix(){
+ const dial=document.getElementById('dial').checked;
+ const eff=tgt.slice(); let moved=0;
+ if(dial){[0,3,4].forEach(i=>{const keep=i===0?Math.max(KEPT_EQ,eff[i]*0.7):eff[i]*0.7;moved+=eff[i]-keep;eff[i]=+keep.toFixed(1)})}
+ const sum=tgt.reduce((a,b)=>a+b,0), cash=Math.max(0,100-sum), effCash=+(cash+moved).toFixed(1);
+ document.getElementById('mixRows').innerHTML=B.map((b,i)=>`<tr><td><span class="sw" style="background:${b[1]}"></span>${b[0]}${i===0?' <span class="q" data-tip="• Kept AAPL + MSFT = 15% of F-A&#10;• Equities cannot go below 15%">🔒</span>':''}</td><td><span class="chip ${b[3]} q" data-tip="• Asset-class stance over your 3 months&#10;• Same Quad mix as the area table">${b[3]}</span></td><td class="n">${b[2]}%</td><td><input type="range" min="${i===0?KEPT_EQ:0}" max="100" step="5" value="${tgt[i]}" data-i="${i}"></td><td class="n">${tgt[i]}%</td><td class="n">${fmt((tgt[i]-b[2])/100*VAL)}</td></tr>`).join('')
+ +`<tr><td><span class="sw" style="background:#898781"></span>Cash <span class="muted">(the rest)</span></td><td></td><td class="n">${CUR_CASH}%</td><td></td><td class="n">${cash}%</td><td class="n">${fmt((cash-CUR_CASH)/100*VAL)}</td></tr>`;
+ document.querySelectorAll('#mixRows input').forEach(r=>r.oninput=()=>{const i=+r.dataset.i;const others=tgt.reduce((a,b,j)=>a+(j===i?0:b),0);tgt[i]=Math.min(+r.value,100-others);document.getElementById('preset').value='cus';renderMix()});
+ document.getElementById('barCur').innerHTML=seg(B.map(b=>b[2]),CUR_CASH);
+ document.getElementById('barTgt').innerHTML=seg(eff,effCash);
+ document.getElementById('dialNote').textContent=dial?`Caution ×0.70: Equities ${tgt[0]}% becomes ${eff[0]}%, Cash ${cash}% becomes ${effCash}% (kept holdings are never trimmed).`:'Risk Dial not applied.';
+ eqDollars=Math.round(eff[0]/100*VAL);
+ document.getElementById('eqAmt').textContent=`${eff[0]}% = $${eqDollars.toLocaleString()}`;
+ if(typeof renderAreas==='function')renderAreas();
+}
+document.getElementById('preset').onchange=e=>{if(P[e.target.value])tgt=P[e.target.value].slice();renderMix()};
+document.getElementById('dial').onchange=renderMix;
+document.getElementById('acctSel').onchange=e=>{const v=e.target.value;const t={FA:'Taxable',IRA:'IRA',HSA:'HSA',WB:'all accounts'}[v];document.getElementById('acctType').textContent='Type: '+t;document.getElementById('acctRun').textContent=v==='HSA'?'Running model: HSA Defensive Area 6M (accepting replaces it)':v==='WB'?'Preview only, cannot be frozen':'Running model: none'};
+
+/* ---------- Step 3: areas (illustrative outlooks: B=Bullish, N=Neutral, R=Bearish per Q1..Q4) ---------- */
+const MIX={1:0.29,2:0.71,3:0,4:0};
+const AREAS=[
+ ["Information Technology","BBRR",["XLK"],["Sec","Hi-B"],61200],
+ ["Industrials","BBNR",["XLI"],["Cyc"],0],
+ ["Financials","BBRN",["XLF"],["Cyc","Val"],0],
+ ["Consumer Discretionary","NBRR",["XLY"],["Cyc"],0],
+ ["Materials","RBBN",["XLB"],["Cyc"],0],
+ ["Energy","RBBN",["XLE"],["Cyc","Val","Div"],0],
+ ["Communication Services","BNRR",["XLC"],["Sec"],0],
+ ["Health Care","NRBB",["XLV"],["Def","Lo-B"],0],
+ ["Consumer Staples","RRBB",["XLP"],["Def","Lo-B","Div"],0],
+ ["Real Estate","BRRB",["XLRE"],["Def","Div"],0],
+ ["Utilities","RRNB",["XLU"],["Def","Lo-B","Div"],0],
+ ["Broad US","BNRR",["SPY","IWM"],["Small","Hi-B"],0],
+ ["Foreign","BNNR",["EFA","EEM"],["Val","Div"],0]];
+const FLAV={all:null,def:["Def","Lo-B","Div"],off:["Cyc","Hi-B","Small"],val:["Val"],gro:["Sec"],mid:["Mid"]};
+const OUT={B:1,N:0,R:-1}, PILL={B:'bull',N:'neutral',R:'bear'}, PNAME={B:'Bull',N:'Neut',R:'Bear'};
+let quadSel=new Set(), flav='all', locks={};
+function stanceOf(o){
+ if(quadSel.size===0)return [1,2,3,4].reduce((s,k)=>s+MIX[k]*OUT[o[k-1]],0);
+ const v=[...quadSel].map(k=>o[k-1]);
+ if(v.every(x=>x==='B'))return 1; if(v.some(x=>x==='R'))return -1; return 0;
+}
+const chipOf=s=>s>=0.25?'B':s<=-0.25?'S':'H';
+function fill(){
+ const elig=AREAS.filter(a=>a[4]>0||!FLAV[flav]||a[3].some(t=>FLAV[flav].includes(t)));
+ const base=1/elig.length;
+ let rows=elig.map(a=>{const s=stanceOf(a[1]);const c=chipOf(s);return {a,s,c,base,raw:c==='S'?0:base*(1+s)}});
+ // minimum 3 non-zero areas
+ const nz=rows.filter(r=>r.raw>0).length;
+ if(nz<3){rows.filter(r=>r.raw===0).sort((x,y)=>y.s-x.s).slice(0,3-nz).forEach(r=>{r.raw=0.5*base;r.revived=true})}
+ // locks + normalise unlocked
+ const lockedSum=rows.reduce((t,r)=>t+(locks[r.a[0]]!=null?locks[r.a[0]]/100:0),0);
+ const free=Math.max(0,1-lockedSum), rawSum=rows.filter(r=>locks[r.a[0]]==null).reduce((t,r)=>t+r.raw,0)||1;
+ rows.forEach(r=>{r.fill=locks[r.a[0]]!=null?locks[r.a[0]]/100:r.raw/rawSum*free});
+ // cap 40%, floor 3% (unlocked only)
+ for(let it=0;it<10;it++){let ex=0;rows.forEach(r=>{if(locks[r.a[0]]==null&&r.fill>0.40){ex+=r.fill-0.40;r.fill=0.40}});
+  rows.forEach(r=>{if(locks[r.a[0]]==null&&r.fill>0&&r.fill<0.03&&!r.revived){ex+=r.fill;r.fill=0}});
+  if(ex<1e-9)break;const open=rows.filter(r=>locks[r.a[0]]==null&&r.fill>0&&r.fill<0.40);const os=open.reduce((t,r)=>t+r.fill,0)||1;open.forEach(r=>r.fill+=ex*r.fill/os)}
+ // kept holdings: area at least its kept share; excess off the others
+ rows.forEach(r=>{const ks=r.a[4]/eqDollars;if(ks>r.fill){const need=ks-r.fill;r.fill=ks;r.keptOver=true;const oth=rows.filter(o=>o!==r&&locks[o.a[0]]==null&&o.fill>0);const os=oth.reduce((t,o)=>t+o.fill,0)||1;oth.forEach(o=>o.fill-=need*o.fill/os)}});
+ return {rows,lockedSum,excluded:AREAS.length-elig.length};
+}
+function renderAreas(){
+ const {rows,lockedSum,excluded}=fill();
+ document.getElementById('quadNote').textContent=quadSel.size?`Assume Quad ${[...quadSel].sort().join(' & ')} (AND: favoured only if Bullish in all)`:'Qd = Q2 71%, Q1 29% over your 3 months';
+ document.getElementById('areaRows').innerHTML=rows.map(r=>{
+  const [name,o,funds,tags,kept]=r.a; const locked=locks[name]!=null; const pct=(r.fill*100);
+  const pills=[0,1,2,3].map(i=>`<td><span class="fp ${PILL[o[i]]}${quadSel.size&&!quadSel.has(String(i+1))?' dim':''}">${PNAME[o[i]]}</span></td>`).join('');
+  const tip=`• Stance ${r.s>=0?'+':''}${r.s.toFixed(2)} (${quadSel.size?'assumed Quad':'Q1 29% x '+PNAME[o[0]]+', Q2 71% x '+PNAME[o[1]]})&#10;• B at +0.25 or more, S at −0.25 or less&#10;• Style tags: ${tags.join(', ')||'none'}${r.revived?'&#10;• Kept at half base: fewer than 3 areas left':''}`;
+  const fund=r.keptOver?'<span class="muted">kept AAPL, MSFT (buys none)</span>':pct===0?'<span class="muted">—</span>':(funds.length>1&&pct>=15?funds.join(', '):funds[0]);
+  return `<tr class="${pct===0?'zero':''}${locked?' locked':''}"><td>${name}${kept?' <span class="lock q" data-tip="• Kept $'+kept.toLocaleString()+' counts here first">🔒</span>':''}</td><td><span class="chip ${r.c} q" data-tip="${tip}">${r.c}</span> <span class="muted">${r.s>=0?'+':''}${r.s.toFixed(2)}</span></td>${pills}<td class="n">${(r.base*100).toFixed(1)}%</td><td class="n">${r.c==='S'&&!r.revived?'0.0%':(r.raw/r.base*r.base*100).toFixed(1)+'%'}</td><td class="n"><input type="number" step="0.5" min="0" max="100" value="${pct.toFixed(1)}" data-a="${name}">${locked?' ✎':''}</td><td class="n">${Math.round(r.fill*eqDollars).toLocaleString()}</td><td>${fund}</td></tr>`}).join('');
+ document.querySelectorAll('#areaRows input').forEach(inp=>inp.onchange=()=>{locks[inp.dataset.a]=Math.max(0,+inp.value);renderAreas()});
+ const zeros=rows.filter(r=>r.fill<1e-6).map(r=>r.a[0].split(' ')[0]);
+ document.getElementById('areaTot').innerHTML=(lockedSum>1?'<span class="warn">Locked areas add to '+(lockedSum*100).toFixed(0)+'%: lower one.</span> ':'')+`Areas add to 100% of Equities · ${Object.keys(locks).length} locked · ${zeros.length} at zero${zeros.length?' ('+zeros.join(', ')+')':''}${excluded?' · '+excluded+' areas have no fund with this flavour':''} · "Fill" = base × (1 + stance), S → 0, min 3 areas, cap 40%, floor 3%.`;
+ renderProposal(rows);
+}
+function renderProposal(rows){
+ const fc={XLK:["b-buy","Buy more"],XLI:["b-hold","Hold"],XLF:["b-buy","Buy"],XLE:["b-hold","Hold"]};
+ let h=`<tr class="bucket"><td colspan="7">Equities · by area · ${eqDollars.toLocaleString()}</td></tr>`;
+ h+=`<tr><td><b>AAPL</b> 🔒</td><td>Info Tech</td><td class="n">9.2%</td><td class="n">38,000</td><td class="n">38,000</td><td><span class="badge b-hold">Hold</span></td><td>Kept as is (your list)</td></tr><tr><td><b>MSFT</b> 🔒</td><td>Info Tech</td><td class="n">5.6%</td><td class="n">23,200</td><td class="n">23,200</td><td><span class="badge b-buy">Buy</span></td><td>Kept as is (your list)</td></tr>`;
+ rows.filter(r=>r.fill>1e-6&&!r.keptOver).forEach(r=>{const f=r.a[2][0],d=Math.round(r.fill*eqDollars),b=fc[f]||["b-hold","Hold"];
+  h+=`<tr><td><b>${f}</b></td><td>${r.a[0]}</td><td class="n">${(d/VAL*100).toFixed(1)}%</td><td class="n">${d.toLocaleString()}</td><td class="n">0</td><td><span class="badge ${b[0]}">${b[1]}</span></td><td><span class="q" data-tip="• Area ${r.a[0]}: Macro ${r.c} (${r.s>=0?'+':''}${r.s.toFixed(2)})&#10;• Calmest fund in the area (Low volatility)&#10;• ${(r.fill*100).toFixed(1)}% of Equities">${r.a[0]} is ${r.c==='B'?'favoured':r.c==='H'?'neutral':'kept as a minimum'}; calmest fund here</span></td></tr>`});
+ h+=`<tr class="bucket"><td colspan="7">Fixed Income · by area · 123,700</td></tr><tr><td><b>BUXX</b></td><td>Short duration</td><td class="n">12.6%</td><td class="n">52,000</td><td class="n">41,000</td><td><span class="badge b-hold">Hold</span></td><td>Short duration is B; calmest bond fund</td></tr><tr><td><b>LQD</b></td><td>IG Credit</td><td class="n">9.4%</td><td class="n">38,900</td><td class="n">0</td><td><span class="badge b-hold">Hold</span></td><td>IG Credit is B</td></tr><tr><td><b>HYG</b></td><td>HY Credit</td><td class="n">8.0%</td><td class="n">32,800</td><td class="n">0</td><td><span class="badge b-hold">Hold</span></td><td>HY Credit is H (Long Bond is S: zero)</td></tr>`;
+ h+=`<tr class="bucket"><td colspan="7">Cash · 115,400</td></tr><tr><td><b>Cash</b></td><td>—</td><td class="n">28.0%</td><td class="n">115,400</td><td class="n">41,200</td><td></td><td>10% preset + 18% moved by the Risk Dial (Caution ×0.70)</td></tr>`;
+ document.getElementById('rows').innerHTML=h;
+}
+function grp(id,attr,fn){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{if(b.disabled)return;fn(b);})}
+grp('quadBtns','q',b=>{const q=b.dataset.q;if(q==='all'){quadSel.clear()}else{quadSel.has(q)?quadSel.delete(q):quadSel.add(q)}
+ document.querySelectorAll('#quadBtns button').forEach(x=>x.classList.toggle('on',x.dataset.q==='all'?quadSel.size===0:quadSel.has(x.dataset.q)));renderAreas()});
+grp('flavBtns','f',b=>{flav=b.dataset.f;document.querySelectorAll('#flavBtns button').forEach(x=>x.classList.toggle('on',x===b));renderAreas()});
+grp('splitMode','m',b=>{document.querySelectorAll('#splitMode button').forEach(x=>x.classList.toggle('on',x===b));const area=b.dataset.m==='area';document.getElementById('areaCtl').hidden=!area;document.getElementById('recipeCtl').hidden=area;document.getElementById('areaCard').style.display=area?'':'none'});
+document.getElementById('fillBtn').onclick=renderAreas;
+document.getElementById('resetBtn').onclick=()=>{locks={};renderAreas()};
+renderMix();
+
+/* ---------- other views ---------- */
+document.getElementById('bt')&&0;
+const D=[["Equities","#2a78d6",42,43,71],["Fixed Income","#008300",30,29,12],["Gold","#eda100",0,0,4],["Crypto","#4a3aa7",0,0,3],["Cash","#898781",28,28,10]];
+document.getElementById('drift').innerHTML=D.map((d,i)=>{const g=d[4]-d[2];return `<tr${i===0?' class="click" id="eqDrift"':''}><td><span class="sw" style="background:${d[1]}"></span>${d[0]}${i===0?' ▸':''}</td><td class="n">${d[2]}%</td><td class="n">${d[3]}%</td><td class="n">${d[4]}%</td><td class="n ${Math.abs(g)>=5?'amb':''}">${g>0?'+':''}${g} pts</td></tr>`}).join('');
+document.getElementById('eqDrift').onclick=()=>{const el=document.getElementById('driftAreas');el.hidden=!el.hidden};
+const st=k=>D.filter(d=>d[k]>0).map(d=>`<span style="width:${d[k]}%;background:${d[1]}" title="${d[0]} ${d[k]}%">${d[k]>=6?d[0]+' '+d[k]+'%':''}</span>`).join('');
+document.getElementById('dTgt').innerHTML=st(2);document.getElementById('dMod').innerHTML=st(3);document.getElementById('dAcc').innerHTML=st(4);
+function show(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id===id));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===id||(id==='v3'&&t.dataset.v==='v2')))}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>show(t.dataset.v));
+document.querySelectorAll('#period button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#period button').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+</script></body></html>

@@ -112,6 +112,9 @@
     .bld-frow { cursor: pointer; }
     .bld-t tr.bld-frow:hover td:first-child, .bld-viz .vrow.bld-frow:hover .vlab { text-decoration: underline; }
     .bld-t tr.bld-frow.on > td:first-child, .bld-viz .vrow.bld-frow.on .vlab { font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+    button.bld-copy, .bld-card .bld-t td button.bld-copy { border: 0; background: none; padding: 0 3px; height: auto; cursor: pointer; color: var(--text-3); vertical-align: middle; line-height: 1; }
+    button.bld-copy:hover { color: var(--text-1); }
+    button.bld-copy.ok { color: #16a34a; }
     .bld-ftag { cursor: pointer; }
     .bld-ftag:hover { text-decoration: underline; }
     .bld-ftag.on { font-weight: 700; text-decoration: underline; }
@@ -251,10 +254,18 @@
     .bld-viz .vnum { width: 92px; flex: 0 0 auto; text-align: right; color: var(--text-2); white-space: nowrap; }
     .bld-viz .vhead { font-weight: 700; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
     .bld-viz .vlab { width: 80px; }
+    .bld-viz .vpct { flex: 0 0 auto; min-width: 46px; text-align: right; font-size: 10px; color: var(--text-3); white-space: nowrap; }
+    .bld-viz .vpct b { color: var(--text-1); font-weight: 600; }
+    .bld-viz .vpct i { font-style: normal; }
     .bld-viz .vtrack2 { flex: 1; position: relative; height: 12px; background: #f1f0ec; border-radius: 3px; }
     .bld-viz .vtrack2 .vfill { position: absolute; left: 0; top: 0; height: 7px; border-radius: 3px; }
     .bld-viz .vtrack2 .vhold { position: absolute; left: 0; bottom: 0; height: 4px; border-radius: 2px; background: #9ca3af; }
     .bld-viz .vtrack2 .vtick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-1); }
+    /* 2026-10-29, user: tighter top margin and control lines in the Names column and the comparison column */
+    .bld-card.bld-side, .bld-card.bld-cmpcard { padding-top: 6px; padding-bottom: 8px; }
+    .bld-side .bld-line, .bld-cmpcard .bld-line { margin: 3px 0; }
+    .bld-cmpcard > .bld-line { margin-bottom: 12px; }
+    .bld-side > .bld-line + .bld-side-scroll { margin-top: 12px; }
 </style>
 </head>
 <body class="builder-page">
@@ -321,17 +332,19 @@
             <button class="bld-btn sm alt" id="clearFilters">Clear filters</button>
             <span class="bld-muted" id="srcNamesCount"></span>
             <span class="bld-muted" id="srcNamesHint"></span>
+            <button type="button" class="bld-copy" data-copy="shown" title="Copy the symbols shown in this list (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           </div>
           <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th>Lists</th><th>Asset class</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
         </aside>
 
         <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
         <div>
-          <div class="bld-card"><div class="bld-muted bld-cnt"><span id="picksCount"></span></div>
-            <div class="bld-line"><b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
+          <div class="bld-card bld-cmpcard">
+            <div class="bld-line" style="gap:10px;flex-wrap:wrap"><span class="bld-muted bld-cnt" style="margin:0"><span id="picksCount"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></span>
+              <b style="min-width:0">Preset</b><select id="preset"></select>
+              <b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
               <button class="bld-btn alt" id="setOpen">Open</button><button class="bld-btn" id="setSave">Save as…</button><button class="bld-btn alt" id="setDel">Delete</button>
               <span class="bld-muted" id="setMsg"></span></div>
-            <div class="bld-line"><b style="min-width:0">Preset</b><select id="preset"></select></div>
             <div id="cmpTable"></div>
             <div id="symTable"></div>
           </div>
@@ -365,7 +378,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261029m"></script>
+  <script src="/static/builder.js?v=20261107a"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>
