@@ -407,9 +407,16 @@ def get_dashboard_symbol_earnings(
             f"AND {scope_clause} "
             "ORDER BY t.earnings_days ASC, t.tos_symbol ASC LIMIT :lim"
         ), {"d": d, "cap": periodic_cap(s, d), "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
+        # 2026-11-05, user: the Dashboard earnings box lists the stocks you own first -- "held" = in any CS or F position snapshot
+        # in the last 30 days (so a stock you just sold still counts).
+        held = {r[0] for r in s.execute(text(
+            "SELECT tos_symbol FROM hist_cs WHERE snapshot_date BETWEEN :d - 30 AND :d "
+            "UNION SELECT tos_symbol FROM hist_f WHERE snapshot_date BETWEEN :d - 30 AND :d"
+        ), {"d": d}).all()}
     return [
         {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
-         "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat()}
+         "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat(),
+         "held": r["tos_symbol"] in held}
         for r in rows
     ]
 

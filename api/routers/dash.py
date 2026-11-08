@@ -898,7 +898,7 @@ def _build_macro_engine(d):
         rsi_v  = float(fund["rsi"])       if fund.get("rsi")       is not None else None
         mc_v   = fund.get("market_cap_str")
 
-        for cat, sub, wt in _classify_style(beta_v, pe_v, dy_v, rsi_v, mc_v, sec):
+        for cat, sub, wt in _classify_style(beta_v, pe_v, dy_v, rsi_v, mc_v, sec, rac):
             _add(f"style={sub}", cat, sub, (cat, sub.lower()), wt)
 
         return memberships
@@ -5376,6 +5376,42 @@ def get_portfolio_trends(
             by_date[flow_date]["mv"] += running[label]
             acct_dates[label].add(flow_date)
 
+    # Carry forward an account's last value across a date where it has no snapshot but other accounts do (a missing
+    # export day), so the headline total doesn't dip. Only fills GAPS (account has an earlier AND a later real value);
+    # an account that ended or hasn't started yet is left alone. Day change is unaffected (no price move assumed).
+    _all_dates = sorted(by_date.keys())
+    # Last value just BEFORE the window (up to 14 days back) for accounts whose first row in-window is late, so a gap at
+    # the very start of the window (e.g. MTD begins on a day one broker has no file) is also filled.
+    _pre: dict = {}
+    _carried: dict = {}
+    if _all_dates:
+        try:
+            with session_scope() as _s4:
+                for _pd, _pa, _pmv, _pcash, _pdc in _s4.execute(
+                        text(sql), {**params, "start": _all_dates[0] - timedelta(days=14),
+                                    "end": _all_dates[0] - timedelta(days=1)}).all():
+                    if _pa in acct_series and (_pa not in _pre or _pd > _pre[_pa][0]):
+                        _pre[_pa] = (_pd, float(_pmv or 0) + float(_pcash or 0))
+        except Exception as _e:
+            logging.getLogger("api.portfolio").warning("trends pre-window lookup skipped: %s", _e)
+    for _acct, _dv in acct_series.items():
+        if not _dv:
+            continue
+        _first, _last_d = min(_dv), max(_dv)
+        _prev = None
+        if _first > _all_dates[0] and _acct in _pre:
+            _prev = _pre[_acct][1]
+            _first = _all_dates[0] - timedelta(days=1)
+        elif len(_dv) < 2:
+            continue
+        for _d in _all_dates:
+            if _d in _dv:
+                _prev = _dv[_d]
+            elif _prev is not None and _first < _d < _last_d:
+                by_date[_d]["mv"] += _prev
+                _dv[_d] = _prev
+                _carried.setdefault(_d.isoformat(), []).append(_acct)
+
     dates_sorted = sorted(by_date.keys())
     account_value = [round(by_date[d]["mv"], 2) for d in dates_sorted]
     day_change    = [round(by_date[d]["dc"], 2) for d in dates_sorted]
@@ -5434,6 +5470,7 @@ def get_portfolio_trends(
         "day_change":    day_change,
         "cumulative_pl": cumulative_pl,
         "per_account":   per_account,
+        "carried_forward": _carried,
     }
 
 

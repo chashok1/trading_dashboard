@@ -510,3 +510,34 @@ def compute_quad_monthly_stance(session, as_of_date: date) -> dict:
         out[(r["category"], r["sub_category"])] = stance
     return out
     return "", {}, f"unknown filter_type {ft!r} - showing all rows"
+
+
+def split_adjust(points: list) -> list:
+    """Restate old closes after a stock split so a price line does not fall off a cliff.
+    points = [(date, close, net_chng), ...] ascending, one symbol. Returns adjusted closes (same order).
+    A split day is one where the previous close is a whole-number multiple (or fraction, for a reverse split) of the
+    previous close implied by that day's own reported change (close - net_chng). Earlier closes are divided by that ratio."""
+    n = len(points)
+    ratio = [1.0] * n   # ratio[i] = split ratio between day i-1 and day i
+    for i in range(1, n):
+        net = points[i][2]
+        if net is None:
+            continue
+        implied_prev = float(points[i][1]) - float(net)
+        prev = float(points[i - 1][1])
+        if implied_prev <= 0 or prev <= 0:
+            continue
+        f = prev / implied_prev
+        if abs(f - 1.0) <= 0.4:
+            continue
+        k = round(f) if f > 1 else round(1.0 / f)
+        if k < 2:
+            continue
+        target = float(k) if f > 1 else 1.0 / k
+        if abs(f - target) / target <= 0.05:
+            ratio[i] = target
+    adj, cum = [0.0] * n, 1.0
+    for j in range(n - 1, -1, -1):
+        adj[j] = float(points[j][1]) / cum
+        cum *= ratio[j]
+    return adj

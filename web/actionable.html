@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20261029h">
+  <link rel="stylesheet" href="/static/styles.css?v=20261106a">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261028b">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
@@ -1347,6 +1347,7 @@
           <!-- Right side: row count + panel toggles -->
           <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span id="loadedAt" style="font-size:9px; color:var(--text-2,#999); white-space:nowrap;"></span>
+            <span id="colFilterChip" class="col-filter-chip" style="display:none;"></span>
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
             <!-- Column show/hide manager (TASK_105 U1) -->
             <button id="columnsBtn" class="btn-icon btn-icon-sm" data-tip="Columns" title="Show/hide columns">
@@ -1706,9 +1707,9 @@
        web/index.html, which now has every one of those panels. -->
   <script src="/static/technical_graphs.js?v=20261025a"></script>
   <script src="/static/actionable_pops.js?v=20261105a"></script>
-  <script src="/static/actionable.js?v=20261029d"></script>
+  <script src="/static/actionable.js?v=20261106a"></script>
   <script src="/static/rebuild_modal.js"></script>
-  <script src="/static/market_bar.js?v=20261028a" defer></script>
+  <script src="/static/market_bar.js?v=20261107a" defer></script>
 <script src="/static/warning_badge.js"></script>
 <script src="/static/hedgeye_panel.js?v=20261022g" defer></script>
 

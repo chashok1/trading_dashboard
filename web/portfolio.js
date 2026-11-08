@@ -202,6 +202,14 @@ function peakLowPlugin(values, fontPx) {
     };
 }
 
+// Hover note: accounts with no snapshot that day, shown at their previous value.
+function carriedNote(items) {
+    const lab = items && items[0] ? String(items[0].label || '') : '';
+    const cf = (_lastTrendData && _lastTrendData.carried_forward) || {};
+    const a = cf[lab.slice(0, 10)];
+    return a && a.length ? ['', '⚠ No data this day for:'].concat(a.map(x => '• ' + x + ' (previous value carried forward)')) : [];
+}
+
 function renderTrendCharts(data) {
     if (typeof Chart === 'undefined') return;
     const labels = data.dates || [];
@@ -235,7 +243,7 @@ function renderTrendCharts(data) {
         layout: { padding: { top: 16, bottom: 16 } },
         plugins: {
             legend:  { display: false },
-            tooltip: { enabled: true, mode: 'index', intersect: false },
+            tooltip: { enabled: true, mode: 'index', intersect: false, callbacks: { afterBody: carriedNote } },
         },
         scales: {
             x: { display: true,
@@ -552,8 +560,8 @@ function openTrendModal(key, title) {
                     },
                     afterBody(items) {
                         const i = items && items[0] ? items[0].dataIndex : -1;
-                        return (modalTip && i === modalLastIdx) ? [''].concat(modalTip) : [];
-                    } } : undefined },
+                        return ((modalTip && i === modalLastIdx) ? [''].concat(modalTip) : []).concat(key === 'value' ? carriedNote(items) : []);
+                    } } : (key === 'value' ? { afterBody: carriedNote } : undefined) },
             },
             scales: modalScales,
         },
@@ -601,6 +609,30 @@ function gainClass(v) {
   return 'gain-zero';
 }
 // ---- Export current Positions view to CSV --------------------------------
+// Copy the tickers in the current (filtered) view, de-duplicated, comma-separated.
+async function copyTickers() {
+  const seen = new Set(), syms = [];
+  for (const r of (state.filtered || [])) {
+    const t = r.symbol;
+    if (t && !seen.has(t)) { seen.add(t); syms.push(t); }
+  }
+  if (!syms.length) { showStatus('No tickers to copy', 'info'); return; }
+  const text = syms.join(',');
+  let ok = false;
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); ok = true; } } catch (e) { /* fall back below */ }
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+  }
+  if (ok) showStatus('Copied ' + syms.length + ' tickers', 'success');
+  else showStatus('Copy failed: the browser blocked clipboard access', 'error');
+}
+
 function exportPositionsCsv() {
   const rows = state.filtered || [];
   // Match the column order shown in the on-screen grid.
@@ -1243,7 +1275,7 @@ function renderAcctExposurePanel(data) {
   const list = $('acctExpList');
   list.innerHTML = accounts.map((a, i) => {
     const rowsHtml = a.rows.sort((x, y) => y.dollar - x.dollar).map(p =>
-      `<tr><td class="sym">${escapeHtml(p.symbol)}</td><td class="d">${fmtUsd(p.dollar)}</td></tr>`
+      `<tr><td class="sym">${window.symbolLink ? window.symbolLink(escapeHtml(p.symbol), p.symbol) : escapeHtml(p.symbol)}</td><td class="d">${fmtUsd(p.dollar)}</td></tr>`
     ).join('');
     const pct = total > 0 ? (a.total / total * 100).toFixed(1) : '0.0';
     return `<div class="acct-row${i === 0 ? ' open' : ''}">
@@ -1799,6 +1831,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('consolidated').addEventListener('change', e => { state.filters.consolidated = e.target.checked; loadPortfolio(); });
   $('exportCsvBtn')?.addEventListener('click', exportPositionsCsv);
+  $('copyTickersBtn')?.addEventListener('click', copyTickers);
   $('latestPrices').addEventListener('change', e => {
     state.filters.latestPrices = e.target.checked;
     try { localStorage.setItem('pf_latest_prices', e.target.checked ? '1' : '0'); } catch (_) {}

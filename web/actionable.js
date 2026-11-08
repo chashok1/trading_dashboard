@@ -2746,6 +2746,21 @@ function _resetToggleFiltersForLookup() {
   syncFilterUi();
 }
 
+// Visible reminder that column (header funnel) filters are narrowing the grid; click to clear them.
+function _updateColFilterChip() {
+  const el = $('colFilterChip');
+  if (!el) return;
+  const keys = Object.keys(state.colFilters || {});
+  if (!keys.length) { el.style.display = 'none'; return; }
+  const names = keys.map(k => {
+    const ic = document.querySelector('.col-filter-ic[data-filter-key="' + k + '"]');
+    return ic ? ic.dataset.filterLabel : k;
+  });
+  el.textContent = '▾ ' + keys.length + ' column filter' + (keys.length === 1 ? '' : 's') + ' ✕';
+  el.title = 'Column filters on: ' + names.join(', ') + '. Click to clear them.';
+  el.style.display = '';
+}
+
 function clearAllFilters() {
   const f = state.filters;
   f.action = ''; f.source = ''; f.side = ''; f.account = ''; f.held_only = false;
@@ -2757,6 +2772,7 @@ function clearAllFilters() {
   f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false; f.act_only = false;
   f.sector = ''; f.style = ''; f.asset_class = ''; f.industry = '';
   f.rr_min = 0; f.rr_max = 100;
+  state.colFilters = {};
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   const sfEl = $('sectorFilter'); if (sfEl) sfEl.value = '';
@@ -4837,6 +4853,7 @@ function updateSortIndicators() {
     const filterKey  = th.dataset.filterKey  || key;
     const filterType = th.dataset.filterType || th.dataset.type || 'str';
     const filterActive = !!state.colFilters[filterKey];
+    th.classList.toggle('col-filtered', filterActive);
     const filterIcon = key
       ? ` <span class="col-filter-ic${filterActive ? ' active' : ''}" data-filter-key="${filterKey}" data-filter-type="${filterType}" data-filter-label="${escapeHtml(base)}" title="Filter ${escapeHtml(base)}">&#9662;</span>`
       : '';
@@ -4973,6 +4990,7 @@ function renderGrid() {
   tb.innerHTML = '';
   const total = state.rows.length;
   $('rowCount').textContent = `${total} row${total === 1 ? '' : 's'}`;
+  _updateColFilterChip();
   const emptyEl = $('emptyState');
   if (emptyEl) {
     emptyEl.style.display = total === 0 ? 'block' : 'none';
@@ -7494,6 +7512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Clear all filters
   $('clearFiltersBtn').addEventListener('click', clearAllFilters);
+  $('colFilterChip')?.addEventListener('click', () => { state.colFilters = {}; applyClientFilter(); });
 
   // More filters panel (Conv / P(↑20d) / Agree) — collapsed by default,
   // toggle state persisted in localStorage.
