@@ -348,7 +348,8 @@
     return '';
   }
 
-  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym, pairLead) {
+  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym, pairLead, ySym) {
+    const _yl = (h) => (window.symbolLink && ySym) ? window.symbolLink(h, ySym) : h;
     const staleCls = stale ? ' mt-stale' : '';
     // pairLead (2026-07-04): this tile is the "value" half of a value/vol-
     // gauge pair (e.g. SPX before VIX) -- suppress the separator before its
@@ -380,9 +381,9 @@
       ? (function () {
           const b = _volZoneBadgeStyle(volThresh.zone);
           const badgeStyle = `background:${b.bg}; color:${b.fg}; padding:0 2px; border-radius:3px; display:inline-block; line-height:1.1;`;
-          return `<span class="rr-sym" style="${badgeStyle}">${_pg}${escHtml(_volZoneLabel(volThresh.zone))}</span>`;
+          return `<span class="rr-sym" style="${badgeStyle}">${_pg}${_yl(escHtml(_volZoneLabel(volThresh.zone)))}</span>`;
         })()
-      : `<span class="rr-sym" style="color:${symColor};">${_pg}${escHtml(name)}</span>`;
+      : `<span class="rr-sym" style="color:${symColor};">${_pg}${_yl(escHtml(name))}</span>`;
     const symCol = `<div class="rr-chip-sym-col">${symHtml}${rb}</div>`;
     const trailChip = volThresh ? '' : `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>`;
     // mt-candle-trail/mt-candle-lead mark the candle depending on which side
@@ -484,7 +485,7 @@
       ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
     return chipHtml(spec.label, item.rr_outlook, pctStr, cls,
                      item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc, volThresh,
-                     item.monthly_score ?? null, spec.pairLead);
+                     item.monthly_score ?? null, spec.pairLead, spec.key);
   }
 
   function _miniChipFromRr(spec, item) {
@@ -503,7 +504,7 @@
       ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
     return chipHtml(spec.label, item.outlook, chgStr, cls,
                      item.buy, item.sell, item.bar_price, tipObj, false, ohlc, volThresh,
-                     item.monthly_score, spec.pairLead);
+                     item.monthly_score, spec.pairLead, spec.symbol);
   }
 
   // Cluster consecutive pairLead-chained tiles into one <div

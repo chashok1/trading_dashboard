@@ -328,15 +328,19 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         # - 21 days / - 3 months; current = the live quote the Day pill already uses. Missing history -> None (pill shows a dash).
         from dateutil.relativedelta import relativedelta
         _tr_lo = anchor - relativedelta(months=3) - timedelta(days=10)
+        _tr_raw: dict = {}
         _tr_hist: dict = {}   # symbol -> [(export_date, close)] ascending
         for r in s.execute(text("""
-            SELECT DISTINCT ON (tos_symbol, export_date) tos_symbol, export_date, last_price
+            SELECT DISTINCT ON (tos_symbol, export_date) tos_symbol, export_date, last_price, net_chng
               FROM hist_td
              WHERE export_date BETWEEN :lo AND :d AND last_price IS NOT NULL
                AND tos_symbol IN (SELECT tos_symbol FROM drv_quote WHERE as_of_date = :d)
              ORDER BY tos_symbol, export_date, sequence DESC"""),
                 {"lo": _tr_lo, "d": anchor}).all():
-            _tr_hist.setdefault(r[0], []).append((r[1], float(r[2])))
+            _tr_raw.setdefault(r[0], []).append((r[1], float(r[2]), r[3]))
+        from api._helpers import split_adjust as _split_adjust
+        for _sym, _pts in _tr_raw.items():   # restate pre-split closes so 1wk/3wk/3m returns don't show a fake crash
+            _tr_hist[_sym] = [(p[0], av) for p, av in zip(_pts, _split_adjust(_pts))]
         _tr_targets = {"w1_pct": anchor - timedelta(days=7),
                        "w3_pct": anchor - timedelta(days=21),
                        "m3_pct": anchor - relativedelta(months=3)}
@@ -459,6 +463,14 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 WHERE as_of_date = :d
             """), {"d": wow_date}).mappings().all()
             wow_map = {r["tos_symbol"]: r["last_price"] for r in wq}
+            # Restate a week-ago price that predates a stock split (MTUM 4:1, ITA 3:1 on 2026-11-05) using the split-adjusted
+            # history built above, so week-over-week % isn't a fake -70% crash.
+            for _sym, _pts in _tr_raw.items():
+                _adj = _tr_hist.get(_sym) or []
+                for (_rd, _rv, _nc), (_ad, _av) in zip(_pts, _adj):
+                    if _rd == wow_date and _sym in wow_map and wow_map[_sym] is not None and _rv:
+                        wow_map[_sym] = float(wow_map[_sym]) * (_av / _rv)
+                        break
 
         # Sectors roll-up from drv_technicals
         sector_rows = s.execute(text("""
@@ -1140,7 +1152,7 @@ def _category_drivers_for(sym: str, fund_map: dict, bridge_map: dict,
     if f:
         for cat, sub, wt in _classify_style(
                 f["beta"], f["pe_ratio"], f["div_yield"], f["rsi"],
-                f["market_cap_str"], sector):
+                f["market_cap_str"], sector, asset_cls):
             leg = _driver_leg(cat, sub, wt, quad_lookup)
             if leg: drivers.append(leg)
     return drivers

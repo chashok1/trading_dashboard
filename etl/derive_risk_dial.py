@@ -184,9 +184,13 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
 
     # 2026-10-22 -- VIX's last 4 closes (newest first; the newest may be intraday) for the 3-session jump in _g_vix_jump, and the
     # two jump thresholds (ref_settings, % -- tunable).
+    # 2026-11-06 -- from hist_td (one close per export day, newest sequence) NOT drv_quote: drv_quote repeats the prior day on many days
+    # and its dates are offset, so the last two rows could be the same price (showed "-0.0% on the day" while VIX was -9%).
     vix_closes = [float(r[0]) for r in session.execute(text(
-        "SELECT last_price FROM drv_quote WHERE tos_symbol = 'VIX' AND as_of_date <= :d AND last_price IS NOT NULL "
-        "AND EXTRACT(DOW FROM as_of_date) BETWEEN 1 AND 5 ORDER BY as_of_date DESC LIMIT 4"), {"d": as_of_date}).all()]
+        "SELECT last_price FROM (SELECT DISTINCT ON (export_date) export_date, last_price FROM hist_td "
+        "WHERE tos_symbol = 'VIX' AND export_date <= :d AND last_price IS NOT NULL "
+        "AND EXTRACT(DOW FROM export_date) BETWEEN 1 AND 5 ORDER BY export_date, sequence DESC) t "
+        "ORDER BY export_date DESC LIMIT 4"), {"d": as_of_date}).all()]
     vix_jump_th = {}
     for nm, dflt in (("rd_vix_jump_1d_pct", 9.0), ("rd_vix_jump_3d_pct", 20.0)):
         v = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"), {"n": nm}).scalar()
@@ -194,6 +198,32 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
             vix_jump_th[nm] = float(v) if v is not None else dflt
         except (TypeError, ValueError):
             vix_jump_th[nm] = dflt
+
+    # 2026-11-05 -- hedge-cycle gauges (event_hedging / hedge_removal_rally / rally_fuel_spent): VIX + SPX closes side by side (newest
+    # first), the last 6 VIX9D closes, whether a major scheduled event is near, and the tunable settings (ref_settings rd_hedge_*).
+    hedge_hist = [{"vix": float(r[0]), "spx": float(r[1])} for r in session.execute(text(
+        "SELECT v.last_price, s.last_price FROM drv_quote v JOIN drv_quote s "
+        "ON s.as_of_date = v.as_of_date AND s.tos_symbol = 'SPX' "
+        "WHERE v.tos_symbol = 'VIX' AND v.as_of_date <= :d AND v.last_price IS NOT NULL AND s.last_price IS NOT NULL "
+        "AND EXTRACT(DOW FROM v.as_of_date) BETWEEN 1 AND 5 ORDER BY v.as_of_date DESC LIMIT 9"), {"d": as_of_date}).all()]
+    vix9d_hist = [float(r[0]) for r in session.execute(text(
+        "SELECT close FROM hist_quote_daily WHERE source = 'yfinance' AND symbol = '^VIX9D' AND obs_date <= :d "
+        "AND close IS NOT NULL ORDER BY obs_date DESC LIMIT 6"), {"d": as_of_date}).all()]
+    hedge_th = {}
+    for nm, dflt in (("rd_hedge_event_days", 5.0), ("rd_hedge_9d_rise_pct", 40.0), ("rd_hedge_event_rise_pct", 10.0), ("rd_hedge_vix_drop_pct", 15.0), ("rd_hedge_fuel_days", 5.0)):
+        v = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"), {"n": nm}).scalar()
+        try:
+            hedge_th[nm] = float(v) if v is not None else dflt
+        except (TypeError, ValueError):
+            hedge_th[nm] = dflt
+    cats_raw = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = 'rd_hedge_event_cats'")).scalar()
+    event_cats = [c.strip() for c in (cats_raw or "Fed Meeting,CPI MoM,NFP,PCE,Jackson hole fed speech").split(",") if c.strip()]
+    always_raw = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = 'rd_hedge_event_always_cats'")).scalar()
+    event_always = [c.strip() for c in (always_raw or "Fed Meeting,CPI MoM,NFP").split(",") if c.strip()]
+    event_next = session.execute(text(
+        "SELECT category, event_date FROM ref_calendar_event WHERE category = ANY(:c) AND event_date >= :d "
+        "AND event_date <= :d + CAST(:n AS INTEGER) ORDER BY event_date LIMIT 1"),
+        {"c": event_cats, "d": as_of_date, "n": int(hedge_th["rd_hedge_event_days"])}).first()
 
     vol_rows = session.execute(text(
         "SELECT tos_symbol, low, high FROM ref_vol_threshold"
@@ -290,6 +320,11 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "quote_chg": quote_chg_map,
         "vix_closes": vix_closes,
         "vix_jump_th": vix_jump_th,
+        "hedge_hist": hedge_hist,
+        "vix9d_hist": vix9d_hist,
+        "hedge_th": hedge_th,
+        "event_always": event_always,
+        "event_next": (event_next[0], event_next[1]) if event_next else None,
         "vol": vol_map,
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
@@ -549,6 +584,68 @@ def _g_vix_jump(ctx):
     return fired, chg1 if chg1 is not None else chg3, f"VIX {p1}, {p3} (fires at +{t1:.0f}% in a day or +{t3:.0f}% over 3 sessions)"
 
 
+# 2026-11-05 -- hedge cycle (stage 1: hedges building).
+def _g_event_hedging(ctx):
+    th = ctx["hedge_th"]
+    h9, vix = ctx.get("vix9d_hist") or [], _vol_value(ctx, "VIX")
+    rise = (h9[0] / h9[5] - 1.0) * 100.0 if len(h9) >= 6 and h9[5] else None
+    ev = ctx.get("event_next")
+    inverted = (h9[0] > vix) if (h9 and vix is not None) else None
+    if rise is None and not (ev and inverted is not None):
+        return None, None, "VIX9D history or event data unavailable"
+    by_rise = rise is not None and rise >= th["rd_hedge_9d_rise_pct"]
+    # 2026-11-05, user: Fed, CPI and jobs events always count -- no extra rise needed, just VIX9D above VIX (list = setting
+    # rd_hedge_event_always_cats). Other events also need the rise.
+    fed = bool(ev) and ev[0] in (ctx.get("event_always") or ["Fed Meeting", "CPI MoM", "NFP"])
+    by_event = bool(ev) and bool(inverted) and (fed or (rise is not None and rise >= th["rd_hedge_event_rise_pct"]))
+    parts = []
+    if rise is not None:
+        parts.append(f"VIX9D {rise:+.0f}% over 5 sessions (fires at +{th['rd_hedge_9d_rise_pct']:.0f}%)")
+    if ev:
+        need = "" if fed else f" (event leg needs +{th['rd_hedge_event_rise_pct']:.0f}% too)"
+        parts.append(f"{ev[0]} on {ev[1]}, VIX9D {'above' if inverted else 'below'} VIX{need}")
+    else:
+        parts.append("no major event in the next " + f"{th['rd_hedge_event_days']:.0f} days")
+    return by_rise or by_event, rise, "; ".join(parts)
+
+
+def _hedge_rally_day(vix_now, vix_prev, spx_now, spx_prev, drop_pct):
+    """True when VIX fell at least drop_pct% in the day while SPX rose."""
+    if not vix_prev or not spx_prev:
+        return False
+    return (vix_now / vix_prev - 1.0) * 100.0 <= -drop_pct and spx_now > spx_prev
+
+
+# 2026-11-05 -- hedge cycle (stage 2: rally from hedge removal).
+def _g_hedge_removal_rally(ctx):
+    h = ctx.get("hedge_hist") or []
+    if len(h) < 2:
+        return None, None, "VIX/SPX history unavailable"
+    drop = ctx["hedge_th"]["rd_hedge_vix_drop_pct"]
+    chg_v, chg_s = (h[0]["vix"] / h[1]["vix"] - 1.0) * 100.0, (h[0]["spx"] / h[1]["spx"] - 1.0) * 100.0
+    fired = _hedge_rally_day(h[0]["vix"], h[1]["vix"], h[0]["spx"], h[1]["spx"], drop)
+    return fired, chg_v, f"VIX {chg_v:+.1f}%, SPX {chg_s:+.2f}% on the day (fires at VIX -{drop:.0f}% or more with SPX up)"
+
+
+# 2026-11-05 -- hedge cycle (stage 3: the forced buying is used up).
+def _g_rally_fuel_spent(ctx):
+    h = ctx.get("hedge_hist") or []
+    th = ctx["hedge_th"]
+    n = int(th["rd_hedge_fuel_days"])
+    if len(h) < 3:
+        return None, None, "VIX/SPX history unavailable"
+    # a hedge-removal rally day k sessions ago (1..n): today must be after it, VIX no longer falling, SPX below the highest close since.
+    for k in range(1, min(n, len(h) - 2) + 1):
+        if _hedge_rally_day(h[k]["vix"], h[k + 1]["vix"], h[k]["spx"], h[k + 1]["spx"], th["rd_hedge_vix_drop_pct"]):
+            peak = max(x["spx"] for x in h[: k + 1])
+            vix_flat = h[0]["vix"] >= h[1]["vix"]
+            no_high = h[0]["spx"] < peak
+            return vix_flat and no_high, h[0]["vix"] - h[1]["vix"], (
+                f"Hedge-removal rally {k} session(s) ago; VIX {'not falling' if vix_flat else 'still falling'}, "
+                f"SPX {'below' if no_high else 'at'} its post-rally high {peak:,.0f}")
+    return False, None, "No hedge-removal rally in the last " + f"{n} sessions"
+
+
 def _g_vix_chop(ctx):
     v = _vol_value(ctx, "VIX")
     th = ctx["vol"].get("VIX")
@@ -621,6 +718,23 @@ def _g_credit_stress(ctx):
         legs.append((widened_1m, (CREDIT_WIDEN_BP_1M - hy_widen_1m[1] * 100) / CREDIT_WIDEN_BP_1M,
                      f"HY OAS {hy_widen_1m[0]:.2f}% ({hy_widen_1m[1]*100:+.0f}bp/{CREDIT_WIDEN_DAYS_1M}d)"))
     return fired, v, _leg_detail(legs, fired)
+
+
+# 2026-10-28, user-directed: credit_stress switches off once HY spreads stop widening fast, even while they are still well above where
+# they were a month ago (backtest since Jun 2023: spreads widened another 25bp+ within 20 days after 6 of 17 switch-offs). This
+# amber state says "elevated, not worsening". Display only -- never counted in the risk budget (compute_budget reads `fired` only).
+CREDIT_ELEVATED_BP = 15.0
+
+
+def _amber_credit_stress(ctx):
+    d = _series_delta(ctx.get("hy_oas"), CREDIT_WIDEN_DAYS_1M)
+    if d is None or d[1] * 100 < CREDIT_ELEVATED_BP:
+        return None
+    return (f"Elevated, not worsening — HY OAS {d[0]:.2f}% is {d[1]*100:+.0f}bp vs {CREDIT_WIDEN_DAYS_1M} trading days ago "
+            f"(shown when still >= {CREDIT_ELEVATED_BP:.0f}bp wider; not counted in the risk budget)")
+
+
+AMBER_GAUGES = {"credit_stress": _amber_credit_stress}
 
 
 # 2026-08-14 -- credit-equity divergence: HY spreads widening WHILE SPX is
@@ -1170,6 +1284,9 @@ GAUGES: list[tuple[str, Callable]] = [
     ("vix_spx_divergence", _g_vix_spx_divergence),
     ("vix_elevated", _g_vix_elevated),
     ("vix_jump", _g_vix_jump),
+    ("event_hedging", _g_event_hedging),
+    ("hedge_removal_rally", _g_hedge_removal_rally),
+    ("rally_fuel_spent", _g_rally_fuel_spent),
     ("vix_chop", _g_vix_chop),
     ("vxn_chop", _g_vxn_chop),
     ("vxn_elevated", _g_vxn_elevated),
@@ -1284,6 +1401,15 @@ def evaluate_gauges(session: Session, as_of_date: date, extra_ctx: dict) -> tupl
             "value": value,
             "detail": detail,
         }
+        amber_fn = AMBER_GAUGES.get(key)
+        if amber_fn is not None and fired is False:
+            try:
+                amber = amber_fn(ctx)
+            except Exception as e:
+                log.exception("amber state for %s raised: %s", key, e)
+                amber = None
+            if amber:
+                entry["amber"] = amber
         gauges_fired.append(entry)
 
     summary = compute_budget(gauges_fired)

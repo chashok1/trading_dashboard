@@ -100,7 +100,7 @@
       '• Position in risk range (LRR to TRR): ' + (has ? pct + '%' : '--'),
       'Source: drv_quote, drv_rr ($DXY)'
     ];
-    return '<span class="mw-chip mw-usd ' + olCls(c.outlook) + '" title="' + tip(t) + '"><span class="mw-usd-l">US DOLLAR</span>' +
+    return '<span class="mw-chip mw-usd ' + olCls(c.outlook) + '" title="' + tip(t) + '"><span class="mw-usd-l">' + (window.symbolLink ? window.symbolLink('US DOLLAR', 'DXY') : 'US DOLLAR') + '</span>' +
       '<b>' + num(c.last, 2) + '</b>' + (darr(c.chg5) ? '<span class="mw-usd-d">' + darr(c.chg5) + '</span>' : '') + bar + (dp != null ? '<span class="mw-usd-dp ' + dpCls + '">' + (dp > 0 ? '+' : '') + dp.toFixed(2) + '%</span>' : '') +
       '<span class="mw-usd-o">' + word + '</span></span>';
   }

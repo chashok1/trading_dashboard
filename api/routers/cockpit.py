@@ -283,7 +283,8 @@ def get_risk_dial(date: Optional[str] = Query(None)):
 
         gauges = _jsonb(row["gauges_fired"]) or []
         fired = [g for g in gauges if g.get("fired") is True]
-        quiet = [g for g in gauges if g.get("fired") is not True]
+        amber = [g for g in gauges if g.get("fired") is not True and g.get("amber")]
+        quiet = [g for g in gauges if g.get("fired") is not True and not g.get("amber")]
         fired.sort(key=lambda g: g.get("weight") or 0, reverse=True)
 
         total_value = s.execute(text(
@@ -294,7 +295,7 @@ def get_risk_dial(date: Optional[str] = Query(None)):
 
         # 2026-10-20: plain-English hover help per gauge (ref_risk_gauge.help) for the rank chip + quiet list.
         help_by_key = {r[0]: r[1] for r in s.execute(text("SELECT gauge_key, help FROM ref_risk_gauge")).all()}
-        for g in fired + quiet:
+        for g in fired + amber + quiet:
             g["help"] = help_by_key.get(g["key"])
 
         for g in fired:
@@ -356,6 +357,7 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             "risk_label": risk_label,
             "headline": headline,
             "fired": fired,
+            "amber": amber,
             "quiet": quiet,
             "evaluable_weight": evaluable_weight,
             "fired_weight": fired_weight,
@@ -718,16 +720,21 @@ def get_momentum(days: int = Query(400, ge=30, le=4000), date: Optional[str] = Q
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price
+            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price, net_chng
             FROM hist_td
             WHERE tos_symbol = ANY(:syms) AND last_price IS NOT NULL AND last_price > 0
               AND export_date <= :d AND export_date >= :lo
             ORDER BY export_date, tos_symbol, sequence DESC
         """), {"syms": _MOMENTUM_SYMS, "d": d, "lo": d - _td(days=days)}).all()
     by, cnt = {}, {}
-    for dt, sym, v in rows:
-        by.setdefault(dt.isoformat(), {})[sym] = float(v)
-        cnt[sym] = cnt.get(sym, 0) + 1
+    from api._helpers import split_adjust as _split_adjust
+    _per = {}
+    for dt, sym, v, nc in rows:
+        _per.setdefault(sym, []).append((dt, v, nc))
+    for sym, pts in _per.items():   # restate pre-split closes (e.g. MTUM 4-for-1 on 2026-11-05)
+        for (dt, _v, _nc), av in zip(pts, _split_adjust(pts)):
+            by.setdefault(dt.isoformat(), {})[sym] = av
+            cnt[sym] = cnt.get(sym, 0) + 1
     ref = cnt.get("MTUM", 0)
     syms = [x for x in _MOMENTUM_SYMS if ref and cnt.get(x, 0) >= 0.8 * ref]
     dates = sorted(k for k, v in by.items() if "MTUM" in v)
@@ -748,16 +755,21 @@ def get_retail_sentiment(days: int = Query(400, ge=30, le=4000), date: Optional[
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price
+            SELECT DISTINCT ON (export_date, tos_symbol) export_date, tos_symbol, last_price, net_chng
             FROM hist_td
             WHERE tos_symbol = ANY(:syms) AND last_price IS NOT NULL AND last_price > 0
               AND export_date <= :d AND export_date >= :lo
             ORDER BY export_date, tos_symbol, sequence DESC
         """), {"syms": _RETAIL_SYMS, "d": d, "lo": d - _td(days=days)}).all()
     by, cnt = {}, {}
-    for dt, sym, v in rows:
-        by.setdefault(dt.isoformat(), {})[sym] = float(v)
-        cnt[sym] = cnt.get(sym, 0) + 1
+    from api._helpers import split_adjust as _split_adjust
+    _per = {}
+    for dt, sym, v, nc in rows:
+        _per.setdefault(sym, []).append((dt, v, nc))
+    for sym, pts in _per.items():   # restate pre-split closes (e.g. MTUM 4-for-1 on 2026-11-05)
+        for (dt, _v, _nc), av in zip(pts, _split_adjust(pts)):
+            by.setdefault(dt.isoformat(), {})[sym] = av
+            cnt[sym] = cnt.get(sym, 0) + 1
     syms = [x for x in _RETAIL_SYMS if cnt.get(x, 0) >= _RETAIL_MIN_DAYS]
     dates = sorted(k for k, v in by.items() if syms and all(x in v for x in syms))
     return {"as_of": d.isoformat(), "syms": syms, "pending": [x for x in _RETAIL_SYMS if x not in syms],
@@ -2634,12 +2646,18 @@ def get_macro_week(date: Optional[str] = Query(None)):
         }
 
         # --- events: next 7 days, day-only (no time-of-day in the tables) ----
+        # 2026-11-05, user: on the live (latest) data date the list starts from the calendar day today, so yesterday's release
+        # (e.g. ADP NFP on 11/4 when today is 11/5) is no longer "next". A past date keeps counting from that date.
+        import datetime as _dt
+        ev_start = d
+        if d == _resolve_date(None) and _dt.date.today() > d:
+            ev_start = _dt.date.today()
         ev = s.execute(text(
             "SELECT category, event_date FROM ref_calendar_event "
             "WHERE event_date BETWEEN :d AND :d + 7 "
-            "ORDER BY event_date, category"), {"d": d}).mappings().all()
+            "ORDER BY event_date, category"), {"d": ev_start}).mappings().all()
         events = [{"name": e["category"], "date": e["event_date"].isoformat(),
-                   "days": (e["event_date"] - d).days,
+                   "days": (e["event_date"] - ev_start).days,
                    "major": any(k in (e["category"] or "").lower() for k in _MW_MAJOR_EVENTS)}
                   for e in ev]
 

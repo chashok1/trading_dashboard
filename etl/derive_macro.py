@@ -195,9 +195,15 @@ def _effective_quad_label(p) -> str | None:
     return p.quad
 
 
-def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
-    """Return list of (category, sub_category, weight) style memberships."""
+def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector, asset_class=None):
+    """Return list of (category, sub_category, weight) style memberships.
+
+    asset_class: when it is a KNOWN non-equity class (Fixed Income, Gold, USD, ...), the sector tags (Cyclical/
+    Defensives) and the size tags (Small/Mid Caps) are skipped: a bond/gold/currency fund's sector is a placeholder
+    (Financials, Materials) and its "market cap" is the fund's own size, not a company's (2026-10-29, user).
+    """
     tags = []
+    non_equity = bool(asset_class and str(asset_class).strip() and str(asset_class).strip().lower() != 'equities')
 
     def _f(v):
         try:
@@ -213,7 +219,9 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
         elif b <= 0.7:
             tags.append(('Equity Style', 'Low Beta', 0.5))
 
-    if sector in _DEFENSIVE_SECTORS:
+    if non_equity:
+        pass
+    elif sector in _DEFENSIVE_SECTORS:
         tags.append(('Equity Style', 'Defensives', 0.5))
     elif sector in _CYCLICAL_SECTORS:
         tags.append(('Equity Style', 'Cyclical', 0.5))
@@ -232,7 +240,7 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
 
     # TOS reports market cap "0" for indices/futures/FX; treat it as no data
     # (otherwise SPX, VIX, /GC, ... would be tagged Small Caps).
-    if mc:
+    if mc and not non_equity:
         if mc < 2e9:
             tags.append(('Equity Style', 'Small Caps', 0.5))
         elif mc < 10e9:
@@ -540,7 +548,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         memberships = (
             [(sector_cat, sector_sub, 2.0), ('Asset Class', asset_cls, 1.0)]
             + _classify_style(r.beta, r.pe_ratio, r.div_yield,
-                              r.rsi, r.market_cap_str, sector)
+                              r.rsi, r.market_cap_str, sector, asset_cls)
         )
 
         stance_by_month = {

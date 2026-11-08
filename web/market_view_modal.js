@@ -198,7 +198,7 @@
         var cls = (typeof v === 'number') ? (v > 0 ? 'pos' : v < 0 ? 'neg' : '') : '';
         return '<td class="dollar ' + cls + '">' + _fmtVal(c, v) + '</td>';
       }).join('');
-      return '<tr><td class="sym">' + r.tos_symbol + '</td>' + cells + '</tr>';
+      return '<tr><td class="sym">' + (window.symbolLink ? window.symbolLink(r.tos_symbol, r.tos_symbol) : r.tos_symbol) + '</td>' + cells + '</tr>';
     }).join('');
   }
 

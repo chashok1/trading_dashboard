@@ -64,7 +64,7 @@
     if (!he || !he.stocks || !he.stocks.length) return '';
     var chips = he.stocks.map(function (x) {
       var l = LEAN[x.lean] || ['av-lean-none', '–', 'no Hedgeye outlook'];
-      return '<span class="av-stk ' + l[0] + '" title="' + esc(x.s + ' - Hedgeye ' + l[2]) + '">' + esc(x.s) + ' ' + l[1] + '</span>';
+      return '<span class="av-stk ' + l[0] + '" title="' + esc(x.s + ' - Hedgeye ' + l[2]) + '">' + (window.symbolLink ? window.symbolLink(esc(x.s), x.s) : esc(x.s)) + ' ' + l[1] + '</span>';
     }).join('');
     return '<div class="av-sh">Group stocks and Hedgeye lean</div>' +
       '<div class="av-dim">' + he.bull + ' of ' + he.covered + ' covered stocks bullish (' + he.members + ' in group). ▲ bullish · ◆ mixed/neutral · ▼ bearish · – none</div>' +
@@ -151,7 +151,7 @@
     var chips = a.stocks.map(function (s) {
       var t = s.tos_symbol + ' - ' + s.tier + (s.inverted ? ' - inverse position (verdict flipped)' : '') +
         (s.held ? ' - held $' + Math.round(s.position_dollar).toLocaleString('en-US') : '');
-      return '<span class="av-stk' + (s.held ? ' av-stk-held' : '') + '" title="' + esc(t) + '">' + esc(s.tos_symbol) +
+      return '<span class="av-stk' + (s.held ? ' av-stk-held' : '') + '" title="' + esc(t) + '">' + (window.symbolLink ? window.symbolLink(esc(s.tos_symbol), s.tos_symbol) : esc(s.tos_symbol)) +
         (s.inverted ? '↺' : '') + (s.held ? ' ' + usd(s.position_dollar) : '') + '</span>';
     }).join('');
     var more = a.n_stocks > a.stocks.length ? ' <span class="av-dim">+' + (a.n_stocks - a.stocks.length) + ' more</span>' : '';

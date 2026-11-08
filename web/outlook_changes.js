@@ -35,7 +35,7 @@
       return (i ? '<i class="oc-ar">&rarr;</i>' : '') +
         (i === last && wordy ? '<span class="oc-w ' + cls(st) + '">' + esc(st) + '</span>' : shape(st));
     }).join('');
-    return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + esc(d.label || d.symbol) + '</b>' +
+    return '<span class="oc-chip2 ' + cls(d.to) + '" title="' + esc(tip) + '"><b>' + (window.symbolLink ? window.symbolLink(esc(d.label || d.symbol), d.symbol) : esc(d.label || d.symbol)) + '</b>' +
       (showDate && d.changed_on ? '<span class="oc-dt">' + d.changed_on.slice(5, 7) + '/' + d.changed_on.slice(8, 10) + '</span>' : '') +
       '<span class="oc-ft">' + (path.length > shown.length ? '<i class="oc-ar">&hellip;</i>' : '') + steps + '</span></span>';
   }
@@ -346,7 +346,7 @@
         var lvl = p.label === 'VIX' && p.last_price != null ? '<span class="oc-lvl">' + p.last_price.toFixed(2) + '</span>' : '';
         // 2026-10-19, user-directed: the chip's own colour (border + fill) is the Hedgeye OUTLOOK; the day % change colours only its %chg text.
         var chipCls = cls(p.outlook || 'Neutral');
-        return '<span class="oc-chip2 ' + chipCls + '" data-lbl="' + esc(p.label) + '" title="' + esc(tip) + '"><b>' + esc(p.label) + '</b>' + lvl +
+        return '<span class="oc-chip2 ' + chipCls + '" data-lbl="' + esc(p.label) + '" title="' + esc(tip) + '"><b>' + (window.symbolLink ? window.symbolLink(esc(p.label), p.symbol) : esc(p.label)) + '</b>' + lvl +
           '<span class="oc-ft"><span class="oc-pct ' + pcCls + '">' + txt + '</span></span></span>';
       });
       // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.

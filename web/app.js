@@ -442,7 +442,7 @@ async function loadRiskDial() {
     // 2026-10-20, user-directed: hover on the rank chip (and on each quiet-gauge line) shows plain-English help for that gauge
     // (ref_risk_gauge.help via the API) -- see _rdHelpShow below.
     _rdHelp = { evaluable: r.evaluable_weight || 0, gauges: {} };
-    (r.fired || []).concat(r.quiet || []).forEach(g => { _rdHelp.gauges[g.key] = g; });
+    (r.fired || []).concat(r.amber || [], r.quiet || []).forEach(g => { _rdHelp.gauges[g.key] = g; });
     const firedHtml = (r.fired || []).map(g => {
       const wt = Math.round(g.weight || 0);
       const sev = wt >= 3 ? 3 : wt <= 1 ? 1 : 2;
@@ -457,6 +457,12 @@ async function loadRiskDial() {
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
+    // 2026-10-28 -- amber "elevated, not worsening" rows (display only, not in the risk budget); sit under the fired rows.
+    const amberHtml = (r.amber || []).map(g => `<div class="rd-gauge-row sev-amber">
+        <span class="rd-rail"></span>
+        <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">~</span>
+        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.amber || '')}</span>
+      </div>`).join('');
     const quietHtml = (r.quiet || [])
       .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}">${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}</span>`).join('<br>');
     // 2026-08-14 -- SPX vertical range indicator, ALWAYS shown (not just
@@ -549,7 +555,7 @@ async function loadRiskDial() {
         </div>
         ${spxVbarHtml}
       </div>
-      <div class="rd-gauge-list">${firedHtml}</div>
+      <div class="rd-gauge-list">${firedHtml}${amberHtml}</div>
       <div class="rd-bottom-row">
         <span class="rd-quiet-toggle" onclick="document.getElementById('rdQuietList').classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
         <a class="rd-detail-link" href="/risk-detail">&#8594; Risk detail</a>
@@ -965,31 +971,46 @@ function _toggleEarningsLinesCollapse(e) {
   loadRegimeBand();
 }
 function _earningsLineHtml(rows) {
+  // 2026-11-05, user: earnings dated before today (browser calendar day, display only) are removed if you don't own the stock
+  // (owned in the last 30 days); owned ones stay, shown normally.
+  const _td = new Date();
+  const _todayIso = _td.getFullYear() + '-' + String(_td.getMonth() + 1).padStart(2, '0') + '-' + String(_td.getDate()).padStart(2, '0');
+  rows = (rows || []).filter(r => r.held || !r.event_date || r.event_date >= _todayIso);
   const gear = `<span class="events-gear" title="Choose watched symbols" onclick="_toggleEarningsWatchPop(event)">&#9881;</span>`;
   if (!rows || !rows.length) {
     return `<div class="events-line earnings-line"><span class="events-empty">No upcoming earnings</span>${gear}</div>`;
   }
-  const collapsed = _earningsLinesCollapsed();
-  const collapseToggle = `<span class="events-gear" title="${collapsed ? 'Show more lines' : 'Show fewer lines'}" `
-    + `onclick="_toggleEarningsLinesCollapse(event)">${collapsed ? '&#9662;' : '&#9652;'}</span>`;
+  // 2026-11-05, user: no per-box collapse icon (the panel's own collapse controls it) and the gear moves onto the first line,
+  // before the first date.
+  const gearInline = gear.replace('class="events-gear"', 'class="events-gear" style="margin-right:4px;"');
   const unwatchedSet = new Set(_earningsUnwatchedSymbols);
   const watchedRows = rows.filter(r => !unwatchedSet.has(r.symbol));
   const unwatchedRows = rows.filter(r => unwatchedSet.has(r.symbol));
   // Rows arrive ordered by earnings_days ASC (the API's own ORDER BY), so
   // event_date is already non-decreasing -- a plain Map (insertion-order
   // iteration) groups same-date rows together without a separate sort.
-  const groups = new Map();
-  for (const r of watchedRows) {
-    if (!groups.has(r.event_date)) groups.set(r.event_date, []);
-    groups.get(r.event_date).push(r);
-  }
-  const groupsHtml = [...groups.entries()].map(([date, list]) => {
-    const symsHtml = list.map(r => {
-      const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
-      return r.days_until <= 3 ? `<span class="opex-soon">${sym}</span>` : sym;
-    }).join(' ');
-    return `(${fmtDate(date)}) ${symsHtml}`;
-  });
+  // 2026-11-05, user: stocks you own first, then the rest -- each part grouped by date, with a thin divider between the two parts.
+  const _groupByDate = (list0, dim) => {
+    const groups = new Map();
+    for (const r of list0) {
+      if (!groups.has(r.event_date)) groups.set(r.event_date, []);
+      groups.get(r.event_date).push(r);
+    }
+    return [...groups.entries()].map(([date, list]) => {
+      const symsHtml = list.map(r => {
+        const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
+        // 2026-11-05, user: earnings dated before today show as regular text -- no highlight box.
+        return (r.days_until <= 3 && date >= _todayIso) ? `<span class="opex-soon">${sym}</span>` : sym;
+      }).join(' ');
+      const piece = `(${fmtDate(date)}) ${symsHtml}`;
+      return dim ? `<span class="earn-other">${piece}</span>` : piece;
+    });
+  };
+  const heldGroups = _groupByDate(watchedRows.filter(r => r.held));
+  const otherGroups = _groupByDate(watchedRows.filter(r => !r.held), true);   // not owned in the last 30 days: blue-grey
+  const groupsHtml = heldGroups.length && otherGroups.length
+    ? heldGroups.concat(['<span class="opex-sep" title="Before: stocks you owned in the last 30 days. After: the rest."></span>'], otherGroups)
+    : heldGroups.concat(otherGroups);
   // 2026-08-27 -- watched (date-grouped) and un-watched pieces now flow
   // into ONE clamped block instead of two independently-clamped ones
   // stacked on top of each other -- previously un-watched always started
@@ -1005,8 +1026,8 @@ function _earningsLineHtml(rows) {
     return `<span class="earnings-unwatched-item">${sym}(${r.days_until})</span>`;
   });
   const allPieces = groupsHtml.concat(unwatchedHtml);
-  const content = allPieces.length ? `<span class="earnings-groups">${allPieces.join(' ')}</span>` : '';
-  return `<div class="events-line earnings-line${collapsed ? ' earnings-collapsed' : ''}"><span class="earnings-content">${content}</span>${collapseToggle}${gear}</div>`;
+  const content = allPieces.length ? `<span class="earnings-groups">${gearInline}${allPieces.join(' ')}</span>` : '';
+  return `<div class="events-line earnings-line"><span class="earnings-content">${content}</span></div>`;
 }
 // 2026-08-14 follow-up -- "i need the symbols list with date that are
 // upcoming so i can choose." The picker leads with a checkable list of

@@ -742,7 +742,7 @@
     // more than one (api/routers/cockpit.py's ref_source_precedence join).
     var chips = (s.chips || []).map(function (c) {
       var cls = c.stance === 'B' ? 'b' : c.stance === 'S' ? 's' : '';
-      return '<span class="mr-chip ' + cls + '">' + esc(c.symbol) + '</span>';
+      return '<span class="mr-chip ' + cls + '">' + (window.symbolLink ? window.symbolLink(esc(c.symbol), c.symbol) : esc(c.symbol)) + '</span>';
     }).join(' ');
     // 2026-09-22, user-directed: "go back for that sector -- what was the
     // max number in last 13 weeks like the top panel and use it like 2/13

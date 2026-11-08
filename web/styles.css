@@ -1005,7 +1005,10 @@ thead th {
    controls elsewhere in this file (blue = filter engaged). */
 .col-filter-ic { cursor: pointer; color: #94a3b8; font-size: 8px; }
 .col-filter-ic:hover { color: #475569; }
-.col-filter-ic.active { color: #0a84ff; font-weight: 700; }
+.col-filter-ic.active { color: #fff; background: #0a84ff; border-radius: 3px; padding: 0 3px; font-size: 9px; font-weight: 700; }
+.act-grid thead th.col-filtered { box-shadow: inset 0 -2px 0 #0a84ff; background-color: rgba(10,132,255,0.12); }
+.col-filter-chip { font-size: 11px; font-weight: 600; color: #fff; background: #0a84ff; border-radius: 10px; padding: 1px 8px; cursor: pointer; white-space: nowrap; }
+.col-filter-chip:hover { background: #0768c9; }
 tbody td {
   padding: 2px 6px; line-height: 1.3;
 }
@@ -2561,6 +2564,9 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-gauge-row.sev-3 .rd-gauge-text strong { color: var(--act-sell-strong); }
 .rd-gauge-row.sev-2 .rd-rail { background: #e8833a; }
 .rd-gauge-row.sev-2 .rd-wt   { background: #e8833a; color: #fff; }   /* 2026-09-30: lighter orange */
+.rd-gauge-row.sev-amber .rd-rail { background: transparent; border-left: 3px dashed #f2cf5b; }   /* 2026-10-28: elevated-not-worsening, display only */
+.rd-gauge-row.sev-amber .rd-wt   { background: transparent; color: #8a6a00; border: 1px dashed #f2cf5b; }
+.rd-gauge-row.sev-amber .rd-gauge-text strong { color: #8a6a00; }
 .rd-gauge-row.sev-1 .rd-rail { background: #f2cf5b; }
 .rd-gauge-row.sev-1 .rd-wt   { background: #f2cf5b; color: #5a4300; }   /* 2026-09-30: light amber, dark numeral for contrast */
 .rd-gauge-row .rd-exp { color: var(--text-1); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
@@ -3047,7 +3053,10 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    web/app.js::_toggleEarningsLinesCollapse (user: "make sure it is
    collapsable") -- .earnings-collapsed is added to .earnings-line when the
    persisted localStorage preference says so. */
-.earnings-line.earnings-collapsed .earnings-groups { -webkit-line-clamp: 2; }
+.earnings-line.earnings-collapsed .earnings-groups { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: none; }
+/* 2026-11-05, user: Dashboard earnings box -- scrolling did not work (a 4-line clamp just hid the rest) and the height should double.
+   Expanded = a plain block 8 lines tall (8 x 19px) that scrolls; collapsed keeps the 2-line clamp above. */
+.earnings-line:not(.earnings-collapsed) .earnings-groups { display: block; -webkit-line-clamp: unset; max-height: 152px; overflow-y: auto; overscroll-behavior: contain; }
 /* 2026-08-27 -- smaller font for each un-watched entry, inline within the
    combined flow above (was a separate .earnings-unwatched BLOCK, pinned
    to its own line regardless of space -- see the flow-together comment
@@ -3055,6 +3064,10 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    visually with the watched, date-grouped entries. User: "display not
    watched at the end in small font NVDA(0) ABC(1)". */
 .earnings-unwatched-item { font-size: 8px; }
+/* 2026-11-05, user: earnings for stocks NOT owned in the last 30 days show in blue-grey (owned ones keep the normal text colour). Links inherit it. */
+.earn-other, .earn-other a { color: #5b7690; }
+/* Not-owned stocks reporting within 3 days: the yellow pill (.opex-soon) would hide the blue-grey, so they get a blue-grey pill instead. */
+#crossAssetPanel .earn-other .opex-soon { background: #e3eaf1; color: #3f5a73; border: 1px solid #b9c9d8; border-left: 3px solid #5b7690; }
 /* 2026-08-14 -- yellow highlight for an OPEX/Qtly Exp entry <=5 days out.
    Same yellow as .rd-spx-vbar-fill.tier-caution (#eab308), dark text for
    contrast on the light background. User: "Options expirations (OPEX and

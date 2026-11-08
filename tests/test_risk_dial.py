@@ -99,3 +99,85 @@ def test_credit_stress_fires_on_hyg_leg_only_does_not_mention_oas():
     assert fired is True
     assert "HYG" in detail
     assert "OAS" not in detail
+
+
+# ---- hedge-cycle gauges (2026-11-05) ----
+from etl.derive_risk_dial import _g_event_hedging, _g_hedge_removal_rally, _g_rally_fuel_spent
+
+_TH = {"rd_hedge_event_days": 5.0, "rd_hedge_9d_rise_pct": 40.0, "rd_hedge_event_rise_pct": 10.0, "rd_hedge_vix_drop_pct": 15.0, "rd_hedge_fuel_days": 5.0}
+
+
+def _hctx(hist, **kw):
+    c = {"hedge_th": _TH, "hedge_hist": hist, "vix9d_hist": [], "quote": {}, "event_next": None, "event_always": ["Fed Meeting"]}
+    c.update(kw)
+    return c
+
+
+def test_removal_rally_fires_on_vix_drop_with_spx_up():
+    f, _, _ = _g_hedge_removal_rally(_hctx([{"vix": 16.7, "spx": 7689}, {"vix": 20.8, "spx": 7569}]))
+    assert f is True
+
+
+def test_removal_rally_not_when_spx_down_or_vix_drop_small():
+    assert _g_hedge_removal_rally(_hctx([{"vix": 16.0, "spx": 7500}, {"vix": 20.0, "spx": 7569}]))[0] is False
+    assert _g_hedge_removal_rally(_hctx([{"vix": 19.0, "spx": 7700}, {"vix": 20.0, "spx": 7569}]))[0] is False
+
+
+def test_removal_rally_unavailable_without_history():
+    assert _g_hedge_removal_rally(_hctx([]))[0] is None
+
+
+def test_event_hedging_fires_on_9d_rise_without_event():
+    c = _hctx([], vix9d_hist=[22.0, 20, 18, 17, 16, 15.6], quote={"VIX": 24.0})
+    assert _g_event_hedging(c)[0] is True
+
+
+def test_event_hedging_fires_on_event_and_inverted_curve():
+    c = _hctx([], vix9d_hist=[22.0, 21, 20, 20, 20, 19.0], quote={"VIX": 18.0}, event_next=("Fed Meeting", "2026-11-08"))
+    assert _g_event_hedging(c)[0] is True
+
+
+def test_event_hedging_non_fed_event_and_inverted_but_no_rise_does_not_fire():
+    c = _hctx([], vix9d_hist=[20.0, 20, 20, 20, 20, 20.0], quote={"VIX": 18.0}, event_next=("NFP", "2026-11-08"))
+    assert _g_event_hedging(c)[0] is False
+
+
+def test_event_hedging_fed_fires_without_rise_when_inverted():
+    c = _hctx([], vix9d_hist=[20.0, 20, 20, 20, 20, 20.0], quote={"VIX": 18.0}, event_next=("Fed Meeting", "2026-11-08"))
+    assert _g_event_hedging(c)[0] is True
+
+
+def test_event_hedging_quiet():
+    c = _hctx([], vix9d_hist=[15.0, 15, 15, 15, 15, 15.0], quote={"VIX": 17.0})
+    assert _g_event_hedging(c)[0] is False
+
+
+def test_fuel_spent_after_rally_when_vix_flat_and_no_new_high():
+    # newest first: today VIX up, SPX below the rally-day close; rally was 2 sessions ago
+    h = [{"vix": 17.5, "spx": 7600}, {"vix": 17.0, "spx": 7650}, {"vix": 16.7, "spx": 7689}, {"vix": 20.8, "spx": 7569}]
+    assert _g_rally_fuel_spent(_hctx(h))[0] is True
+
+
+def test_fuel_not_spent_when_spx_makes_new_high():
+    h = [{"vix": 16.0, "spx": 7720}, {"vix": 17.0, "spx": 7650}, {"vix": 16.7, "spx": 7689}, {"vix": 20.8, "spx": 7569}]
+    assert _g_rally_fuel_spent(_hctx(h))[0] is False
+
+
+def test_fuel_false_with_no_recent_rally():
+    h = [{"vix": 17.0, "spx": 7600}, {"vix": 17.0, "spx": 7610}, {"vix": 17.0, "spx": 7620}]
+    assert _g_rally_fuel_spent(_hctx(h))[0] is False
+
+
+def test_event_hedging_cpi_and_nfp_fire_without_rise_when_inverted():
+    for cat in ("CPI MoM", "NFP"):
+        c = _hctx([], vix9d_hist=[20.0, 20, 20, 20, 20, 20.0], quote={"VIX": 18.0}, event_next=(cat, "2026-11-08"),
+                  event_always=["Fed Meeting", "CPI MoM", "NFP"])
+        assert _g_event_hedging(c)[0] is True
+
+
+def test_event_hedging_pce_needs_rise_unless_listed():
+    c = _hctx([], vix9d_hist=[20.0, 20, 20, 20, 20, 20.0], quote={"VIX": 18.0}, event_next=("PCE", "2026-11-08"),
+              event_always=["Fed Meeting", "CPI MoM", "NFP"])
+    assert _g_event_hedging(c)[0] is False
+    c["event_always"] = ["PCE"]
+    assert _g_event_hedging(c)[0] is True
