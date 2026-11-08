@@ -35,7 +35,7 @@ def _fetch_actionable_row(symbol: str, date: Optional[str]) -> Optional[dict]:
     except urllib.error.URLError as e:
         raise SystemExit(
             f"Could not reach {url} ({e}). Is the app server running "
-            f"(start.bat / uvicorn)?"
+            f"(bat\\start.bat / uvicorn)?"
         )
     rows = data.get("rows", data) if isinstance(data, dict) else data
     sym = symbol.upper()

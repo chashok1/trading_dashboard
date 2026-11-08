@@ -31,7 +31,7 @@ Python 3.11 / FastAPI + uvicorn (`127.0.0.1:8000`) / PostgreSQL 17 (`trading` db
 
 ```
 trading-dashboard/
-  setup.bat / start.bat
+  bat/    all .bat files (setup, start, run_scheduler, backup_db, ...)
   config/settings.py
   api/    main.py, _helpers.py, models.py, routers/{health,dash,monitor,ref,rules,trace,pages}.py
   db/     baseline.sql (schema + migrations), seeds_*.sql, init_db.py
@@ -55,7 +55,7 @@ trading-dashboard/
   web/    per-screen .html + .js, shared styles.css + _common.js
   docs/   design docs (+ docs/diagrams/*.svg, docs/audit/*.md)
 ```
-> **New files never go in the root:** helper `.bat` → `bat/`, one-off scripts → `scripts/`, logs → `logs/` (ignored), data/exports → `data/` (ignored), notes → `docs/`. Launch `.bat`s (`start`, `run_scheduler`, `setup`, `backup_db`, `fetch_vix9d`) stay in the root; `fetch_vix9d.bat` is scheduled in Windows, so don't move it.
+> **New files never go in the root:** helper `.bat` → `bat/`, one-off scripts → `scripts/`, logs → `logs/` (ignored), data/exports → `data/` (ignored), notes → `docs/`. All `.bat`s, launchers included (`start`, `run_scheduler`, `setup`, `backup_db`), live in `bat/`; each does `cd /d "%~dp0.."` so it runs from the project root.
 > Root-level loose scripts (`check_*`, `debug_*`, `fix_*`, `test_*`, `verify_*`,
 > `_trash_2026-05-12/`, `docs_backup_2026-05-20/`, `*.log`) are throwaway/cruft, not part
 > of the settled layout. See `docs/audit/unused_code_report.md`.
@@ -144,7 +144,7 @@ Three tiers: atomic rules (`ref_trig_atomic_rule`) → composite rules (`ref_tri
 ## Cheat sheet
 
 ```cmd
-setup.bat                                      :: one-time
+bat\setup.bat                                  :: one-time
 python -m etl.tickers_initial_load             :: bootstrap full workbook
 python -m etl.etl_load "PATH\TO\FILE.xlsx"     :: manual single file
 python -m etl.scheduler                        :: continuous folder watcher (loads + derives)
@@ -152,8 +152,8 @@ python -m etl.refresh_ref [--table NAME]       :: refresh tunable ref tables
 python -m etl.rebuild_rules                    :: recompile rules after trig workbook edits
 python -m etl.cleanup [--dry-run]              :: retention sweep
 python -m db.init_db [--reset-audit]           :: idempotent DDL apply
-start.bat                                      :: launch app (opens browser after 5 s)
-run_scheduler.bat                              :: keep-alive scheduler loop (auto-restarts on crash, 2 s delay)
+bat\start.bat                                  :: launch app (opens browser after 5 s)
+bat\run_scheduler.bat                          :: keep-alive scheduler loop (auto-restarts on crash, 2 s delay)
 uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api
 pytest tests/                                  :: all tests (DB tests auto-skip if Postgres absent)
 pytest tests/test_FILE.py -k test_name        :: single test; pure-Python tests never need DB

@@ -27,7 +27,7 @@ try:
 except urllib.error.URLError as e:
     print(f"   FAILED: Cannot connect to API at 127.0.0.1:8000")
     print(f"   Reason: {e.reason}")
-    print("   → Start the API with: start.bat")
+    print("   → Start the API with: bat\\start.bat")
 except socket.timeout:
     print("   FAILED: API timeout (took >5 seconds)")
 except Exception as e:

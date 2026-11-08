@@ -7,7 +7,7 @@ REM 3. (optional) initializes database schema
 REM ============================================================
 setlocal
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 if not exist ".venv" (
     echo Creating virtual environment .venv ...

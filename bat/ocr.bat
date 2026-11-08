@@ -5,7 +5,7 @@ setlocal
 cd /d "%~dp0.."
 
 if not exist ".venv\Scripts\activate.bat" (
-    echo .venv not found. Run setup.bat first.
+    echo .venv not found. Run bat\setup.bat first.
     exit /b 1
 )
 call .venv\Scripts\activate.bat

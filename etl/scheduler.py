@@ -682,6 +682,18 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: FRED macro feed fetch crashed")
 
+    # 2026-11-08, user-directed: the VIX9D daily close (Risk Dial short_vol_disc
+    # gauge) used to need its own Windows Task Scheduler entry
+    # (fetch_vix9d.bat). Now rides this nightly job like the FRED feed above.
+    # Incremental + ON CONFLICT DO NOTHING, so repeat runs are harmless.
+    log.info("nightly: VIX9D fetch starting")
+    try:
+        from etl.fetch_vix9d import fetch_vix9d
+        result = fetch_vix9d()
+        log.info("nightly: VIX9D fetch done: %s", result)
+    except Exception:
+        log.exception("nightly: VIX9D fetch crashed")
+
     # 2026-09-21, user-directed: TASK_142's stale-analytics check was only
     # ever run manually (`python -m etl.daily_health_check`) -- wiring it in
     # here so a breach gets caught (and its meta_warning raised) automatically

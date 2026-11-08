@@ -12,10 +12,10 @@ REM Stop with Ctrl+C twice (once to interrupt the scheduler, once
 REM to break out of the loop).
 REM ============================================================
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 if not exist ".venv\Scripts\activate.bat" (
-    echo .venv not found. Run setup.bat first.
+    echo .venv not found. Run bat\setup.bat first.
     exit /b 1
 )
 call .venv\Scripts\activate.bat

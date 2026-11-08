@@ -8,7 +8,7 @@ All commands should be run from the project root directory: `C:\Ashok\Invest\Pro
 
 ### One-time setup
 ```cmd
-setup.bat
+bat\setup.bat
 ```
 Installs Python dependencies and initializes the database schema. Run this once after cloning.
 
@@ -88,7 +88,7 @@ Actually delete rows older than the retention period. Uses the dry-run preview f
 
 ### Launch the web dashboard
 ```cmd
-start.bat
+bat\start.bat
 ```
 Starts the FastAPI server on `127.0.0.1:8000` and opens the dashboard in your browser.
 

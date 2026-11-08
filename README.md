@@ -25,7 +25,7 @@ A local single-user web app + PostgreSQL database that replaces manual trading w
 
 ```bash
 # One-time setup
-setup.bat
+bat\setup.bat
 
 # Verify database is ready
 python -m db.init_db
@@ -34,7 +34,7 @@ python -m db.init_db
 python -m etl.tickers_initial_load
 
 # Start the app
-start.bat
+bat\start.bat
 ```
 
 The app runs on `http://127.0.0.1:8000`

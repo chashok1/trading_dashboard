@@ -9,7 +9,7 @@ setlocal
 cd /d "%~dp0.."
 
 if not exist .venv\Scripts\activate.bat (
-    echo ERROR: .venv missing. Run setup.bat first.
+    echo ERROR: .venv missing. Run bat\setup.bat first.
     exit /b 1
 )
 call .venv\Scripts\activate.bat

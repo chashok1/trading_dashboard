@@ -6,7 +6,7 @@ rem Password: read from PG_PASSWORD in .env (never printed).
 rem Restore into a NEW db first to check it:
 rem   pg_restore -U postgres -d trading_restored backups\FILE.dump
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 set "PGBIN=C:\Program Files\PostgreSQL\17\bin"
 set "PGHOST=localhost"
