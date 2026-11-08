@@ -256,7 +256,7 @@ async function loadMissingSourceData() {
                 <th style="text-align:center;padding:4px 8px;border-bottom:1px solid var(--border)">hist_td</th>
             </tr></thead>
             <tbody>${rows.map(r => `<tr>
-                <td style="padding:3px 8px;font-family:monospace">${r.tos_symbol}</td>
+                <td style="padding:3px 8px;font-family:monospace">${window.symbolLink ? window.symbolLink(r.tos_symbol, r.tos_symbol) : r.tos_symbol}</td>
                 <td style="text-align:center;padding:3px 8px;color:${r.missing_tw?'#b91c1c':'#15803d'}">${r.missing_tw?'MISSING':'ok'}</td>
                 <td style="text-align:center;padding:3px 8px;color:${r.missing_td?'#b91c1c':'#15803d'}">${r.missing_td?'MISSING':'ok'}</td>
             </tr>`).join('')}</tbody>
