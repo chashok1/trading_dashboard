@@ -2796,7 +2796,7 @@ def get_outlook_changes(date: Optional[str] = Query(None), days: int = Query(7, 
 
 # 2026-10-18 -- Market pills under the US Dollar pill (top of the centre column): day % change + Hedgeye outlook for
 # SPX / Ndq / Rus / VIX / Oil / Gold / 10Y / BTC. Display only. Symbols are the Macro Rail's own members (ref_macro_area).
-_INDEX_PILLS = [("SPX", "SPX"), ("NDQ", "$COMP"), ("RUS", "RUT"), ("VIX", "VIX"), ("OIL", "/CL"), ("GLD", "/GC"), ("10Y", "TNX:CGI"), ("BTC", "/BTC")]   # labels are fallbacks; short_name() wins
+_INDEX_PILLS = [("SPX", "SPX"), ("NDQ", "$COMP"), ("RUS", "RUT"), ("VIX", "VIX"), ("OIL", "/CL"), ("GLD", "/GC"), ("BTC", "/BTC"), ("2Y", "DGS2:FRED"), ("10Y", "TNX:CGI"), ("30Y", "TYX:CGI")]   # labels are fallbacks; short_name() wins
 
 
 @router.get("/api/cockpit/rr-history")
@@ -2871,7 +2871,7 @@ def get_index_pills(date: Optional[str] = Query(None)) -> dict:
                    "pctile": round(100.0 * vr["below"] / vr["n"], 0), "hist_n": int(vr["n"]), "hist_since": vr["since"].isoformat()}
     pills = []
     for label, sym in _INDEX_PILLS:
-        label = short_name(sym, label)
+        label = label if sym in ("DGS2:FRED", "TNX:CGI", "TYX:CGI") else short_name(sym, label)   # 2026-11-09: yields keep fixed 2Y/10Y/30Y labels
         r = by.get(sym)
         o = (r["outlook"] or "") if r else ""
         ol = "Bullish" if "bull" in o.lower() else "Bearish" if "bear" in o.lower() else ("Neutral" if o else None)

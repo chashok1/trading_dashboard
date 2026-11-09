@@ -323,8 +323,24 @@
   function alignVix() {
     var vb = document.getElementById('vixPill');
     if (vb) vb.style.marginLeft = '0px';
+    // 2026-11-09, user-directed: the first stack (Oil/Gld/BTC) grows upward, so it must start to the right of the US Dollar and VIX pills above it.
+    var mk = document.getElementById('mktPills'), st = mk && mk.querySelector('.oc-stack');
+    if (!st) return;
+    st.style.marginLeft = '0px';
+    var right = 0;
+    ['usdPill', 'vixPill'].forEach(function (id) {
+      var el = document.getElementById(id), k = el && el.firstElementChild;
+      if (k) right = Math.max(right, k.getBoundingClientRect().right);
+    });
+    var need = right + 10 - st.getBoundingClientRect().left;
+    if (need > 0) st.style.marginLeft = Math.ceil(need) + 'px';
   }
   window.addEventListener('resize', alignVix);
+  // The US Dollar pill is filled by macro_week.js after this file loads; re-align once it has a width.
+  document.addEventListener('DOMContentLoaded', function () {
+    var u = document.getElementById('usdPill');
+    if (u && window.ResizeObserver) new ResizeObserver(alignVix).observe(u);
+  });
   async function loadPills() {
     var box = document.getElementById('mktPills');
     if (!box) return;
@@ -336,7 +352,7 @@
       var html = (D.pills || []).map(function (p) {
         var pc = p.pct_change, pcCls = pc > 0 ? 'bull' : pc < 0 ? 'bear' : 'neu', txt = pc == null ? '--' : (pc > 0 ? '+' : '') + pc.toFixed(2) + '%';
         // Open / High / Low / Current on hover (2026-10-19, user-directed); the 10Y is stored x10 -- shown as a yield %.
-        var yld = p.label === '10Y', q = function (v) { return v == null ? '--' : yld ? (v / 10).toFixed(3) + '%' : Number(v).toLocaleString('en-US', { minimumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2, maximumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2 }); };
+        var yld = /^(2Y|10Y|30Y)$/.test(p.label), q = function (v) { return v == null ? '--' : yld ? (v / 10).toFixed(3) + '%' : Number(v).toLocaleString('en-US', { minimumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2, maximumFractionDigits: Math.abs(v) >= 1000 ? 1 : 2 }); };
         var tip = [p.label + ' (' + p.symbol + ')', '• Day change: ' + txt, '• Open: ' + q(p.open_price), '• High: ' + q(p.high_price),
           '• Low: ' + q(p.low_price), '• Current: ' + q(p.last_price), '• Outlook: ' + (p.outlook || '--'),
           p.pctile != null ? '• Higher than ' + p.pctile.toFixed(0) + '% of the ' + p.hist_n + ' days stored since ' + p.hist_since.slice(5, 7) + '/' + p.hist_since.slice(8, 10) + '/' + p.hist_since.slice(2, 4) : '',
@@ -350,12 +366,11 @@
           '<span class="oc-ft"><span class="oc-pct ' + pcCls + '">' + txt + '</span></span></span>';
       });
       // Stacked columns (top to bottom), each sitting at its first member's old spot and growing upward over the lines above it.
-      var pills = D.pills || [], STACKS = [['OIL', 'GLD', 'BTC']], out = [], seen = {}, slot = {}, vixHtml = '', tenYAt = -1;
+      var pills = D.pills || [], STACKS = [['OIL', 'GLD', 'BTC'], ['2Y', '10Y', '30Y']], out = [], seen = {}, slot = {}, vixHtml = '';   // 2026-11-09, user-directed: 2Y/10Y/30Y yield stack beside the Oil stack (clear of the US Dollar / VIX pills)
       pills.forEach(function (p, i) {
         var k = -1;
         STACKS.forEach(function (st, j) { if (st.indexOf(p.label) >= 0) k = j; });
-        if (p.label === 'VIX') { vixHtml = html[i]; tenYAt = out.length; out.push(null); return; }   // VIX lives in its own slot (#vixPill), left, below the US Dollar pill; 10Y keeps VIX's old place in the row
-        if (p.label === '10Y' && tenYAt >= 0) { out[tenYAt] = html[i]; return; }
+        if (p.label === 'VIX') { vixHtml = html[i]; return; }   // VIX lives in its own slot (#vixPill), left, below the US Dollar pill
         if (k < 0) { out.push(html[i]); return; }
         if (!slot[k]) { slot[k] = { at: out.length, items: [] }; out.push(null); }
         slot[k].items[STACKS[k].indexOf(p.label)] = html[i];
