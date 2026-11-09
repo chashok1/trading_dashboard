@@ -1950,7 +1950,7 @@ function _isTradeModeQualifyingBuy(r) {
   // sell-tilted signal Strict mode wasn't checking; exclude it same as
   // the other tightening rules here. User: "Also remove PVV -> AVOID
   // from strict mode."
-  if (r.pvv_decision === 'AVOID') return false;
+  // 2026-11-08 (Spec 12 B4): the PVV AVOID veto is gone (it changed 6 rows in its whole history).
   // 2026-10-28, user: every BUY TO MIN (BMN) buy moves to Trade2 -- Trade keeps Buy More and Buy Some only.
   // (The older "BMN only above the Trade line" test stays removed; the Trade line is scored in the structure term.)
   // 2026-10-29, user: except a Buy To Min that PVV, LIVE or the Tradability icon positively flags as a buy -- that one stays in Trade
@@ -1964,7 +1964,7 @@ function _isTradeBuyConfirmed(r) {
   if (_PVV_BUY_SIDE.includes(r.pvv_decision)) return true;
   const lv = r._live;
   if (lv && (lv.signal === 'DIP_BUY_STRONG' || lv.signal === 'BUY_BACK' || lv.signal === 'BUY_IDEA') && _liveShown(lv)) return true;
-  return _buyTradabilityScore(r) >= _TRADABILITY_BADGE_MIN;
+  return false;   // 2026-11-08 (Spec 12 B1): the Tradability Score leg is gone; only PVV and LIVE rescue a Buy To Min
 }
 // 2026-09-15, user: "widen Trade to include SELL SOME rows too" -- was SA
 // (full exit) only; now also SS/STM (partial sell-some/trim) on a held
@@ -2633,7 +2633,7 @@ function renderAccountFilter() {
 const _BTN_TIPS = {
   showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Click while Trade, Trade2 or WL is on to switch to this view']],
   actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Click while Trade or Trade2 is on to switch to this view']],
-  tradeModeBtn: ['Trade', ['Buys worth making now, sorted by Tradability Score within each Final Call action', 'Plus sells on positions you hold', 'Index, futures, FX and Fixed Income never show here', 'Combine with Trade2 / WL to add their rows']],
+  tradeModeBtn: ['Trade', ['Buys worth making now, sorted by Final Call action, then dollar-weighted edge', 'Plus sells on positions you hold', 'Index, futures, FX and Fixed Income never show here', 'Combine with Trade2 / WL to add their rows']],
   tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They are Buy To Min, or PVV is AVOID', 'Buys only: no sells']],
   watchlistOnlyBtn: ['WL (waiting list)', ['Unheld buy ideas waiting for better entry timing', 'Technical not yet ready (not BS/BM)', 'Never includes positions you hold']],
   heldOnly: ['Held', ['Only symbols you own', 'Narrows whatever view is on']],
@@ -3339,50 +3339,6 @@ function _threeWayAgreement(row) {
   return null;
 }
 
-// Rich colored popover HTML — same .source-pop/.sp-title convention as
-// _buildSignalPopHtml/_buildPvvPopHtml above, shown via #sourcePop.
-function _buildTradabilityPopHtml(row) {
-  const sym = row.tos_symbol || '—';
-  const score = _buyTradabilityScore(row);
-  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
-  let h = `<div class="sp-title">\u{1F3AF} ${escapeHtml(sym)} &mdash; Tradability `
-        + `<span style="color:${scoreColor};">${score.toFixed(1)}</span></div>`;
-  h += `<div style="color:#94a3b8;font-size:9px;margin:-2px 0 6px;">Weighted by this system's own measured trading history — Risk Range position dominates, everything else is a smaller nudge.</div>`;
-  h += '<table>';
-  _tradabilityBreakdown(row).forEach(it => {
-    h += `<tr><td style="padding:2px 8px 2px 0;color:${it.color};font-weight:700;vertical-align:top;white-space:nowrap;font-size:10px;">${escapeHtml(it.label)}</td>`
-       + `<td style="padding:2px 0;font-size:10px;color:#374151;line-height:1.4;">${escapeHtml(it.detail)}</td></tr>`;
-  });
-  h += '</table>';
-  return h;
-}
-// 2026-08-15: every row gets something here now, not just ones clearing
-// the threshold — the 🎯 icon at/above _TRADABILITY_BADGE_MIN, the raw
-// numeric score (muted, smaller) below it. User: "display the tradability
-// score instead of icon when it doesn't meet the min score" — so a
-// below-threshold row is still visible/comparable at a glance instead of
-// disappearing, and the same rich popover works either way. (2026-08-20:
-// no longer buy-only either, see the function's own comment.)
-function _tradabilityBadge(row) {
-  // 2026-08-20: was buy-only (fc.side !== 'buy' -> ''). Score/breakdown are
-  // still buy-calibrated under the hood (see _buyTradabilityScore's header
-  // comment) but now always computed/shown per user request -- the Source
-  // item's win-rate wording was relabeled (_tradabilityBreakdown) so it
-  // doesn't read as a sell-side stat it isn't.
-  const score = _buyTradabilityScore(row);
-  const meetsMin = score >= _TRADABILITY_BADGE_MIN;
-  const cls = 'tradability-badge' + (meetsMin ? '' : ' tradability-badge-num');
-  // 2026-08-20: was the 🎯 CHARACTER (a color emoji, see _tradabilityIconSvg's
-  // header comment) -- same inline SVG the Action popup uses now, so the
-  // grid and the popup show the identical icon for the identical score.
-  const content = meetsMin ? _tradabilityIconSvg(12) : score.toFixed(1);
-  // title="" (empty, not omitted) suppresses the SYMBOL cell's own
-  // ancestor title="...Click for chart" from bleeding through on hover —
-  // without it the browser shows that native tooltip layered on top of
-  // this span's rich data-tradabilitypop popover, since this span has no
-  // title of its own to take precedence.
-  return '<span class="' + cls + '" data-tradabilitypop="' + escapeHtml(row.tos_symbol) + '" title="">' + content + '</span>';
-}
 
 // Fired composite rule ids from rules_engine_fires (same parsing as
 // firesCellHtml, kept separate so the sort path doesn't depend on rendering).
@@ -3549,7 +3505,8 @@ function _computePriority(row) {
     // whole score range (-24..27, x10 = about 510 wide) so the action always comes first.
     const _bc = String(fc.code || '').toUpperCase();
     const codeBonus = _bc === 'BM' ? 2000 : (_bc === 'BS' ? 1000 : 0);
-    return _TIER_BUY + codeBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
+    // 2026-11-08 (Spec 12 B1/B4): the Tradability Score and the PVV boost are gone -- buys sort by action, then dollar-weighted edge.
+    return _TIER_BUY + codeBonus + _dollarWeightedScore(row);
   }
 
   // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.
@@ -3999,14 +3956,9 @@ function initSourcePopover() {
       }
       return;
     }
-    const tradEl = e.target.closest('[data-tradabilitypop]');
-    if (tradEl) {
-      const r = state.rows.find(x => x.tos_symbol === tradEl.dataset.tradabilitypop);
-      if (r) _showDataPop(tradEl, _buildTradabilityPopHtml(r));
-    }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-livepop],[data-signalpop],[data-tradabilitypop],[data-actionpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-livepop],[data-signalpop],[data-actionpop]')) return;
     // 2026-10-22, user: an Action popup stays open while the mouse is on it.
     if (_popInteractive()) {
       if (e.relatedTarget && e.relatedTarget.closest('#sourcePop')) return;
@@ -4519,20 +4471,7 @@ function _buildActionPopHtml(row) {
         reason: pvvSide === side ? (_PVV_LABEL[pvvD] || pvvD) + ' confirms'
           : pvvSide ? (_PVV_LABEL[pvvD] || pvvD) + ' conflicts' : 'no confirmed setup today' },
     ];
-    // Tradability Score is buy-only (SYMBOL cell's 🎯 badge) -- the single
-    // most empirically-tuned signal in the app, so it's weighted the same
-    // as the other checklist rows here (counts toward the Recommendation
-    // tally) rather than bolted on separately. Its dominant factor (Risk
-    // Range position) doubles as the reason text.
-    if (side === 'buy') {
-      const tScore = _buyTradabilityScore(row);
-      const tBreakdown = _tradabilityBreakdown(row);
-      const rrItem = tBreakdown.find(it => it.label === 'Risk Range');
-      checklist.push({ agree: tScore >= _TRADABILITY_BADGE_MIN, conflict: tScore < _TRADABILITY_BADGE_MIN / 2,   // 2026-10-28: the score is 0..24 now, no negatives
-        icon: '🎯', label: 'Tradability',
-        reason: tScore.toFixed(1) + ' — ' + (rrItem ? rrItem.detail : 'no breakdown available'),
-        sub: tBreakdown });
-    }
+    // 2026-11-08 (Spec 12 B1): the Tradability row is gone from this checklist.
   }
 
   // ---- Risk flags (computed early too -- the Recommendation caveats on these) ----
@@ -5218,7 +5157,6 @@ function _buildRowEl(r) {
     tr.dataset.sym = r.tos_symbol;
 
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
-    const tradabilityBadge = _tradabilityBadge(r);
     const isChecked = state.selected.has(r.tos_symbol);
 
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
@@ -5376,7 +5314,6 @@ function _buildRowEl(r) {
             ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
             : ''}
           ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
-          ${tradabilityBadge ? '<div style="margin-top:1px;">' + tradabilityBadge + '</div>' : ''}
           ${_actionTagHtml(r)}
         </div>
       </td>

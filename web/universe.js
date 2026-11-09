@@ -3720,14 +3720,7 @@
     if (v <= 30) return 'Low (<=30)';
     return 'Mid (30-70)';
   }
-  function _rvolBucket(rvol, pctChange) {
-    if (rvol == null) return null;
-    const hi = uvPopState.vlmRvolAvoidThreshold != null ? uvPopState.vlmRvolAvoidThreshold : 1.5;
-    const rv = Number(rvol);
-    if (rv >= hi && pctChange != null && Number(pctChange) > 0) return 'High RVOL + up day';
-    if (rv >= hi && pctChange != null && Number(pctChange) < 0) return 'High RVOL + down day';
-    return 'Normal/low RVOL';
-  }
+
   // Resolve a fired rule's buy/sell side via actions.js's canonical map.
   function _ruleSide(id) {
     const sc = (uvPopState.scorecard || {})[id];
@@ -3736,13 +3729,7 @@
     return actionDisplay(code).side;
   }
 
-  function _factorWinRateDelta(factor, bucket) {
-    if (!bucket) return null;
-    const r = (uvPopState.factorScorecard || {})[factor + '|' + bucket];
-    const base = (uvPopState.factorScorecard || {})['Baseline|All stocks'];
-    if (!r || r.win_rate == null || !base || base.win_rate == null) return null;
-    return (Number(r.win_rate) - Number(base.win_rate)) * 100;
-  }
+
   function _factorWinRateDeltaGated(factor, bucket, minSymbols) {
     if (!bucket) return null;
     const r = (uvPopState.factorScorecard || {})[factor + '|' + bucket];
@@ -3860,69 +3847,17 @@
   const _MACRO_BUY = new Set(['BM', 'BS']), _MACRO_SELL = new Set(['STM', 'SA']);
   const _SRC_BUY   = new Set(['ADD', 'INCREASE']), _SRC_SELL = new Set(['REDUCE', 'REMOVE']);
   const _TECH_BUY  = new Set(['BM', 'BS', 'BMN', 'BR']), _TECH_SELL = new Set(['SA', 'STM', 'SS', 'SO']);
-  // TASK_122 sub-tier: 2 = full 3-way buy agreement, 1 = partial (2/3, none
-  // opposing), 0 = weak/solo.
-  function _buyAgreementSubTier(row) {
-    const m = (row.macro_value || '').toUpperCase();
-    const s = (row.consolidated_action || '').toUpperCase();
-    const t = (row.rr_action || '').toUpperCase();
-    const techBuy   = _ENTRY_RIPE_TECH.indexOf(t) !== -1;
-    const srcBuy    = _SRC_BUY.has(s);
-    const macroBuy  = _MACRO_BUY.has(m);
-    const anySell   = _TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m);
-    const buyVotes  = (techBuy ? 1 : 0) + (srcBuy ? 1 : 0) + (macroBuy ? 1 : 0);
-    if (buyVotes === 3) return 2;
-    if (buyVotes === 2 && !anySell) return 1;
-    return 0;
-  }
-  // Score thresholds mirror the user's own IV-spike/normalize ThinkOrSwim
-  // study exactly -- see actionable.js's own header comment on this
-  // function for the full backtest rationale.
-  function _ivRatioScore(ratio) {
-    if (ratio == null) return 0;
-    const r = Number(ratio);
-    if (r > 1.15) return -3;
-    if (r < 1) return 3;
-    return 0;
-  }
-  function _lrrProximityScore(row) {
-    const rawPos = _rawRrPos(row);
-    if (rawPos == null) return 0;
-    const turningUp = row.pct_change != null && Number(row.pct_change) >= 0;
-    if (rawPos < 0) {
-      if (!turningUp) return -1;
-      return Math.max(0, 0.3 - Math.abs(rawPos) / 100);
-    }
-    // Engine brrpct_lrr breakpoints (35% / 75%) -- see actionable_pops.js.
-    return Math.max(-1, Math.min(1, 1 - 2 * (rawPos - 35) / 40));
-  }
-  // Mirrors actionable_pops.js (2026-10-28): every term is symmetric +-3.
-  function _macdhPts(row) {
-    if (row.a_macdh_d_brr == null) return 0;
-    const v = Number(row.a_macdh_d_brr);
-    if (v > 0) return 3 * (1 - Math.min(v, 1));
-    if (v < 0) return 3 * Math.max(v, -1);
-    return 0;
-  }
+
+
+
+
   const _PVV_PTS = { BUY_LRR: 3, BUY_DIP: 3, BUY_WATCH: 1.5, TRIM: -1.5,
     REDUCE: -3, SELL: -3, SELL_WATCH: -3, AVOID: -3 };
   function _pvvPts(row) {
     return _PVV_PTS[(row.pvv_decision || '').toUpperCase()] || 0;
   }
-  function _agreementPts(row) {
-    const sub = _buyAgreementSubTier(row);
-    if (sub === 2) return 3;
-    if (sub === 1) return 1.5;
-    const m = (row.macro_value || '').toUpperCase();
-    const s = (row.consolidated_action || '').toUpperCase();
-    const t = (row.rr_action || '').toUpperCase();
-    return (_TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m)) ? -3 : 0;
-  }
-  // RSI breakpoints from the rules engine's rsi_rule (45 / 70) -- see actionable_pops.js.
-  function _rsiPts(row) {
-    if (row.rsi == null) return 0;
-    return Math.max(-3, Math.min(3, 3 - 6 * (Number(row.rsi) - 45) / (70 - 45)));
-  }
+
+
   // Volume scores the Vlm column's own label: Accumulate +3, Watch 0, Avoid -3 -- see actionable_pops.js.
   function _volPts(row) {
     const a = String(row.vlm_action || '').toUpperCase();
@@ -3943,34 +3878,11 @@
     const c = (row.final_code || '').toUpperCase();
     return c === 'BM' ? 3 : c === 'BS' ? 1.5 : 0;
   }
-  function _buyTradabilityScore(row) {
-    // IV is disabled in the score (user, 2026-10-28) -- see actionable_pops.js.
-    // Volume is disabled in the score (user, 2026-10-28) -- see actionable_pops.js.
-    // Every condition scaled to 0..3 (user, 2026-10-28) -- see actionable_pops.js. Range 0..24.
-    // PVV, the Final Call code and Sources are removed too (user, 2026-10-28). Five terms, range 0..15.
-    return _s03(_lrrProximityScore(row) * 3) + _s03(_rsiPts(row))
-      + _s03(_macdhPts(row)) + _s03(_agreementPts(row)) + _s03(_trendStructurePts(row));
-  }
-  function _s03(v) { return (v + 3) / 2; }          // a -3..+3 term onto 0..3
-  function _p03(v) { return _s03(v).toFixed(1); }   // the same, as text for the popup
-  // Trade / Trend structure: the weakest of three checks (Trade, Trend, gap) -- see actionable_pops.js.
-  function _trendLineCheck(d, lo, hi) {
-    if (d <= 0) return -3;
-    if (d < lo) return -3 + 3 * d / lo;
-    return Math.min(3, 3 * (d - lo) / (hi - lo));
-  }
-  function _trendChecks(row) {
-    if (row.last_price == null || row.trade_line_value == null || row.trend_line_value == null
-        || row.ac == null || Number(row.ac) <= 0 || row.trade_trend_sd == null) return null;
-    const p = Number(row.last_price), ac = Number(row.ac);
-    return { trade: _trendLineCheck((p - Number(row.trade_line_value)) / ac, 1, 5),
-             trend: _trendLineCheck((p - Number(row.trend_line_value)) / ac, 3, 12),
-             gap:   _trendLineCheck(Number(row.trade_trend_sd), 3, 12) };
-  }
-  function _trendStructurePts(row) {
-    const c = _trendChecks(row);
-    return c ? Math.min(c.trade, c.trend, c.gap) : 0;
-  }
+
+          // a -3..+3 term onto 0..3
+
+
+
   // Sources saying buy +1 / sell -1, net capped at +-3 -- see actionable_pops.js.
   function _sourcesLists(row) {
     const out = { buy: [], sell: [] };
@@ -3996,77 +3908,9 @@
     const l = _supportOpposeLines(row);
     return Math.max(-3, Math.min(3, l.support.length - l.oppose.length));
   }
-  function _tradabilityDeltaColor(d) {
-    if (d == null) return '#94a3b8';
-    if (d > 1.5) return '#16a34a';
-    if (d < -1.5) return '#dc2626';
-    return '#94a3b8';
-  }
-  // Structured breakdown feeding the Tradability box (_actpopTradabilityHtml).
-  function _tradabilityBreakdown(row) {
-    const items = [];
-    const fmtDelta = d => (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp win rate vs baseline';
-    const rawPos = _rawRrPos(row);
-    const turningUpForLrr = row.pct_change != null && Number(row.pct_change) >= 0;
-    items.push({
-      label: 'Risk Range',
-      detail: (rawPos == null ? 'no LRR/TRR data'
-        : rawPos < 0
-          ? Math.abs(Math.round(rawPos)) + '% BELOW LRR' + (turningUpForLrr ? ' — bouncing, but still under the line' : ' — falling below LRR, be cautious')
-          : Math.round(rawPos) + '% up from LRR' + (rawPos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : rawPos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR'))
-        + ' (' + _p03(_lrrProximityScore(row) * 3) + ' of 3)',
-      color: rawPos == null ? '#94a3b8'
-        : rawPos < 0 ? (turningUpForLrr ? '#d97706' : '#dc2626')
-        : rawPos <= 15 ? '#16a34a' : rawPos <= 40 ? '#d97706' : '#94a3b8',
-    });
-    const rsiB = _rsiBucket(row.rsi);
-    const rsiP = _rsiPts(row);
-    items.push({
-      label: 'RSI',
-      detail: (row.rsi != null ? Number(row.rsi).toFixed(1) + ' — ' : '') + (rsiB || 'no data') + (row.rsi != null ? ' (' + _p03(rsiP) + ' of 3)' : ''),
-      color: rsiP > 1 ? '#16a34a' : rsiP < -1 ? '#dc2626' : '#94a3b8',
-    });
-    // IV is not part of the score any more (user, 2026-10-28), so no line here.
-    // Volume is not part of the score any more (user, 2026-10-28), so no line here.
-    const mhPts = _macdhPts(row);
-    items.push({
-      label: 'MACDH',
-      detail: row.a_macdh_d_brr == null ? 'no data'
-        : (Number(row.a_macdh_d_brr) > 0 ? 'rising' : 'falling') + ' at ' + Math.round(Math.abs(Number(row.a_macdh_d_brr)) * 100)
-          + '% of its 120-day range (' + _p03(mhPts) + ' of 3)',
-      color: mhPts > 1 ? '#16a34a' : mhPts < -1 ? '#dc2626' : '#94a3b8',
-    });
-    // PVV, Sources and the Final Call code are not part of the score any more (user, 2026-10-28), so no lines here.
-    const tc = _trendChecks(row), tsP = _trendStructurePts(row);
-    items.push({
-      label: 'Trade / Trend structure',
-      detail: tc ? 'weakest of: Trade ' + _p03(tc.trade) + ', Trend ' + _p03(tc.trend) + ', gap ' + _p03(tc.gap) + ' (' + _p03(tsP) + ' of 3)'
-                 : 'no line data (' + _p03(0) + ' of 3)',
-      color: tsP > 0.5 ? '#16a34a' : tsP < -0.5 ? '#dc2626' : '#94a3b8',
-    });
-    // Supporting / opposing lines are not part of the score any more (user, 2026-10-28), so no line here.
-    const agrP = _agreementPts(row);
-    items.push({
-      label: 'Agreement',
-      detail: (agrP === 3 ? '3-way — Technical + Sources + MACRO all agree'
-            : agrP === 1.5 ? 'Partial — 2 of 3 agree, none opposing'
-            : agrP === -3 ? 'Opposed — at least one of Technical / Sources / MACRO says sell'
-            : 'Weak/solo — not independently corroborated') + ' (' + _p03(agrP) + ' of 3)',
-      color: agrP === 3 ? '#16a34a' : agrP === 1.5 ? '#d97706' : agrP < 0 ? '#dc2626' : '#94a3b8',
-    });
-    return items;
-  }
-  // Shared target/bullseye icon -- inline SVG (fill/stroke=currentColor),
-  // not the 🎯 CHARACTER (a color emoji that ignores CSS `color`).
-  function _tradabilityIconSvg(size) {
-    const s = size || 12;
-    return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
-      + `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-      + `<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-      + `<circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>`;
-  }
-  const _TRADABILITY_BADGE_MIN = 9;
-  const _TRADABILITY_GREEN_MIN = 10;
+
+
+
 
   // "$7,356" -> "$7k" (>=1000); untouched below 1000.
   function _actpopFmtAmt(v) {
@@ -4161,15 +4005,8 @@
     return `<span class="actpop-lv"><span class="actpop-lbl">PVV</span><span class="actpop-val ${cls}">${esc(txt)}</span></span>`;
   }
 
-  function _actpopTradIconHtml(row) {
-    const score = _buyTradabilityScore(row);
-    const meetsMin = score >= _TRADABILITY_BADGE_MIN;
-    const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
-    const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">`
-      + _tradabilityIconSvg(12) + `</span>`;
-    const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
-    return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
-  }
+
+
 
   function _actpopRrBarHtml(row) {
     const rawPos = _rawRrPos(row);
@@ -4378,18 +4215,8 @@
     return `<div class="actpop-neutral">no read: ${bits.join(' &middot; ')} &mdash; none extreme enough to lean either way</div>`;
   }
 
-  // Tradability box -- always shown, score always computed regardless of side.
-  function _actpopTradabilityHtml(row) {
-    const score = _buyTradabilityScore(row);
-    const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
-    const items = _tradabilityBreakdown(row).map(it =>
-      `<div class="actpop-trad-item"><b style="color:${it.color};">${esc(it.label)}</b>: `
-      + `<span style="color:#374151;">${esc(it.detail)}</span></div>`).join('');
-    return `<div class="actpop-trad">
-      <div class="actpop-trad-h"><span>Tradability</span><span style="color:${scoreColor};font-size:12px;">${score.toFixed(1)}</span></div>
-      ${items}
-    </div>`;
-  }
+
+
 
   // Tier 1 -- "Driven by": one bullet per source_actions entry + Technical,
   // winning source first, each with a real historical hit-rate pill.
@@ -4498,7 +4325,6 @@
 
     h += `<div class="actpop-rr-row">`
       + `<div class="actpop-rr-icons">${_actpopMacroStackHtml(row)}`
-      + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
       + `<span class="actpop-pvv-calc-col">${_actpopPvvActionHtml(row)}${_actpopCalcPillHtml(row)}</span>`
       + `</div>`
       + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}</div>`
@@ -4533,8 +4359,6 @@
     const details = [];
     if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
     if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
-
-    h += _actpopTradabilityHtml(row);
 
     h += `</div>`;
     return h;

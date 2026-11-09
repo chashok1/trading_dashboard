@@ -202,29 +202,6 @@ function fmtMD(d) {
   return m ? (m[2] + '/' + m[3]) : String(d);
 }
 
-// 2026-08-15: win-rate delta (percentage points) — used by _buyTradabilityScore
-// INSTEAD of _factorEdgeDelta's mean. User: "IV can be high while price is
-// going up or it can cause stock to go down — did you consider both facts?"
-// Checked directly against drv_factor_snapshot: elevated/extreme IV's mean
-// forward return (+1.7/+2.0%) is real but heavily right-tail-skewed — median
-// is only +0.6/+0.9% (well under the mean), and Extreme IV carries the
-// WORST downside tail of any IV bucket (15.8% of 20-day windows land below
-// -10%, vs 11.6% for Low IV). The mean alone hides that IV is a two-sided
-// dispersion signal (bigger moves either way), not a clean directional one.
-// Win rate (just: did it end up positive at all) is far less distorted by a
-// few huge winners, so it's the more honest "did this typically work"
-// measure. Cross-checked RSI/RVOL the same way — both hold up fine (RSI
-// oversold: median 2.72 close to its 3.69 mean, LOWER downside-tail risk
-// than neutral/overbought; RVOL high+up-day: median near zero, HIGHEST
-// downside-tail risk, confirming the existing "buying climax" caution) — so
-// only IV's contribution actually needed correcting, not the other two.
-function _factorWinRateDelta(factor, bucket) {
-  if (!bucket) return null;
-  const r = (state.factorScorecard || {})[factor + '|' + bucket];
-  const base = (state.factorScorecard || {})['Baseline|All stocks'];
-  if (!r || r.win_rate == null || !base || base.win_rate == null) return null;
-  return (Number(r.win_rate) - Number(base.win_rate)) * 100; // fraction -> pp
-}
 
 // 2026-08-20: like _factorWinRateDelta, but also gates on n_symbols (DISTINCT
 // tickers, not row-days) -- found live: v_factor_scorecard's 'Sector'
@@ -264,17 +241,6 @@ function _ivBucket(ivPct) {
   return 'Mid (30-70)';
 }
 
-// 2026-08-15: mirrors etl/compute_factor_outcomes.py's rvol_bucket CASE
-// exactly (same "same bucket the scorecard was computed on" contract as
-// _rsiBucket/_ivBucket above) — used by _buyTradabilityScore.
-function _rvolBucket(rvol, pctChange) {
-  if (rvol == null) return null;
-  const hi = state.vlmRvolAvoidThreshold != null ? state.vlmRvolAvoidThreshold : 1.5;
-  const rv = Number(rvol);
-  if (rv >= hi && pctChange != null && Number(pctChange) > 0) return 'High RVOL + up day';
-  if (rv >= hi && pctChange != null && Number(pctChange) < 0) return 'High RVOL + down day';
-  return 'Normal/low RVOL';
-}
 
 // Resolve the buy/sell side for a fired rule ID via actions.js (single source
 // of truth). Uses the scorecard's direction field ('BUY'/'SELL') and maps it
@@ -983,86 +949,7 @@ const _MACRO_BUY = new Set(['BM', 'BS']), _MACRO_SELL = new Set(['STM', 'SA']);
 
 const _SRC_BUY   = new Set(['ADD', 'INCREASE']), _SRC_SELL = new Set(['REDUCE', 'REMOVE']);
 
-// TASK_122 Tier 2 sub-ranking: 2 = 2a (Technical + Sources + MACRO all
-// buy-side, 3/3), 1 = 2b (Technical + one other buy-side, none opposing,
-// 2/3), 0 = 2c (Technical ripe only / partial agreement with opposition).
-// Unlike _threeWayAgreement (display-only ▼3/▲3 marker, uses the full
-// _TECH_BUY set including BMN/BR), the Technical leg here is deliberately
-// the entry-ripe set only (_ENTRY_RIPE_TECH = BS/BM) — this only runs on
-// rows already classified fc.side === 'buy', so "Technical" here means
-// "did the entry actually get ripe," matching the buy-noise gate's own
-// definition of readiness.
-function _buyAgreementSubTier(row) {
-  const m = (row.macro_value || '').toUpperCase();
-  const s = (row.consolidated_action || '').toUpperCase();
-  const t = (row.rr_action || '').toUpperCase();
-  const techBuy   = _ENTRY_RIPE_TECH.indexOf(t) !== -1;
-  const srcBuy    = _SRC_BUY.has(s);
-  const macroBuy  = _MACRO_BUY.has(m);
-  const anySell   = _TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m);
-  const buyVotes  = (techBuy ? 1 : 0) + (srcBuy ? 1 : 0) + (macroBuy ? 1 : 0);
-  if (buyVotes === 3) return 2;                       // 2a
-  if (buyVotes === 2 && !anySell) return 1;            // 2b
-  return 0;                                            // 2c
-}
 
-// ── Buy Tradability Score (2026-08-15) ──────────────────────────────────
-// "Bring the most tradable stock to the top" of the BUY tier — ranks rows
-// WITHIN their existing 2a/2b/2c agreement group (_buyAgreementSubTier
-// above stays the primary grouping) by how clean the entry looks right
-// now, replacing the plain dollar-weighted tiebreak _computePriority used
-// there before. Works unchanged inside Trade Mode too — Trade Mode only
-// filters which rows are shown (_isTradeModeQualifyingBuy), it has no sort
-// of its own, so this becomes the Trade Mode ranking automatically.
-//
-// Weights come from this system's OWN measured history (state.factorScorecard,
-// same v_factor_scorecard data the RSI/IV grid-cell edge tags already use),
-// not hand-picked point values — checked empirically before building rather
-// than assumed from textbook TA, because several textbook assumptions turned
-// out backwards in this system's actual outcome history:
-//   - LRR proximity dominates: the single best-proven BUY composite rule in
-//     this system's history (52-BS-BRR, "Buy Strong at the bottom of the
-//     Risk Range") is pure LRR proximity, edge_20d +1.94% vs a ~1.4%
-//     baseline (n=27,477) — roughly double the edge of the "kitchen sink"
-//     rule that ANDs RSI+MACD+Volume+IV/HV+IV-at-BRR together (+0.80% on a
-//     comparable n). Stacking required conditions measurably DILUTES edge
-//     in this system's own history, so this score is a weighted SUM, never
-//     an AND-gate.
-//   - RSI oversold outperforms "neutral" (62% win rate vs neutral's ~52%,
-//     baseline 49%) — the opposite of "avoid extremes". Median forward
-//     return (2.72%) sits close to its mean (3.69%) and its downside tail
-//     (10.7% of windows below -10%) is the LOWEST of the three RSI
-//     buckets — a genuinely robust signal, not a mean-driven fluke.
-//   - High RVOL + up day is the WEAKEST RVOL bucket on win rate (49%, flat
-//     vs baseline) AND has the HIGHEST downside tail risk (15.3% below
-//     -10%) of the three RVOL buckets — confirms the existing "buying
-//     climax" warning in _signalReasons is real, not just a mean artifact.
-//   - IV: originally scored via the cross-sectional IV-percentile bucket
-//     (win rate — see git history), but that mixes structurally-high-IV
-//     names (nothing unusual happening) with names that just had a genuine
-//     event-driven spike, since it only says where a stock ranks among ALL
-//     stocks, not against its OWN normal range. User: "IV can be high
-//     while price is going up or it can cause stock to go down." 2026-08-15:
-//     replaced with `row.iv_ratio` — the user's own ThinkOrSwim IV-spike/
-//     normalize study (4-day-smoothed IV vs a dynamic 63-day trailing
-//     average of that SAME symbol's own IV), exported as a TOSD custom
-//     column (`A_IVRatio` -> hist_td.iv_ratio -> drv_technicals.iv_ratio,
-//     see db/baseline.sql's 2026-08-15 migration). Self-relative instead
-//     of cross-sectional — see _ivRatioScore below.
-// MACDH and PVV are deliberately NOT scored: MACDH's two buckets sit within
-// ~0.2pp of each other in the factor scorecard (not a reliable signal), and
-// PVV is explicitly "Informational v1" in docs/pvv_logic.md with no
-// outcome-tracking table yet. Same for IV/HV discount — no factor-scorecard
-// entry exists for it yet, so it's excluded rather than guessed.
-// Score thresholds (>1.15 spiked, <1 below its own baseline) mirror the
-// user's own script's RED/GREEN/YELLOW label logic exactly — not re-derived.
-function _ivRatioScore(ratio) {
-  if (ratio == null) return 0;
-  const r = Number(ratio);
-  if (r > 1.15) return -3;  // spiked -- "the red line", be careful
-  if (r < 1) return 3;      // below its own 63-day baseline -- favorable
-  return 0;                 // 1.00-1.15 -- elevated but not spiked, neutral
-}
 
 // Raw (unclamped) LRR-relative position in % — negative below LRR, >100
 // above TRR. Distinct from row._rrPos (clamped to [0,100] for the RR bar's
@@ -1076,51 +963,7 @@ function _rawRrPos(row) {
   return (last - lrr) / (trr - lrr) * 100;
 }
 
-function _lrrProximityScore(row) {
-  const rawPos = _rawRrPos(row);
-  if (rawPos == null) return 0;
-  const turningUp = row.pct_change != null && Number(row.pct_change) >= 0;
-  // 2026-08-15: below LRR scored separately and MUCH lower, not treated
-  // the same as "at LRR" (the old code clamped at 0% and couldn't tell the
-  // two apart). User: "<LRR is not desirable and have to lot of caution. I
-  // would rather buy once going up from there." — so below LRR AND still
-  // falling is a real penalty (this system's own proven-edge rule,
-  // 52-BS-BRR, is keyed on price AT the Risk Range bottom, not below it);
-  // below LRR but already turning up gets a small, capped bounce credit —
-  // never as much as being at LRR itself.
-  if (rawPos < 0) {
-    if (!turningUp) return -1;
-    return Math.max(0, 0.3 - Math.abs(rawPos) / 100);
-  }
-  // 2026-10-28, user: engine breakpoints (rules engine brrpct_lrr: weight 3 up to 35% of the
-  // range, 2 to 75%, 1 above) -- +1 at or below 35%, -1 at or above 75%, straight line between
-  // (the score multiplies by 3). Was: full credit at LRR fading to 0 at 40%, which left most
-  // buys at 0. The "turning up" bonus no longer applies above LRR.
-  return Math.max(-1, Math.min(1, 1 - 2 * (rawPos - 35) / 40));
-}
 
-// 2026-08-15: winning source's own buy-family (ADD+INCREASE) win-rate track
-// record (state.sourceScorecard, same v_source_edge_scorecard data the
-// Trade Mode hit-rate badge already shows — TASK_123). Checked the mean
-// (edge_20d) before using it, same as every other factor here: RR/ADD's
-// mean is +6.76% but its MEDIAN is -0.17% (SD=87, a handful of huge
-// outliers driving the mean) and its win rate is 47.9% — barely a coin
-// flip, actually slightly BELOW the ~49.4% baseline. RTA (66.3% win rate)
-// and SSSCHG (60.9%) are the genuinely reliable sources; PS (37.6%) is
-// genuinely bad. Scored on win_rate_20d for the same reason IV/RSI/RVOL
-// are — mean alone would have ranked RR as the best source when it's
-// actually flat-to-negative on the metric that matters.
-// 2026-10-28, user: MACDH from the custom TOS study (a_macdh_d_brr): value = position in
-// the 120-day MACDH range (0..1), sign = today's direction (+ rose, - fell). Rising from
-// low in the range scores +3 fading to 0 at the top; falling from high scores -3 fading
-// to 0 at the bottom. See memory tos-custom-macd-studies before changing.
-function _macdhPts(row) {
-  if (row.a_macdh_d_brr == null) return 0;
-  const v = Number(row.a_macdh_d_brr);
-  if (v > 0) return 3 * (1 - Math.min(v, 1));
-  if (v < 0) return 3 * Math.max(v, -1);
-  return 0;
-}
 
 // 2026-10-28, user: PVV decision as a +-3 term (see _PVV_DECISION_INFO for the meanings).
 const _PVV_PTS = { BUY_LRR: 3, BUY_DIP: 3, BUY_WATCH: 1.5, TRIM: -1.5,
@@ -1129,60 +972,10 @@ function _pvvPts(row) {
   return _PVV_PTS[(row.pvv_decision || '').toUpperCase()] || 0;
 }
 
-// 2026-10-28, user: agreement 0 / +1.5 / +3, and -3 when a leg says sell (opposed).
-function _agreementPts(row) {
-  const sub = _buyAgreementSubTier(row);
-  if (sub === 2) return 3;
-  if (sub === 1) return 1.5;
-  const m = (row.macro_value || '').toUpperCase();
-  const s = (row.consolidated_action || '').toUpperCase();
-  const t = (row.rr_action || '').toUpperCase();
-  return (_TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m)) ? -3 : 0;
-}
 
-// 2026-10-28, user: every term is symmetric +-3 and counts the same (Risk Range was x10,
-// Technical +2, Source track record up to +6, and the secondary terms were capped together
-// at -6..+8). Technical and Source track record are removed from the score (Technical
-// still gates Trade separately). Missing data contributes 0, never a penalty.
-function _buyTradabilityScore(row) {
-  // 2026-10-28, user: IV and the supporting / opposing lines are disabled in the score (_ivPremiumPts and
-  // _supportOpposePts are kept, just not added).
-  // 2026-10-28, user: every condition is scaled to 0..3 -- no negative numbers, so a weak condition earns
-  // nothing instead of subtracting from the others. Each +-3 term is mapped by (x + 3) / 2 (the old -3 / 0 / +3
-  // become 0 / 1.5 / 3); the Final Call code is already 0..3. Volume, IV and supporting / opposing are not in
-  // the score (_volPts, _ivPremiumPts and _supportOpposePts are kept, not added). Range 0..24.
-  // PVV, the Final Call code and Sources are removed too (user, 2026-10-28; _pvvPts, _fcCodePts and _sourcesPts
-  // are kept, not added). Five terms left, range 0..15.
-  return _s03(_lrrProximityScore(row) * 3) + _s03(_rsiPts(row))
-    + _s03(_macdhPts(row)) + _s03(_agreementPts(row)) + _s03(_trendStructurePts(row));
-}
-function _s03(v) { return (v + 3) / 2; }   // a -3..+3 term onto 0..3
-function _p03(v) { return _s03(v).toFixed(1); }   // the same, as text for the popup
+   // a -3..+3 term onto 0..3
+   // the same, as text for the popup
 
-// 2026-10-28, user: ONE formula for the Trade / Trend lines (replaces the separate position, gap and
-// distance terms): the weakest link of three checks -- price vs the Trade line, price vs the Trend line, and
-// Trade vs Trend (the gap). Each check is measured in AC (SD) units, the rules engine's scale, and has the
-// same shape: -3 at or below the line, rising in a straight line to 0 at the engine's lower breakpoint and
-// to +3 at its upper one. Breakpoints: Trade 1..5 SD (trade_rule), Trend 3..12 SD (trend_rule), gap 3..12 SD
-// (trade_trend_sd_rule). Trend above Trade is therefore -3 on the gap check, and barely clearing a line costs.
-// Any missing input = 0.
-function _trendLineCheck(d, lo, hi) {
-  if (d <= 0) return -3;
-  if (d < lo) return -3 + 3 * d / lo;
-  return Math.min(3, 3 * (d - lo) / (hi - lo));
-}
-function _trendChecks(row) {
-  if (row.last_price == null || row.trade_line_value == null || row.trend_line_value == null
-      || row.ac == null || Number(row.ac) <= 0 || row.trade_trend_sd == null) return null;
-  const p = Number(row.last_price), ac = Number(row.ac);
-  return { trade: _trendLineCheck((p - Number(row.trade_line_value)) / ac, 1, 5),
-           trend: _trendLineCheck((p - Number(row.trend_line_value)) / ac, 3, 12),
-           gap:   _trendLineCheck(Number(row.trade_trend_sd), 3, 12) };
-}
-function _trendStructurePts(row) {
-  const c = _trendChecks(row);
-  return c ? Math.min(c.trade, c.trend, c.gap) : 0;
-}
 
 // 2026-10-28, user: score the sources that support vs oppose the buy -- every source that says buy
 // +1, every source that says sell -1 (warning-only sources like "SSS weight fell" are not counted),
@@ -1245,11 +1038,6 @@ function _ivPremiumPts(row) {
 // or below 45, -3 at or above 70, straight line between. Volume: RVOL 0.5 = +3 (quiet
 // pullback), 1.0 = 0, the avoid threshold (default 1.5) = -3 (heavy volume, either
 // direction, is a caution on a buy -- PVV's BUY_DIP vs SELL_WATCH reading).
-const _RSI_PTS_LO = 45, _RSI_PTS_HI = 70;
-function _rsiPts(row) {
-  if (row.rsi == null) return 0;
-  return Math.max(-3, Math.min(3, 3 - 6 * (Number(row.rsi) - _RSI_PTS_LO) / (_RSI_PTS_HI - _RSI_PTS_LO)));
-}
 // 2026-10-28, user: Volume now scores the Vlm column's own label (vlm_action, from the 10 volume rules in
 // etl/derive_v2.py) instead of the RVOL ramp above: Accumulate +3, Watch 0, Avoid -3, no label 0.
 function _volPts(row) {
@@ -1257,94 +1045,7 @@ function _volPts(row) {
   return a === 'ACCUMULATE' ? 3 : a === 'AVOID' ? -3 : 0;
 }
 
-// Structured breakdown for the tradability badge's popover (2026-08-15:
-// "make it rich and use some colors" — switched from a native title=
-// tooltip to a real hover popover, same #sourcePop/_showDataPop mechanism
-// as the Vol/IV/Macro/PVV/Signal cells). Each item is colored by whether
-// it's actually helping the score: green = favorable/proven-positive,
-// amber = mixed/moderate, grey = neutral or no data. Colors reflect the
-// SAME measured deltas the score itself is built from — never decorative.
-// Threshold at 1.5pp win rate (not 0) — a win-rate delta under that is
-// noise at these sample sizes, not a real tilt either way.
-function _tradabilityDeltaColor(d) {
-  if (d == null) return '#94a3b8';
-  if (d > 1.5) return '#16a34a';
-  if (d < -1.5) return '#dc2626';
-  return '#94a3b8';
-}
 
-function _tradabilityBreakdown(row) {
-  const items = [];
-  const fmtDelta = d => (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp win rate vs baseline';
-
-  // Raw (unclamped) position, not row._rrPos — a below-LRR row must read
-  // as "below LRR", not "0% up from LRR" (which is what the RR bar's
-  // clamped display value would otherwise make it look like).
-  const rawPos = _rawRrPos(row);
-  const turningUpForLrr = row.pct_change != null && Number(row.pct_change) >= 0;
-  items.push({
-    label: 'Risk Range',
-    detail: (rawPos == null ? 'no LRR/TRR data'
-      : rawPos < 0
-        ? Math.abs(Math.round(rawPos)) + '% BELOW LRR' + (turningUpForLrr ? ' — bouncing, but still under the line' : ' — falling below LRR, be cautious')
-        : Math.round(rawPos) + '% up from LRR' + (rawPos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : rawPos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR'))
-      + ' (' + _p03(_lrrProximityScore(row) * 3) + ' of 3)',
-    color: rawPos == null ? '#94a3b8'
-      : rawPos < 0 ? (turningUpForLrr ? '#d97706' : '#dc2626')
-      : rawPos <= 15 ? '#16a34a' : rawPos <= 40 ? '#d97706' : '#94a3b8',
-  });
-
-  const rsiB = _rsiBucket(row.rsi);
-  const rsiP = _rsiPts(row);
-  items.push({
-    label: 'RSI',
-    detail: (row.rsi != null ? Number(row.rsi).toFixed(1) + ' — ' : '') + (rsiB || 'no data') + (row.rsi != null ? ' (' + _p03(rsiP) + ' of 3)' : ''),
-    color: rsiP > 1 ? '#16a34a' : rsiP < -1 ? '#dc2626' : '#94a3b8',
-  });
-
-  // IV: self-relative ratio (user's own ThinkOrSwim study — this symbol's
-  // own IV vs its own 63-day baseline), not the cross-sectional percentile
-  // bucket — see _ivRatioScore's comment for why.
-  // 2026-10-28, user: IV is not part of the score any more, so it has no line here (the IV column still shows it).
-
-  // 2026-10-28, user: Volume is not part of the score any more, so no line here (the Vlm column still shows it).
-
-  // 2026-10-28, user: MACDH (rising from low in its 120-day range = good, falling from high = bad) and PVV are scored.
-  const mhPts = _macdhPts(row);
-  items.push({
-    label: 'MACDH',
-    detail: row.a_macdh_d_brr == null ? 'no data'
-      : (Number(row.a_macdh_d_brr) > 0 ? 'rising' : 'falling') + ' at ' + Math.round(Math.abs(Number(row.a_macdh_d_brr)) * 100)
-        + '% of its 120-day range (' + _p03(mhPts) + ' of 3)',
-    color: mhPts > 1 ? '#16a34a' : mhPts < -1 ? '#dc2626' : '#94a3b8',
-  });
-
-  // 2026-10-28, user: PVV, Sources and the Final Call code are not part of the score any more, so no lines here.
-
-  const tc = _trendChecks(row), tsP = _trendStructurePts(row);
-  items.push({
-    label: 'Trade / Trend structure',
-    detail: tc ? 'weakest of: Trade ' + _p03(tc.trade) + ', Trend ' + _p03(tc.trend) + ', gap ' + _p03(tc.gap) + ' (' + _p03(tsP) + ' of 3)'
-               : 'no line data (' + _p03(0) + ' of 3)',
-    color: tsP > 0.5 ? '#16a34a' : tsP < -0.5 ? '#dc2626' : '#94a3b8',
-  });
-
-
-  // 2026-10-28, user: the supporting / opposing lines are not part of the score any more, so no line here
-  // (the Action cell's ▲ / ⚠ popovers still list them).
-
-  const agrP = _agreementPts(row);
-  items.push({
-    label: 'Agreement',
-    detail: (agrP === 3 ? '3-way — Technical + Sources + MACRO all agree'
-          : agrP === 1.5 ? 'Partial — 2 of 3 agree, none opposing'
-          : agrP === -3 ? 'Opposed — at least one of Technical / Sources / MACRO says sell'
-          : 'Weak/solo — not independently corroborated') + ' (' + _p03(agrP) + ' of 3)',
-    color: agrP === 3 ? '#16a34a' : agrP === 1.5 ? '#d97706' : agrP < 0 ? '#dc2626' : '#94a3b8',
-  });
-
-  return items;
-}
 
 // Minimum score to show the badge. Rescaled a third time 2026-08-15 when
 // agreement got its own dedicated weight (see _buyTradabilityScore's
@@ -1356,8 +1057,6 @@ function _tradabilityBreakdown(row) {
 // showing it). Revisit again after a few more weeks of live data.
 // 2026-10-28: re-cut for the new +-3 scale (max 33, 0 = neutral): 8 gives the badge to about half of the
 // day's candidate buys (the old 12 did 54%); green at 12 keeps the old 4-point gap. It no longer gates Trade.
-const _TRADABILITY_BADGE_MIN = 9;
-const _TRADABILITY_GREEN_MIN = 10;
 
 // ── Buy-noise gate (TASK_120 "Buy-noise gate" section) ──────────────────────
 // Diagnosis E.3: ~4,635 ADD recs over 40 anchors (~116/day), 93% unheld —
@@ -1854,48 +1553,7 @@ function _actpopPvvActionHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">PVV</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
 }
 
-// Shared target/bullseye icon (2026-08-20) -- inline SVG, fill/stroke=
-// currentColor so it actually responds to CSS `color`/.disabled, unlike
-// the 🎯 CHARACTER it replaced (a COLOR emoji on Windows/Mac, fill baked
-// into the font, ignores CSS `color` entirely -- same bug class as the
-// MACRO conflict icon, see _macroConflictMark). Used by both the Action
-// popup's Tradability icon (_actpopTradIconHtml) and the grid SYMBOL
-// column's badge (_tradabilityBadge) so they're the same icon, not two
-// different ones for the same score.
-function _tradabilityIconSvg(size) {
-  const s = size || 12;
-  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
-    + `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-    + `<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-    + `<circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>`;
-}
 
-// Tradability icon — always shown, score always computed regardless of
-// side (2026-08-20: was buy-only/disabled-greyed on sell rows; the score
-// itself is still buy-calibrated under the hood, see _buyTradabilityScore's
-// header comment, but user asked it be calculated and displayed
-// regardless of the row's own Final Call). Score rendered below the icon,
-// own two-row column shape (.actpop-trad-col). Lives in .actpop-rr-icons,
-// between Macro and PVV/CALC (2026-08-30: after a few rounds -- briefly in
-// the header centered under Td/Tn, then its own grid column on this row
-// still under Td/Tn -- user settled on back inside .actpop-rr-icons in
-// this specific position, with extra side margins, see .actpop-rr-trad).
-function _actpopTradIconHtml(row) {
-  const score = _buyTradabilityScore(row);
-  const meetsMin = score >= _TRADABILITY_BADGE_MIN;
-  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
-  // icon itself goes into .disabled styling (grey, same treatment as a
-  // non-buy row before the always-show change) whenever the score doesn't
-  // clear _TRADABILITY_BADGE_MIN -- previously stayed "active"-looking
-  // even on a low/negative score, same visual weight as a genuinely
-  // tradable setup.
-  // 2026-10-21, user: the Tradability section at the bottom is gone (its factors are shown elsewhere in the popup); the full read lives in this hover.
-  const _tradTip = ['Tradability ' + score.toFixed(1)].concat(_tradabilityBreakdown(row).map(it => '• ' + it.label + ': ' + it.detail)).join('\n');
-  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="${escapeHtml(_tradTip)}">`
-    + _tradabilityIconSvg(12) + `</span>`;
-  const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
-  return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
-}
 
 // 2026-10-23, user: one specific label for every TRR / LRR case, shared by the Action popup bar and the grid's RR column.
 //   Price OVER TRR / IN the TRR zone  | High OVER TRR / IN the TRR zone
@@ -2550,24 +2208,6 @@ function _actpopNeutralLine(row) {
   return `<div class="actpop-neutral">no read: ${bits.join(' &middot; ')} &mdash; none extreme enough to lean either way</div>`;
 }
 
-// Tradability box — always shown regardless of side (2026-08-20: was
-// buy-only, same gate as the SYMBOL cell's 🎯 badge), reusing
-// _tradabilityBreakdown's already-computed, already-colored items verbatim
-// rather than re-deriving RSI/IV/RVOL thresholds a second time. The score
-// itself stays buy-calibrated under the hood — see _buyTradabilityScore's
-// header comment — the Source item's win-rate wording was relabeled so it
-// doesn't misread as a sell-side stat.
-function _actpopTradabilityHtml(row) {
-  const score = _buyTradabilityScore(row);
-  const scoreColor = score >= _TRADABILITY_GREEN_MIN ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
-  const items = _tradabilityBreakdown(row).map(it =>
-    `<div class="actpop-trad-item"><b style="color:${it.color};">${escapeHtml(it.label)}</b>: `
-    + `<span style="color:#374151;">${escapeHtml(it.detail)}</span></div>`).join('');
-  return `<div class="actpop-trad">
-    <div class="actpop-trad-h"><span>Tradability</span><span style="color:${scoreColor};font-size:12px;">${score.toFixed(1)}</span></div>
-    ${items}
-  </div>`;
-}
 
 // Trade/Trend line boxes (2026-08-29) -- middle of .actpop-head, between
 // the symbol block and the RR bar widget. Descriptive (today's Trade/Trend
@@ -3037,7 +2677,6 @@ function _buildActionPopHtmlV2(row) {
   // CSS comment.
   h += `<div class="actpop-rr-row">`
     + `<div class="actpop-rr-icons">${_actpopMacroStackHtml(row)}`
-    + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
     // 2026-10-21, user: PVV moved up to the indicators line above "Why"; CAL takes PVV's place here.
     + `<span class="actpop-pvv-calc-col">${_actpopBullPillHtml(row)}${_actpopCalcPillHtml(row)}</span>`
     + `</div>`

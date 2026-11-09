@@ -298,28 +298,6 @@
        positive one, instead of both showing the same grey. */
     .hit-rate-pill-neg  { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
 
-    /* 2026-08-15: Buy Tradability badge — marks a BUY row whose entry looks
-       clean right now (near LRR + supporting RSI/IV/RVOL history), per
-       _buyTradabilityScore in actionable.js. Hover for the rich colored
-       popover (data-tradabilitypop, same #sourcePop mechanism as Vol/IV/
-       Macro/PVV/Signal). Below _TRADABILITY_BADGE_MIN the icon is replaced
-       by the raw numeric score instead of showing nothing, so every BUY row
-       stays visible/comparable at a glance. 2026-08-20: color:#4338ca added
-       so the shared SVG icon (_tradabilityIconSvg, currentColor) matches
-       the same indigo .actpop-trad-icon uses in the Action popup. */
-    .tradability-badge {
-      display: inline-block;
-      font-size: 11px;
-      cursor: help;
-      vertical-align: middle;
-      color: #4338ca;
-    }
-    .tradability-badge-num {
-      font-size: 9px;
-      font-weight: 700;
-      color: #94a3b8;
-    }
-
     /* TASK_124/2026-08-28 Trade Mode + Non-Strict used to be two independent
        .btn-icon buttons with a bespoke green .active fill (this one
        collapses the whole grid, not just hides some rows -- felt like it
@@ -1189,7 +1167,7 @@
           <div class="seg-ctrl" title="Trade Mode view">
             <!-- 2026-10-15, user: Trade button brought back (TASK_153 had removed it). Starts OFF;
                  Buy ideas in Today's actions still shows the same buys. -->
-            <button id="tradeModeBtn" class="tip-rich" data-tip="Trade: buys worth making now (sorted by Tradability Score within each Final Call action), plus sells on held positions">🥇 Trade</button>
+            <button id="tradeModeBtn" class="tip-rich" data-tip="Trade: buys worth making now (sorted by Final Call action, then dollar-weighted edge), plus sells on held positions">🥇 Trade</button>
             <button id="tradeModeDiffBtn" class="tip-rich" data-tip="Trade2 (near-miss): buys Trade turned down — a Buy To Min that PVV, LIVE or the 🎯 icon does not back as a buy, or PVV is AVOID">🥈 Trade2</button>
             <button id="watchlistOnlyBtn" class="tip-rich" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">⏳ WL</button>
           </div>
@@ -1706,8 +1684,8 @@
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
   <script src="/static/technical_graphs.js?v=20261025a"></script>
-  <script src="/static/actionable_pops.js?v=20261105a"></script>
-  <script src="/static/actionable.js?v=20261106a"></script>
+  <script src="/static/actionable_pops.js?v=20261108a"></script>
+  <script src="/static/actionable.js?v=20261108a"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261107a" defer></script>
 <script src="/static/warning_badge.js"></script>

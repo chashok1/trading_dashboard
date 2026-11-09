@@ -801,26 +801,17 @@ def buyidea_candidates(anchor: date) -> list:
     Python port the nightly Trade Mode email uses (etl/export_trade_mode.py,
     already kept in step with the JS) is applied to the same rows the browser
     gets from GET /api/actionable. Size = the Final Call's existing AMT$."""
-    from api.routers.dash import (get_actionable, get_actionable_settings,
-                                  get_actionable_source_scorecard)
-    from api.routers.rules import get_factor_scorecard
-    from starlette.responses import Response
-    from etl.export_trade_mode import _is_qualifying_buy, _buy_tradability_score
+    from api.routers.dash import get_actionable
+    from etl.export_trade_mode import _is_qualifying_buy
     rows = get_actionable(date=str(anchor), action=None, category=None, my_list_only=False,
                           show_acted=False, show_suppressed=True)
-    sets = get_actionable_settings()
-    sc = get_actionable_source_scorecard()
-    frows = get_factor_scorecard(Response(), min_n=30, limit=500)
-    factor = {f"{r['factor']}|{r['bucket']}": r for r in frows if r.get("factor")}
-    ob, os_, rv = sets["rsi_overbought"], sets["rsi_oversold"], sets["vlm_rvol_avoid_threshold"]
     out = []
     for r in rows:
-        if not _is_qualifying_buy(r, True, ob, os_, rv, factor, sc):
+        if not _is_qualifying_buy(r, True):
             continue
         out.append({"tos_symbol": r["tos_symbol"], "size_dollar": _buy_amt(r),
                     "final_action": r.get("final_action"), "final_code": r.get("final_code"),
-                    "winning_source": r.get("winning_source"),
-                    "score": _buy_tradability_score(r, ob, os_, rv, factor, sc)})
+                    "winning_source": r.get("winning_source")})
     return out
 
 
@@ -952,7 +943,7 @@ def run_live_check(session: Session, plan_date: Optional[date] = None, prices: O
             "small_line": False, "est_value": None, "carried_days": None, "stale": False,
             "gain_pct": None, "outlook_turned": False, "sector_name": None, "sector_share_pct": None,
             "notes": json.dumps({"final_action": b.get("final_action"), "final_code": b.get("final_code"),
-                                 "score": round(float(b.get("score") or 0), 1), **({"replay": True} if replay else {})}),
+                                 **({"replay": True} if replay else {})}),
         })
     if write:
         _write_rows(session, plan_date, checked_at, out_rows)
