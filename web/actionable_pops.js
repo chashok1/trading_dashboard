@@ -909,7 +909,6 @@ const _PVV_CAUTION = ['BUY_WATCH', 'SELL_WATCH'];
 // TASK_122 — credible-sells-first / agreement-ranked-buys tier restructure) ──
 // New tiers, top to bottom (DESCENDING — state.sort = {_priority, -1}):
 //
-//   Tier 0     — stop_breached held rows (TASK_119)   → position $ desc
 //   Tier 1     — credible SELLs on HELD positions     → $ at stake desc
 //                (fc.side === 'sell' AND held_today;
 //                 low_confidence rows are never "credible" — they were

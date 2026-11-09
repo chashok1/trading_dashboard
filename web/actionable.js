@@ -1283,9 +1283,8 @@ function _legendHtml() {
       ${row('MACRO', '▲▼ dots = Cur month / Nxt month / Cur quarter direction; sparkline = forward monthly scores')}
       ${row('▼3 / ▲3', 'Symbol: 2 of 3 of MACRO/Sources/Technical agree sell / buy with none opposing. Display-only — no longer drives the default sort.')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Default sort (TASK_120/122)</div>
-      <div style="color:#475569;">Stops → credible sells → buys ranked by how many signals agree
+      <div style="color:#475569;">Credible sells → buys ranked by how many signals agree
         (Tech+Sources+Macro) → holds; unheld buys without a ripe Technical wait in the Watchlist.
-        Tier 0 — held rows trading below stop (STOP pill), by position $ desc.
         Tier 1 — credible SELLs on held positions (Sources+Technical both sell, or a source-driven
         exit), by $ at stake desc. LOW CONF sells rank the same as any other sell (badge only).
         Tier 2 — BUYs that passed the technical gate, sub-ranked by agreement: 2a = Technical + Sources
@@ -2634,7 +2633,7 @@ const _BTN_TIPS = {
   showHidden: ['Hidden', ['Shows rows the normal view leaves out', 'Done, Skipped, Snoozed, no-action and $0-buy rows', 'Click while Trade, Trade2 or WL is on to switch to this view']],
   actionableOnlyBtn: ['Actionable', ['Only rows with something to act on', 'Drops HOLD and NONE rows', 'Click while Trade or Trade2 is on to switch to this view']],
   tradeModeBtn: ['Trade', ['Buys worth making now, sorted by Final Call action, then dollar-weighted edge', 'Plus sells on positions you hold', 'Index, futures, FX and Fixed Income never show here', 'Combine with Trade2 / WL to add their rows']],
-  tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They are Buy To Min, or PVV is AVOID', 'Buys only: no sells']],
+  tradeModeDiffBtn: ['Trade2 (near-miss)', ['Buys that Trade turned down', 'They are Buy To Min, or PVV is AVOID', 'Buys only: no sells', 'Sorted: above Trade+Trend lines first, then Technical action, then nearest LRR']],
   watchlistOnlyBtn: ['WL (waiting list)', ['Unheld buy ideas waiting for better entry timing', 'Technical not yet ready (not BS/BM)', 'Never includes positions you hold']],
   heldOnly: ['Held', ['Only symbols you own', 'Narrows whatever view is on']],
   myOnlyBtn: ['My', ['Only symbols on your tracked list', 'Narrows whatever view is on', 'Use the + button to edit the list']],
@@ -3400,7 +3399,6 @@ function _dollarWeightedScore(row) {
 const _NEW_TIEBREAK_EPS = 0.15;
 
 const _TIER_SELLALL   = 1e11;  // Tier -1 (2026-10-03, user): SELL ALL on a held position, always first, by $ at stake
-const _TIER_STOP      = 1e10;  // Tier 0: stop_breached held rows, by position $
 const _TIER_SELL      = 1e8;   // Tier 1: credible SELLs on held positions, by $ at stake
 const _TIER_BUY       = 1e6;   // Tier 2: buys past the gate, sub-ranked by agreement (2a/2b/2c)
 const _TIER_HOLD      = 1e4;   // Tier 3: HOLD / mixed / no-action, dollar-weighted edge
@@ -3435,12 +3433,7 @@ function _computePriority(row) {
       && !row.suppressed_reason) {
     return _TIER_SELLALL + _dollarsAtStake(row);
   }
-  // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
-  // above every other tier regardless of edge/dollars.
-  if (row.stop_breached && row.held_today) {
-    return _TIER_STOP + Math.abs(Number(row.current_position_dollar) || 0);
-  }
-
+  // 2026-11-09, user: a stop breach no longer ranks a row (flag only, since 2026-10-26) -- it sorts by its Final Call.
   var fc = finalCall(row);
   // Bottom: a low_confidence sell (TASK_118), an infeasible Final Call, or a
   // suppressed row sinks below every real tier regardless of dollars — still
@@ -3506,6 +3499,16 @@ function _computePriority(row) {
     const _bc = String(fc.code || '').toUpperCase();
     const codeBonus = _bc === 'BM' ? 2000 : (_bc === 'BS' ? 1000 : 0);
     // 2026-11-08 (Spec 12 B1/B4): the Tradability Score and the PVV boost are gone -- buys sort by action, then dollar-weighted edge.
+    // 2026-11-09, user: Trade2 rows sort by (1) price above BOTH the Trade and Trend lines first, then (2) the Technical
+    // action (BM > BS > BMN > other), then (3) lowest Risk Range position (nearest LRR). Max 890 stays under the 1000 action gap.
+    if (_isTradeModeDiffBuy(row)) {
+      const px = Number(row.last_price), td = Number(row.trade_line_value), tn = Number(row.trend_line_value);
+      const above = row.last_price != null && row.trade_line_value != null && row.trend_line_value != null
+        && px > td && px > tn;
+      const tech = { BM: 2, BS: 1, BMN: 0 }[String(row.rr_action || '').toUpperCase()];
+      const rr = row._rrPos != null ? (100 - Math.max(0, Math.min(100, row._rrPos))) * 0.9 : 0;
+      return _TIER_BUY + codeBonus + (above ? 500 : 0) + (tech != null ? 100 * tech + 100 : 0) + rr;
+    }
     return _TIER_BUY + codeBonus + _dollarWeightedScore(row);
   }
 
