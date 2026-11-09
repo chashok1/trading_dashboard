@@ -63,7 +63,6 @@ class TestSyntax:
     @pytest.mark.parametrize("relpath", [
         "web/hedgeye_panel.js",
         "web/notes.js",
-        "web/digest.js",
         "web/symbol_hedgeye.js",
     ])
     def test_js_syntax(self, relpath):
@@ -189,7 +188,7 @@ class TestPageRoutes:
         from api.routers import pages
         return {r.path for r in pages.router.routes if hasattr(r, "path")}
 
-    @pytest.mark.parametrize("path", ["/notes", "/digest", "/symbol-hedgeye"])
+    @pytest.mark.parametrize("path", ["/notes", "/symbol-hedgeye"])
     def test_page_route_present(self, page_paths, path):
         assert path in page_paths, f"Page route {path} missing from pages router"
 
@@ -301,7 +300,6 @@ class TestDbTables:
 class TestHtmlFiles:
     @pytest.mark.parametrize("filename,expected_title,expected_js", [
         ("notes.html", "Notes", "notes.js"),
-        ("digest.html", "Digest", "digest.js"),
         ("symbol_hedgeye.html", "Hedgeye", "symbol_hedgeye.js"),
     ])
     def test_html_has_title(self, filename, expected_title, expected_js):
@@ -311,7 +309,6 @@ class TestHtmlFiles:
 
     @pytest.mark.parametrize("filename,expected_title,expected_js", [
         ("notes.html", "Notes", "notes.js"),
-        ("digest.html", "Digest", "digest.js"),
         ("symbol_hedgeye.html", "Hedgeye", "symbol_hedgeye.js"),
     ])
     def test_html_loads_styles_css(self, filename, expected_title, expected_js):
@@ -320,7 +317,6 @@ class TestHtmlFiles:
 
     @pytest.mark.parametrize("filename,expected_title,expected_js", [
         ("notes.html", "Notes", "notes.js"),
-        ("digest.html", "Digest", "digest.js"),
         ("symbol_hedgeye.html", "Hedgeye", "symbol_hedgeye.js"),
     ])
     def test_html_has_nav(self, filename, expected_title, expected_js):
@@ -330,7 +326,6 @@ class TestHtmlFiles:
 
     @pytest.mark.parametrize("filename,expected_title,expected_js", [
         ("notes.html", "Notes", "notes.js"),
-        ("digest.html", "Digest", "digest.js"),
         ("symbol_hedgeye.html", "Hedgeye", "symbol_hedgeye.js"),
     ])
     def test_html_loads_js(self, filename, expected_title, expected_js):
@@ -509,21 +504,11 @@ class TestRuleCandidateCrud:
 class TestNavLinks:
     @pytest.mark.parametrize("filename", [
         "index.html",
-        "digest.html",
         "notes.html",
     ])
     def test_notes_link_present(self, filename):
         content = (WEB / filename).read_text(encoding="utf-8")
         assert 'href="/notes"' in content, f"{filename}: /notes nav link missing"
-
-    @pytest.mark.parametrize("filename", [
-        "index.html",
-        "digest.html",
-        "notes.html",
-    ])
-    def test_digest_link_present(self, filename):
-        content = (WEB / filename).read_text(encoding="utf-8")
-        assert 'href="/digest"' in content, f"{filename}: /digest nav link missing"
 
     def test_index_html_has_both_new_links(self):
         content = (WEB / "index.html").read_text(encoding="utf-8")
@@ -532,7 +517,7 @@ class TestNavLinks:
 
     def test_new_screens_have_actionable_link(self):
         """New screens should link back to /actionable."""
-        for fname in ("notes.html", "digest.html"):
+        for fname in ("notes.html",):
             content = (WEB / fname).read_text(encoding="utf-8")
             assert 'href="/actionable"' in content, \
                 f"{fname}: /actionable nav link missing"

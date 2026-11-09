@@ -198,6 +198,8 @@
     <span id="staleAnalyticsStatus" style="color:var(--text-2);font-size:11px;white-space:nowrap;" title=""></span>
     <span style="color:var(--border);line-height:1;flex-shrink:0;">|</span>
     <span style="color:var(--text-3);">&middot;</span>
+    <button class="btn btn-sm" id="ingestLogBtn" title="Chronological log of every file load and email ingest" style="font-size:11px;padding:1px 7px;">Ingest Log</button>
+    <span style="color:var(--text-3);">&middot;</span>
     <span style="color:var(--text-3);">Last</span><strong id="ki-last" style="font-size:12px;">-</strong>
 
   </div>
@@ -422,9 +424,39 @@
   </div>
 </div>
 
+<!-- Ingest Log popup (opened from the scheduler bar) -->
+<div id="ingestLogModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:6px;width:min(1200px,96vw);height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;font-size:12px;">
+      <h3 style="margin:0;font-size:13px;">Ingest Log</h3>
+      <label for="ilChannel" style="color:var(--text-3);">Channel</label>
+      <select id="ilChannel"><option value="">All</option><option value="file_load">file_load</option><option value="email">email</option></select>
+      <label for="ilFeed" style="color:var(--text-3);">Feed</label>
+      <input type="text" id="ilFeed" placeholder="e.g. RR" style="width:90px;">
+      <label for="ilDate" style="color:var(--text-3);">Date</label>
+      <input type="date" id="ilDate">
+      <button id="ilClear" class="btn btn-sm">Clear</button>
+      <button id="ilRefresh" class="btn btn-sm">Refresh</button>
+      <span id="ilCount" style="margin-left:auto;color:var(--text-3);"></span>
+      <button id="ingestLogClose" class="btn btn-sm" title="Close" style="font-size:11px;padding:2px 8px;">x</button>
+    </div>
+    <div class="table-wrap" style="flex:1;min-height:0;max-height:none;overflow:auto;">
+      <table><thead><tr><th>When</th><th>Channel</th><th>Source</th><th>Feed</th><th>Target table</th><th>Data date</th><th>Status</th><th>Reference</th></tr></thead>
+      <tbody id="ilBody"></tbody></table>
+    </div>
+  </div>
+</div>
+<style>
+  #ingestLogModal .status-loaded{color:#166534} #ingestLogModal .status-error{color:#b91c1c;font-weight:600}
+  #ingestLogModal .status-skipped{color:var(--text-3)}
+  #ingestLogModal .badge-email{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;margin-left:3px}
+  #ingestLogModal .source-ref{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+</style>
+
 <script src="/static/_common.js"></script>
 <script src="/static/file_monitor.js?v=20261108a"></script>
 <script src="/static/rebuild_modal.js"></script>
+<script src="/static/ingest_log_panel.js?v=1"></script>
 <script src="/static/market_bar.js?v=20261107a" defer></script>
 <script src="/static/warning_badge.js"></script>
 

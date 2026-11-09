@@ -57,19 +57,9 @@ def page_file_monitor():
     return FileResponse(WEB_DIR / "file_monitor.html", media_type="text/html; charset=utf-8")
 
 
-@router.get("/ingest-log")
-def page_ingest_log():
-    return FileResponse(WEB_DIR / "ingest_log.html", media_type="text/html; charset=utf-8")
-
-
 @router.get("/notes")
 def page_notes():
     return FileResponse(WEB_DIR / "notes.html", media_type="text/html; charset=utf-8")
-
-
-@router.get("/digest")
-def page_digest():
-    return FileResponse(WEB_DIR / "digest.html", media_type="text/html; charset=utf-8")
 
 
 @router.get("/symbol-hedgeye")
@@ -105,28 +95,6 @@ def page_param_sets():
 @router.get("/rules-health")
 def page_rules_health():
     return FileResponse(WEB_DIR / "rules_health.html", media_type="text/html; charset=utf-8")
-
-
-@router.get("/test-results")
-def page_test_results():
-    return FileResponse(WEB_DIR / "test_results.html", media_type="text/html; charset=utf-8")
-
-
-@router.get("/api/test-results")
-def api_test_results():
-    """Serve the JSON written by pytest --json-report (docs/test_results.json).
-
-    The test runner produces this file via:
-      python -m pytest tests/ --json-report --json-report-file=docs/test_results.json
-
-    The /test-results page polls this endpoint to render the dashboard.
-    """
-    from pathlib import Path
-    p = Path(__file__).resolve().parent.parent.parent / "docs" / "test_results.json"
-    if not p.exists():
-        return {"summary": {"total": 0}, "tests": [], "warning":
-                "docs/test_results.json missing — run tests with --json-report"}
-    return FileResponse(p, media_type="application/json")
 
 
 @router.get("/rule-flow")

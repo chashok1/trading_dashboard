@@ -24,7 +24,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
-NEWLY_PATCHED = ["param_sets.html", "rules_health.html", "test_results.html"]
+NEWLY_PATCHED = ["param_sets.html", "rules_health.html"]
 # REWRITTEN (TASK_112, 2026-07-04): the page set has grown past 18 web/*.html
 # files (21 today) as new screens were added over time — an exact frozen
 # count is the wrong invariant here; it breaks on every legitimate new page.

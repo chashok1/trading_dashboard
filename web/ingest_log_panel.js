@@ -1,16 +1,16 @@
-/* Ingest Log screen — vanilla JS, no dependencies. */
+/* Ingest Log popup on File Monitor — vanilla JS, no dependencies. */
 
 (function () {
   'use strict';
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
-  const channelSel = document.getElementById('channelSelect');
-  const feedInput  = document.getElementById('feedInput');
-  const dateInput  = document.getElementById('dateInput');
-  const refreshBtn = document.getElementById('refreshBtn');
-  const clearBtn   = document.getElementById('clearBtn');
-  const rowCount   = document.getElementById('rowCount');
-  const tbody      = document.getElementById('ingestBody');
+  const channelSel = document.getElementById('ilChannel');
+  const feedInput  = document.getElementById('ilFeed');
+  const dateInput  = document.getElementById('ilDate');
+  const refreshBtn = document.getElementById('ilRefresh');
+  const clearBtn   = document.getElementById('ilClear');
+  const rowCount   = document.getElementById('ilCount');
+  const tbody      = document.getElementById('ilBody');
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -148,7 +148,15 @@
     load();
   });
 
-  // ── Initial load ──────────────────────────────────────────────────────────
-  load();
+  // ── Open / close popup (loads on each open) ───────────────────────────────
+  const modal = document.getElementById('ingestLogModal');
+  document.getElementById('ingestLogBtn').addEventListener('click', function () {
+    modal.style.display = 'flex';
+    load();
+  });
+  document.getElementById('ingestLogClose').addEventListener('click', function () {
+    modal.style.display = 'none';
+  });
+  modal.addEventListener('click', function (e) { if (e.target === modal) modal.style.display = 'none'; });
 
 }());

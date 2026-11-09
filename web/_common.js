@@ -1147,11 +1147,7 @@
     { href: '/explore',          label: 'DB Data' },
     { href: '/dbstats',          label: 'DB Stats' },
     { href: '/file-monitor',     label: 'File Monitor' },
-    { href: '/ingest-log',       label: 'Ingest Log' },
-    { href: '/digest',           label: 'Digest' },
-    { href: '/notes',            label: 'Notes' },
     { href: '/symbol-hedgeye',   label: 'Stock Hedgeye' },
-    { href: '/test-results',     label: 'Tests' },
   ];
   // Sub-pages not shown in the bar → highlight a parent item instead.
   // /risk-detail is reached via the Risk Dial card's own link (TASK_138),
