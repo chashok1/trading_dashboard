@@ -3833,6 +3833,9 @@ CREATE INDEX IF NOT EXISTS ix_drv_rule_outcome_date    ON drv_rule_outcome(as_of
 
 CREATE INDEX IF NOT EXISTS ix_drv_rule_outcome_rule_id ON drv_rule_outcome(rule_id);
 
+-- A4 (2026-11-08): return minus the median of all stocks that day (composite rows only).
+ALTER TABLE drv_rule_outcome ADD COLUMN IF NOT EXISTS xs_20d_pct NUMERIC;
+
 
 
 -- drv_cs_realized_gain - Realized P&L from Schwab sales
@@ -5256,7 +5259,8 @@ GROUP BY rule_id, rule_kind;
 -- edge_20d > 0  => the rule's signal was correct on average. BUY rules want the
 -- stock to rise (+fwd_20d); SELL rules want it to fall (-fwd_20d), so edge_20d
 -- flips the sign for SELL codes. Rank by edge_20d DESC = best rules first.
--- win_rate already uses the direction-aware `hit` column. BASE-* are infra, excluded.
+-- A4 (2026-11-08): edge = return minus the MEDIAN of all stocks that day (xs_20d_pct), direction-adjusted.
+-- win_rate = share of fires with direction-adjusted excess > 0 (exact 0 left out). BASE-* excluded.
 -- n_fires / ci_low / ci_high: 95% CI = edge ± 1.96*stddev_samp/sqrt(n).
 -- confidence: 'proven' n>=100 AND ci_low>0; 'promising' n>=30 AND edge>0;
 --             else 'unproven'. Diagnostic — one market regime only.
@@ -5264,12 +5268,16 @@ GROUP BY rule_id, rule_kind;
 DROP VIEW IF EXISTS v_rule_scorecard CASCADE;
 CREATE VIEW v_rule_scorecard AS
 WITH base AS (
-    SELECT rule_id, hit, fwd_20d_pct, as_of_date,
-           CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN|BSW|BC|BRW)-'
-                THEN fwd_20d_pct ELSE -fwd_20d_pct END AS da
-    FROM drv_rule_outcome
-    WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
-      AND rule_id NOT LIKE 'BASE-%'
+    SELECT rule_id, (da > 0) AS hit, fwd_20d_pct, as_of_date, da
+    FROM (
+        SELECT rule_id, fwd_20d_pct, as_of_date,
+               CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN|BSW|BC|BRW)-'
+                    THEN xs_20d_pct ELSE -xs_20d_pct END AS da
+        FROM drv_rule_outcome
+        WHERE rule_kind = 'composite' AND xs_20d_pct IS NOT NULL
+          AND rule_id NOT LIKE 'BASE-%'
+    ) o
+    WHERE da <> 0
 ),
 agg AS (
     SELECT rule_id,

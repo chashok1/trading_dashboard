@@ -81,17 +81,28 @@ def _build_fwd_returns(s, since=None):
                    LEAD(last_price, 5)  OVER w AS p5,
                    LEAD(last_price, 20) OVER w AS p20
             FROM drv_ma
-            WHERE last_price IS NOT NULL{where_extra}
+            WHERE last_price IS NOT NULL
+              AND EXTRACT(DOW FROM as_of_date) BETWEEN 1 AND 5{where_extra}
             WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
         )
         SELECT tos_symbol, as_of_date,
-               CASE WHEN last_price > 0 AND p5  IS NOT NULL
+               CASE WHEN last_price > 0 AND p5 IS NOT NULL AND p5 <> last_price
                     THEN (p5  - last_price) / last_price * 100 END AS fwd5,
-               CASE WHEN last_price > 0 AND p20 IS NOT NULL
+               CASE WHEN last_price > 0 AND p5 IS NOT NULL AND p5 <> last_price
+                         AND p20 IS NOT NULL AND p20 <= last_price * 2
                     THEN (p20 - last_price) / last_price * 100 END AS fwd20
         FROM px
     """), {"since": since} if since else {})
     s.execute(text("CREATE INDEX ON _fwd (tos_symbol, as_of_date)"))
+    # Market baseline: the MEDIAN 20d return of all stocks that day (A4, 2026-11-08).
+    s.execute(text("DROP TABLE IF EXISTS _mkt"))
+    s.execute(text("""
+        CREATE TEMP TABLE _mkt AS
+        SELECT as_of_date,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY fwd20) AS med20
+        FROM _fwd WHERE fwd20 IS NOT NULL GROUP BY as_of_date
+    """))
+    s.execute(text("CREATE INDEX ON _mkt (as_of_date)"))
     n = s.execute(text("SELECT COUNT(*) FROM _fwd WHERE fwd20 IS NOT NULL")).scalar()
     log.info("_fwd built: %s rows with a 20d forward return", n)
     return n
@@ -103,18 +114,20 @@ def _composite_outcomes(s, settings, since=None):
     since_clause = " AND t.as_of_date >= :since" if since else ""
     res = s.execute(text(f"""
         INSERT INTO drv_rule_outcome
-            (rule_id, rule_kind, as_of_date, tos_symbol, action_code, fwd_5d_pct, fwd_20d_pct, hit)
+            (rule_id, rule_kind, as_of_date, tos_symbol, action_code, fwd_5d_pct, fwd_20d_pct, xs_20d_pct, hit)
         SELECT t.composite_rule_code, 'composite', t.as_of_date, t.tos_symbol,
                CASE WHEN t.composite_rule_code ~ '{BUY_PREFIX}' THEN 'BUY' ELSE 'SELL' END,
-               f.fwd5, f.fwd20,
+               f.fwd5, f.fwd20, f.fwd20 - m.med20,
                CASE WHEN t.composite_rule_code ~ '{BUY_PREFIX}' THEN (f.fwd20 >= :buy)
                     ELSE (f.fwd20 <= :sell) END
         FROM drv_trig t
         JOIN _fwd f ON f.tos_symbol = t.tos_symbol AND f.as_of_date = t.as_of_date
+        JOIN _mkt m ON m.as_of_date = t.as_of_date
         WHERE t.triggered = TRUE AND f.fwd20 IS NOT NULL{since_clause}
         ON CONFLICT (rule_id, as_of_date, tos_symbol) DO UPDATE SET
             rule_kind = EXCLUDED.rule_kind, action_code = EXCLUDED.action_code,
-            fwd_5d_pct = EXCLUDED.fwd_5d_pct, fwd_20d_pct = EXCLUDED.fwd_20d_pct, hit = EXCLUDED.hit
+            fwd_5d_pct = EXCLUDED.fwd_5d_pct, fwd_20d_pct = EXCLUDED.fwd_20d_pct,
+            xs_20d_pct = EXCLUDED.xs_20d_pct, hit = EXCLUDED.hit
     """), {"buy": buy_thr, "sell": sell_thr, "since": since} if since
            else {"buy": buy_thr, "sell": sell_thr})
     n = res.rowcount
