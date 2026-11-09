@@ -3091,7 +3091,7 @@ tr.indicator-soon, tr.indicator-soon td { background: #eab308; color: #1e293b; f
 /* 2026-08-14 -- .source-pop is pointer-events:none by default (hover-only
    read tooltips); the event-type picker needs real clicks (checkboxes +
    Save), so it overrides that plus adds its own checklist/button layout. */
-.cal-types-pop { pointer-events: auto; max-height: 320px; overflow-y: auto; }
+.cal-types-pop, .source-pop.cal-types-pop { pointer-events: auto; }   /* 2026-11-09: .source-pop.cal-types-pop -- actionable_pops.css (loaded after this file) sets .source-pop pointer-events:none, which beat the plain rule: the popup ignored wheel + clicks */   /* 2026-11-09: no outer max-height/scroll -- the inner .cal-types-list is the only scroller (the outer one made a second scrollbar) */
 .cal-types-list { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow-y: auto; margin-bottom: 8px; }
 .cal-type-row { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 400; cursor: pointer; }
 .cal-types-save {

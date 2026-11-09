@@ -908,6 +908,7 @@ async function _saveCalTypes() {
   } catch (e) { console.error('save calendar types failed:', e); }
   pop.style.display = 'none';
   loadRegimeBand();
+  loadEconIndicators();   // 2026-11-09: re-highlight the E.IND rows with the new selection (Save used to leave them unchanged)
 }
 document.addEventListener('click', e => {
   const pop = $('calTypesPop');
