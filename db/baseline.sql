@@ -8001,6 +8001,36 @@ CREATE TABLE IF NOT EXISTS ref_gauge_transmission (
     UNIQUE (gauge_key, axis, category)
 );
 
+-- 2026-11-09: all-time record levels (daily closes) per market, for "at a
+-- record" warnings. Filled by scripts/load_record_levels.py. history_start =
+-- first date of the history used (a record low is only "since then").
+CREATE TABLE IF NOT EXISTS ref_record_level (
+    market_key    text PRIMARY KEY,
+    label         text    NOT NULL,
+    unit          text,
+    high_value    numeric,
+    high_date     date,
+    low_value     numeric,
+    low_date      date,
+    history_start date,
+    history_end   date,
+    source        text,
+    updated_at    timestamp NOT NULL DEFAULT now()
+);
+
+-- near_pct: how close (percent of the record) a price must be to warn; use_low: the record LOW also counts.
+ALTER TABLE ref_record_level ADD COLUMN IF NOT EXISTS near_pct numeric NOT NULL DEFAULT 2;
+ALTER TABLE ref_record_level ADD COLUMN IF NOT EXISTS use_low boolean NOT NULL DEFAULT FALSE;
+
+-- 2026-11-09: one plain-English "how it helps you" line per Risk Dial gauge (db/seeds_risk_gauge_how.sql).
+ALTER TABLE ref_risk_gauge ADD COLUMN IF NOT EXISTS how_helps text;
+
+-- 2026-11-09, user-directed: one combined gauge for all-time-record proximity (ref_record_level).
+INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
+    ('markets_at_records', 'Markets at records', 2, TRUE, 'equity',
+     'Fires when any market in ref_record_level is within its near_pct of a record high (or, if use_low, a record low).')
+ON CONFLICT (gauge_key) DO NOTHING;
+
 -- Named cross-asset co-movement patterns.
 CREATE TABLE IF NOT EXISTS ref_market_pattern (
     pattern_key text PRIMARY KEY,

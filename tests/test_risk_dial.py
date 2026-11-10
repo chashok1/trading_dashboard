@@ -181,3 +181,25 @@ def test_event_hedging_pce_needs_rise_unless_listed():
     assert _g_event_hedging(c)[0] is False
     c["event_always"] = ["PCE"]
     assert _g_event_hedging(c)[0] is True
+
+
+# --- 2026-11-09: "Markets at records" (pure, no DB) -------------------------------------------------------------------
+def _rec(key, price, high, near=2.0, use_low=False, low=None):
+    return {"key": key, "label": key.upper(), "price": price, "high": high, "high_date": "2026-10-06",
+            "low": low, "low_date": "2020-01-01", "near_pct": near, "use_low": use_low}
+
+
+def test_markets_at_records_fires_only_within_distance():
+    from etl.derive_risk_dial import _g_markets_at_records
+    far = _g_markets_at_records({"records": [_rec("spx", 95.0, 100.0)]})
+    near = _g_markets_at_records({"records": [_rec("spx", 99.0, 100.0)]})
+    past = _g_markets_at_records({"records": [_rec("spx", 101.0, 100.0)]})
+    assert far[0] is False and near[0] is True and past[0] is True
+
+
+def test_markets_at_records_low_side_only_when_enabled_and_no_data_is_none():
+    from etl.derive_risk_dial import _g_markets_at_records
+    off = _g_markets_at_records({"records": [_rec("vix", 9.2, 80.0, near=10, use_low=False, low=9.0)]})
+    on = _g_markets_at_records({"records": [_rec("vix", 9.2, 80.0, near=10, use_low=True, low=9.0)]})
+    assert off[0] is False and on[0] is True
+    assert _g_markets_at_records({"records": []})[0] is None

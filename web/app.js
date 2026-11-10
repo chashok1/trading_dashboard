@@ -394,6 +394,10 @@ function _rdHelpHtml(g) {
     (intro.length ? `<div>${intro.map(escapeHtml).join('<br>')}</div>` : '<div>No description yet.</div>') +
     (bullets.length ? `<ul>${bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : '');
 }
+// 2026-11-09, user-directed: the plain "How it helps you" line sits under every gauge on the Risk Dial card.
+function _rdHowHtml(g) {
+  return g && g.how_helps ? `<span class="rd-how">${escapeHtml(g.how_helps)}</span>` : '';
+}
 function _rdHelpMove(e, tip) {
   const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
   let x = e.clientX + 16, y = e.clientY + 18;
@@ -453,18 +457,23 @@ async function loadRiskDial() {
                    onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt}</span>
-        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}</span>
+        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}${_rdHowHtml(g)}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     // 2026-10-28 -- amber "elevated, not worsening" rows (display only, not in the risk budget); sit under the fired rows.
-    const amberHtml = (r.amber || []).map(g => `<div class="rd-gauge-row sev-amber">
+    // 2026-11-09, user-directed: every gauge (fired, amber, quiet) opens the popup, which shows Fired / Not fired.
+    const amberHtml = (r.amber || []).map(g => `<div class="rd-gauge-row sev-amber" tabindex="0" role="button"
+        onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
+        onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">~</span>
-        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.amber || '')}</span>
+        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.amber || '')}${_rdHowHtml(g)}</span>
       </div>`).join('');
     const quietHtml = (r.quiet || [])
-      .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}">${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}</span>`).join('<br>');
+      .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}" role="button" tabindex="0"
+        onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
+        onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}${_rdHowHtml(g)}</span>`).join('');
     // 2026-08-14 -- SPX vertical range indicator, ALWAYS shown (not just
     // when spx_top_range actually fires, which only happens at >=85% of its
     // risk range -- see etl/derive_risk_dial.py). The API returns this

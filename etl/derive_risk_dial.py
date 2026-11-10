@@ -159,6 +159,54 @@ _QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL", "VIX", "MOVE:GIF",
                "GVZ:CGI", "OVX:CGI", "/6J", "VXN:CGI", "RVX"]
 
 
+# 2026-11-09, user-directed: "Markets at records" -- live price per ref_record_level market (BTC-USD, not BTC: that is a trust).
+_RECORD_QUOTE_SYM = {
+    "spx": "SPX", "rut": "RUT", "dji": "$DJI", "vix": "VIX", "move": "MOVE:GIF", "dxy": "$DXY",
+    "gold": "/GC", "silver": "/SI", "btc": "BTC-USD", "wti": "/CL", "us10y": "TNX:CGI", "us30y": "TYX:CGI",
+}
+_RECORD_MACRO = {"us2y": "DGS2", "us3m": "DGS3MO"}
+
+
+def _load_records(session: Session, as_of_date: date, is_latest: bool) -> list:
+    """ref_record_level rows that have a live price. On the newest date a price beyond its stored record moves the record
+    (high always; low only where use_low). Older re-derives read the records as they stand."""
+    rows = session.execute(text(
+        "SELECT market_key, label, high_value, high_date, low_value, low_date, near_pct, use_low "
+        "FROM ref_record_level")).mappings().all()
+    if not rows:
+        return []
+    q = {r[0]: float(r[1]) for r in session.execute(text(
+        "SELECT tos_symbol, last_price FROM drv_quote WHERE as_of_date = :d AND tos_symbol = ANY(:s) "
+        "AND last_price IS NOT NULL"), {"d": as_of_date, "s": list(_RECORD_QUOTE_SYM.values())}).all()}
+    out = []
+    for r in rows:
+        k = r["market_key"]
+        px = q.get(_RECORD_QUOTE_SYM.get(k))
+        if px is None and k in _RECORD_MACRO:
+            row = session.execute(text(
+                "SELECT value FROM hist_macro WHERE series_id = :s AND obs_date <= :d AND value IS NOT NULL "
+                "ORDER BY obs_date DESC LIMIT 1"), {"s": _RECORD_MACRO[k], "d": as_of_date}).first()
+            px = float(row[0]) if row else None
+        if px is None:
+            continue
+        if k in ("us10y", "us30y") and px >= 15:  # quote is sometimes the x10 index scale
+            px /= 10.0
+        rec = {"key": k, "label": r["label"], "price": px,
+               "high": float(r["high_value"]) if r["high_value"] is not None else None, "high_date": r["high_date"],
+               "low": float(r["low_value"]) if r["low_value"] is not None else None, "low_date": r["low_date"],
+               "near_pct": float(r["near_pct"]), "use_low": bool(r["use_low"])}
+        if is_latest and rec["high"] is not None and px > rec["high"]:
+            session.execute(text("UPDATE ref_record_level SET high_value = :v, high_date = :d, updated_at = now() "
+                                 "WHERE market_key = :k"), {"v": px, "d": as_of_date, "k": k})
+            rec["high"], rec["high_date"] = px, as_of_date
+        if is_latest and rec["use_low"] and rec["low"] is not None and px < rec["low"]:
+            session.execute(text("UPDATE ref_record_level SET low_value = :v, low_date = :d, updated_at = now() "
+                                 "WHERE market_key = :k"), {"v": px, "d": as_of_date, "k": k})
+            rec["low"], rec["low_date"] = px, as_of_date
+        out.append(rec)
+    return out
+
+
 def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     """extra: {'vrp': float|None, 'pct_above_sma50': float|None,
     'pct_above_sma50_5d_chg': float|None} -- computed by derive_market_stat.py
@@ -353,6 +401,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "pct_above_sma50": extra.get("pct_above_sma50"),
         "pct_above_sma50_5d_chg": extra.get("pct_above_sma50_5d_chg"),
         "market_read": _build_market_read_context(session, as_of_date),
+        "records": _load_records(session, as_of_date, is_latest),
         # 2026-10-19 -- Quad market check (etl/derive_quad_check.py): newest 3 rows up to D, for _g_quad_growth_break.
         "quad_check_hist": [dict(r) for r in session.execute(text(
             "SELECT as_of_date, ref_quad, growth_score FROM drv_quad_check WHERE as_of_date <= :d "
@@ -1277,7 +1326,37 @@ def _g_quad_growth_break(ctx):
                       (" (at or below -20 for 2 dates)" if fired else " (not broken)"))
 
 
+def _record_gap(price: float, record: float, side: str) -> float:
+    """Percent of the record still to go (<= 0 means at or past it)."""
+    if side == "high":
+        return (record - price) / abs(record) * 100.0
+    return (price - record) / abs(record) * 100.0
+
+
+def _g_markets_at_records(ctx):
+    recs = ctx.get("records") or []
+    if not recs:
+        return None, None, "no record-level data"
+    hits, closest = [], None
+    for r in recs:
+        for side, rec, dt in (("high", r["high"], r["high_date"]), ("low", r["low"], r["low_date"])):
+            if rec is None or (side == "low" and (not r["use_low"] or rec <= 0)):
+                continue
+            gap = _record_gap(r["price"], rec, side)
+            where = "at a new record" if gap <= 0 else f"{gap:.1f}% from it"
+            txt = f"{r['label']} {r['price']:,.2f} vs record {side} {rec:,.2f} ({dt}), {where}"
+            if gap <= r["near_pct"]:
+                hits.append((gap, txt))
+            if closest is None or gap < closest[0]:
+                closest = (gap, txt)
+    if hits:
+        hits.sort(key=lambda h: h[0])
+        return True, float(len(hits)), "; ".join(t for _g, t in hits)
+    return False, 0.0, f"Closest: {closest[1]}" if closest else "no record-level data"
+
+
 GAUGES: list[tuple[str, Callable]] = [
+    ("markets_at_records", _g_markets_at_records),
     ("quad_growth_break", _g_quad_growth_break),
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),

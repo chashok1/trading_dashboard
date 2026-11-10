@@ -2678,6 +2678,17 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   box-shadow: 0 20px 48px -12px rgba(0,0,0,.35); overflow: hidden;
 }
 .gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+/* 2026-11-09 -- Risk Dial gauge popup: status + description + how it helps, above the position grids. */
+.gm-info { padding: 12px 24px; border-bottom: 1px solid var(--border); flex: 0 0 auto; font-size: 13px; color: var(--text-1); }
+.gm-info-top { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.gm-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; border: 1px solid var(--border); white-space: nowrap; }
+.gm-badge-fired { background: var(--neg, #b42318); color: #fff; border-color: transparent; }
+.gm-badge-quiet { background: transparent; color: var(--text-2); }
+.gm-badge-na { background: transparent; color: var(--text-2); font-style: italic; }
+.gm-info-today { margin-top: 6px; color: var(--text-2); }
+.gm-info-list { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); }
+.gm-info-how { margin-top: 6px; }
+.rd-how { display: block; font-size: 11px; color: var(--text-2); margin-top: 1px; }
 .gm-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: var(--text-1); }
 .gm-sub { font-size: 12px; color: var(--text-2); }
 /* 2026-08-08 -- $ amount + "% of portfolio" centered, total gain/loss %
@@ -4444,7 +4455,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .qm-x:hover { color: var(--text-1, #111827); }
 
 /* 2026-10-20: Risk Dial gauge hover help (rank chip + quiet list), web/app.js::_rdHelpShow */
-.rd-wt[data-rdkey], .rd-q-item[data-rdkey] { cursor: help; }
+.rd-wt[data-rdkey] { cursor: help; }
+.rd-q-item[data-rdkey] { cursor: pointer; display: block; margin-bottom: 3px; }
 .rd-help-tip { position: fixed; z-index: 1200; display: none; pointer-events: none; max-width: 340px; padding: 9px 12px; border-radius: 6px;
   background: var(--card-bg, #fff); color: var(--text-1, #111827); border: 1px solid var(--border, #d4d4d8); box-shadow: 0 8px 24px rgba(0,0,0,.22);
   font-size: 12px; line-height: 1.45; }

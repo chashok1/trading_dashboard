@@ -86,6 +86,9 @@
       '    <div class="gm-total" id="gmTotal"></div>',
       '    <button class="gm-close" id="gmClose" aria-label="Close">&#10005;</button>',
       '  </div>',
+      // 2026-11-09, user-directed: Risk Dial gauge popups open with the gauge's status (Fired / Not fired), plain description,
+      // "Fires when" / "Why it matters" and "How it helps you". Filled by _renderGaugeInfo; hidden for factor popups.
+      '  <div class="gm-info" id="gmInfo" style="display:none;"></div>',
       '  <div class="gm-body" id="gmBody">',
       '    <div class="gm-left-col">',
       // 2026-08-08 -- Active/Closed/Both filter for the stock list -- both
@@ -637,6 +640,7 @@
     document.getElementById('gmTitle').textContent = fallbackTitle;
     document.getElementById('gmSub').textContent = 'Loading…';
     document.getElementById('gmTotal').innerHTML = '';
+    document.getElementById('gmInfo').style.display = 'none';
     document.getElementById('gmTableBody').innerHTML = '';
     document.getElementById('gmBarChart').innerHTML = '';
     document.getElementById('gmHistoryBody').innerHTML = '';
@@ -686,8 +690,30 @@
       });
   }
 
+  function _escG(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // Top-of-popup block for Risk Dial gauges (data.gauge comes from the exposure-detail API; factor popups have none).
+  function _renderGaugeInfo(g) {
+    var el = document.getElementById('gmInfo');
+    if (!g) { el.style.display = 'none'; return; }
+    var st = g.fired === true ? ['fired', 'Fired'] : g.fired === false ? ['quiet', 'Not fired'] : ['na', 'Not evaluated'];
+    var bullets = (g.bullets || []).map(function (b) { return '<li>' + _escG(b) + '</li>'; }).join('');
+    el.innerHTML =
+      '<div class="gm-info-top"><span class="gm-badge gm-badge-' + st[0] + '">' + st[1] + '</span>' +
+      '<span class="gm-info-desc">' + _escG(g.description || 'No description yet.') + '</span></div>' +
+      (g.detail ? '<div class="gm-info-today"><strong>Today:</strong> ' + _escG(g.detail) + '</div>' : '') +
+      (bullets ? '<ul class="gm-info-list">' + bullets + '</ul>' : '') +
+      (g.how_helps ? '<div class="gm-info-how"><strong>How it helps you:</strong> ' + _escG(g.how_helps) + '</div>' : '');
+    el.style.display = 'block';
+  }
+
   function _renderData(data, fallbackTitle, subtitlePrefix) {
     document.getElementById('gmTitle').textContent = data.label || fallbackTitle;
+    _renderGaugeInfo(data.gauge);
     var cats = (data.categories || []).join(' · ');
     _lastSubtitlePrefix = cats ? ('Match: ' + cats + '  ·  ') : (subtitlePrefix ? subtitlePrefix + '  ·  ' : '');
     // Total gain/loss across every position shown -- sum(gain_dollar)

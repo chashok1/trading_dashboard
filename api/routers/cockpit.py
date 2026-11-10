@@ -294,9 +294,9 @@ def get_risk_dial(date: Optional[str] = Query(None)):
         total_value = float(total_value) if total_value else None
 
         # 2026-10-20: plain-English hover help per gauge (ref_risk_gauge.help) for the rank chip + quiet list.
-        help_by_key = {r[0]: r[1] for r in s.execute(text("SELECT gauge_key, help FROM ref_risk_gauge")).all()}
+        help_by_key = {r[0]: (r[1], r[2]) for r in s.execute(text("SELECT gauge_key, help, how_helps FROM ref_risk_gauge")).all()}
         for g in fired + amber + quiet:
-            g["help"] = help_by_key.get(g["key"])
+            g["help"], g["how_helps"] = help_by_key.get(g["key"], (None, None))
 
         for g in fired:
             g["exposure"] = _gauge_exposure(s, d, g["key"], total_value)
@@ -380,6 +380,26 @@ def get_risk_dial(date: Optional[str] = Query(None)):
 # rows. No new derive logic -- pure reads over what already exists daily.
 # ---------------------------------------------------------------------------
 
+def _gauge_info(s, d, gauge_key: str) -> dict:
+    """2026-11-09: what the gauge popup shows at the top -- Fired / Not fired (that day), the plain description, the
+    'Fires when' / 'Why it matters' bullets and the 'How it helps you' line. Works for every gauge, fired or quiet."""
+    row = s.execute(text(
+        "SELECT label, weight, help, how_helps FROM ref_risk_gauge WHERE gauge_key = :k"), {"k": gauge_key}).mappings().first()
+    gauges = _jsonb(s.execute(text(
+        "SELECT gauges_fired FROM drv_market_stat WHERE as_of_date = :d"), {"d": d}).scalar()) or []
+    cur = next((g for g in gauges if g.get("key") == gauge_key), None)
+    lines = [ln for ln in str(row["help"] or "").split("\n") if ln.strip()]
+    return {
+        "label": row["label"],
+        "weight": float(row["weight"]) if row["weight"] is not None else None,
+        "fired": (cur or {}).get("fired"),          # True / False / None (not evaluated that day)
+        "detail": (cur or {}).get("detail"),
+        "description": next((ln for ln in lines if not ln.startswith("- ")), None),
+        "bullets": [ln[2:] for ln in lines if ln.startswith("- ")],
+        "how_helps": row["how_helps"],
+    }
+
+
 @router.get("/api/cockpit/risk-dial/{gauge_key}/exposure-detail")
 def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None)):
     d = _resolve_date(date)
@@ -389,12 +409,13 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         ), {"k": gauge_key}).mappings().first()
         if not gauge_row:
             raise HTTPException(status_code=404, detail=f"unknown gauge_key {gauge_key!r}")
+        info = _gauge_info(s, d, gauge_key)
 
         trans = s.execute(text(
             "SELECT axis, category FROM ref_gauge_transmission WHERE gauge_key = :k"
         ), {"k": gauge_key}).all()
         if not trans:
-            return {"as_of": d.isoformat(), "gauge_key": gauge_key, "label": gauge_row["label"],
+            return {"as_of": d.isoformat(), "gauge_key": gauge_key, "label": gauge_row["label"], "gauge": info,
                     "dollar": None, "pct": None, "categories": [], "positions": []}
 
         sector_cats = [c for a, c in trans if a == "sector"]
@@ -544,6 +565,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             "as_of": d.isoformat(),
             "gauge_key": gauge_key,
             "label": gauge_row["label"],
+            "gauge": info,
             "dollar": round(dollar, 2),
             "pct": round(dollar / total_value * 100.0, 2) if total_value else None,
             "categories": sorted(set(sector_cats + asset_cats + style_cats)),
