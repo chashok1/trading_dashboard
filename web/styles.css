@@ -4532,3 +4532,27 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .uv-factor-pill.bear { background: rgba(220,38,38,0.16); color: #dc2626; }
 .uv-factor-pill.neutral { background: rgba(148,163,184,0.16); color: var(--text-3); }
 .uv-factor-pill.dim { opacity: 0.35; }
+
+/* 2026-11-09, user-directed: the Book chip moves from the right panel to the middle (changes) panel, row 2, just left of the "+N more" pill.
+   outlook_changes.js::firstOverflow sets --oc-more-w (the pill's width + gap, 0 while it is hidden) so the two never overlap, and
+   its blocker list already keeps chips out from under Book. The right panel is now sized by the Next event pill alone. */
+.oc-lead .oc-grp[title="Book"] { grid-row: 2; grid-column: 2; justify-self: end; width: auto; margin-right: var(--oc-more-w, 0px); }
+.oc-lead .oc-grp[title="Book"] > * { width: auto; }
+.oc-lead .oc-grp[title="Next event"] { width: auto; min-width: 0; max-width: 240px; }
+
+/* 2026-11-09, user-directed: Book + "+N more" move to row 3 of the middle panel (the chips line keeps rows 1-2 and gains the room
+   they took on row 2); the right panel shows the next three events, one per row (macro_week.js::eventChips). */
+.oc-lead .oc-grp[title="Book"], .oc-more { grid-row: 3; }
+.oc-lead .oc-grp[title="Next event 2"], .oc-lead .oc-grp[title="Next event 3"] { grid-column: 3; justify-self: stretch; position: relative; z-index: 1; display: flex; width: auto; min-width: 0; max-width: 240px; overflow: hidden; align-self: center; }
+.oc-lead .oc-grp[title="Next event 2"] { grid-row: 2; }
+.oc-lead .oc-grp[title="Next event 3"] { grid-row: 3; }
+.oc-lead .oc-grp[title="Next event 2"] > *, .oc-lead .oc-grp[title="Next event 3"] > * { width: 100%; justify-content: center; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+/* 2026-11-09, user-directed: the changes chips line is three rows tall; Book + "+N more" sit on its third row, so chips there stop before them (outlook_changes.js blockers). */
+.oc-line { grid-row: 1 / span 3; }
+/* 2026-11-09, user-directed: Events and Changes swap places -- the three events (narrow) take the middle slot, the changes chips
+   (wide) take the right slot with "+N more" and Book beneath them. Only the columns change; rows and sizes are as above. */
+.oc-card .oc-body { grid-template-columns: auto auto minmax(0, 1fr); }
+.oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Next event 2"], .oc-lead .oc-grp[title="Next event 3"] { grid-column: 2; }
+.oc-lead .oc-grp[title="Book"], .oc-line, .oc-more { grid-column: 3; }
+.oc-card .oc-side { grid-column: 2; }
+.oc-card .oc-body::after { grid-column: 3; }

@@ -164,17 +164,27 @@
     return chip(cls, name + ' ' + num(c.last, dp) + darr(c.chg5) + word + glyph, t);
   }
 
-  function eventChip(events) {
-    var major = events.filter(function (e) { return e.major; });
-    if (!major.length) return '';
-    var first = major[0];
-    var same = major.filter(function (e) { return e.date === first.date; }).length - 1;
-    var when = first.days === 0 ? 'today' : dayName(first.date);
+  // 2026-11-09, user-directed: the next THREE events, one pill per DAY (right panel rows 1-3); extra events on the same day
+  // collapse to "+N" as before. Major events first; if the week has fewer than three such days, ordinary-event days fill the gap.
+  function eventChips(events) {
+    function days(list) {
+      var out = [], by = {};
+      list.forEach(function (e) { if (!by[e.date]) { by[e.date] = { first: e, n: 0 }; out.push(by[e.date]); } else by[e.date].n++; });
+      return out;
+    }
+    var pick = days(events.filter(function (e) { return e.major; })).slice(0, 3);
+    if (pick.length < 3) {
+      var have = {}; pick.forEach(function (g) { have[g.first.date] = 1; });
+      pick = pick.concat(days(events.filter(function (e) { return !e.major && !have[e.date]; })).slice(0, 3 - pick.length));
+    }
+    pick.sort(function (x, y) { return x.first.date < y.first.date ? -1 : x.first.date > y.first.date ? 1 : 0; });
     var t = ['Next 7 days (day only -- no release times on file)'].concat(
       events.map(function (e) { return '• ' + dayName(e.date) + ' ' + e.date.slice(5) + ' ' + e.name; }),
       ['Source: ref_calendar_event']);
-    var soon = first.days != null && first.days <= 3;
-    return chip('mw-ev', '<span class="mw-ev-flag' + (soon ? ' mw-ev-flag-soon' : '') + '">⚑</span> ' + esc(first.name) + ' ' + when + (same > 0 ? ' +' + same : ''), t);
+    return pick.map(function (g) {
+      var ev = g.first, when = ev.days === 0 ? 'today' : dayName(ev.date), soon = ev.days != null && ev.days <= 3;
+      return chip('mw-ev', '<span class="mw-ev-flag' + (soon ? ' mw-ev-flag-soon' : '') + '">⚑</span> ' + esc(ev.name) + ' ' + when + (g.n > 0 ? ' +' + g.n : ''), t);
+    });
   }
 
   function bookChip(counts, hotN, hot, open) {
@@ -423,9 +433,12 @@
       var h = chips.filter(Boolean).join('');
       return h ? '<span class="oc-grp oc-grp-gap" title="' + label + '">' + h + '</span>' : '';
     };
+    var evs = eventChips(data.events);
     strip.innerHTML = [
       // Market chips (DXY/2Y/10Y/VIX/MOVE/Gold/WTI) dropped 2026-10-16: those symbols are on the Macro Rail.
-      grp('Next event', [eventChip(data.events)]),
+      grp('Next event', [evs[0]]),
+      grp('Next event 2', [evs[1]]),
+      grp('Next event 3', [evs[2]]),
       grp('Book', [data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''])
     ].join('');
     var usdEl = document.getElementById('usdPill');

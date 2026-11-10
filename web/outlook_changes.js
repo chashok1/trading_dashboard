@@ -244,11 +244,13 @@
     // Index of the first item that wraps past the two rows, measured with the button showing `label`.
     function firstOverflow(label) {
       more.hidden = false; more.textContent = label;   // the button narrows the line, so measure with its real text
+      // 2026-11-09, user-directed: Book sits just left of the button, so it shifts left by the button's width (+6px gap).
+      var card = document.getElementById('outlookChangesCard'); if (card) card.style.setProperty('--oc-more-w', more.offsetWidth + 6 + 'px');
       Array.prototype.forEach.call(line.children, function (c) { c.style.visibility = ''; });
       // Two static rows (2026-10-22, user-directed: back to two lines): size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
       var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1;
       var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
-      line.style.maxHeight = (2 * h + gap) + 'px';
+      line.style.maxHeight = (3 * h + 2 * gap) + 'px';   // 2026-11-09, user-directed: three rows; on row 3 chips stop short of Book / +N more (blockers below)
       var lr = line.getBoundingClientRect(), lb = lr.bottom;
       // Book + the button sit over the third row's right end: chips there must stop short of them.
       // 2026-10-22: the event pill (row 1), Book (row 2) and the button (row 3) sit over the line's right end: a chip that
@@ -259,7 +261,8 @@
       });
       Array.prototype.forEach.call(line.children, function (c, i) {
         var r = c.getBoundingClientRect();
-        var hit = blockers.some(function (b) { return r.top < b.bottom - 1 && r.bottom > b.top + 1 && r.right > b.left - 8; });
+        // 2026-11-09: only a blocker to the RIGHT of the chip can stop it (the event pills now sit left of the line).
+        var hit = blockers.some(function (b) { return b.left > r.left && r.top < b.bottom - 1 && r.bottom > b.top + 1 && r.right > b.left - 8; });
         if (first < 0 && (r.bottom > lb + 0.5 || hit)) first = i;
       });
       // A date label left alone at the end of the line (its chips pushed to the overlay) moves to the overlay too.
@@ -289,6 +292,7 @@
       if (first >= 0) Array.prototype.forEach.call(line.children, function (c, i) { if (i >= first) c.style.visibility = 'hidden'; });
       more.hidden = !nChips;
       more.textContent = '+' + nChips + ' more ▾';
+      var card2 = document.getElementById('outlookChangesCard'); if (card2) card2.style.setProperty('--oc-more-w', nChips ? more.offsetWidth + 6 + 'px' : '0px');
       if (!nChips) setOpen(false);
     }
     window.ocFit = fit;   // macro_week.js re-fits once the Book chip is drawn (it reserves room on the third row)
