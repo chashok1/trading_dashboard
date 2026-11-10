@@ -4565,3 +4565,5 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body::after { grid-column: 3; }
 /* 2026-11-09, user-directed: the 60d / month / quarter chips sit on their own row at the top of the Quad panel (macro_week.js moves them in). */
 #quadCardsPanel > #regimeLineBody { flex: 0 0 100%; min-width: 0; margin: 6px 0; }   /* 2026-11-09: space above and below the chips row */
+/* 2026-11-09, user-directed: space above and below the MKT SIT content, INSIDE the panel box (padding, not margin). */
+#heMktSituationPanel { padding-top: 8px; padding-bottom: 8px; }
