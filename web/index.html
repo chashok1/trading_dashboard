@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261109q">
+  <link rel="stylesheet" href="/static/styles.css?v=20261109w">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261028b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -132,16 +132,18 @@
             <div id="heMktSituationBody">Loading…</div>
           </section>
 
+          <!-- 2026-10-15 -- Quad cards (US Quarterly / US Monthly / Global); filled by web/macro_week.js.
+               2026-11-09, user-directed: sits directly below MKT SIT (which is directly below the Risk Dial); SPX realized vol follows. -->
+          <section class="cockpit-band" id="quadCardsPanel" hidden></section>
+          <!-- 2026-10-17 -- 60d / monthly / quarterly quads as small boxes; filled by web/app.js::loadRegimeBand().
+               2026-11-09: macro_week.js moves #regimeLineBody to the top of #quadCardsPanel and hides this box. -->
+          <section class="cockpit-band" id="quadSmallPanel"><div id="regimeLineBody">Loading…</div></section>
+
           <!-- 2026-10-20, user-directed: SPX realized volatility (1 month vs 3 month + SPX daily % change bars, 6 months) moved
                here from the right column, directly below the MKT SIT graph. Filled by web/spx_rv.js from GET /api/cockpit/spx-realized-vol. -->
           <section id="spxRvBand" class="cockpit-band">
             <div id="spxRvBody"><div class="msr-loading">Loading…</div></div>
           </section>
-
-          <!-- 2026-10-15 -- Quad cards (US Quarterly / US Monthly / Global), below MKT SIT; filled by web/macro_week.js -->
-          <section class="cockpit-band" id="quadCardsPanel" hidden></section>
-          <!-- 2026-10-17 -- 60d / monthly / quarterly quads as small boxes right under the big ones; filled by web/app.js::loadRegimeBand() -->
-          <section class="cockpit-band" id="quadSmallPanel"><div id="regimeLineBody">Loading…</div></section>
 
           <!-- 2026-10-17, user-directed: US Treasury yield curve (2Y, 10Y, 10Y-2Y spread) with change table, below Breadth; web/yield_curve.js <- GET /api/cockpit/yield-curve. -->
           <section class="cockpit-band" id="yieldCurveBand"><div id="yieldCurveBody"><div class="msr-loading">Loading&hellip;</div></div></section>
@@ -1121,7 +1123,7 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
-  <script src="/static/macro_week.js?v=20261109a" defer></script>
+  <script src="/static/macro_week.js?v=20261109b" defer></script>
   <script src="/static/spx_rv.js?v=20261020b" defer></script>
   <script src="/static/yield_curve.js?v=20261018i" defer></script>
   <script src="/static/move_vix.js?v=20261018e" defer></script>

@@ -4563,3 +4563,5 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-lead .oc-grp[title="Book"], .oc-line, .oc-more { grid-column: 3; }
 .oc-card .oc-side { grid-column: 2; }
 .oc-card .oc-body::after { grid-column: 3; }
+/* 2026-11-09, user-directed: the 60d / month / quarter chips sit on their own row at the top of the Quad panel (macro_week.js moves them in). */
+#quadCardsPanel > #regimeLineBody { flex: 0 0 100%; min-width: 0; margin: 6px 0; }   /* 2026-11-09: space above and below the chips row */

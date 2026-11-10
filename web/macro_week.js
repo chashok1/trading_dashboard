@@ -415,8 +415,18 @@
       return '<div class="qc' + (n ? ' q' + n[1] : '') + '"><div class="qc-lbl">' + label + '</div>' +
         '<div class="qc-val">' + (n ? 'Quad ' + n[1] + ' ' + period : '--') + mark(key) + '</div></div>';
     }
+    // 2026-11-09, user-directed: the 60d / month / quarter chips (#regimeLineBody, filled by app.js::loadRegimeBand) sit at the TOP of
+    // this panel, above the three cards. Detach them before the innerHTML below rebuilds the cards, then put them back first;
+    // their old box (#quadSmallPanel) is hidden once they have moved.
+    var chipsEl = document.getElementById('regimeLineBody');
+    if (chipsEl && chipsEl.parentNode) chipsEl.parentNode.removeChild(chipsEl);
     el.innerHTML = card('US Quarterly', q.quarterly, qtr, 'quarterly') + card('US Monthly', q.monthly, mon, 'monthly') +
       card('Global', q.global, gq, '')   /* no check/cross: the market read is built from US prices, so it does not apply to the Global Quad */ + marketBlock(data);
+    if (chipsEl) {
+      el.insertBefore(chipsEl, el.firstChild);
+      var oldBox = document.getElementById('quadSmallPanel');
+      if (oldBox) oldBox.style.display = 'none';
+    }
     el.hidden = false;
     var qm = document.getElementById('qmBlock');
     if (qm) qm.addEventListener('click', toggleQuadPop);
