@@ -138,7 +138,7 @@
   // persist in memory. Color logic is untouched by any of this -- still
   // driven by pct's up/down/flat sign regardless of which text is printed.
   var _CHG_MODE_KEY = 'macroRailChgMode';
-  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1, perf: 1, vol: 1 };   // vol (2026-10-19): every rail row shows Prem / vs / Wk / M / Rk (options vol vs actual vol) instead of the usual cluster   // perf (2026-10-19): every rail row shows Day / 1WK / 3W / 3M pills instead of candle + chg + Td/Tn + range bar   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
+  var _CHG_MODES = { pct: 1, price: 1, dollar: 1, macro: 1, held: 1, perf: 1, vol: 1, rng: 1, ext: 1 };   // rng (2026-11-10): every rail row shows Pos / Lo / Hi (where the price sits in its risk range)   // vol (2026-10-19): every rail row shows Prem / vs / Wk / M / Rk (options vol vs actual vol) instead of the usual cluster   // perf (2026-10-19): every rail row shows Day / 1WK / 3W / 3M pills instead of candle + chg + Td/Tn + range bar   // held (2026-10-17, Accounts): the chip shows the $K held in the stock   // macro (2026-10-16): chips stay %, the marker slot shows the macro stance
   // 2026-09-30, user-directed: "radio buttons should control its own
   // panels" -- one independent mode per radio group: 'rail' (Macro Rail
   // header -> every rail panel), 'accounts', 'sss' (Signal Strength rows).
@@ -160,12 +160,16 @@
   var _macroOn = false;   // true while rendering with the 'Act' radio selected
   var _perfOn = false;    // true while rendering with the 'Perf' radio selected
   var _volOn = false;     // true while rendering with the 'Vol' radio selected
+  var _rngOn = false;     // true while rendering with the 'Rng' radio selected
+  var _extOn = false;     // true while rendering with the 'Ext' radio selected
   function _useMode() {
     var m = _modes.rail;
     _macroOn = (m === 'macro');
     _perfOn = (m === 'perf');
     _volOn = (m === 'vol');
-    _chgMode = (m === 'macro' || m === 'perf' || m === 'vol') ? 'pct' : (m || 'pct');
+    _rngOn = (m === 'rng');
+    _extOn = (m === 'ext');
+    _chgMode = (m === 'macro' || m === 'perf' || m === 'vol' || m === 'rng' || m === 'ext') ? 'pct' : (m || 'pct');
   }
   // Radio group picks the view too: Accounts shows rows unless 'cards';
   // Signal Strength shows cards only when 'cards', rows otherwise.
@@ -658,7 +662,7 @@
       '" title="Copy all symbols in ' + esc(shortName) + '">&#10697;</button>' +
       '<button class="msr-sort-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
       '" title="' + esc(_SORT_TITLE[mode]) + '">' + _SORT_GLYPH[mode] + '</button>' +
-      ((_perfOn || _volOn) ? '<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
+      ((_perfOn || _volOn || _rngOn || _extOn) ?'<span class="msr-colhdr">' + _periodHeader({ area_key: areaKey }, true, shortName) + '</span>' : '') + '</div>';
   }
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
@@ -713,13 +717,22 @@
                    ['v_vs', 'vs', "Premium vs the symbol's own normal (its median premium since April), in %. Red = Rich (over 15% above its normal), green = Cheap (over 15% below)"],
                    ['v_w1', 'Wk', 'Premium 1 week ago, in %'], ['v_m1', 'M', 'Premium 1 month ago, in %'],
                    ['v_rk', 'Rk', 'IV rank: where implied volatility sits in its own range (from TOS)']];
+  // 2026-11-10, user-directed: 'Rng' radio -- where each row's price sits between its low line (LRR) and high line (TRR). Display only.
+  var _RNG_COLS = [['r_pos', 'Pos', 'Where the price sits in its risk range, 0 = at the low line (LRR), 100 = at the high line (TRR). Below 0 or above 100 = outside the range'],
+                   ['r_lo', 'Lo', 'How far the price is above its low line (LRR), in %. Negative = below it'],
+                   ['r_hi', 'Hi', 'How far the price is below its high line (TRR), in %. Negative = above it']];
+  // 2026-11-10, user-directed: 'Ext' radio -- pre-market / after-hours price and its move from the last regular close. Display only.
+  var _EXT_COLS = [['e_pct', '%', 'Move of the pre-market / after-hours price from the last regular close, in %'],
+                   ['e_px', 'Price', 'Pre-market / after-hours price'],
+                   ['e_ses', 'Ses', 'Session: Pre = before the open, Post = after the close. Hover a number for the time of the price']];
   function _periodHeader(area, force, group) {
-    if (!force && !_volOn && !_PERIOD_AREAS[area.area_key]) return '';
+    if (!force && !_volOn && !_rngOn && !_extOn && !_PERIOD_AREAS[area.area_key]) return '';
+    var alt = _volOn || _rngOn || _extOn;
     var key = area.area_key, mode = _railSort[group ? key + ':' + group : key] || 0, f = _railSortField[key] || 'pct_change';
-    return (_volOn ? _VOL_COLS : _PERIOD_COLS).map(function (c) {
+    return (_extOn ? _EXT_COLS : _rngOn ? _RNG_COLS : _volOn ? _VOL_COLS : _PERIOD_COLS).map(function (c) {
       var on = mode && f === c[0];
-      return '<button type="button" class="msr-colhdr-btn' + (_volOn ? ' vol' : '') + (on ? ' on' : '') + '" data-area="' + esc(key) +
-        '"' + (group ? ' data-group="' + esc(group) + '"' : '') + ' data-field="' + c[0] + '" title="' + (_volOn ? esc(c[2]) + ' (click to sort; again to reverse; third click resets)' : 'Sort by ' + c[1] + ' % (click again to reverse, third click resets)') + '">' + c[1] +
+      return '<button type="button" class="msr-colhdr-btn' + (alt ? ' vol' : '') + (on ? ' on' : '') + '" data-area="' + esc(key) +
+        '"' + (group ? ' data-group="' + esc(group) + '"' : '') + ' data-field="' + c[0] + '" title="' + (alt ? esc(c[2]) + ' (click to sort; again to reverse; third click resets)' : 'Sort by ' + c[1] + ' % (click again to reverse, third click resets)') + '">' + c[1] +
         '<span class="msr-colhdr-ic">' + (on ? (mode === 1 ? '↓' : '↑') : '⇅') + '</span></button>';
     }).join('');
   }
@@ -751,6 +764,56 @@
     return cell(f(m.v_prem) + tri) + cell(f(m.v_vs), v.band === 'Rich' ? 'rich' : v.band === 'Cheap' ? 'cheap' : '') +
            cell(f(m.v_w1)) + cell(f(m.v_m1)) + cell(f(m.v_rk));
   }
+  function _rngAttach(m) {
+    var ok = m.last != null && m.lrr != null && m.trr != null && m.lrr > 0 && m.last > 0;
+    m.r_pos = m.rr_pos != null ? Math.round(m.rr_pos * 100) : null;
+    m.r_lo = ok ? Math.round((m.last / m.lrr - 1) * 1000) / 10 : null;
+    m.r_hi = ok ? Math.round((m.trr / m.last - 1) * 1000) / 10 : null;
+  }
+  function _rngCells(m) {
+    var hasAny = m.r_pos != null || m.r_lo != null;
+    var tip = hasAny ? ' title="' + esc([(m.label || m.symbol) + ' (' + m.symbol + ')',
+      '• Price: ' + (m.last == null ? '--' : _fmtPrice(m.last)),
+      '• Low line (LRR): ' + (m.lrr == null ? '--' : _fmtPrice(m.lrr)),
+      '• High line (TRR): ' + (m.trr == null ? '--' : _fmtPrice(m.trr)),
+      '• Position: ' + (m.r_pos == null ? '--' : m.r_pos + ' of 100')].join(String.fromCharCode(10))).split(String.fromCharCode(10)).join('&#10;') + '"' : '';
+    var cell = function (txt, cls) { return '<span class="msr-volc' + (cls ? ' ' + cls : '') + '"' + tip + '>' + txt + '</span>'; };
+    var f = function (x) { return x == null ? '–' : String(x); };
+    if (!hasAny) return cell('–', 'na') + cell('', 'na') + cell('', 'na');
+    var hot = m.rr_pos != null && m.rr_pos >= 0.8, cold = m.rr_pos != null && m.rr_pos <= 0.2;
+    return cell(f(m.r_pos), hot ? 'hot' : cold ? 'cold' : '') + cell(f(m.r_lo)) + cell(f(m.r_hi));
+  }
+  // 'Ext' (2026-11-10): numbers come from GET /api/cockpit/ext-quotes (cache_ext_quote), keyed by symbol. Empty during regular hours.
+  var _extMap = null, _extOpen = false;
+  function _extAttach(m) {
+    var e = _extMap && _extMap[m.symbol];
+    m.e_pct = e && e.pct != null ? Math.round(e.pct * 100) / 100 : null;
+    m.e_px = e ? e.px : null;
+    m.e_ses = e ? (e.sess === 'PRE' ? 1 : 2) : null;
+  }
+  function _extCells(m) {
+    var e = _extMap && _extMap[m.symbol];
+    var cell = function (txt, cls) { return '<span class="msr-volc' + (cls ? ' ' + cls : '') + '"' + tip + '>' + txt + '</span>'; };
+    var tip = e ? ' title="' + esc([(m.label || m.symbol) + ' (' + m.symbol + ')',
+      '• ' + (e.sess === 'PRE' ? 'Pre-market' : 'After-hours') + ' price: ' + _fmtPrice(e.px),
+      '• Last regular close: ' + (e.ref == null ? '--' : _fmtPrice(e.ref)),
+      '• Price as of: ' + (e.t || '--') + ' ET'].join(String.fromCharCode(10))).split(String.fromCharCode(10)).join('&#10;') + '"' : '';
+    if (!e) return cell(_extOpen ? '' : '–', 'na') + cell('', 'na') + cell('', 'na');
+    var p = e.pct, cls = p == null ? '' : p > 0 ? 'up' : p < 0 ? 'dn' : '';
+    if (m.inverted && cls) cls = cls === 'up' ? 'dn' : 'up';
+    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(1), cls) + cell(_fmtPrice(e.px)) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
+  }
+  async function _loadExtMap() {
+    try {
+      var res = await fetch('/api/cockpit/ext-quotes');
+      if (!res.ok) throw new Error(res.status);
+      var j = await res.json();
+      _extMap = j.rows || {};
+      _extOpen = !!j.market_open;
+      if (_lastAreasData && _modes.rail === 'ext') renderRail(_lastAreasData);
+    } catch (e) { _extMap = {}; }
+  }
+  function _altCells(m, dispName) { return _extOn ? _extCells(m) : _rngOn ? _rngCells(m) : _volCells(m, dispName); }
   // Hover text for the symbol: name plus every value, one bullet each.
   function _volTip(m, dispName) {
     var v = _volOf(m);
@@ -829,7 +892,7 @@
     _useMode(_MODE_OF_AREA[area.area_key] || 'rail');
     // Perf mode does not apply to Major Markets / Sectors: they already carry the Day / 1WK / 3W / 3M columns, always on (2026-10-19, user-directed).
     var perf = _perfOn && !_PERIOD_AREAS[area.area_key];
-    var vol = _volOn;   // Vol mode applies to every panel, Major Markets and Sectors included (2026-10-19)
+    var vol = _volOn || _rngOn || _extOn;   // Vol mode applies to every panel, Major Markets and Sectors included (2026-10-19)
     var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     var prevGroup;
@@ -870,7 +933,7 @@
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
-              (vol ? _volCells(m, m.label) : perf ? _perfPills(m, area) :
+              (vol ? _altCells(m, m.label) : perf ? _perfPills(m, area) :
               // 2026-10-22, user-directed: the risk range bar (LRR..TRR position) on the Volatility rows, narrower than elsewhere (see .msr-vol-cluster .msr-rb).
               railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                            { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: m.label || area.label }) +
@@ -913,7 +976,7 @@
           '</span>' +
           ocHtml +
           '<div class="msr-data-cluster">' +
-            (vol ? _volCells(m, dispName) : perf ? _perfPills(m, area) :
+            (vol ? _altCells(m, dispName) : perf ? _perfPills(m, area) :
             leadCluster +
             railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
                          { last: m.last, lrr: m.lrr, trr: m.trr, prev_lrr: m.prev_lrr, prev_trr: m.prev_trr, label: dispName }) +
@@ -1354,6 +1417,8 @@
   // one flat list, unchanged.
   function _sortedMembers(area) {
     var members = area.members || [];
+    if (_modes.rail === 'rng') members.forEach(_rngAttach);
+    if (_modes.rail === 'ext') members.forEach(_extAttach);
     if (_modes.rail === 'vol') members.forEach(_volAttach);   // Vol mode: numbers on the members so the column headers can sort by them
     if (_GROUPED_AREAS[area.area_key]) {
       var order = [], byGroup = {};
@@ -1434,7 +1499,7 @@
         var rows = railAreaRow({ area_key: 'ai_bubble', label: 'AI Bubble', hot_pct: area.hot_pct, cold_pct: area.cold_pct, members: take });
         pcols[pcols.length - 1].push('<div class="ab-colhdr"><span>' + esc(g) + (first ? '' : ' (cont.)') + '</span>' +
           (first ? '<span class="ab-cnt"><b class="up">' + nb + '</b> | <b class="dn">' + nr + '</b></span>' : '') +
-          ((_modes.rail === 'perf' || _modes.rail === 'vol') ? '<span class="msr-colhdr">' + _periodHeader({ area_key: 'ai_bubble' }, true) + '</span>' : '') + '</div>' + rows);
+          ((_modes.rail === 'perf' || _modes.rail === 'vol' || _modes.rail === 'rng' || _modes.rail === 'ext') ?'<span class="msr-colhdr">' + _periodHeader({ area_key: 'ai_bubble' }, true) + '</span>' : '') + '</div>' + rows);
         first = false;
       }
     });
@@ -1559,7 +1624,7 @@
       if (!hh || _PERIOD_AREAS[k] || _GROUPED_AREAS[k]) return;   // grouped panels (Accounts, PS & ETF, ...) carry the header on each group row instead
       var ex = hh.querySelector(':scope > .msr-colhdr[data-perf]');
       var ar2 = areas.filter(function (a) { return a.area_key === k; })[0];
-      if ((_modes.rail === 'perf' || _modes.rail === 'vol') && ar2) {
+      if ((_modes.rail === 'perf' || _modes.rail === 'vol' || _modes.rail === 'rng' || _modes.rail === 'ext') && ar2) {
         if (!ex) { ex = document.createElement('span'); ex.className = 'msr-colhdr'; ex.setAttribute('data-perf', '1'); hh.appendChild(ex); }
         ex.innerHTML = _periodHeader(ar2, true);
       } else if (ex) { ex.remove(); }
@@ -1752,6 +1817,7 @@
     var dateEl    = document.getElementById('datePicker');
     var dateParam = dateEl && dateEl.value ? '?date=' + dateEl.value : '';
     try {
+      _loadExtMap();   // pre-market / after-hours prices for the 'Ext' radio (display only)
       _loadVolMap();   // options-vol numbers for the 'Vol' radio (re-renders the rails itself when they land and Vol is on)
       var resp = await fetch('/api/macro-areas' + dateParam);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);

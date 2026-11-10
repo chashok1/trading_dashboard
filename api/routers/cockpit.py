@@ -856,6 +856,32 @@ _IVRV_GROUPS = [
 ]
 
 
+@router.get("/api/cockpit/ext-quotes")
+def get_ext_quotes():
+    """Pre-market / after-hours prices for the Macro Rail 'Ext' option. Display only (cache_ext_quote, see etl/yahoo_fetch.py::fetch_ext_quotes).
+    During regular hours (9:30-16:00 ET, weekdays) returns no rows: the extended price is then out of date."""
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/New_York")
+        now = datetime.now(tz)
+    except Exception:
+        tz = None
+        now = datetime.utcnow()
+    is_open = now.weekday() < 5 and (9, 30) <= (now.hour, now.minute) < (16, 0)
+    if is_open:
+        return {"market_open": True, "rows": {}}
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT tos_symbol, session, ext_price, ref_close, ext_pct, ext_time
+            FROM cache_ext_quote WHERE fetched_at > now() - interval '3 days'
+        """)).all()
+    return {"market_open": False, "rows": {r[0]: {
+        "sess": r[1], "px": float(r[2]), "ref": None if r[3] is None else float(r[3]),
+        "pct": None if r[4] is None else float(r[4]),
+        "t": r[5].astimezone(tz).strftime("%a %H:%M") if tz else None} for r in rows}}
+
+
 @router.get("/api/cockpit/iv-rv")
 def get_iv_rv(date: Optional[str] = Query(None)):
     """IV vs RV table: for each symbol the options-vs-actual-volatility premium (implied vol / TOS historical vol - 1, 5-day average of the

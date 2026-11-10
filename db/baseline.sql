@@ -6336,6 +6336,18 @@ CREATE TABLE IF NOT EXISTS cache_yahoo_quote (
     y_industry         TEXT,
     PRIMARY KEY (tos_symbol)
 );
+-- cache_ext_quote -- pre-market / after-hours price per symbol (2026-11-10). DISPLAY ONLY: nothing in derive_all, rules or
+-- the Final Call reads it. One row per symbol, overwritten by etl/yahoo_fetch.py::fetch_ext_quotes (8:00, 9:00, 17:00 ET).
+CREATE TABLE IF NOT EXISTS cache_ext_quote (
+    tos_symbol TEXT PRIMARY KEY,
+    y_ticker   TEXT NOT NULL,
+    session    TEXT NOT NULL,          -- 'PRE' or 'POST'
+    ext_price  NUMERIC NOT NULL,
+    ref_close  NUMERIC,                -- regular-session close the move is measured from
+    ext_pct    NUMERIC,                -- (ext_price / ref_close - 1) * 100
+    ext_time   TIMESTAMPTZ NOT NULL,   -- time of the extended-hours bar
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS company_name TEXT;
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS short_ratio NUMERIC;
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS float_shares BIGINT;

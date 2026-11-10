@@ -2246,6 +2246,10 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .msr-vtri.up { color: #c0392b; } .msr-vtri.dn { color: #1d7a4d; }
 .msr-volc.rich { background: rgba(229, 72, 77, .26); font-weight: 700; }
 .msr-volc.cheap { background: rgba(15, 157, 88, .26); font-weight: 700; }
+.msr-volc.hot { background: rgba(229, 72, 77, .26); font-weight: 700; }
+.msr-volc.cold { background: rgba(15, 157, 88, .26); font-weight: 700; }
+.msr-volc.up { background: rgba(15, 157, 88, .26); font-weight: 700; }
+.msr-volc.dn { background: rgba(229, 72, 77, .26); font-weight: 700; }
 .msr-colhdr-btn.on .msr-colhdr-ic { opacity: 1; }
 .msr-per { display: inline-block; min-width: 38px; text-align: right; font-size: 10px; color: var(--text-3, #6b7280); }
 .msr-per-up { color: #15803d; } .msr-per-dn { color: #b91c1c; }

@@ -985,6 +985,31 @@ def maybe_run_perf_base_fetch() -> None:
         state.write_text(this_month, encoding="utf-8")
 
 
+# 2026-11-10, user-directed: pre-market / after-hours prices (display only, cache_ext_quote). Three fetches on trading days:
+# 8:00 and 9:00 AM ET (pre-market) and 5:00 PM ET (after-hours). A missed slot is caught up inside its own window only.
+_EXT_QUOTE_SLOTS = [((8, 0), (9, 30)), ((9, 0), (9, 30)), ((17, 0), (20, 0))]   # (start, last time it may still run)
+_ext_quote_done_today: set = set()
+
+
+def maybe_run_ext_quote_refresh() -> None:
+    global _ext_quote_done_today
+    now_et = _yahoo_fetch_et_now()
+    if now_et.weekday() >= 5:
+        return
+    today, now_hm = now_et.date(), (now_et.hour, now_et.minute)
+    _ext_quote_done_today = {k for k in _ext_quote_done_today if k[0] == today}
+    due = [st for st, end in _EXT_QUOTE_SLOTS if st <= now_hm < end and (today, st) not in _ext_quote_done_today]
+    if not due:
+        return
+    _ext_quote_done_today.update((today, st) for st in due)   # mark first: no retry storm on failure
+    from etl.yahoo_fetch import fetch_ext_quotes
+    log.info("scheduler: pre/post-market price refresh (slot %s, now %s ET)", due, now_et.strftime("%H:%M"))
+    try:
+        log.info("scheduler: pre/post-market price refresh complete: %s", fetch_ext_quotes())
+    except Exception:
+        log.exception("scheduler: pre/post-market price refresh crashed")
+
+
 def maybe_run_hourly_quote_refresh() -> None:
     """Fire the lightweight intraday quote refresh at each fixed ET time in
     _INTRADAY_QUOTE_TIMES. Delegates entirely to fetch_hourly_quotes().
@@ -1351,6 +1376,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_perf_base_fetch failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_ext_quote_refresh()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_ext_quote_refresh failed (continuing)")
                     except Exception:
                         pass
             if tick % 60 == 0:

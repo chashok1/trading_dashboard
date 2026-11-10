@@ -1121,6 +1121,86 @@ def fetch_hourly_quotes() -> dict:
         _mark_fetch_running(False)
 
 
+def fetch_ext_quotes() -> dict:
+    """Pre-market / after-hours price refresh (2026-11-10). DISPLAY ONLY.
+
+    5-minute bars with prepost=True for the last 5 days. The newest bar decides the session: before 9:30 ET = PRE (measured from the
+    previous regular close), at/after 16:00 ET = POST (measured from the last regular bar of the same day), otherwise the market is
+    open and the symbol is skipped. Writes cache_ext_quote only: no hist_y row, no derive, nothing the rules or the Final Call read.
+    Indices, futures, FX and FRED series have no extended hours and simply get no row."""
+    global _fetch_running
+    if _is_any_fetch_running():
+        return {"skipped": True, "reason": "fetch_running"}
+    try:
+        import yfinance as yf
+    except ImportError:
+        return {"error": "yfinance not installed"}
+    _fetch_running = True
+    _mark_fetch_running(True)
+    ok = err = 0
+    try:
+        tickers = _get_all_symbols()
+        fetched_at = datetime.now(timezone.utc)
+        for i in range(0, len(tickers), 100):
+            batch = tickers[i: i + 100]
+            try:
+                raw = yf.download([t[1] for t in batch], period="5d", interval="5m", prepost=True,
+                                  progress=False, auto_adjust=False, group_by="ticker")
+            except Exception as e:
+                logger.error("Ext quote batch download failed: %s", e)
+                err += len(batch)
+                time.sleep(3.0)
+                continue
+            rows = []
+            for tos_symbol, y_ticker in batch:
+                try:
+                    if y_ticker not in raw:
+                        continue
+                    c = raw[y_ticker]["Close"].dropna()
+                    if c.empty:
+                        continue
+                    idx = c.index.tz_convert("America/New_York") if c.index.tz is not None else c.index
+                    last_ts, last_px = idx[-1], float(c.iloc[-1])
+                    hm = (last_ts.hour, last_ts.minute)
+                    if hm >= (16, 0):
+                        sess = "POST"
+                        ref = [float(v) for t, v in zip(idx, c) if t.date() == last_ts.date() and (9, 30) <= (t.hour, t.minute) < (16, 0)]
+                    elif hm < (9, 30):
+                        sess = "PRE"
+                        prev = [t.date() for t in idx if t.date() < last_ts.date()]
+                        pd_ = prev[-1] if prev else None
+                        ref = [float(v) for t, v in zip(idx, c) if pd_ is not None and t.date() == pd_ and (9, 30) <= (t.hour, t.minute) < (16, 0)]
+                    else:
+                        continue   # regular session: no extended price
+                    ref_close = ref[-1] if ref else None
+                    pct = (last_px / ref_close - 1) * 100 if ref_close else None
+                    rows.append(dict(s=tos_symbol, y=y_ticker, sess=sess, px=last_px, ref=ref_close, pct=pct,
+                                     et=last_ts.to_pydatetime(), fa=fetched_at))
+                    ok += 1
+                except Exception as ex:
+                    logger.warning("Ext quote parse error %s: %s", y_ticker, ex)
+                    err += 1
+            if rows:
+                with session_scope() as s:
+                    s.execute(text("""
+                        INSERT INTO cache_ext_quote (tos_symbol, y_ticker, session, ext_price, ref_close, ext_pct, ext_time, fetched_at)
+                        VALUES (:s, :y, :sess, :px, :ref, :pct, :et, :fa)
+                        ON CONFLICT (tos_symbol) DO UPDATE SET y_ticker=EXCLUDED.y_ticker, session=EXCLUDED.session,
+                            ext_price=EXCLUDED.ext_price, ref_close=EXCLUDED.ref_close, ext_pct=EXCLUDED.ext_pct,
+                            ext_time=EXCLUDED.ext_time, fetched_at=EXCLUDED.fetched_at
+                    """), rows)
+            if i + 100 < len(tickers):
+                time.sleep(3.0)
+        logger.info("Ext quote refresh: %d rows, %d errors", ok, err)
+        return {"symbols": len(tickers), "ok": ok, "errors": err}
+    except Exception as ex:
+        logger.error("Ext quote refresh error: %s", ex)
+        return {"error": str(ex)}
+    finally:
+        _fetch_running = False
+        _mark_fetch_running(False)
+
+
 # ---------------------------------------------------------------------------
 # Public: status helper (for API endpoint)
 # ---------------------------------------------------------------------------
