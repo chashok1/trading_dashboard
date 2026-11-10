@@ -1111,6 +1111,24 @@ def _cache_yahoo_rows(session: Session) -> dict:
     return out
 
 
+_YAHOO_FRESHER_INDEXES = {'SPX', '$COMP', '$INDU', 'RUT'}   # S&P 500, Nasdaq Composite, Dow, Russell 2000
+
+
+def _export_dt(row):
+    """A TOS row's own export moment (export_date + export_time, local ET, naive) or None. export_time is 'HHMM' or 'HH:MM[:SS]'."""
+    if not row or not row.get('export_date') or not row.get('export_time'):
+        return None
+    digits = ''.join(ch for ch in str(row['export_time']) if ch.isdigit())
+    if len(digits) < 3:
+        return None
+    digits = digits.zfill(4)
+    try:
+        return datetime(row['export_date'].year, row['export_date'].month, row['export_date'].day,
+                        int(digits[:2]), int(digits[2:4]))
+    except (ValueError, AttributeError):
+        return None
+
+
 def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Convert hist_y float_str and shares_out_str to NUMERIC in drv_y.
 
@@ -1238,6 +1256,13 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         candidates.sort(
             key=lambda r: (r.get('loaded_at') or datetime.min).replace(tzinfo=None),
             reverse=True)
+        # 2026-11-10, user-directed: for the main equity indices a Yahoo pull taken at or after the TOS export's own time beats it, even
+        # when the TOS file was LOADED a moment later (the export's prices lag its stamp: Nasdaq read -0.44% in TOSL vs -1.04% on Yahoo
+        # for the same 10:53). Stocks/ETFs and other symbols keep the plain "most recently loaded wins" ranking.
+        if sym in _YAHOO_FRESHER_INDEXES and cache_row is not None and cache_row.get('loaded_at'):
+            _tos_times = [t for t in (_export_dt(tl_row), _export_dt(td_row)) if t is not None]
+            if _tos_times and cache_row['loaded_at'].replace(tzinfo=None) >= max(_tos_times):
+                candidates = [cache_row] + [c for c in candidates if c is not cache_row]
 
         rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None, 'source': None}
         for f in _QUOTE_FIELDS:
