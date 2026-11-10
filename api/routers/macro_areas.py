@@ -586,7 +586,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         # same as /api/market-read/sectors.
         sss_by_sector: dict[str, list[str]] = {}
         try:
-            from etl.derive_sss_breadth import _normalize_sss_sector, _parse_rank
+            from etl.derive_sss_breadth import build_sss_symbol_areas, resolve_sss_sector, _parse_rank
             snap = s.execute(text(
                 "SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d"
             ), {"d": _snap_cap}).scalar()
@@ -597,12 +597,13 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "FROM hist_sss WHERE snapshot_date = :snap"
                 ), {"snap": snap}).mappings().all()
                 tmp: dict[str, list] = {}
+                _areas = build_sss_symbol_areas(s)
                 for r in raw:
                     sym = r["tos_symbol"] or r["symbol"]
                     if not sym:
                         continue
                     kind, rank, _b = _parse_rank(r["anlst_best_idea_rank"])
-                    sec = _normalize_sss_sector(r["sector"]) or "Unclassified"
+                    sec = resolve_sss_sector(r["sector"], sym, _areas) or "Unclassified"
                     tmp.setdefault(sec, []).append(
                         (kind_order.get(kind, 3), rank if rank is not None else 999, sym))
                 for sec in sorted(tmp):

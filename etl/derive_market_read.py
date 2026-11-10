@@ -22,7 +22,9 @@ from sqlalchemy.orm import Session
 from api._helpers import compute_quad_monthly_stance
 from etl._derive_common import _wrap, position_ceiling
 from etl.db import replace_for_date
-from etl.derive_sss_breadth import _normalize_sss_sector
+from etl.derive_sss_breadth import (
+    _normalize_sss_sector, build_sss_symbol_areas, resolve_sss_sector,
+)
 
 log = logging.getLogger(__name__)
 
@@ -437,12 +439,14 @@ def _sss_theme_votes(session: Session, d: Optional[date]) -> dict:
     TASK_144's derive having already run in the same cascade pass."""
     if d is None:
         return {}
+    areas = build_sss_symbol_areas(session)
     cur = session.execute(text(
-        "SELECT sector FROM hist_sss WHERE snapshot_date = :d"
-    ), {"d": d}).scalars().all()
+        "SELECT COALESCE(tos_symbol, symbol) AS sym, sector FROM hist_sss "
+        "WHERE snapshot_date = :d"
+    ), {"d": d}).fetchall()
     counts: dict = {}
-    for s in cur:
-        sec = _normalize_sss_sector(s) or "Unclassified"
+    for sym, s in cur:
+        sec = resolve_sss_sector(s, sym, areas) or "Unclassified"
         counts[sec] = counts.get(sec, 0) + 1
 
     hist_dates = session.execute(text(
@@ -455,9 +459,11 @@ def _sss_theme_votes(session: Session, d: Optional[date]) -> dict:
         if not theme:
             continue
         hist_rows = session.execute(text(
-            "SELECT sector FROM hist_sss WHERE snapshot_date = ANY(:dates)"
-        ), {"dates": list(hist_dates)}).scalars().all() if hist_dates else []
-        hist_n = sum(1 for s in hist_rows if (_normalize_sss_sector(s) or "Unclassified") == sec)
+            "SELECT COALESCE(tos_symbol, symbol) AS sym, sector FROM hist_sss "
+            "WHERE snapshot_date = ANY(:dates)"
+        ), {"dates": list(hist_dates)}).fetchall() if hist_dates else []
+        hist_n = sum(1 for sym, s in hist_rows
+                     if (resolve_sss_sector(s, sym, areas) or "Unclassified") == sec)
         med = hist_n / len(hist_dates) if hist_dates else None
         vote = "B" if (med is None or n >= med) else "S"
         votes.setdefault(theme, []).append(vote)

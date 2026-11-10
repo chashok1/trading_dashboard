@@ -2195,7 +2195,7 @@ def get_market_read(date: Optional[str] = Query(None)):
 @router.get("/api/market-read/sectors")
 def get_market_read_sectors(date: Optional[str] = Query(None)):
     from etl.derive_market_read import SSS_SECTOR_TO_THEME, SSS_SECTOR_TO_SUBCAT, _source_symbol_stance_map
-    from etl.derive_sss_breadth import _normalize_sss_sector, _parse_rank
+    from etl.derive_sss_breadth import build_sss_symbol_areas, resolve_sss_sector, _parse_rank
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text(
@@ -2218,8 +2218,10 @@ def get_market_read_sectors(date: Optional[str] = Query(None)):
         ), {"snap": snap_date}).mappings().all()
         _KIND_ORDER = {"ranked": 0, "bench": 1, "km": 2, None: 3}
         members_by_sector: dict = {}
+        _areas = build_sss_symbol_areas(s)
         for mr in sss_raw:
-            sec_name = _normalize_sss_sector(mr["sector"]) or "Unclassified"
+            sec_name = resolve_sss_sector(
+                mr["sector"], mr["tos_symbol"] or mr["symbol"], _areas) or "Unclassified"
             kind, rank, _book = _parse_rank(mr["anlst_best_idea_rank"])
             tsym = mr["tos_symbol"] or mr["symbol"]
             members_by_sector.setdefault(sec_name, []).append({

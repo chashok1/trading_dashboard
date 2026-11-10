@@ -28,6 +28,7 @@ import logging
 import re
 from datetime import date, timedelta
 from difflib import SequenceMatcher
+from functools import lru_cache
 from typing import Optional
 
 from sqlalchemy import text
@@ -42,12 +43,23 @@ CANON_SECTORS = [
     "Consumer Staples", "Energy", "Financials", "Healthcare", "Industrials",
     "Materials", "Retail", "REITs", "Restaurants", "Software", "Global Tech",
     "Cannabis", "Digital Assets", "Gaming Lodging Leisure", "Communications",
-    "Health Policy", "Policy", "Small Caps",
+    "Health Policy", "Policy", "Small Caps", "Homebuilders",
 ]
 _CANON_COMPACT = {c: re.sub(r"[^a-zA-Z]", "", c).lower() for c in CANON_SECTORS}
 _MATCH_CUTOFF = 0.72
 
+# Known short forms / garbles the fuzzy match can't reach (lower-cased,
+# letters only). Checked before the fuzzy match.
+_SECTOR_ALIASES = {
+    "gll": "Gaming Lodging Leisure",
+    "gil": "Gaming Lodging Leisure",
+    "gill": "Gaming Lodging Leisure",
+    "gl": "Gaming Lodging Leisure",
+    "gle": "Gaming Lodging Leisure",
+}
 
+
+@lru_cache(maxsize=1024)
 def _normalize_sss_sector(raw: Optional[str]) -> Optional[str]:
     """Best-effort canonical sector name, or None (-> 'Unclassified' bucket)
     when the raw string doesn't confidently match anything. See module
@@ -55,6 +67,8 @@ def _normalize_sss_sector(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
     compact = re.sub(r"[^a-zA-Z]", "", raw).lower()
+    if compact in _SECTOR_ALIASES:
+        return _SECTOR_ALIASES[compact]
     if len(compact) < 3:
         return None
     best, best_score = None, 0.0
@@ -63,6 +77,92 @@ def _normalize_sss_sector(raw: Optional[str]) -> Optional[str]:
         if score > best_score:
             best_score, best = score, canon
     return best if best_score >= _MATCH_CUTOFF else None
+
+
+# --- Fallback for rows whose Sector cell is unusable ("KM Signal", header
+# junk, unrecoverable garbles). Hedgeye publishes no sector for KM Signal
+# names, so: (1) the symbol's most recent clean Hedgeye label on any other
+# date, else (2) Yahoo's sector/industry (cache_yahoo_quote) translated to a
+# Hedgeye area, else None -> 'Unclassified'. Display-time only; hist_sss raw
+# values are never changed.
+# Labels that name a Hedgeye list, not a real sector (user-directed
+# 2026-11-09): resolved by symbol history / Yahoo like "KM Signal".
+_LIST_LABELS = {"Policy", "Health Policy"}
+
+# Symbols whose Hedgeye history label is wrong; use Yahoo only (user-directed
+# 2026-11-09: TOL = residential construction, EXPGY = consulting).
+_PREFER_YAHOO = {"TOL", "EXPGY"}
+
+# Last resort for known homebuilders that have no Yahoo data stored yet.
+_SYMBOL_AREA_FALLBACK = {
+    "LEN": "Homebuilders", "DFH": "Homebuilders",
+    "UDR": "REITs", "ATZAF": "Retail",
+}
+
+_YAHOO_SECTOR_TO_AREA = {
+    "consumer defensive": "Consumer Staples", "healthcare": "Healthcare",
+    "energy": "Energy", "financial services": "Financials",
+    "industrials": "Industrials", "basic materials": "Materials",
+    "real estate": "REITs", "communication services": "Communications",
+    "technology": "Global Tech",
+}
+# Checked first: Yahoo industry keyword -> finer Hedgeye area.
+_YAHOO_INDUSTRY_KEYWORDS = [
+    ("residential construction", "Homebuilders"), ("homebuild", "Homebuilders"),
+    ("restaurant", "Restaurants"), ("software", "Software"), ("reit", "REITs"),
+    ("gambling", "Gaming Lodging Leisure"), ("resorts", "Gaming Lodging Leisure"),
+    ("casino", "Gaming Lodging Leisure"), ("lodging", "Gaming Lodging Leisure"),
+    ("leisure", "Gaming Lodging Leisure"), ("retail", "Retail"),
+    ("department stores", "Retail"), ("discount stores", "Retail"),
+]
+
+
+def _yahoo_to_area(y_sector: Optional[str], y_industry: Optional[str]) -> Optional[str]:
+    ind = (y_industry or "").strip().lower()
+    for kw, area in _YAHOO_INDUSTRY_KEYWORDS:
+        if kw in ind:
+            return area
+    return _YAHOO_SECTOR_TO_AREA.get((y_sector or "").strip().lower())
+
+
+def build_sss_symbol_areas(session: Session) -> dict:
+    """symbol -> Hedgeye area, used only when a row's own sector text can't be
+    normalized. Prefers the symbol's latest clean label in hist_sss."""
+    areas: dict = {}
+    rows = session.execute(text(
+        "SELECT COALESCE(tos_symbol, symbol) AS sym, sector, MAX(snapshot_date) AS last "
+        "FROM hist_sss WHERE sector IS NOT NULL GROUP BY 1, 2"
+    )).fetchall()
+    best: dict = {}
+    for sym, sec, last in rows:
+        canon = _normalize_sss_sector(sec)
+        if canon in _LIST_LABELS or sym in _PREFER_YAHOO:
+            continue
+        if canon and (sym not in best or last > best[sym][0]):
+            best[sym] = (last, canon)
+    areas.update({s: v[1] for s, v in best.items()})
+    ycache = session.execute(text(
+        "SELECT tos_symbol, y_sector, y_industry FROM cache_yahoo_quote "
+        "WHERE y_sector IS NOT NULL OR y_industry IS NOT NULL"
+    )).fetchall()
+    for sym, ys, yi in ycache:
+        if sym not in areas:
+            area = _yahoo_to_area(ys, yi)
+            if area:
+                areas[sym] = area
+    for sym, area in _SYMBOL_AREA_FALLBACK.items():
+        areas.setdefault(sym, area)
+    return areas
+
+
+def resolve_sss_sector(raw: Optional[str], symbol: Optional[str], areas: dict) -> Optional[str]:
+    """Own sector text first; symbol fallback when that fails or when the
+    label is a list name rather than a sector (Policy / Health Policy,
+    handled like KM Signal)."""
+    own = _normalize_sss_sector(raw)
+    if own and own not in _LIST_LABELS:
+        return own
+    return areas.get(symbol) if symbol else None
 
 
 _RANK_RE = re.compile(r"^(\d+)\s*/\s*(\d+)$")
@@ -107,7 +207,7 @@ def _derive_sss_breadth_impl(session: Session, as_of_date: date, run_id) -> int:
         return replace_for_date(session, "drv_sss_breadth", "as_of_date", as_of_date, [])
 
     cur_rows = session.execute(text(
-        "SELECT symbol, sector, analyst, days_on, pct_delta, anlst_best_idea_rank "
+        "SELECT symbol, COALESCE(tos_symbol, symbol) AS sym, sector, analyst, days_on, pct_delta, anlst_best_idea_rank "
         "FROM hist_sss WHERE snapshot_date = :d"
     ), {"d": d}).mappings().all()
 
@@ -117,14 +217,16 @@ def _derive_sss_breadth_impl(session: Session, as_of_date: date, run_id) -> int:
         "ORDER BY snapshot_date DESC LIMIT 26"
     ), {"d": d}).scalars().all()
     hist_rows = session.execute(text(
-        "SELECT snapshot_date, sector, anlst_best_idea_rank FROM hist_sss "
+        "SELECT snapshot_date, COALESCE(tos_symbol, symbol) AS sym, sector, "
+        "anlst_best_idea_rank FROM hist_sss "
         "WHERE snapshot_date = ANY(:dates)"
     ), {"dates": list(hist_dates)}).mappings().all()
+    areas = build_sss_symbol_areas(session)
 
     # per-date, per-sector: row count + max ranked denominator (if any)
     by_date_sector: dict = {}
     for r in hist_rows:
-        sec = _normalize_sss_sector(r["sector"]) or "Unclassified"
+        sec = resolve_sss_sector(r["sector"], r["sym"], areas) or "Unclassified"
         key = (r["snapshot_date"], sec)
         entry = by_date_sector.setdefault(key, {"n_rows": 0, "book_size": None})
         entry["n_rows"] += 1
@@ -166,7 +268,7 @@ def _derive_sss_breadth_impl(session: Session, as_of_date: date, run_id) -> int:
     # --- current-snapshot detail per sector ---
     by_sector_cur: dict = {}
     for r in cur_rows:
-        sec = _normalize_sss_sector(r["sector"]) or "Unclassified"
+        sec = resolve_sss_sector(r["sector"], r["sym"], areas) or "Unclassified"
         by_sector_cur.setdefault(sec, []).append(r)
 
     rows_out = []
