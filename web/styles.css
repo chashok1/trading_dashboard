@@ -2549,6 +2549,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   background: none; cursor: pointer; border-radius: 4px;
 }
 .rd-gauge-row:hover, .rd-gauge-row:focus-visible { background: var(--act-sell-bg); outline: none; }
+/* 2026-11-09, user-directed: up to two lines per gauge; the live numbers (.rd-live) come last and are cut off with an ellipsis
+   if they do not fit in the second line. */
+.rd-gauge-row .rd-gauge-text { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.5; }
+.rd-gauge-row .rd-live { color: var(--text-1); }
+.rd-gauge-row .rd-gauge-text strong { font-size: 11px; font-weight: 700; }   /* 2026-11-09, user-directed: match the 'Lists vs Quad model' panel -- name 11px bold, description 10.5px, all dark text, line-height 1.5 */
+.rd-gauge-row .rd-desc { color: var(--text-1); }   /* 2026-11-09, user-directed: description in the normal dark text colour; only the live numbers stay grey */
+.rd-gauge-row .rd-desc, .rd-gauge-row .rd-live { font-size: 10.5px; }   /* 2026-11-09, user-directed: slightly smaller text than the label for the description */
 .rd-gauge-row .rd-chev { color: var(--text-3); font-size: 13px; align-self: center; }
 .rd-gauge-row:hover .rd-chev, .rd-gauge-row:focus-visible .rd-chev { color: var(--accent); }
 .rd-gauge-row .rd-rail { align-self: stretch; border-radius: 2px; }

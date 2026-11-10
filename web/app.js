@@ -398,6 +398,15 @@ function _rdHelpHtml(g) {
 function _rdHowHtml(g) {
   return g && g.how_helps ? `<span class="rd-how">${escapeHtml(g.how_helps)}</span>` : '';
 }
+// 2026-11-09, user-directed: a fired/amber row reads "Label — how it helps you" and the live numbers follow after it in
+// muted text; the row is at most two lines (CSS .rd-gauge-text: 2-line clamp + ellipsis), so the numbers show only if there is room and are cut
+// off otherwise. The "(fires at ...)" wording is stripped. Full text stays in the popup ("Today:") and the row's tooltip.
+function _rdRowText(g, live) {
+  const how = g && g.how_helps ? `<span class="rd-desc">${escapeHtml(g.how_helps)}</span>` : '';
+  const num = String(live || '').replace(/\s*\(fires? (?:at|when)[^)]*\)/gi, '').trim();
+  if (!how) return escapeHtml(num);
+  return how + (num ? ` <span class="rd-live">· ${escapeHtml(num)}</span>` : '');
+}
 function _rdHelpMove(e, tip) {
   const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
   let x = e.clientX + 16, y = e.clientY + 18;
@@ -457,7 +466,7 @@ async function loadRiskDial() {
                    onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt}</span>
-        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}${_rdHowHtml(g)}</span>
+        <span class="rd-gauge-text" title="${escapeHtml((g.label || g.key) + ' — ' + (g.how_helps || '') + (g.detail ? ' · ' + g.detail : ''))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.detail)}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
@@ -468,7 +477,7 @@ async function loadRiskDial() {
         onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">~</span>
-        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.amber || '')}${_rdHowHtml(g)}</span>
+        <span class="rd-gauge-text" title="${escapeHtml((g.label || g.key) + ' — ' + (g.how_helps || '') + (g.amber ? ' · ' + g.amber : ''))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.amber)}</span>
       </div>`).join('');
     const quietHtml = (r.quiet || [])
       .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}" role="button" tabindex="0"
