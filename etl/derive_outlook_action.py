@@ -720,10 +720,20 @@ def _action_call_standing(current_w, prior_diff_w,
         cw = float(current_w)
     except (TypeError, ValueError):
         return None, "non-numeric CALL weight"
-    if cw <= 0:
+    if cw == 0:
+        # 2026-11-10, user-directed: a Neutral call on its own is NOT a sell. Only a fall from a positive call
+        # to Neutral inside the window removes a held name (Bearish, cw < 0, still always removes).
+        try:
+            was_positive = prior_diff_w is not None and float(prior_diff_w) > 0
+        except (TypeError, ValueError):
+            was_positive = False
+        if held and was_positive:
+            return "REMOVE", f"CALL weight {float(prior_diff_w):+g} -> {cw:+g} (Bullish to Neutral) while held"
+        return None, f"CALL weight {cw:+g} Neutral, no change from Bullish"
+    if cw < 0:
         if held:
-            return "REMOVE", f"CALL weight {cw:+g} non-positive while held"
-        return None, f"CALL weight {cw:+g} non-positive, not held"
+            return "REMOVE", f"CALL weight {cw:+g} negative while held"
+        return None, f"CALL weight {cw:+g} negative, not held"
     # cw > 0 - positive standing call
     pdw = None
     if prior_diff_w is not None:
