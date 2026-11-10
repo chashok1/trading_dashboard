@@ -556,6 +556,12 @@ ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE, role = EXCLU
 
 -- 2026-10-16, user-directed: SPMO, Bitcoin (/BTC), ETHA and Dollar ($DXY) moved into Major Markets (top9). The Crypto panel
 -- is left empty (web/macro_areas.js hides it). The Bitcoin verdict's rail pill follows its row.
+-- 2026-11-09 re-run guard: the INSERTs above re-create the old-panel rows, so a second run would collide with the already-moved
+-- row. Drop the re-created source row only when its destination already exists (a fresh database is unaffected).
+DELETE FROM ref_macro_area s WHERE s.area_key = 'remaining' AND s.member_symbol = 'SPMO'
+  AND EXISTS (SELECT 1 FROM ref_macro_area d WHERE d.area_key = 'top9' AND d.member_symbol = 'SPMO');
+DELETE FROM ref_macro_area s WHERE s.area_key = 'crypto' AND s.member_symbol = '/BTC'
+  AND EXISTS (SELECT 1 FROM ref_macro_area d WHERE d.area_key = 'top9' AND d.member_symbol = '/BTC');
 UPDATE ref_macro_area SET area_key = 'top9', label = 'Major Markets', sort_order = 50 WHERE area_key = 'remaining' AND member_symbol = 'SPMO';
 UPDATE ref_macro_area SET area_key = 'top9', label = 'Bitcoin',       sort_order = 60 WHERE area_key = 'crypto'    AND member_symbol = '/BTC';
 UPDATE ref_macro_area SET area_key = 'top9', label = 'Major Markets', sort_order = 70 WHERE area_key = 'crypto'    AND member_symbol = 'ETHA';
@@ -564,11 +570,15 @@ UPDATE ref_driver_area SET rail_area_key = 'top9', rail_symbol = '/BTC' WHERE ar
 
 -- 2026-10-16, user-directed: ETHA moved from Major Markets to the Cannabis panel, which is renamed "Cannabis & Crypto".
 -- Member labels carry the area name (they are not per-member overrides), so they follow the rename.
+DELETE FROM ref_macro_area s WHERE s.area_key = 'top9' AND s.member_symbol = 'ETHA'
+  AND EXISTS (SELECT 1 FROM ref_macro_area d WHERE d.area_key = 'cannabis' AND d.member_symbol = 'ETHA');
 UPDATE ref_macro_area SET area_key = 'cannabis', sort_order = 30 WHERE area_key = 'top9' AND member_symbol = 'ETHA';
 UPDATE ref_macro_area SET label = 'Cannabis & Crypto' WHERE area_key = 'cannabis';
 
 -- 2026-10-16, user-directed: QQQ, IGV, BUG, QTUM, DRAM at the top of Tech & ETFs (in that order). QQQ moves back from the
 -- (disabled) Major Markets row; DRAM was already in this panel; IGV/BUG/QTUM were not on any rail panel.
+DELETE FROM ref_macro_area s WHERE s.area_key = 'top9' AND s.member_symbol = 'QQQ'
+  AND EXISTS (SELECT 1 FROM ref_macro_area d WHERE d.area_key = 'remaining' AND d.member_symbol = 'QQQ');
 UPDATE ref_macro_area SET area_key = 'remaining', label = 'Tech & ETFs', sort_order = 1, enabled = TRUE WHERE area_key = 'top9' AND member_symbol = 'QQQ';
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
     ('remaining', 'Tech & ETFs', 'IGV',  'dual', 2),
