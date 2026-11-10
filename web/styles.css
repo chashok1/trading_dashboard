@@ -4567,3 +4567,36 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 #quadCardsPanel > #regimeLineBody { flex: 0 0 100%; min-width: 0; margin: 6px 0; }   /* 2026-11-09: space above and below the chips row */
 /* 2026-11-09, user-directed: space above and below the MKT SIT content, INSIDE the panel box (padding, not margin). */
 #heMktSituationPanel { padding-top: 8px; padding-bottom: 8px; }
+/* 2026-11-09, user-directed: "Sec Breadth" link + its stock-list popup (Sectors panel, Rotate in). */
+.msr-sec-breadth-link { color: var(--accent, #4f46e5); cursor: pointer; text-decoration: underline dotted; }
+#sectorBreadthModal .sb-rows { max-height: 70vh; overflow-y: auto; }
+#sectorBreadthModal .sb-flags { margin-left: auto; margin-right: 8px; display: inline-flex; gap: 6px; font-size: 10px; font-weight: 700; flex: none; }
+#sectorBreadthModal .msr-data-cluster { margin-left: 0; }
+/* Day / 1WK / 3W / 3M header over the pills: 42px per column + 2px gap, right-aligned with the row's 8px padding. */
+#sectorBreadthModal .sb-colhdr { position: relative; height: 14px; padding: 0; font-size: 9px; text-transform: uppercase; color: var(--text-2, #666); }
+#sectorBreadthModal .sb-hbtn { position: absolute; top: 0; box-sizing: border-box; border: none; background: none; padding: 0; cursor: pointer; font: inherit; text-transform: uppercase; text-align: center; color: var(--text-2, #666); white-space: nowrap; }   /* left/width set from the real pills in openSectorBreadth */
+#sectorBreadthModal .sb-hbtn:hover, #sectorBreadthModal .sb-hbtn.on { color: #2563eb; }
+#sectorBreadthModal .sb-grpbtn { position: absolute; left: 8px; top: 0; border: 1px solid var(--border, #d4d4d8); border-radius: 999px; background: var(--card-bg, #fff); padding: 0 8px; font: inherit; font-size: 9px; text-transform: uppercase; cursor: pointer; color: var(--text-2, #666); line-height: 13px; }
+#sectorBreadthModal .sb-grpbtn.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+#sectorBreadthModal .sb-grp { font-size: 10px; font-weight: 700; color: var(--text-1); background: var(--surface-2, #f3f4f6); padding: 3px 8px; margin-top: 4px; border-radius: 3px; text-transform: uppercase; letter-spacing: .3px; }
+#sectorBreadthModal .sb-grp:first-child { margin-top: 0; }
+#sectorBreadthModal .sb-grp-n { font-weight: 600; color: var(--text-2, #666); margin-left: 4px; }
+#sectorBreadthModal .sb-yes { color: #15803d; } #sectorBreadthModal .sb-no { color: #b91c1c; }
+/* 2026-11-09, user-directed: no white space between the row's columns -- the popup shrinks to the width of its columns (name,
+   marks, Td/Tn, range bar, chips) instead of stretching to the modal's 720px; the subtitle wraps at 440px so it does not widen it. */
+#sectorBreadthModal .modal-content { width: fit-content; min-width: 0; max-width: 760px; }
+#sectorBreadthModal .modal-header p { max-width: 440px; }
+#sectorBreadthModal .sb-flags { margin-left: 6px; }
+/* 2026-11-09, user-directed: more space between the popup's columns, and the %-pills wide enough for the largest values
+   (e.g. +314.2% / -100.0%) -- the header labels follow automatically (positioned from the real pills in openSectorBreadth). */
+#sectorBreadthModal .msr-row { gap: 8px; }
+#sectorBreadthModal .msr-data-cluster { gap: 8px; }
+#sectorBreadthModal .msr-data-cluster .msr-chg { flex: 0 0 58px; }
+/* 2026-11-09, user-directed: align every row's pills in the Day / 1WK / 3W / 3M columns. The marks take the free space (auto margin) so
+   the data cluster is always flush right; with fixed-width pills the four columns then line up on every row, whatever else a row has. */
+#sectorBreadthModal .sb-flags { margin-left: auto; }
+#sectorBreadthModal .msr-data-cluster { margin-left: 0; flex: 0 0 auto; }
+#sectorBreadthModal .msr-data-cluster .msr-chg { box-sizing: border-box; text-align: center; }
+/* 2026-11-09, user-directed: hover popovers must show ABOVE modals. #quadPop (.source-pop) shared layer 1000 with the modal overlays
+   (.modal-overlay, .gauge-modal-backdrop); the modal is added later, so it painted over the hover. Lifted above them. */
+.source-pop, #quadPop { z-index: 3100; }

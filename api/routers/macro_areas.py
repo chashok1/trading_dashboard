@@ -1037,6 +1037,23 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         if ((x.get("etf") or {}).get("outlook") or "").strip().lower() == "bearish"
     ]
 
+    # 2026-11-09, user-directed: clicking "Sec Breadth" under a Rotate-in sector opens a popup of the stocks behind that breadth,
+    # in the same row format as the rail. Built only for the (at most 3) Rotate-in sectors; above-both-lines first, then the rest.
+    by_sector_score = {x["sector"]: x for x in sector_scores}
+    for _name in rotate_in:
+        _flags = {m_["sym"]: m_ for m_ in sec_data.get(_name, [])}
+        if not _flags:
+            continue
+        _built = _build_area_result("sector_breadth", _name, [
+            {"member_symbol": sym_, "role": "dual", "label": _name} for sym_ in _flags])
+        for _mem in _built["members"]:
+            _f = _flags.get(_mem.get("symbol")) or {}
+            _mem["above_trade"] = _f.get("above_trade")
+            _mem["above_trend"] = _f.get("above_trend")
+        _built["members"].sort(key=lambda mm: (
+            -((1 if mm.get("above_trade") else 0) + (1 if mm.get("above_trend") else 0)), str(mm.get("symbol"))))
+        by_sector_score[_name]["breadth_members"] = _built["members"]
+
     top_down = _build_top_down(areas_out)
 
     return {

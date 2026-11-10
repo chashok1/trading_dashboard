@@ -663,7 +663,7 @@
 
   // 2026-10-15 -- MTD% / QTD% / YTD% after the +change chip, Major Markets + Sectors only.
   // 2026-10-19, user-directed: Day / 1WK / 3W / 3M columns on Major Markets + Sectors only (the other panels have no room).
-  var _PERIOD_AREAS = { top9: 1, sector_etfs: 1 };
+  var _PERIOD_AREAS = { top9: 1, sector_etfs: 1, sector_breadth: 1 };   // sector_breadth = the Rotate-in stock-list popup (2026-11-09)
   // 2026-10-17 -- "vs SPX" toggle (Sectors panel header): Day / 1WK / 3W / 3M pills show the sector minus the S&P 500 over the same
   // period (deck page 19). SPX's own numbers come from the Major Markets panel (top9) already loaded for the rails.
   var _VSSPX_KEY = 'macroRailVsSpx';
@@ -954,7 +954,12 @@
       // User: "rename Sector Td/Tn to Sec Bredth [sic] in the details,
       // number of stocks" -- label now includes n (the breadth universe
       // size behind the two %s) instead of a bare "Td / Tn" tag.
-      rows.push(['Sec Breadth' + (sectorObj.n != null ? ' (' + sectorObj.n + ')' : ''),
+      // 2026-11-09, user-directed: the label opens a popup of the stocks behind this breadth (data: sectorObj.breadth_members).
+      var breadthLbl = 'Sec Breadth' + (sectorObj.n != null ? ' (' + sectorObj.n + ')' : '');
+      if (sectorObj.breadth_members && sectorObj.breadth_members.length) {
+        breadthLbl = '<a href="#" class="msr-sec-breadth-link" data-sector="' + esc(sectorObj.sector) + '" title="Show the stocks behind this breadth">' + breadthLbl + '</a>';
+      }
+      rows.push([breadthLbl,
         (sectorObj.pct_above_trade != null ? Math.round(sectorObj.pct_above_trade * 100) + '% Td' : '—')
         + ' / ' + (sectorObj.pct_above_trend != null ? Math.round(sectorObj.pct_above_trend * 100) + '% Tn' : '—')]);
     }
@@ -1076,7 +1081,11 @@
     container.innerHTML = '<div class="msr-sec-block"><div class="msr-section-hdr msr-sec-hdr">Leaders &amp; rotation <button type="button" class="msr-sec-info" title="What are Leaders, Laggards and Rotate in?" aria-label="Explain Leaders, Laggards and Rotate in"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7" width="1.6" height="5" rx=".6" fill="currentColor"/><circle cx="8" cy="4.6" r="1" fill="currentColor"/></svg></button></div>' + subrows + '</div>';
     if (!container._infoBound) {
       container._infoBound = true;
-      container.addEventListener('click', function (ev) { if (ev.target.closest('.msr-sec-info')) openSectorsInfo(); });
+      container.addEventListener('click', function (ev) {
+        if (ev.target.closest('.msr-sec-info')) { openSectorsInfo(); return; }
+        var bl = ev.target.closest('.msr-sec-breadth-link');
+        if (bl) { ev.preventDefault(); openSectorBreadth(bl.getAttribute('data-sector')); }
+      });
     }
   }
 
@@ -1113,7 +1122,96 @@
     document.body.appendChild(m);
     m.addEventListener('click', function (ev) { if (ev.target === m || ev.target.closest('.close-btn')) closeSectorsInfo(); });
   }
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeSectorsInfo(); });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') { closeSectorsInfo(); closeSectorBreadth(); } });
+
+  // 2026-11-09, user-directed: popup of the stocks behind a Rotate-in sector's breadth, in the same row format as the rail
+  // (railAreaRow), plus a per-stock mark for above/below its Trade (Td) and Trend (Tn) line.
+  function closeSectorBreadth() { var m = document.getElementById('sectorBreadthModal'); if (m) m.remove(); }
+  function openSectorBreadth(name) {
+    var all = (_sectorsInfoData && _sectorsInfoData.all) || [];
+    var so = null;
+    for (var i = 0; i < all.length; i++) { if (all[i].sector === name) { so = all[i]; break; } }
+    if (!so || !so.breadth_members || !so.breadth_members.length) return;
+    closeSectorBreadth();
+    var pct = function (v) { return v != null ? Math.round(v * 100) + '%' : '—'; };
+    // Grouped by where each stock sits against its two lines; sorted inside each group by the chosen column (default 1WK, best first).
+    var GROUPS = [
+      { title: 'Above both lines (Td and Tn)', test: function (x) { return x.above_trade && x.above_trend; } },
+      { title: 'Above Trade (Td) only',        test: function (x) { return x.above_trade && !x.above_trend; } },
+      { title: 'Above Trend (Tn) only',        test: function (x) { return !x.above_trade && x.above_trend; } },
+      { title: 'Below both lines',             test: function (x) { return !x.above_trade && !x.above_trend; } }
+    ];
+    var COLS = [['pct_change', 'Day'], ['w1_pct', '1WK'], ['w3_pct', '3W'], ['m3_pct', '3M']];
+    var sortState = { field: 'w1_pct', dir: 1 };   // dir 1 = best first, 2 = worst first (the rail's own sort codes)
+    var flat = false;   // false = grouped by the two lines (default); true = one list sorted by the clicked column
+    var m = document.createElement('div');
+    m.id = 'sectorBreadthModal';
+    m.className = 'modal-overlay active';
+    m.innerHTML = '<div class="modal-content" style="max-width:760px;"><div class="modal-header"><div><h2 style="margin:0;">' + esc(name) + ': stocks behind the breadth</h2>' +
+      '<p style="margin:0;">' + so.breadth_members.length + ' stocks &middot; ' + pct(so.pct_above_trade) + ' above Trade (Td) &middot; ' + pct(so.pct_above_trend) +
+      ' above Trend (Tn). &#10003; = above the line, &#10007; = below it. Click Day / 1WK / 3W / 3M to sort all stocks together; click Group to go back to groups.</p></div>' +
+      '<button class="close-btn" type="button" aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><div class="sb-colhdr"></div><div class="sb-rows"></div></div></div>';
+    document.body.appendChild(m);
+    var hdr = m.querySelector('.sb-colhdr'), rowsEl = m.querySelector('.sb-rows');
+    var bySym = {};
+    so.breadth_members.forEach(function (mm) { bySym[mm.symbol] = mm; });
+    var mark = function (on, lbl) {
+      return '<span class="sb-flag ' + (on ? 'sb-yes' : 'sb-no') + '">' + lbl + (on ? '&#10003;' : '&#10007;') + '</span>';
+    };
+    function renderBody() {
+      // The rail's own sorter orders each group's rows: mode 1/2 by field (rows with no value sink to the bottom).
+      _railSort.sector_breadth = sortState.dir;
+      _railSortField.sector_breadth = sortState.field;
+      rowsEl.innerHTML = flat
+        ? railAreaRow({ area_key: 'sector_breadth', label: name, hot_pct: 0.8, cold_pct: 0.2, members: so.breadth_members })
+        : GROUPS.map(function (g) {
+            var ms = so.breadth_members.filter(g.test);
+            if (!ms.length) return '';
+            return '<div class="sb-grp">' + esc(g.title) + ' <span class="sb-grp-n">' + ms.length + '</span></div>' +
+              railAreaRow({ area_key: 'sector_breadth', label: name, hot_pct: 0.8, cold_pct: 0.2, members: ms });
+          }).join('');
+      Array.prototype.forEach.call(rowsEl.querySelectorAll('.msr-row[data-sym]'), function (row) {
+        var mm = bySym[row.getAttribute('data-sym')];
+        if (!mm) return;
+        // Before the data cluster (not after) so the Day / 1WK / 3W / 3M pills stay flush right under their column header.
+        var cl = row.querySelector('.msr-data-cluster');
+        var flags = '<span class="sb-flags">' + mark(!!mm.above_trade, 'Td') + mark(!!mm.above_trend, 'Tn') + '</span>';
+        if (cl) cl.insertAdjacentHTML('beforebegin', flags); else row.insertAdjacentHTML('beforeend', flags);
+      });
+      hdr.innerHTML = '<button type="button" class="sb-grpbtn' + (flat ? '' : ' on') + '" data-act="group" title="' +
+          (flat ? 'Group the stocks by where they sit against the Trade and Trend lines' : 'Showing groups; click a column to sort everything together') + '">' +
+          (flat ? 'Group' : 'Grouped') + '</button>' +
+        COLS.map(function (c) {
+          var on = sortState.field === c[0];
+          return '<button type="button" class="sb-hbtn' + (on ? ' on' : '') + '" data-field="' + c[0] + '" title="Sort all stocks by this column">' +
+            c[1] + (on ? (sortState.dir === 1 ? ' &#9660;' : ' &#9650;') : '') + '</button>';
+        }).join('');
+      // Centre each label over its real column: take the position and width of the first row's last four pills (offsetLeft is
+      // relative to the row, whose left edge is the header's left edge) instead of assuming fixed widths.
+      var firstRow = rowsEl.querySelector('.msr-row[data-sym]');
+      var pills = firstRow ? Array.prototype.slice.call(firstRow.querySelectorAll('.msr-chg'), -4) : [];
+      if (pills.length === 4) {
+        Array.prototype.forEach.call(hdr.querySelectorAll('.sb-hbtn'), function (b, i) {
+          b.style.left = pills[i].offsetLeft + 'px';
+          b.style.width = pills[i].offsetWidth + 'px';
+        });
+      }
+    }
+    renderBody();
+    m.addEventListener('click', function (ev) {
+      if (ev.target === m || ev.target.closest('.close-btn')) { closeSectorBreadth(); return; }
+      if (ev.target.closest('.sb-grpbtn')) { flat = !flat; renderBody(); return; }
+      var hb = ev.target.closest('.sb-hbtn');
+      if (hb) {
+        var f = hb.getAttribute('data-field');
+        // A column click sorts EVERYTHING together (flat list); the Group button brings the groups back.
+        if (flat && sortState.field === f) sortState.dir = sortState.dir === 1 ? 2 : 1; else { sortState.field = f; sortState.dir = 1; }
+        flat = true;
+        renderBody();
+      }
+    });
+  }
 
   /* ── render into side rail ──────────────────────────────────────────── */
   // Each area_key now has its own side-panel section/container (was one
