@@ -332,7 +332,7 @@
   // Colour helpers for the MKT SIT window's "Today's readings" only (global %chg palette --pct-up / --pct-down).
   var _MS_GREEN = 'var(--pct-up,#0f9d58)', _MS_RED = 'var(--pct-down,#e5484d)', _MS_AMBER = '#d97706';
   function _msPill(text, color, fs) {
-    return '<span style="display:inline-block; padding:0 6px; border-radius:9px; font-weight:700; font-size:' + (fs || 11) + 'px; ' +
+    return '<span style="display:inline-flex; align-items:center; padding:1px 6px; border-radius:3px; line-height:1.3; font-weight:700; font-size:' + (fs || 11) + 'px; ' +
       'color:' + color + '; border:1px solid ' + color + '; background:rgba(127,127,127,0.08);">' + text + '</span>';
   }
 
@@ -631,8 +631,11 @@
       '<a href="#" id="msrManualLink" title="The email has no Gamma Throttle / 10-day vol / SPX flip line -- type them in" ' +
       'style="text-decoration:none; text-transform:none; letter-spacing:0; font-weight:400;">&#9998; enter</a>' +
       '</div>' +
-      '<div style="' + rowCss + 'color:#888; margin:7px 0 6px; white-space:nowrap;">' +
-      '<span>' + msrTileTs.replace(/^ <span[^>]*>· /, '<span>') + '</span>' + flipHtml + '</div>';
+      '<div style="' + rowCss + 'color:#888; margin:7px 0 6px; flex-wrap:nowrap; gap:4px;">' +
+      '<span style="white-space:nowrap; font-size:9px; color:#4b5563;">' + msrTileTs.replace(/^ <span[^>]*>· /, '<span>') + '</span>' +
+      // 2026-11-11, user: "vol funds selling" sits next to the SPX-vs-Flip pill; filled by web/spx_rv.js (window.spxRvSellPillHtml).
+      '<span style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; margin-left:auto;"><span id="msrVolFundsSlot" style="display:inline-flex;">' +
+      (window.spxRvSellPillHtml ? window.spxRvSellPillHtml() : '') + '</span>' + flipHtml + '</span></div>';
     var mDate = (msr && msr.date) || currentDate() || '';
     var mForm = '<form id="msrManualForm" data-date="' + esc(mDate) + '" style="display:none; margin:0 0 6px; font-size:11px; ' +
       'text-transform:none; font-weight:400; color:var(--text-1,#111827);">' +
@@ -1272,4 +1275,9 @@
   } else {
     init();
   }
+  // The SPX realized-vol chart loads on its own timer; when it lands, fill the "vol funds selling" pill beside the flip pill.
+  window.addEventListener('spxrv:loaded', function () {
+    var slot = document.getElementById('msrVolFundsSlot');
+    if (slot && window.spxRvSellPillHtml) slot.innerHTML = window.spxRvSellPillHtml();
+  });
 })();

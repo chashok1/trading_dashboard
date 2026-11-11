@@ -122,11 +122,16 @@
     var head = '<div class="spxrv-head"><span class="spxrv-ttl">SPX Realized Vol</span>' +
       '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm1', '<i style="background:#2b2bf0"></i>1M ' + f(last[1])) + '</span>' +
       '<span class="spxrv-k">' + SeriesToggle.item(ST, 'm3', '<i style="background:#ff5a14"></i>3M ' + f(last[2])) + '</span>' +
-      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'bars', '<i style="background:#9a9a9a"></i>SPX daily %') + '</span>' +
-      (fs <= 11 && signal(D) && signal(D).sell ? '<span class="spxrv-warn" title="1M realized vol is above 3M and rising: volatility-control, CTA and risk-parity funds are selling stocks. Risk Dial gauge is ON.">&#9888; vol funds selling</span>' : '') + '</div>';
+      '<span class="spxrv-k">' + SeriesToggle.item(ST, 'bars', '<i style="background:#9a9a9a"></i>SPX daily %') + '</span>' + '</div>';
     return head + '<svg viewBox="0 0 ' + W + ' ' + H + '" class="spxrv-svg' + (fs > 11 ? '' : ' spxrv-click') + '" role="img" aria-label="SPX 1-month vs 3-month realized volatility">' + s + '</svg>';
   }
 
+  // 2026-11-11, user: the "vol funds selling" pill lives beside the SPX-vs-Flip pill in the MKT SIT header (web/hedgeye_panel.js), not in this
+  // chart's header. Same rule as before (1M above 3M and rising); empty when funds are not selling or the data is not loaded.
+  window.spxRvSellPillHtml = function () {
+    var sg = signal(lastRows || []);
+    return sg && sg.sell ? '<span class="spxrv-warn" title="1M realized vol is above 3M and rising: volatility-control, CTA and risk-parity funds are selling stocks. Risk Dial gauge is ON.">&#9888; vol funds selling</span>' : '';
+  };
   function renderPanel() {
     var body = document.getElementById('spxRvBody');
     if (!body) return;
@@ -143,6 +148,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       lastRows = (await res.json()).rows || [];
       renderPanel();
+      window.dispatchEvent(new Event('spxrv:loaded'));
     } catch (e) {
       body.innerHTML = '<div class="msr-loading">SPX volatility unavailable.</div>';
     }

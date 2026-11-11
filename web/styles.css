@@ -4374,7 +4374,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .spxrv-sig { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; border-left: 4px solid; }
 .spxrv-sig-sell { background: #fdecec; border-color: #e5484d; color: #7a1d20; }
 .spxrv-sig-ok { background: #e6f6ee; border-color: #0f9d58; color: #17432c; }
-.spxrv-warn { margin-left: auto; padding: 0 6px; border-radius: 999px; background: #fdecec; border: 1px solid #e5484d; color: #b42318; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.spxrv-warn { margin-left: auto; display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 3px; line-height: 1.3; background: #fdecec; border: 1px solid #e5484d; color: #b42318; font-size: 9.5px; font-weight: 700; white-space: nowrap; }
 .oc-clear { border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2, #5b6172); border-radius: 999px; padding: 0 8px; font-size: 9.5px; font-weight: 600; line-height: 14px; cursor: pointer; white-space: nowrap; margin-left: 6px; }
 .oc-clear:hover { background: #fdecec; border-color: #e5484d; color: #b42318; }
 .oc-clear[hidden] { display: none; }
@@ -4729,3 +4729,4 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    (bullish/bearish) stays only on the 3px left edge (--rc). Translucent so it works on light and dark cards. */
 .ts-trow > .oc-chip2.mv-up, .ts-chips .oc-chip2.mv-up, .ts-chip.mv-up { background: rgba(15,157,88,.17); }
 .ts-trow > .oc-chip2.mv-dn, .ts-chips .oc-chip2.mv-dn, .ts-chip.mv-dn { background: rgba(229,72,77,.17); }
+#msrVolFundsSlot .spxrv-warn { margin-left: 0; }   /* beside the flip pill in the MKT SIT header (2026-11-11) */
