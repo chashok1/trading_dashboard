@@ -77,7 +77,7 @@ UPDATE ref_risk_gauge SET how_helps = 'A drop can run further than usual.' WHERE
 UPDATE ref_risk_gauge SET help = 'Options dealers are only a weak calming force.' || substr(help, position(E'\n' in help)) WHERE gauge_key = 'gamma_neutral' AND position(E'\n' in help) > 0;
 UPDATE ref_risk_gauge SET how_helps = 'Extreme levels can reverse. Avoid adding where a market is at its record.' WHERE gauge_key = 'markets_at_records';
 
-UPDATE ref_risk_gauge SET label = 'Options cheap vs real moves' WHERE gauge_key = 'vrp_gone';
+UPDATE ref_risk_gauge SET label = 'Options pricing less than real swings' WHERE gauge_key = 'vrp_gone';
 
 -- Record-level warning distances (percent of the record) and whether the record LOW also counts.
 UPDATE ref_record_level SET near_pct = 2, use_low = FALSE;

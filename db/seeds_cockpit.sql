@@ -111,7 +111,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('jpy_carry_unwind',       'Yen carry-trade unwind risk', 3, TRUE, 'fx',          NULL),
     ('oil_shock',              'Oil shock',                   2, TRUE,  'commodity',   NULL),
     ('vrp_gone',               'Volatility discount gone',   2, TRUE,  'vol',         NULL),
-    ('short_vol_disc',         'Short-dated vol discount gone', 1, TRUE, 'vol',       NULL),
+    ('short_vol_disc',         'VIX9D below real swings', 1, TRUE, 'vol',       NULL),
     ('short_vol_low',          'Short-dated vol at low end of range', 1, TRUE, 'vol', NULL),
     ('gamma_negative',         'Dealer gamma negative',      2, TRUE,  'positioning', NULL),
     ('gamma_neutral',          'Dealer gamma in neutral zone', 1, TRUE, 'positioning', NULL),
