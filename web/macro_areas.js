@@ -1299,6 +1299,7 @@
     commodities_energy:  'macroRailEnergy',
     commodities_metals:  'macroRailMetals',
     commodities_ag:      'macroRailAg',
+    commodities_industrial: 'macroRailIndustrial',   // 2026-11-11: split from Industrial & Ag; sits under Other RR
     usd_currency:        'macroRailUsd',
     country_etfs:        'macroRailCountry',
     cannabis:            'macroRailCannabis',

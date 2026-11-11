@@ -111,7 +111,7 @@ _SECTOR_ETF = {
 # separate them into multple panels by some grouping?" -> "yes".
 _AREA_ORDER = [
     "volatility", "top9", "rates_duration", "credit",
-    "commodities_energy", "commodities_metals", "commodities_ag",
+    "commodities_energy", "commodities_metals", "commodities_ag", "commodities_industrial",
     "usd_currency", "country_etfs", "cannabis", "crypto", "sector_etfs", "remaining",
 ]
 
@@ -132,7 +132,8 @@ _AREA_DISPLAY_NAME = {
     "credit":              "Credit",
     "commodities_energy":  "Energy",
     "commodities_metals":  "Precious Metals",
-    "commodities_ag":      "Industrial & Ag",
+    "commodities_ag":      "Ag",   # 2026-11-11: "Industrial & Ag" split in two (db/seeds_commodity_industrial.sql)
+    "commodities_industrial": "Industrial",
     # 2026-09-23 -- "USD & Currency" -> "Currency": Dollar ($DXY) moved out
     # (first into Major Markets, then into Rates & Duration -- see above),
     # so the old name no longer fits. See db/seeds_macro_area.sql.

@@ -338,7 +338,7 @@
           <!-- 2026-09-24 -- 5-column reorg per user-supplied layout:
                  col1: Major Markets / Sectors (2026-10-15: now 6 columns) -- col2: USD, Rates & Duration / Credit / Crypto
                  col2: Volatility / Cannabis / Currency
-                 col3: Energy / Precious Metals / Industrial & Ag (unchanged)
+                 col3: Energy / Precious Metals / Ag (Industrial now sits under Other RR in col2)
                  col4: Sectors / Country ETFs
                  col5: Tech & ETFs (unchanged)
                Same container ids/markup throughout -- web/macro_areas.js::
@@ -378,6 +378,13 @@
             <div class="msr-section-hdr">Other RR</div>
             <div id="macroRailOtherRr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
+
+          <!-- 2026-11-11, user-directed: "Industrial & Ag" split in two. Industrial (CRB Index, Copper, CPER, URA, WOOD) sits under Other RR;
+               Ag stays in the Energy / Precious Metals column. Members: db/seeds_commodity_industrial.sql. -->
+          <section class="cockpit-band rail-band" id="macroIndustrialBand">
+            <div class="msr-section-hdr">Industrial<button class="msr-sort-btn" data-area="commodities_industrial" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailIndustrial" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
           </div>
 
           <!-- 2026-09-23 -- Commodities split into 3 panels by commodity
@@ -396,7 +403,7 @@
           </section>
 
           <section class="cockpit-band rail-band" id="macroAgBand">
-            <div class="msr-section-hdr">Industrial &amp; Ag<button class="msr-sort-btn" data-area="commodities_ag" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div class="msr-section-hdr">Ag<button class="msr-sort-btn" data-area="commodities_ag" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailAg" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
@@ -1139,7 +1146,7 @@
   <script src="/static/collapse_all.js?v=20261020b" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261029f" defer></script>
   <script src="/static/outlook_changes.js?v=20261111b" defer></script>
-  <script src="/static/area_verdicts.js?v=20261107a" defer></script>
+  <script src="/static/area_verdicts.js?v=20261111a" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
@@ -1163,7 +1170,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261111b" defer></script>
+  <script src="/static/macro_areas.js?v=20261111c" defer></script>
   <script src="/static/rr_history.js?v=20261022b" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;

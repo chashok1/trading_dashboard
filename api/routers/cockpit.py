@@ -2773,7 +2773,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
 # Risk Range outlook (drv_rr.outlook) differs from ~7 days ago. Country ETFs excluded.
 # Display only. Label case is ignored ("Bullish" == "BULLISH").
 # ---------------------------------------------------------------------------
-_OC_PANEL = {"commodities_ag": "Industrial & Ag", "commodities_metals": "Precious Metals",
+_OC_PANEL = {"commodities_ag": "Ag", "commodities_industrial": "Industrial", "commodities_metals": "Precious Metals",
              "commodities_energy": "Energy", "sector_etfs": "Sectors", "top9": "Major Markets",
              "usd_currency": "Currency", "rates_duration": "Rates & Duration", "credit": "Credit",
              "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis & Crypto", "remaining": "Tech & ETFs"}

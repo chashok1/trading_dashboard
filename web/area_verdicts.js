@@ -26,7 +26,7 @@
     quiet: 'No rule fires. Nothing to do.'
   };
   var RAIL_CONTAINER = {
-    commodities_metals: 'macroRailMetals', commodities_ag: 'macroRailAg', commodities_energy: 'macroRailEnergy',
+    commodities_metals: 'macroRailMetals', commodities_ag: 'macroRailAg', commodities_industrial: 'macroRailIndustrial', commodities_energy: 'macroRailEnergy',
     crypto: 'macroRailCrypto', top9: 'macroRailTop9', rates_duration: 'macroRailRates',
     credit: 'macroRailCredit', country_etfs: 'macroRailCountry'
   };

@@ -29,7 +29,7 @@ INSERT INTO ref_driver_area
     ('precious_metals','Precious metals','Prec metals',NULL,NULL,'metals',5,FALSE,NULL,NULL,NULL,NULL,NULL,'commodities_metals',NULL),
     ('gold','Gold','Gold','/GC','precious_metals','metals',10,TRUE,'gold',NULL,'le',-0.3,NULL,'commodities_metals','/GC'),
     ('silver','Silver','Silver','/SI','precious_metals','metals',20,TRUE,'silver','gold','le',-0.3,NULL,'commodities_metals','/SI'),
-    ('copper','Copper / commodities','Copper','/HG',NULL,'metals',30,TRUE,'crb',NULL,'le',-0.3,NULL,'commodities_ag','/HG'),
+    ('copper','Copper / commodities','Copper','/HG',NULL,'metals',30,TRUE,'crb',NULL,'le',-0.3,NULL,'commodities_industrial','/HG'),
     ('oil','Oil & energy','Oil','/CL',NULL,'energy',40,TRUE,NULL,NULL,NULL,NULL,'commodities_energy','commodities_energy',NULL)
 ON CONFLICT (area_key) DO NOTHING;
 INSERT INTO ref_driver_area
