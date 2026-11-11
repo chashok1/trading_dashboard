@@ -2360,6 +2360,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    browser attached to measure the real rendered .msr-row height. */
 .dash-macro-rail { max-height: 150px; overflow-y: auto; }
 #macroRailTop9.dash-macro-rail { max-height: none; overflow-y: visible; }   /* 2026-10-16: Major Markets grew to 9 rows; show them all, no scrollbar */
+#macroRailAg.dash-macro-rail { max-height: none; overflow-y: visible; }   /* 2026-11-11: Ag has 9 rows; show them all, no scrollbar */
 /* 2026-09-01 -- USD & Currency (now "Currency") shrunk 2 rows off the
    150px default -- user: "reduce the height by two rows (about 25%)".
    2026-09-23 -- briefly joined the "grow to fit, no scrollbar" group below
