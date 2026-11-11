@@ -65,7 +65,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         "stance": {"bullish": [], "bearish": []},
     }
 
-    def _movers(s, limit: int = 3) -> dict:
+    def _movers(s, limit: int = 7) -> dict:
         """Top/bottom N portfolio symbols by today's % change in price —
         drv_quote.pct_change, the exact same live-quote source the
         Actionable grid's own %CHG column reads (api/routers/dash.py, `q.
@@ -85,8 +85,11 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         )
         if not ranked:
             return {"gainers": [], "losers": []}
-        losers = ranked[:limit]
+        # 2026-11-11, user-directed: 7 per list (was 3), shown as two tiles (Gainers / Losers).
+        # A symbol never appears in both when fewer than 2 x limit are held.
         gainers = list(reversed(ranked[-limit:]))
+        gset = {g["symbol"] for g in gainers}
+        losers = [x for x in ranked[:limit] if x["symbol"] not in gset]
         return {"gainers": gainers, "losers": losers}
 
     def _recv(s, table: str, date_col: str, date_val) -> Optional[str]:

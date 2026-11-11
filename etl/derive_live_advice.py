@@ -667,12 +667,11 @@ def evaluate_row(p: dict, px: Optional[dict], st: dict, ctx: dict) -> dict:
     if line["side"] == "buy" and code in ("SS", "STM"):
         line["caution"] = "Last night's call was SELL SOME"
     # chase tag
-    if line["side"] == "buy" and price is not None and lo is not None and hi is not None:
-        rng = hi - lo
-        top = rng > 0 and (price - lo) / rng >= st["chase_day_range_pct"] / 100.0
+    # 2026-11-11, user-directed: only the risk-range test; the "top of today's range" test was removed.
+    if line["side"] == "buy" and price is not None:
         lrr, trr = _f(p["lrr"]), _f(p["trr"])
         hi_rr = trr and lrr is not None and trr > lrr and (price - lrr) / (trr - lrr) >= st["chase_risk_range_pct"] / 100.0
-        line["chase"] = bool(top or hi_rr)
+        line["chase"] = bool(hi_rr)
     # PVV on WAIT
     if line["signal"] == "WAIT":
         line["pvv_line"] = _pvv_line(ctx.get("pvv"))

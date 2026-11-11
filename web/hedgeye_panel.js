@@ -162,7 +162,8 @@
   // labels (2026-08-11, user: "remove texts 'Top' and 'Bottom' put a thin
   // line between top 3 stock and bottom 3 stocks"); row font-size trimmed
   // so all 6 rows fit without the card's scrollbar kicking in.
-  function moversHtml(m) {
+  // 2026-11-11, user: split into two tiles, 7 each -- `which` is 'gainers' or 'losers'.
+  function moversHtml(m, which) {
     var gainers = (m && m.gainers) || [];
     var losers = (m && m.losers) || [];
     if (!gainers.length && !losers.length) return '';
@@ -177,9 +178,8 @@
         '</div>';
     }
     var none = '<span style="color:#bbb; font-size:9px;">none</span>';
-    var divider = '<div style="border-top:1px solid #edeafb; margin:3px 0;"></div>';
-    return (gainers.length ? gainers.map(row).join('') : none) + divider +
-      (losers.length ? losers.map(row).join('') : none);
+    var list = which === 'losers' ? losers : gainers;
+    return list.length ? list.map(row).join('') : none;
   }
 
   // "Watching" tile (2026-09-02) -- user: "move watchlist from filter bar
@@ -236,7 +236,9 @@
         watchDirIcon(w) +
         '</span></div>';
     }
-    return list.map(row).join('');
+    // 2026-11-11, user: tile doubled in width, watchlist in two columns; then three columns (width x1.5 again).
+    return '<div style="column-count:3; column-gap:30px;">' +
+      list.map(function (w) { return '<div style="break-inside:avoid;">' + row(w) + '</div>'; }).join('') + '</div>';
   }
 
   function earlyLookHtml(el) {
@@ -895,10 +897,12 @@
       var extra = opts.extra || '';
       return '<div style="' + CARD_BASE + 'max-height:' + maxH + 'px;' + extra + '">' +
         '<div style="' + CARD_HDR + '">' + title + (dateHtml || '') + '</div>' +
-        '<div style="' + CARD_BODY + '">' +
+        '<div style="' + CARD_BODY + (opts.bodyExtra || '') + '">' +
         (body || '<span style="color:#bbb; font-size:10px;">none</span>') +
         '</div></div>';
     };
+    // 2026-11-11, user: no scrollbars in Gainers / Losers -- 7 rows always fit, so let the card grow and never scroll.
+    var NO_SCROLL = { maxH: 400, bodyExtra: 'overflow:visible; padding:0 6px;' };
 
     // Variant of _card (2026-07-04, Early Look / Top 3 Things): no separate
     // header bar -- title, date, and body all share one flowing block
@@ -1087,7 +1091,7 @@
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
           'minmax(111px, calc(13.9ch + 20px)) minmax(182px, calc(24ch + 46px)) minmax(182px, calc(24ch + 46px)) ' +
           'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
-          'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)) minmax(93px, calc(11.9ch + 25px)); ' +
+          'minmax(29px, 1fr) minmax(112px, 157px) minmax(81px, calc(10.5ch + 22px)) minmax(81px, calc(10.5ch + 22px)) minmax(279px, calc(35.7ch + 75px)); ' +
           'gap:3px; align-items:stretch;';
         var _tiles = function (gridCss, cls, top5DateOnly) { return '<div' + (cls ? ' class="' + cls + '"' : '') + ' style="' + gridCss + '">' +
           _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(top5DateOnly ? null : data.top5_received_at, data.top5_date)) +
@@ -1098,7 +1102,8 @@
           _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
           _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
           _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
-          _card('Movers',                                moversHtml(data.movers),          td(null, data.movers_date)) +
+          _card('Gainers',                               moversHtml(data.movers, 'gainers'), td(null, data.movers_date), NO_SCROLL) +
+          _card('Losers',                                moversHtml(data.movers, 'losers'),  td(null, data.movers_date), NO_SCROLL) +
           _card('Watching',                              watchingHtml(data.watching),      '') +
           '</div>'; };
         var row2 = _tiles(GRID_ROW2);

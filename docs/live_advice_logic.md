@@ -55,7 +55,7 @@ Signals: `SELL_ALL`, `TRIM_TO_MAX`, `TRIM`, `SELL_SOME`, `DIP_BUY_STRONG`, `DIP_
 checks save only non-`NONE` rows (plus caution-only rows). The newest check is the truth.
 
 - **TRIM_TO_MAX**: account above its max AND (above 1.25x max on any day, OR high >= over-max line).
-- **Chase tag** on buys: top 20% of the day range, or >= 90% of the risk range.
+- **Chase tag** on buys: >= 90% of the risk range (the top-of-day-range test was removed 2026-11-11).
 - **"Don't sell the low" (G1)**: held, price <= prior - 1.5 SD, and a sell path (stop, SA/SS/STM, source
   REMOVE/REDUCE, or the 1.25x trim). No caution when a CALL/RTA/TOP5 sell is behind it, a trend break today, or an
   earnings gap. Bounce price = price at first caution + 0.5 SD (frozen for the day).

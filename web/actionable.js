@@ -4200,7 +4200,7 @@ function _liveCellHtml(r) {
   const light = m.light || s.tier === 'INFO' ? 'opacity:.6;' : '';
   let h = `<span class="act-badge ${m.cls}" data-livepop="${sym}" `
         + `style="font-size:10px;padding:1px 5px;cursor:help;${stale}${light}">${escapeHtml(m.label)}</span>`;
-  if (s.chase) h += ' <span class="live-tag" title="Price is in the top 20% of today\'s range (or near the top of the risk range)">chase</span>';
+  if (s.chase) h += ' <span class="live-tag" title="Price is near the top of its risk range">chase</span>';
   if (s.caution) h += ' <span class="live-tag live-tag-warn" title="Caution — hover for detail">!</span>';
   return h;
 }
