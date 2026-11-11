@@ -16,23 +16,32 @@
 (function () {
   var KEY = 'heDashPanels_collapsed';
 
-  // 2026-09-30, user-directed: start each day EXPANDED, then remember the
-  // collapse state for the rest of that day. Stored as "YYYY-MM-DD:1|0"
-  // (1 = collapsed); a value from an earlier day (or the old bare "0"/"1"
-  // format) reads as expanded.
+  // 2026-11-11, user-directed: the panels are OPEN in the morning, collapse themselves at 11:00 AM (the browser's local time), and stay
+  // collapsed for the rest of the day if you collapsed them yourself. Your own choice is stored per day as "YYYY-MM-DD:c:phase"
+  // (c = 1 collapsed / 0 expanded; phase = am before 11:00, pm from 11:00). Rules for today:
+  //   - you collapsed it (any time)                      -> collapsed
+  //   - it is 11:00 or later and you did not expand it
+  //     after 11:00 yourself                              -> collapsed (the automatic collapse)
+  //   - otherwise                                         -> expanded
+  // A value from an earlier day reads as "no choice". The old "YYYY-MM-DD:1|0" format still reads (0 counts as an expand made in the morning).
+  var COLLAPSE_HOUR = 11;
   function _todayStr() {
     var d = new Date();
     return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
   }
+  function _phase() { return new Date().getHours() >= COLLAPSE_HOUR ? 'pm' : 'am'; }
   function _dailyCollapsed(key) {
+    var choice = null;
     try {
-      var v = localStorage.getItem(key) || '';
-      var i = v.indexOf(':');
-      return i > 0 && v.slice(0, i) === _todayStr() && v.slice(i + 1) === '1';
-    } catch (e) { return false; }
+      var v = localStorage.getItem(key) || '', parts = v.split(':');
+      if (parts.length >= 2 && parts[0] === _todayStr()) choice = { c: parts[1] === '1', p: parts[2] === 'pm' ? 'pm' : 'am' };
+    } catch (e) { /* storage blocked: fall back to the time rule */ }
+    if (choice && choice.c) return true;                 // you collapsed it
+    if (_phase() === 'pm') return !(choice && choice.p === 'pm');   // 11:00 or later: collapsed unless you expanded it after 11:00
+    return false;                                        // morning: open
   }
   function _dailyStore(key, collapsed) {
-    try { localStorage.setItem(key, _todayStr() + ':' + (collapsed ? '1' : '0')); } catch (e) {}
+    try { localStorage.setItem(key, _todayStr() + ':' + (collapsed ? '1' : '0') + ':' + _phase()); } catch (e) {}
   }
 
   function _isDashboard() {
@@ -60,7 +69,7 @@
   function _addNewsLinks(btn) {
     fetch('/api/ext-links').then(function (r) { return r.ok ? r.json() : {}; }).then(function (links) {
       var html = '';
-      [['market_news', 'Yahoo'], ['market_news_cnbc', 'CNBC']].forEach(function (p) {
+      [['market_news', 'Yahoo'], ['market_news_cnbc', 'CNBC'], ['market_news_econ', 'Econ']].forEach(function (p) {
         var l = links && links[p[0]];
         if (!l || !l.url) return;
         html += '<a href="' + _esc(l.url) + '" target="_blank" rel="noopener" class="he-ext-link" title="' +
@@ -94,6 +103,14 @@
       });
     }
   }
+
+  // Re-apply the rule every minute so a page left open since the morning collapses at 11:00 on its own.
+  function _tick() {
+    if (!_isDashboard() || !document.getElementById('hedgeyeDashToggle')) return;
+    _applyState(_dailyCollapsed('heDashPanels_collapsed'));
+    if (document.getElementById('hedgeyeActDashToggle')) _applyState(_dailyCollapsed('heActDashPanel_collapsed'), 'hedgeyeActDashPanelBody', 'hedgeyeActDashToggle', 'Hedgeye signals panel');
+  }
+  setInterval(_tick, 60000);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _init);
