@@ -4420,7 +4420,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-10-19 -- Quad market check: "Market reads" card under the three declared Quad cards (four small bars) + factor popover. */
 #quadCardsPanel { flex-wrap: wrap; }
 #quadCardsPanel .qc-ck { margin-left: 5px; font-size: 11px; font-weight: 700; }
-#quadCardsPanel .qc-ck.yes { color: #0f9d58; } #quadCardsPanel .qc-ck.no { color: #e5484d; }
+#quadCardsPanel .qc-ck.yes { color: #0f9d58; } #quadCardsPanel .qc-ck.no { color: #ff1a1a; font-size: 12px; }   /* bright red (2026-11-11) */
 .qm { flex: 0 0 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px 4px; background: var(--card-bg); cursor: pointer; }
 .qm:hover { background: var(--bg-2, #f6f7fb); }
 .qm-head { font-size: 11px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }

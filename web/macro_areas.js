@@ -655,7 +655,7 @@
   // rebuilt from scratch on every renderRail() call, unlike the static
   // per-area header buttons in index.html.
   function _accountGroupSepHtml(shortName, areaKey) {
-    var mode = _railSort[areaKey + ':' + shortName] || 0;
+    var mode = _rs(areaKey + ':' + shortName);
     // 2026-10-20, user-directed: each group (each account / each Signal Strength sector ...) gets its own copy button for just ITS symbols.
     return '<div class="msr-group-sep">' + esc(shortName) +
       '<button type="button" class="msr-copy-btn" data-area="' + esc(areaKey) + '" data-group="' + esc(shortName) +
@@ -728,7 +728,7 @@
   function _periodHeader(area, force, group) {
     if (!force && !_volOn && !_rngOn && !_extOn && !_PERIOD_AREAS[area.area_key]) return '';
     var alt = _volOn || _rngOn || _extOn;
-    var key = area.area_key, mode = _railSort[group ? key + ':' + group : key] || 0, f = _railSortField[key] || 'pct_change';
+    var key = area.area_key, mode = _rs(group ? key + ':' + group : key), f = _railSortField[key] || 'pct_change';
     return (_extOn ? _EXT_COLS : _rngOn ? _RNG_COLS : _volOn ? _VOL_COLS : _PERIOD_COLS).map(function (c) {
       var on = mode && f === c[0];
       return '<button type="button" class="msr-colhdr-btn' + (alt ? ' vol' : '') + (on ? ' on' : '') + '" data-area="' + esc(key) +
@@ -1337,6 +1337,9 @@
   // it survives a date-change/manual refresh until the user picks something
   // else.
   var _railSort = {};
+  // 2026-11-11, user: every rail panel (and each account/sector group) starts sorted by % change, best first. The state is "untouched"
+  // until the user clicks an arrow: _rs() reads it as 1 (% change high to low); the cycle is then 2 (low to high), 0 (most bullish first), 1 ...
+  function _rs(key) { return _railSort[key] === undefined ? 1 : _railSort[key]; }
   var _lastAreasData = null;
   var _SORT_GLYPH = ['⇅', '↓', '↑'];   // ⇅ ↓ ↑
   var _SORT_TITLE = [
@@ -1391,7 +1394,13 @@
     });
     return out;
   }
-  function _sortByMode(list, mode, field) {
+  function _sortByMode(list, mode, field, untouched) {
+    if (untouched) {
+      // Default: pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest by % change, best first.
+      var dp = list.filter(function (m) { return m.pinned; });
+      var rest = _sortByMode(list.filter(function (m) { return !m.pinned; }), 1, field);
+      return _pairUp(dp.length ? dp.concat(rest) : rest);
+    }
     if (!mode) {
       // Pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest sort bullish-first.
       var pins = list.filter(function (m) { return m.pinned; });
@@ -1429,20 +1438,20 @@
       });
       var out = [];
       order.forEach(function (g) {
-        var mode = _railSort[area.area_key + ':' + g] || 0;
-        out = out.concat(_sortByMode(byGroup[g], mode, _railSortField[area.area_key]));
+        var gk = area.area_key + ':' + g;
+        out = out.concat(_sortByMode(byGroup[g], _rs(gk), _railSortField[area.area_key], _railSort[gk] === undefined));
       });
       return out;
     }
-    return _sortByMode(members, _railSort[area.area_key] || 0, _railSortField[area.area_key]);
+    return _sortByMode(members, _rs(area.area_key), _railSortField[area.area_key], _railSort[area.area_key] === undefined);
   }
 
   document.addEventListener('click', function (ev) {
     var hb = ev.target.closest && ev.target.closest('.msr-colhdr-btn');
     if (hb) {
       var a = hb.getAttribute('data-area'), f = hb.getAttribute('data-field'), g0 = hb.getAttribute('data-group'), k0 = g0 ? a + ':' + g0 : a;
-      if (_railSortField[a] !== f || !_railSort[k0]) { _railSortField[a] = f; _railSort[k0] = 1; }
-      else { _railSort[k0] = (_railSort[k0] + 1) % 3; }
+      if ((_railSortField[a] || 'pct_change') !== f || !_rs(k0)) { _railSortField[a] = f; _railSort[k0] = 1; }
+      else { _railSort[k0] = (_rs(k0) + 1) % 3; }
       if (_lastAreasData) renderRail(_lastAreasData);
       return;
     }
@@ -1453,7 +1462,7 @@
     var group = btn.getAttribute('data-group');
     _railSortField[area] = 'pct_change';   // the header arrow always sorts by Day %
     var key = group ? (area + ':' + group) : area;
-    var mode = ((_railSort[key] || 0) + 1) % 3;
+    var mode = (_rs(key) + 1) % 3;
     _railSort[key] = mode;
     btn.textContent = _SORT_GLYPH[mode];
     btn.title = _SORT_TITLE[mode];

@@ -44,15 +44,6 @@
     }).join('') + (foot ? '<div class="ts-src">' + esc(foot) + '</div>' : '');
   }
 
-  // The one word kept from the old market line: is the S&P 500 up or down today. Everything else on that line was a
-  // duplicate of a chip with the price (cross-asset row) and is gone.
-  function stocksWord(d) {
-    var c = d.cross.filter(function (x) { return x.sym === 'SPX'; })[0];
-    if (!c || c.pct == null || c.pct === 0) return '';
-    var k = c.pct > 0 ? 'ts-u' : 'ts-d';
-    return '<span class="ts-chip ' + k + ' ts-w2 ts-tight"><span class="ts-nm">Stocks</span><span class="ts-mv ' + k + '">' + (c.pct > 0 ? '▲ up' : '▼ down') + '</span></span>';
-  }
-
   // US Dollar chip: same parts as the top-bar US Dollar pill (web/macro_week.js::usdPill) -- level, 5-session arrow,
   // risk-range bar with its %, today's move and the Hedgeye outlook badge. Reuses the .mw-usd-* / .msr-rb classes.
   function usdChip(u) {
@@ -69,7 +60,7 @@
       ['Hedgeye outlook', u.outlook || '--'], ['Last', num(u.last, 2)],
       ['5-session change', u.chg5 == null ? '--' : sgn(u.chg5) + Math.abs(u.chg5).toFixed(2)],
       ['Position in risk range', has ? pct + '%' : '--']], 'Click to open the Macro Rail.');
-    return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">US DOLLAR</span><b>' + num(u.last, 2) + '</b>' + arr + bar +
+    return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">USD</span><b>' + num(u.last, 2) + '</b>' + arr + bar +
       (dp != null ? '<span class="mw-usd-dp ' + (dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu') + '">' + fpct(dp) + '</span>' : '') +
       '<span class="mw-usd-o">' + word + '</span><span class="ts-tip">' + tip + '</span></span>';
   }
@@ -82,7 +73,7 @@
       '"></span><span class="msr-rb-tick' + (pos >= 0.85 ? ' hot' : pos <= 0.15 ? ' cold' : '') + '" style="left:' + tick + '"></span></span></span>';
   }
   // One price chip (VIX-pill look). Used by both lines below.
-  var SHORT = { 'HY bonds': 'HYG', 'Nasdaq': 'Nsdq', 'Russell': 'Rus' };   // short chip names; lookups still use the full names
+  var SHORT = { 'DJIA': 'DJI', 'S&P 500': 'S&P', 'HY bonds': 'HYG', 'Nasdaq': 'Nsdq', 'Russell': 'Rus' };   // short chip names; lookups still use the full names
   function priceChip(c) {
       var nm = SHORT[c.name] || c.name;
       var mv = c.bp != null ? fbp(c.bp) : (c.pct != null ? fpct(c.pct) : '');
@@ -90,7 +81,7 @@
       var tip = tipRows(nm, [['Last', levelText(c)], ['Today', mv, v > 0 ? 'ts-ut' : v < 0 ? 'ts-dt' : ''], ['Hedgeye outlook', c.outlook || '--']], c.stale ? 'This yield is from yesterday: today’s price is not in the data yet.' : 'Click to open the Macro Rail.');
       // Same look as the VIX pill beside the US Dollar pill (.oc-chip2). 2026-11-11, user: the chip's FILL follows today's move (green up, red down);
       // the Hedgeye OUTLOOK is only the 3px left edge. The filled pill is today's move too.
-      var o = (c.outlook || '').toLowerCase(), oc = o.indexOf('bull') === 0 ? '' : o.indexOf('bear') === 0 ? ' bear' : ' neu';
+      var o = (c.outlook || '').toLowerCase(), oc = o.indexOf('bull') >= 0 ? '' : o.indexOf('bear') >= 0 ? ' bear' : ' neu';   // 'Mild Bearish' (Dow) counts as bearish
       return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b><span class="oc-lvl">' + esc(levelText(c)) + '</span>' + rrBar(c.rr_pos) +
         '<span class="oc-ft"><span class="oc-pct ' + (v > 0 ? 'bull' : v < 0 ? 'bear' : 'neu') + '">' + esc(mv) + '</span></span><span class="ts-tip">' + tip + '</span></span>';
   }
@@ -116,14 +107,14 @@
 
   // The two top lines (user-directed layout, 2026-11-10). Each line is its own row of chips at their natural width with the same gap
   // between every pair of chips:
-  //   Line 1: US Dollar, Stocks, S&P 500, Nasdaq, Russell, BTC, Gold, VIX, HY bonds, Oil, 2Y, 10Y, 30Y, Held
+  //   Line 1: US Dollar, S&P, Nasdaq, Russell, DJIA, BTC, Gold, VIX, HY bonds, Oil, 2Y, 10Y, 30Y, Held
   //   Line 2 (sectorLine): Sct, every sector best to worst, then Defensives, Cyclicals, Momentum, Small caps, Large caps
   //   (The Areas line is switched off for now.)
   function tableHtml(d) {
     var by = {}; d.cross.forEach(function (c) { by[c.name] = c; });
     var pc = function (n) { return by[n] ? priceChip(by[n]) : ''; };
     var eq = equityChips(d);
-    var row1 = [d.usd ? usdChip(d.usd) : '', stocksWord(d), pc('S&P 500'), pc('Nasdaq'), pc('Russell'), pc('BTC'), pc('Gold'), pc('VIX'),
+    var row1 = [d.usd ? usdChip(d.usd) : '', pc('S&P 500'), pc('Nasdaq'), pc('Russell'), pc('DJIA'), pc('BTC'), pc('Gold'), pc('VIX'),
       pc('HY bonds'), pc('Oil'), pc('2Y'), pc('10Y'), pc('30Y'), eq.holdings || ''];
     return '<div class="ts-trow">' + row1.join('') + '</div>';
   }

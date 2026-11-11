@@ -2985,7 +2985,7 @@ _TS_SECTORS = [("Tech", "XLK"), ("Financials", "XLF"), ("Energy", "XLE"), ("Heal
                ("Discretionary", "XLY"), ("Staples", "XLP"), ("Utilities", "XLU"), ("Industrials", "XLI"),
                ("Materials", "XLB"), ("Real estate", "XLRE"), ("Comm. svcs", "XLC")]
 # (label, tos_symbol, kind) -- kind 'yld' = a yield quoted in tenths of a percent (TNX 49.8 = 4.98%).
-_TS_CROSS = [("S&P 500", "SPX", "pct"), ("Nasdaq", "$COMP", "pct"), ("Russell", "RUT", "pct"),
+_TS_CROSS = [("S&P 500", "SPX", "pct"), ("Nasdaq", "$COMP", "pct"), ("Russell", "RUT", "pct"), ("DJIA", "$DJI", "pct"),
              ("US Dollar", "$DXY", "pct"), ("2Y", "DGS2:FRED", "yld"), ("10Y", "TNX:CGI", "yld"), ("30Y", "TYX:CGI", "yld"), ("Gold", "/GC", "pct"),
              ("Oil", "/CL", "pct"), ("VIX", "VIX", "pct"), ("HY bonds", "HYG", "pct"), ("BTC", "/BTC", "pct")]
 # Themes already shown elsewhere in the strip, or that are not a market area.
