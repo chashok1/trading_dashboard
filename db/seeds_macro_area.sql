@@ -618,3 +618,8 @@ DELETE FROM ref_macro_area WHERE area_key = 'commodities_metals' AND member_symb
 
 -- 2026-10-19, user-directed: Gold first, then Silver, at the top of Precious Metals (pinned rows stay on top in their configured order; each ETF follows its futures row).
 UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'commodities_metals' AND member_symbol IN ('/GC', '/SI');
+
+-- 2026-11-11, user-directed: SPCX moves from "Other RR" (shown there only because it was on no panel) to Tech & ETFs.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
+  ('remaining', 'Tech & ETFs', 'SPCX', 'dual', 150, TRUE)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE;

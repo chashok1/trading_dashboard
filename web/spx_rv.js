@@ -79,8 +79,7 @@
     var lo = Math.floor(Math.min.apply(null, vals) / 5) * 5 - 5, hi = Math.ceil(Math.max.apply(null, vals) / 5) * 5 + 5;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     var pc = D.map(function (r) { return r[3]; }).filter(function (v) { return v != null; });
-    var ma = Math.max.apply(null, pc.map(Math.abs).concat([0.5]));
-    var rlo = -Math.ceil(ma * 1.8), rhi = Math.ceil(ma * 2.6);
+    var rlo = -6, rhi = 10;  // fixed right axis, same as Tier1Alpha's chart
     var ry = function (v) { return T + (H - T - B) * (1 - (v - rlo) / (rhi - rlo)); };
     var s = '';
     if (showL) {
@@ -98,7 +97,7 @@
     var bw = Math.max(1, (W - L - R) / n * 0.7);
     D.forEach(function (r, i) {
       if (!showR || r[3] == null) return;
-      var y0 = ry(0), y1 = ry(r[3]);
+      var y0 = ry(0), y1 = ry(Math.max(rlo, Math.min(rhi, r[3])));
       s += '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) + '" width="' + bw.toFixed(1) +
         '" height="' + Math.max(0.5, Math.abs(y1 - y0)).toFixed(1) + '" fill="#9a9a9a" opacity="0.7"/>';
     });
