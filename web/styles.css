@@ -4718,3 +4718,9 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-tab { display: flex; flex-direction: column; row-gap: var(--ts-gap); }
 .ts-trow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 .ts-trow > .ts-chip, .ts-trow > .oc-chip2 { flex: 0 0 auto; }
+/* 2026-11-11: safeguard -- while the "+N more" button is showing, Book always leaves at least its width free on the right,
+   even if the measured --oc-more-w is 0 or stale (the card used to be visible earlier, so the measurement happened with the card shown). */
+.oc-card:has(.oc-more:not([hidden])) .oc-lead .oc-grp[title="Book"] { margin-right: max(var(--oc-more-w, 0px), 74px); }
+/* 2026-11-11: the "+N more" button must really disappear when nothing overflows. .oc-card .oc-more sets display:inline-flex, which beat the
+   hidden attribute -- once every outlook chip fit on the line (card no longer has the left box), a stray "+0 more" sat on top of Book. */
+.oc-card .oc-more[hidden] { display: none !important; }

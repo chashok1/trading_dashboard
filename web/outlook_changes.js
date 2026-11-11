@@ -293,6 +293,10 @@
       more.hidden = !nChips;
       more.textContent = '+' + nChips + ' more ▾';
       var card2 = document.getElementById('outlookChangesCard'); if (card2) card2.style.setProperty('--oc-more-w', nChips ? more.offsetWidth + 6 + 'px' : '0px');
+      // 2026-11-11: also set Book's right margin directly (an inline style beats every stylesheet rule), so Book always stops short of the
+      // "+N more" button -- the stylesheet margin was not clearing the button on screen.
+      var bookEl = document.querySelector('#outlookChangesCard .oc-grp[title="Book"]');
+      if (bookEl) bookEl.style.marginRight = nChips ? more.offsetWidth + 8 + 'px' : '0px';
       if (!nChips) setOpen(false);
     }
     window.ocFit = fit;   // macro_week.js re-fits once the Book chip is drawn (it reserves room on the third row)
@@ -340,6 +344,15 @@
     if (need > 0) st.style.marginLeft = Math.ceil(need) + 'px';
   }
   window.addEventListener('resize', alignVix);
+  // 2026-11-11: the "+N more" / Book spacing was measured once, before fonts and the other panels had settled, so Book sat on top of the
+  // button until something (opening DevTools, resizing the window) forced a new measurement. Re-measure when the page has finished loading,
+  // when fonts are ready, and twice more shortly after.
+  (function () {
+    var refit = function () { if (window.ocFit) window.ocFit(); };
+    window.addEventListener('load', refit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit);
+    setTimeout(refit, 1200); setTimeout(refit, 3500);
+  })();
   // The US Dollar pill is filled by macro_week.js after this file loads; re-align once it has a width.
   document.addEventListener('DOMContentLoaded', function () {
     var u = document.getElementById('usdPill');
