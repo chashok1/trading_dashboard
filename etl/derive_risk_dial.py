@@ -268,10 +268,18 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     event_cats = [c.strip() for c in (cats_raw or "Fed Meeting,CPI MoM,NFP,PCE,Jackson hole fed speech").split(",") if c.strip()]
     always_raw = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = 'rd_hedge_event_always_cats'")).scalar()
     event_always = [c.strip() for c in (always_raw or "Fed Meeting,CPI MoM,NFP").split(",") if c.strip()]
+    # 2026-11-11, user: same rule as the Macro Week events list (cockpit.py). On the live (latest) data date the window starts from
+    # the calendar day today, so yesterday's release (CPI 11/10 when today is 11/11) is no longer "upcoming". If the data date IS
+    # today, today's events still count (day in progress). A past date picked keeps exact matching from that date.
+    import datetime as _dt
+    from etl.derive import get_anchor_date as _anchor
+    ev_start = as_of_date
+    if as_of_date >= (_anchor(session) or as_of_date) and _dt.date.today() > as_of_date:
+        ev_start = _dt.date.today()
     event_next = session.execute(text(
         "SELECT category, event_date FROM ref_calendar_event WHERE category = ANY(:c) AND event_date >= :d "
         "AND event_date <= :d + CAST(:n AS INTEGER) ORDER BY event_date LIMIT 1"),
-        {"c": event_cats, "d": as_of_date, "n": int(hedge_th["rd_hedge_event_days"])}).first()
+        {"c": event_cats, "d": ev_start, "n": int(hedge_th["rd_hedge_event_days"])}).first()
 
     vol_rows = session.execute(text(
         "SELECT tos_symbol, low, high FROM ref_vol_threshold"

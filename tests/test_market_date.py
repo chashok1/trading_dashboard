@@ -61,3 +61,12 @@ def test_not_shifted_when_inside_date_is_not_the_download_day():
 def test_not_shifted_when_a_later_snapshot_already_exists():
     # resolved date (WED) is older than data already stored (THU): not the latest day
     assert resolve_snapshot_date(THU, at(THU, 0, 20), at(THU, 0, 30), THU) == THU
+
+
+def test_live_session_shift():
+    from datetime import date
+    from etl.market_date import live_session_shift as f
+    assert f(date(2026, 11, 10), date(2026, 11, 10), date(2026, 11, 11)) == 1   # latest date, next day: yesterday's events passed
+    assert f(date(2026, 11, 10), date(2026, 11, 10), date(2026, 11, 10)) == 0   # day in progress: today's events still count
+    assert f(date(2026, 11, 6), date(2026, 11, 6), date(2026, 11, 8)) == 0      # weekend: no new session
+    assert f(date(2026, 11, 5), date(2026, 11, 10), date(2026, 11, 11)) == 0    # a past date picked: exact match

@@ -45,6 +45,24 @@ def add_trading_days(d: date, n: int, holidays: Optional[Iterable[date]] = None)
     return d
 
 
+def live_session_shift(d: date, latest: Optional[date], today: date,
+                       holidays: Optional[Iterable[date]] = None) -> int:
+    """Trading sessions that have started since data date `d`, ONLY when `d` is the latest data date.
+
+    2026-11-11, user: on the live (latest) data date, an event/earnings dated on or before the data date has already
+    happened once the calendar has moved on, while one dated today is still ahead (day in progress). A past date picked
+    keeps exact matching (0). Weekend/holiday today counts no new session."""
+    if latest is None or d < latest or today <= d:
+        return 0
+    hol = set(holidays or ())
+    n, x = 0, d
+    while x < today:
+        x += timedelta(days=1)
+        if _is_session(x, hol):
+            n += 1
+    return n
+
+
 def market_date_for(ts_et: datetime, holidays: Optional[Iterable[date]] = None,
                     open_time: time = MARKET_OPEN) -> date:
     """Market date a file downloaded at `ts_et` (ET wall clock) belongs to."""

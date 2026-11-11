@@ -341,6 +341,15 @@ def put_dashboard_calendar_types(body: dict = Body(...)):
 # Can we merge those two?" -> "Merge into one grid."
 
 
+def _earn_shift(s, d, hol) -> int:
+    """Sessions already started since data date `d` when `d` is the latest -- earnings_days is counted from `d`, so the
+    live view subtracts this (earnings on a day that has passed drop off; today's stay). See etl.market_date."""
+    from datetime import date as _date
+    from etl.market_date import live_session_shift
+    latest = s.execute(text("SELECT MAX(as_of_date) FROM drv_technicals")).scalar()
+    return live_session_shift(d, latest, _date.today(), hol)
+
+
 @router.get("/api/dashboard/symbol-earnings")
 def get_dashboard_symbol_earnings(
     date: Optional[str] = Query(None, description="As-of date (defaults to the current anchor)"),
@@ -399,14 +408,15 @@ def get_dashboard_symbol_earnings(
             join_clause = ""
             scope_clause = "EXISTS (SELECT 1 FROM ref_my_stocks m WHERE m.tos_symbol = t.tos_symbol AND m.active = 'Y')"
         hol = {r[0] for r in s.execute(text("SELECT holiday_date FROM ref_holiday")).all()}
+        shift = _earn_shift(s, d, hol)
         rows = s.execute(text(
             "SELECT t.tos_symbol, t.earnings_days, NULL AS event_date "
             "FROM drv_technicals t "
             f"{join_clause} "
-            "WHERE t.as_of_date = :d AND t.earnings_days IS NOT NULL AND t.earnings_days BETWEEN 0 AND :days_ahead "
+            "WHERE t.as_of_date = :d AND t.earnings_days IS NOT NULL AND t.earnings_days BETWEEN CAST(:sh AS INTEGER) AND CAST(:days_ahead AS INTEGER) + CAST(:sh AS INTEGER) "
             f"AND {scope_clause} "
             "ORDER BY t.earnings_days ASC, t.tos_symbol ASC LIMIT :lim"
-        ), {"d": d, "cap": periodic_cap(s, d), "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
+        ), {"d": d, "cap": periodic_cap(s, d), "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list, "sh": shift}).mappings().all()
         # 2026-11-05, user: the Dashboard earnings box lists the stocks you own first -- "held" = in any CS or F position snapshot
         # in the last 30 days (so a stock you just sold still counts).
         held = {r[0] for r in s.execute(text(
@@ -414,7 +424,7 @@ def get_dashboard_symbol_earnings(
             "UNION SELECT tos_symbol FROM hist_f WHERE snapshot_date BETWEEN :d - 30 AND :d"
         ), {"d": d}).all()}
     return [
-        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
+        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"] - shift,
          "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat(),
          "held": r["tos_symbol"] in held}
         for r in rows
@@ -550,6 +560,7 @@ def get_near_term_earnings(
         if d is None:
             return []
         hol = {r[0] for r in s.execute(text("SELECT holiday_date FROM ref_holiday")).all()}
+        shift = _earn_shift(s, d, hol)
         rows = s.execute(text("""
             WITH universe AS (
               SELECT tos_symbol FROM hist_cs
@@ -567,11 +578,11 @@ def get_near_term_earnings(
             JOIN universe u ON u.tos_symbol = t.tos_symbol
             WHERE t.as_of_date = :d
               AND t.earnings_days IS NOT NULL
-              AND t.earnings_days BETWEEN 0 AND :days_ahead
+              AND t.earnings_days BETWEEN CAST(:sh AS INTEGER) AND CAST(:days_ahead AS INTEGER) + CAST(:sh AS INTEGER)
             ORDER BY t.earnings_days ASC, t.tos_symbol ASC
-        """), {"d": d, "days_ahead": days_ahead}).mappings().all()
+        """), {"d": d, "days_ahead": days_ahead, "sh": shift}).mappings().all()
     return [
-        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
+        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"] - shift,
          "event_date": add_trading_days(d, int(r["earnings_days"]), hol).isoformat()}
         for r in rows
     ]
