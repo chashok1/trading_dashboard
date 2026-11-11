@@ -74,6 +74,13 @@
       '<span class="mw-usd-o">' + word + '</span><span class="ts-tip">' + tip + '</span></span>';
   }
 
+  // Risk-range bar (0% = low range line, 100% = high range line) -- same look as the US Dollar chip's bar. Only the S&P 500 chip carries one.
+  function rrBar(pos) {
+    if (pos == null) return '';
+    var tick = 'calc(3px + (100% - 6px) * ' + Math.min(Math.max(pos, 0), 1).toFixed(4) + ')';
+    return '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tick + '">' + Math.round(pos * 100) + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tick +
+      '"></span><span class="msr-rb-tick' + (pos >= 0.85 ? ' hot' : pos <= 0.15 ? ' cold' : '') + '" style="left:' + tick + '"></span></span></span>';
+  }
   // One price chip (VIX-pill look). Used by both lines below.
   var SHORT = { 'HY bonds': 'HYG', 'Nasdaq': 'Nsdq', 'Russell': 'Rus' };   // short chip names; lookups still use the full names
   function priceChip(c) {
@@ -84,7 +91,7 @@
       // Same look as the VIX pill beside the US Dollar pill (.oc-chip2). 2026-11-11, user: the chip's FILL follows today's move (green up, red down);
       // the Hedgeye OUTLOOK is only the 3px left edge. The filled pill is today's move too.
       var o = (c.outlook || '').toLowerCase(), oc = o.indexOf('bull') === 0 ? '' : o.indexOf('bear') === 0 ? ' bear' : ' neu';
-      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b><span class="oc-lvl">' + esc(levelText(c)) + '</span>' +
+      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b><span class="oc-lvl">' + esc(levelText(c)) + '</span>' + rrBar(c.rr_pos) +
         '<span class="oc-ft"><span class="oc-pct ' + (v > 0 ? 'bull' : v < 0 ? 'bear' : 'neu') + '">' + esc(mv) + '</span></span><span class="ts-tip">' + tip + '</span></span>';
   }
 

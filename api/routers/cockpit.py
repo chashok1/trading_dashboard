@@ -3004,6 +3004,9 @@ def get_today_strip(date: Optional[str] = Query(None)):
         ol = {r[0]: r[1] for r in s.execute(text(
             "SELECT tos_symbol, outlook FROM drv_rr WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"),
             {"d": d, "syms": [c[1] for c in _TS_CROSS]}).all()}
+        # 2026-11-11, user: the S&P 500 chip shows the risk-range bar (position between the low and high range lines), like the US Dollar chip.
+        from api._helpers import rr_pos as _rr_pos_spx
+        spx_rr = s.execute(text("SELECT lrr, trr FROM drv_rr WHERE as_of_date = :d AND tos_symbol = 'SPX'"), {"d": d}).mappings().first()
         cross = []
         for label, sym, kind in _TS_CROSS:
             r = q.get(sym)
@@ -3013,7 +3016,8 @@ def get_today_strip(date: Optional[str] = Query(None)):
                 cross.append({"name": label, "sym": sym, "level": round(float(r["last_price"]) / 10, 3), "bp": f2(None if r["net_chng"] is None else float(r["net_chng"]) * 10), "pct": None, "outlook": ol.get(sym),
                               "stale": bool(r["export_date"] and r["export_date"] < d)})
             else:
-                cross.append({"name": label, "sym": sym, "level": f2(r["last_price"]), "pct": f2(r["pct_change"]), "bp": None, "outlook": ol.get(sym)})
+                cross.append({"name": label, "sym": sym, "level": f2(r["last_price"]), "pct": f2(r["pct_change"]), "bp": None, "outlook": ol.get(sym),
+                              "rr_pos": _rr_pos_spx(float(r["last_price"]), spx_rr["lrr"], spx_rr["trr"]) if (sym == "SPX" and spx_rr) else None})
 
         # Treasury yields for the headline: 2Y (short end) and 10Y/30Y (long end). Quoted in tenths of a percent,
         # so bp = net change x 10. The 2Y comes from the Hedgeye risk-range feed and can be a day old (stale = true).
