@@ -1,5 +1,5 @@
 /* Yield curve panel, 2026-10-17 (user-directed): 2-year and 10-year Treasury yields plus the 10Y-2Y spread (right axis), with a change
- * table (rise = red background, fall = green). Dashboard left column, below Breadth. Click the chart for a large popup with the full table.
+ * table (2026-11-11, user: a positive change = green background, a negative change = red -- plain up/down, not good/bad for stocks). Dashboard left column, below Breadth. Click the chart for a large popup with the full table.
  * Data: GET /api/cockpit/yield-curve -> rows [date, dgs2, dgs10, t10y2y] (FRED; yields trail the spread by a day, so the table uses the
  * latest day that has all three and says which date that is). */
 (function () {
@@ -35,7 +35,7 @@
     var cell = function (cur, past) {
       if (cur == null || past == null) return '<td>--</td>';
       var bp = Math.round((cur - past) * 100);
-      return '<td class="' + (bp > 0 ? 'yc-r' : bp < 0 ? 'yc-g' : '') + '">' + (bp > 0 ? '+' : '') + bp + ' bp</td>';
+      return '<td class="' + (bp > 0 ? 'yc-g' : bp < 0 ? 'yc-r' : '') + '">' + (bp > 0 ? '+' : '') + bp + ' bp</td>';
     };
     var head = '<tr><th>Series</th><th>Latest</th>' + (full ? '<th>1 day ago</th><th>1 week ago</th><th>4 weeks ago</th>' : '') +
       '<th>Day</th><th>Week</th><th>Month</th></tr>';

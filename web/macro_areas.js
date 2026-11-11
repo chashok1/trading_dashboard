@@ -1396,10 +1396,9 @@
   }
   function _sortByMode(list, mode, field, untouched) {
     if (untouched) {
-      // Default: pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest by % change, best first.
-      var dp = list.filter(function (m) { return m.pinned; });
-      var rest = _sortByMode(list.filter(function (m) { return !m.pinned; }), 1, field);
-      return _pairUp(dp.length ? dp.concat(rest) : rest);
+      // Default: a plain sort by % change, best first -- no pinned-on-top and no futures/ETF pairing, so the panel reads in true order
+      // (2026-11-11: pins and pairs left Precious Metals out of order). Pins and pairs still apply in the "most bullish first" state.
+      return _sortByMode(list, 1, field);
     }
     if (!mode) {
       // Pinned members (ref_macro_area.pinned) stay on top in their configured order; the rest sort bullish-first.

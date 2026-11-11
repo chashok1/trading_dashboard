@@ -1,6 +1,6 @@
 /* Credit panel, 2026-10-17 (user-directed); combined with the 10-Year BBB spread 2026-10-18: the high-yield spread (black) and the BBB spread (purple),
  * which share the left axis (both are spreads in %), and the High Yield Total Return Index (blue, right axis, rebased to 100 at the start of the window).
- * A change table, legend checkboxes to show or hide each line, and a plain-English guide in the popup. Spread widening = red background, tightening = green;
+ * A change table, legend checkboxes to show or hide each line, and a plain-English guide in the popup. 2026-11-11, user: ANY positive change = green background, negative = red (spreads too, so widening shows green; was red);
  * for the total return index a rise = green, a fall = red. Dashboard left column, below the Volatility panel. Click the chart for a large popup.
  * Data: GET /api/cockpit/credit -> rows [date, hy_oas, hy_total_return_rebased, bbb_spread] (FRED; each series trails by a day). */
 (function () {
@@ -31,13 +31,13 @@
   function colVals(D, k) { return D.map(function (r) { return r[k]; }).filter(function (v) { return v != null; }); }
 
   function tableHtml(D, full) {
-    // kind 'bp': a spread, change in basis points, widening = red. kind 'pct': an index, change in %, a rise = green.
+    // kind 'bp': a spread, change in basis points. kind 'pct': an index, change in %. Colour (2026-11-11): positive = green, negative = red for both.
     var names = [['High-yield spread (%)', 1, 'bp'], ['BBB spread (%)', 3, 'bp'], ['HY total return index', 2, 'pct']];
     var cell = function (cur, past, kind) {
       if (cur == null || past == null) return '<td>--</td>';
       var v = kind === 'bp' ? Math.round((cur - past) * 100) : Math.round((cur / past - 1) * 1000) / 10;   // pct rounded to 0.1 so -0.04% reads as 0.0, not red
       var up = v > 0, dn = v < 0;
-      var cls = kind === 'bp' ? (up ? 'yc-r' : dn ? 'yc-g' : '') : (up ? 'yc-g' : dn ? 'yc-r' : '');
+      var cls = up ? 'yc-g' : dn ? 'yc-r' : '';   // 2026-11-11, user: positive change = green, negative = red, spreads included (widening = green)
       return '<td class="' + cls + '">' + (up ? '+' : '') + (kind === 'bp' ? v + ' bp' : v.toFixed(1) + '%') + '</td>';
     };
     var head = '<tr><th>Series</th><th>Latest</th>' + (full ? '<th>1 day ago</th><th>1 week ago</th><th>4 weeks ago</th>' : '') +
