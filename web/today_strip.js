@@ -69,7 +69,7 @@
       ['Hedgeye outlook', u.outlook || '--'], ['Last', num(u.last, 2)],
       ['5-session change', u.chg5 == null ? '--' : sgn(u.chg5) + Math.abs(u.chg5).toFixed(2)],
       ['Position in risk range', has ? pct + '%' : '--']], 'Click to open the Macro Rail.');
-    return '<span class="ts-chip mw-usd ts-w6' + oc + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">US DOLLAR</span><b>' + num(u.last, 2) + '</b>' + arr + bar +
+    return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">US DOLLAR</span><b>' + num(u.last, 2) + '</b>' + arr + bar +
       (dp != null ? '<span class="mw-usd-dp ' + (dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu') + '">' + fpct(dp) + '</span>' : '') +
       '<span class="mw-usd-o">' + word + '</span><span class="ts-tip">' + tip + '</span></span>';
   }
@@ -81,10 +81,10 @@
       var mv = c.bp != null ? fbp(c.bp) : (c.pct != null ? fpct(c.pct) : '');
       var v = c.bp != null ? c.bp : c.pct;
       var tip = tipRows(nm, [['Last', levelText(c)], ['Today', mv, v > 0 ? 'ts-ut' : v < 0 ? 'ts-dt' : ''], ['Hedgeye outlook', c.outlook || '--']], c.stale ? 'This yield is from yesterday: today’s price is not in the data yet.' : 'Click to open the Macro Rail.');
-      // Same look as the VIX pill beside the US Dollar pill (.oc-chip2): the chip's edge and fill are the Hedgeye OUTLOOK,
-      // the filled pill is today's move (green up, red down).
+      // Same look as the VIX pill beside the US Dollar pill (.oc-chip2). 2026-11-11, user: the chip's FILL follows today's move (green up, red down);
+      // the Hedgeye OUTLOOK is only the 3px left edge. The filled pill is today's move too.
       var o = (c.outlook || '').toLowerCase(), oc = o.indexOf('bull') === 0 ? '' : o.indexOf('bear') === 0 ? ' bear' : ' neu';
-      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b><span class="oc-lvl">' + esc(levelText(c)) + '</span>' +
+      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b><span class="oc-lvl">' + esc(levelText(c)) + '</span>' +
         '<span class="oc-ft"><span class="oc-pct ' + (v > 0 ? 'bull' : v < 0 ? 'bear' : 'neu') + '">' + esc(mv) + '</span></span><span class="ts-tip">' + tip + '</span></span>';
   }
 

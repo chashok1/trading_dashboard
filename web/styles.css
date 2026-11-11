@@ -4724,3 +4724,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-11-11: the "+N more" button must really disappear when nothing overflows. .oc-card .oc-more sets display:inline-flex, which beat the
    hidden attribute -- once every outlook chip fit on the line (card no longer has the left box), a stray "+0 more" sat on top of Book. */
 .oc-card .oc-more[hidden] { display: none !important; }
+
+/* 2026-11-11, user: Today panel price chips + US Dollar chip -- the FILL follows today's % change (green up / red down); the Hedgeye outlook
+   (bullish/bearish) stays only on the 3px left edge (--rc). Translucent so it works on light and dark cards. */
+.ts-trow > .oc-chip2.mv-up, .ts-chips .oc-chip2.mv-up, .ts-chip.mv-up { background: rgba(15,157,88,.17); }
+.ts-trow > .oc-chip2.mv-dn, .ts-chips .oc-chip2.mv-dn, .ts-chip.mv-dn { background: rgba(229,72,77,.17); }

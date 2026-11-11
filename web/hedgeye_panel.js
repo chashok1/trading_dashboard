@@ -498,13 +498,14 @@
   }
 
   // SPX vs the hand-entered GEX flip line: above = steadier, below = jumpier; amber when within 0.3%; bold when crossed since last close.
+  // 2026-11-11, user: the SPX number + side take the state colour (same as the Gamma Throttle pill); the Flip number is a fixed blue so the two read apart.
   function _flipBadge(msr) {
     var f = msr.flip, lbl = '<span style="text-transform:none;">SPX Flip ' + esc(msr.spx_flip_line.toFixed(0)) + '</span>';
     if (!f) return lbl;
     var above = f.side === 'above';
     var c = f.crossed ? (above ? _MS_GREEN : _MS_RED) : (f.near ? _MS_AMBER : (above ? _MS_GREEN : _MS_RED));
     var txt = (f.crossed ? '&#9888; CROSSED &middot; ' : '') +
-      'SPX ' + esc(f.spx.toFixed(0)) + (above ? ' &gt; ' : ' &lt; ') + 'Flip ' + esc(f.flip.toFixed(0)) +
+      'SPX ' + esc(f.spx.toFixed(0)) + (above ? ' &gt; ' : ' &lt; ') + 'Flip <span style="color:#3b82f6;">' + esc(f.flip.toFixed(0)) + '</span>' +
       ' (' + esc(Math.abs(f.diff).toFixed(0)) + ' pts ' + f.side + ')' + (f.near && !f.crossed ? ' near flip' : '');
     var tip = [
       '&bull; Flip line ' + f.flip.toFixed(0) + ' is the price where dealer hedging switches sides.',
