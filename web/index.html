@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261110j">
+  <link rel="stylesheet" href="/static/styles.css?v=20261111i">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261028b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -233,6 +233,9 @@
                <- GET /api/cockpit/outlook-changes. -->
           <!-- 2026-10-16, user-directed: the US Dollar pill (#usdPill, row 1) and the Macro Week event + Book pills
                (#macroWeekStrip, row 2), both filled by web/macro_week.js, sit at the start of this bar, ahead of the outlook-change chips. -->
+          <!-- 2026-11-10, user-directed: Today panel (how the market is going today: headline, cross-asset, equity breadth, factors, areas),
+               above the US Dollar / events / outlook-change bar. Filled by web/today_strip.js from GET /api/cockpit/today-strip. Display only. -->
+          <section class="cockpit-band ts-card" id="todayStripBand"><div id="todayStripBody"><div class="msr-loading">Loading&hellip;</div></div></section>
           <section class="cockpit-band oc-card" id="outlookChangesCard" hidden>
             <div class="oc-body">
               <div class="oc-lead">
@@ -1123,8 +1126,9 @@
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
-  <script src="/static/macro_week.js?v=20261109b" defer></script>
+  <script src="/static/macro_week.js?v=20261110a" defer></script>
   <script src="/static/spx_rv.js?v=20261020b" defer></script>
+  <script src="/static/today_strip.js?v=20261111l" defer></script>
   <script src="/static/yield_curve.js?v=20261018i" defer></script>
   <script src="/static/move_vix.js?v=20261018e" defer></script>
   <script src="/static/credit_panel.js?v=20261018m" defer></script>
@@ -1134,7 +1138,7 @@
   <script src="/static/mktsit_images.js?v=20261019a" defer></script>
   <script src="/static/collapse_all.js?v=20261020b" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261029f" defer></script>
-  <script src="/static/outlook_changes.js?v=20261109e" defer></script>
+  <script src="/static/outlook_changes.js?v=20261110a" defer></script>
   <script src="/static/area_verdicts.js?v=20261107a" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script

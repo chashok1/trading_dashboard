@@ -345,9 +345,13 @@
     var u = document.getElementById('usdPill');
     if (u && window.ResizeObserver) new ResizeObserver(alignVix).observe(u);
   });
+  var SHOW_MKT_PILLS = false;
   async function loadPills() {
     var box = document.getElementById('mktPills');
     if (!box) return;
+    // 2026-11-10, user-directed: every pill here (SPX / NDQ / RUS / VIX / OIL / GLD / BTC and the 2Y-10Y-30Y stack) now has a chip with the
+    // price in the Today panel (web/today_strip.js), so they are no longer drawn. Set SHOW_MKT_PILLS to true to bring them back.
+    if (!SHOW_MKT_PILLS) { box.innerHTML = ''; var vb0 = document.getElementById('vixPill'); if (vb0) vb0.innerHTML = ''; window.syncOcCard(); return; }
     try {
       var d = (window._dateQS ? window._dateQS() : '') || '';
       var res = await fetch('/api/cockpit/index-pills' + d);

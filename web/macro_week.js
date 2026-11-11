@@ -452,7 +452,7 @@
       grp('Book', [data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''])
     ].join('');
     var usdEl = document.getElementById('usdPill');
-    if (usdEl) usdEl.innerHTML = usdPill(c.dxy);
+    if (usdEl) usdEl.innerHTML = '';   // 2026-11-10: the US Dollar chip now lives in the Today panel (web/today_strip.js); usdPill() is kept in case it comes back
     strip.hidden = !strip.innerHTML;
     if (window.syncOcCard) window.syncOcCard();
     if (window.ocFit) window.ocFit();

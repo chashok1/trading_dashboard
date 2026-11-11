@@ -2974,3 +2974,100 @@ def get_quad_check(date: Optional[str] = Query(None)) -> dict:
                      "g": float(h["growth_score"]) if h["growth_score"] is not None else None,
                      "i": float(h["inflation_score"]) if h["inflation_score"] is not None else None} for h in reversed(hist)],
     }
+
+
+# ---------------------------------------------------------------------------
+# Today panel (top of the middle column): the day's move across markets, sectors,
+# factors and areas. Display only -- a thin read over drv_quote (anchor date) and
+# ref_symbol_theme; nothing here feeds rules or the Final Call.
+# ---------------------------------------------------------------------------
+_TS_SECTORS = [("Tech", "XLK"), ("Financials", "XLF"), ("Energy", "XLE"), ("Healthcare", "XLV"),
+               ("Discretionary", "XLY"), ("Staples", "XLP"), ("Utilities", "XLU"), ("Industrials", "XLI"),
+               ("Materials", "XLB"), ("Real estate", "XLRE"), ("Comm. svcs", "XLC")]
+# (label, tos_symbol, kind) -- kind 'yld' = a yield quoted in tenths of a percent (TNX 49.8 = 4.98%).
+_TS_CROSS = [("S&P 500", "SPX", "pct"), ("Nasdaq", "$COMP", "pct"), ("Russell", "RUT", "pct"),
+             ("US Dollar", "$DXY", "pct"), ("2Y", "DGS2:FRED", "yld"), ("10Y", "TNX:CGI", "yld"), ("30Y", "TYX:CGI", "yld"), ("Gold", "/GC", "pct"),
+             ("Oil", "/CL", "pct"), ("VIX", "VIX", "pct"), ("HY bonds", "HYG", "pct"), ("BTC", "/BTC", "pct")]
+# Themes already shown elsewhere in the strip, or that are not a market area.
+_TS_SKIP_THEMES = {"Breadth", "Volatility", "USD", "Rates up", "Quantum & speculative"}
+
+
+@router.get("/api/cockpit/today-strip")
+def get_today_strip(date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    f2 = lambda v: None if v is None else round(float(v), 2)
+    with session_scope() as s:
+        q = {r["tos_symbol"]: r for r in s.execute(text(
+            "SELECT tos_symbol, last_price, net_chng, pct_change, export_date FROM drv_quote WHERE as_of_date = :d"), {"d": d}).mappings()}
+        stamp = s.execute(text("SELECT MAX(loaded_at) FROM drv_quote WHERE as_of_date = :d"), {"d": d}).scalar()
+
+        ol = {r[0]: r[1] for r in s.execute(text(
+            "SELECT tos_symbol, outlook FROM drv_rr WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"),
+            {"d": d, "syms": [c[1] for c in _TS_CROSS]}).all()}
+        cross = []
+        for label, sym, kind in _TS_CROSS:
+            r = q.get(sym)
+            if not r or r["last_price"] is None:
+                continue
+            if kind == "yld":
+                cross.append({"name": label, "sym": sym, "level": round(float(r["last_price"]) / 10, 3), "bp": f2(None if r["net_chng"] is None else float(r["net_chng"]) * 10), "pct": None, "outlook": ol.get(sym),
+                              "stale": bool(r["export_date"] and r["export_date"] < d)})
+            else:
+                cross.append({"name": label, "sym": sym, "level": f2(r["last_price"]), "pct": f2(r["pct_change"]), "bp": None, "outlook": ol.get(sym)})
+
+        # Treasury yields for the headline: 2Y (short end) and 10Y/30Y (long end). Quoted in tenths of a percent,
+        # so bp = net change x 10. The 2Y comes from the Hedgeye risk-range feed and can be a day old (stale = true).
+        rates = {}
+        for key, sym in (("y2", "DGS2:FRED"), ("y10", "TNX:CGI"), ("y30", "TYX:CGI")):
+            r = s.execute(text(
+                "SELECT last_price, net_chng, export_date FROM drv_quote WHERE as_of_date = :d AND tos_symbol = :s"),
+                {"d": d, "s": sym}).mappings().first()
+            if r and r["last_price"] is not None and r["net_chng"] is not None:
+                rates[key] = {"level": round(float(r["last_price"]) / 10, 3), "bp": round(float(r["net_chng"]) * 10, 1),
+                              "stale": bool(r["export_date"] and r["export_date"] < d)}
+        sectors = [{"name": n, "sym": sym, "pct": f2(q[sym]["pct_change"])}
+                   for n, sym in _TS_SECTORS if sym in q and q[sym]["pct_change"] is not None]
+
+        # US Dollar chip: same facts as the top-bar US Dollar pill (level, 5-session move, risk-range position, Hedgeye outlook).
+        from api._helpers import rr_pos as _rr_pos
+        usd = None
+        if "$DXY" in q and q["$DXY"]["last_price"] is not None:
+            six = s.execute(text(
+                "SELECT last_price FROM (SELECT last_price, ROW_NUMBER() OVER (ORDER BY as_of_date DESC) rn FROM drv_quote "
+                "WHERE tos_symbol = '$DXY' AND as_of_date <= :d AND as_of_date > :d - 20) x WHERE rn = 6"), {"d": d}).scalar()
+            rr = s.execute(text(
+                "SELECT lrr, trr, outlook FROM drv_rr WHERE as_of_date = :d AND tos_symbol = '$DXY'"), {"d": d}).mappings().first()
+            last = float(q["$DXY"]["last_price"])
+            usd = {"last": f2(last), "day_pct": f2(q["$DXY"]["pct_change"]),
+                   "chg5": None if six is None else round(last - float(six), 3),
+                   "rr_pos": _rr_pos(last, rr["lrr"], rr["trr"]) if rr else None,
+                   "outlook": rr["outlook"] if rr else None}
+
+        # Breadth across the symbols this system tracks (stocks and ETFs; index, futures and feed tickers left out).
+        b = s.execute(text(
+            "SELECT COUNT(*) FILTER (WHERE pct_change > 0), COUNT(*) FILTER (WHERE pct_change < 0) FROM drv_quote "
+            "WHERE as_of_date = :d AND pct_change IS NOT NULL AND tos_symbol NOT LIKE '$%' "
+            "AND tos_symbol NOT LIKE '/%' AND tos_symbol NOT LIKE '%:%'"), {"d": d}).first()
+        h = s.execute(text(
+            "SELECT COUNT(*) FILTER (WHERE x.pct_change > 0), COUNT(*) FILTER (WHERE x.pct_change < 0) "
+            "FROM drv_portfolio p JOIN drv_quote x ON x.tos_symbol = p.tos_symbol AND x.as_of_date = p.as_of_date "
+            "WHERE p.as_of_date = :d AND x.pct_change IS NOT NULL "
+            "AND (COALESCE(p.held_qty_fid,0) > 0 OR COALESCE(p.held_qty_cs,0) > 0)"), {"d": d}).first()
+
+        trows = s.execute(text(
+            "SELECT theme, symbol FROM ref_symbol_theme ORDER BY theme, symbol")).all()
+    themes: dict = {}
+    for th, sym in trows:
+        if th in _TS_SKIP_THEMES or sym not in q or q[sym]["pct_change"] is None:
+            continue
+        m = themes.setdefault(th, {})
+        m[sym] = float(q[sym]["pct_change"])
+    theme_out = [{"theme": th, "avg": round(sum(m.values()) / len(m), 2), "n": len(m),
+                  "members": [{"s": k, "pct": round(v, 2)} for k, v in sorted(m.items(), key=lambda kv: -kv[1])]}
+                 for th, m in themes.items()]
+
+    def _bre(row):
+        up, dn = int(row[0] or 0), int(row[1] or 0)
+        return {"up": up, "down": dn, "n": up + dn, "pct": round(100.0 * up / (up + dn)) if (up + dn) else None}
+    return {"as_of": d.isoformat(), "price_time": stamp.isoformat() if stamp else None,
+            "cross": cross, "usd": usd, "rates": rates, "sectors": sectors, "breadth": _bre(b), "holdings": _bre(h), "themes": theme_out}

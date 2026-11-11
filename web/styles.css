@@ -4604,3 +4604,117 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 /* 2026-11-09, user-directed: hover popovers must show ABOVE modals. #quadPop (.source-pop) shared layer 1000 with the modal overlays
    (.modal-overlay, .gauge-modal-backdrop); the modal is added later, so it painted over the hover. Lifted above them. */
 .source-pop, #quadPop { z-index: 3100; }
+
+/* 2026-11-10 -- Today panel (web/today_strip.js), top of the middle column. Every item is the same chip:
+   name, optional level, today's move; tinted green/red by the move (US Dollar pill look). Display only. */
+.ts-card { padding: 6px 8px 8px; position: relative; z-index: 31; overflow: visible; min-height: 30px; }
+/* small collapse button in the top-right corner; takes no line of its own */
+.ts-btn { position: absolute; top: 4px; right: 6px; z-index: 2; font: inherit; font-size: 10px; line-height: 1; color: var(--text-3); background: none; border: 1px solid var(--border); border-radius: 4px; padding: 0; width: 18px; height: 18px; cursor: pointer; }
+.ts-btn:hover { color: var(--text-1); border-color: var(--text-3); }
+/* two side-by-side columns (Market + Cross-asset | Equity + Factors + Areas); stacks to one column when the panel is narrow */
+.ts-card { container-type: inline-size; }
+.ts-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; padding-right: 22px; align-items: start; }
+@container (max-width: 760px) { .ts-body { grid-template-columns: minmax(0, 1fr); } }   /* narrow panel: one column */
+.ts-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ts-head { grid-column: 1 / -1; }   /* the market line (Stocks down, Rates up ...) spans both columns, no heading */
+.ts-body[hidden] { display: none !important; }
+.ts-r { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 8px; align-items: start; }
+.ts-lab { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); min-height: 24px; display: flex; align-items: center; }
+.ts-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ts-chip { --rc: var(--pct-flat); --rcbg: #f0f1f5; position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 24px;
+  padding: 1px 10px 1px 7px; border: 1px solid var(--border); border-left: 3px solid var(--rc); border-radius: 6px; background: var(--rcbg);
+  font-size: 11px; white-space: nowrap; cursor: default; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.ts-chip[data-jump] { cursor: pointer; }
+.ts-chip.ts-u { --rc: var(--pct-up); --rcbg: #e6f6ee; }
+.ts-chip.ts-d { --rc: var(--pct-down); --rcbg: #fdecec; }
+.ts-chip:hover { border-color: var(--rc); }
+.ts-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ts-nm { font-size: 10.5px; font-weight: 700; color: #16181f; }
+.ts-lv { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: #16181f; }
+.ts-mv { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.ts-mv.ts-u { color: var(--pct-up); } .ts-mv.ts-d { color: var(--pct-down); }
+.ts-mini { display: inline-flex; gap: 1px; align-self: center; }
+.ts-mini i { width: 3px; height: 10px; border-radius: 1px; background: var(--pct-up); } .ts-mini i.off { background: var(--pct-down); }
+.ts-tip { display: none; position: absolute; left: 0; top: calc(100% + 5px); z-index: 40; min-width: 210px; max-height: 320px; overflow: auto;
+  background: var(--card-bg); color: var(--text-1); border: 1px solid var(--text-3); border-radius: 6px; padding: 8px 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 11.5px; line-height: 1.6; white-space: normal; font-weight: 400; cursor: default; }
+.ts-chip:hover .ts-tip, .ts-chip:focus-within .ts-tip { display: block; }
+.ts-tip h4 { margin: 0 0 5px; font-size: 11.5px; }
+.ts-tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
+.ts-tip .ts-src { color: var(--text-3); margin-top: 6px; font-size: 10.5px; display: block; }
+.ts-ut { color: var(--pct-up); } .ts-dt { color: var(--pct-down); }
+/* Today panel: the US Dollar chip is tinted by its Hedgeye outlook (as on the top-bar US Dollar pill), not by today's move. */
+.ts-chip.ts-ob { --rc: var(--pct-up); --rcbg: #e6f6ee; }
+.ts-chip.ts-os { --rc: var(--pct-down); --rcbg: #fdecec; }
+.ts-chip.mw-usd { gap: 6px; }
+/* Today panel: cross-asset chips use the VIX pill's own look (.oc-chip2 + .oc-lvl + .oc-pct), sized to the other chips in the panel. */
+.ts-chips .oc-chip2 { position: relative; min-height: 24px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.ts-chips .oc-chip2[data-jump] { cursor: pointer; }
+.ts-chips .oc-chip2 .oc-ft { font-size: 10.5px; }
+.ts-chips .oc-chip2:hover .ts-tip, .ts-chips .oc-chip2:focus-within .ts-tip { display: block; }
+/* Today panel alignment: rows are paired side by side and every chip is an equal-width cell, so the chips line up in columns like a heat map. */
+.ts-body { align-items: stretch; }
+.ts-body > .ts-r { min-width: 0; }
+.ts-chips:not(.ts-head) { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 5px; }
+.ts-chips.ts-wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.ts-chips:not(.ts-head) > .ts-chip, .ts-chips:not(.ts-head) > .oc-chip2 { width: auto; min-width: 0; justify-content: space-between; }
+.ts-chips:not(.ts-head) > .mw-usd { grid-column: span 2; }   /* the full US Dollar chip needs two cells */
+.ts-head { display: flex; flex-wrap: wrap; gap: 5px; }
+/* Today panel layout (2026-11-10): line 1 spans the full width; below it, Equity + Factors on the left and Areas on the right. */
+.ts-rfull { grid-column: 1 / -1; }
+/* 2026-11-10: the US Dollar / VIX / market-pills box (the card's ::before, column 1) is gone -- those pills now live in the Today panel.
+   Drop that box and its grid column so the events box and the changes box start at the left edge of the card. */
+.oc-card .oc-body { grid-template-columns: auto minmax(0, 1fr); }
+.oc-card .oc-body::before { display: none; }
+.oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Next event 2"], .oc-lead .oc-grp[title="Next event 3"] { grid-column: 1; }
+.oc-card .oc-side { grid-column: 1; }
+.oc-lead .oc-grp[title="Book"], .oc-line, .oc-more { grid-column: 2; }
+.oc-card .oc-body::after { grid-column: 2; }
+.oc-lead > .mw-usd-slot:empty, .oc-lead > .oc-mkt:empty { display: none; }
+/* Today panel alignment, two tiers: chips with a price or long text sit in wide, same-size columns; short chips in narrow, same-size columns.
+   Name (and level) stay left and the move sits on the right edge of every chip, so the columns line up. */
+.ts-chips.ts-wide { grid-template-columns: repeat(auto-fill, minmax(206px, 1fr)); }
+.ts-chips .ts-span2 { grid-column: span 2; }
+.ts-chips:not(.ts-head) > .ts-chip, .ts-chips:not(.ts-head) > .oc-chip2 { justify-content: flex-start; }
+.ts-chips .ts-chip .ts-mv:last-of-type, .ts-chips .ts-chip .ts-mv { margin-left: auto; }
+.ts-chips .oc-chip2 .oc-lvl { margin-right: auto; }
+.ts-chips .oc-chip2 .oc-ft { margin-left: auto; }
+.ts-chips .ts-chip.mw-usd .mw-usd-o { margin-left: auto; }
+.ts-chips .ts-chip .ts-mini { margin-left: 4px; }
+/* Today panel widths (2026-11-10): the top line keeps its order; each chip takes as many grid units as its content needs.
+   w2 short chips (Stocks, Factors), w3 medium (Areas, best/worst sector), w4 price chips and breadth, w5 holdings breadth, w6 US Dollar. */
+.ts-chips.ts-units { grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); }
+.ts-chips.ts-units > .ts-w2 { grid-column: span 2; }
+.ts-chips.ts-units > .ts-w3 { grid-column: span 3; }
+.ts-chips.ts-units > .ts-w4 { grid-column: span 4; }
+.ts-chips.ts-units > .ts-w5 { grid-column: span 5; }
+.ts-chips.ts-units > .ts-w6 { grid-column: span 6; }
+/* Today panel: the two top lines are fixed (line 1 = 40 units, line 2 = 41 units). On a wide panel each line is one row of 41 equal
+   unit columns so both lines share the same column edges; on a narrower panel the units keep a minimum width and the line wraps. */
+.ts-chips.ts-units.ts-line { grid-template-columns: repeat(41, minmax(0, 1fr)); }
+@container (max-width: 1500px) { .ts-chips.ts-units.ts-line { grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); } }
+/* Today panel top table (2026-11-10, user-directed): two lines, every chip on line 2 directly under its chip on line 1; each of the 12 columns
+   is as wide as its widest chip and the spare width is shared out evenly. A narrower panel lets the chips wrap in reading order instead. */
+/* Today panel density (2026-11-10, user-directed): chips are 20px high instead of 24px; the 4px saved on each of the two top lines
+   goes into the white space between the lines (row gap 5px -> 13px). */
+.ts-card .ts-chip, .ts-card .oc-chip2 { min-height: 22px; }
+.ts-card .ts-lab { min-height: 22px; }
+/* Today panel spacing (2026-11-10, user-directed): the same 13px above the first line, between every line, and below the last line. */
+.ts-card { --ts-gap: 13px; padding-top: var(--ts-gap); padding-bottom: var(--ts-gap); }
+.ts-body { row-gap: var(--ts-gap); }
+/* Today panel: Sector breadth, Best and Worst sector on their own line under the table; chips keep their natural width, left aligned. */
+.ts-chips.ts-sectors { display: flex; flex-wrap: wrap; gap: 5px; }
+.ts-sectors > .ts-chip { flex: 0 0 auto; }
+/* Today panel: narrower chips so the 13-chip first line fits (2026-11-10, user-directed): tighter padding, gaps and spacing. */
+.ts-card .oc-chip2 { padding: 1px 3px 1px 5px; gap: 3px; }
+.ts-card .oc-chip2 .oc-lvl { margin: 0 3px 0 4px; }
+.ts-card .oc-chip2 .oc-pct { padding: 0 4px; }
+.ts-card .ts-chip { padding: 1px 6px 1px 5px; gap: 4px; }
+.ts-card .ts-chip.mw-usd { gap: 4px; padding: 1px 7px 1px 5px; }
+/* Today panel: 2Y / 10Y / 30Y, VIX and Stocks hug their content (level and move sit close together); the width they no longer
+   stretch over stays as white space between them and the next chip. */
+
+/* Today panel top lines: each line is a row of chips at natural width with one equal gap between every pair (user-directed, 2026-11-10). */
+.ts-tab { display: flex; flex-direction: column; row-gap: var(--ts-gap); }
+.ts-trow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.ts-trow > .ts-chip, .ts-trow > .oc-chip2 { flex: 0 0 auto; }
