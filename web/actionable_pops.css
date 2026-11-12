@@ -592,3 +592,10 @@
 .tw-helpbox { margin-top:3px; padding:4px 8px; border:1px solid var(--border, #e5e5e2); border-radius:6px; background:var(--card-bg, #fff); font-size:10.5px; }
 .tw-helpbox[hidden] { display:none !important; }
 .tw-helpbox ul { margin:0 0 3px; padding-left:16px; }
+
+/* 2026-11-12, user: symbol-hover Notes popup is three times wider (420px -> 1260px). */
+#sourcePop:has(.notes-pop-wide) { max-width: 1300px; }
+.notes-pop-wide { width: 1260px; max-width: calc(100vw - 40px); }
+
+/* 2026-11-12, user: Action popup, TradingView Today 5m chart replaces the Notes block (right column, under the studies). */
+.actpop-wrap > .actpop-tv { grid-column: 2; grid-row: 2; box-sizing: border-box; width: 800px; height: 300px; margin-top: 0; padding: 0; border-top: 0; background: #fff; }

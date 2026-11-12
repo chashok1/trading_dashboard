@@ -380,18 +380,40 @@
     } catch (e) { if (tok === el._tok) note('Studies not available.'); }
   };
 
-  // Notes (right column, under the graphs): fill down to the bottom of the left side when the left is taller than the graphs,
-  // but never less than two graphs tall (the cap used when the left side is the shorter one).
+  // TradingView "Today" 5-minute chart (Action popup, right column under the studies): fixed height. If the studies graphs
+  // are missing (no history / not available), they are hidden and the chart moves up into their place, same height.
   window.fitActpopNotes = function () {
     var wrap = document.querySelector('#sourcePop .actpop-wrap');
     if (!wrap) return;
-    var left = wrap.querySelector('.actpop'), st = wrap.querySelector('.actpop-studies'), nt = wrap.querySelector('.actpop-notes'),
-        sc = nt && nt.querySelector('.actpop-notes-scroll');
-    if (!left || !st || !nt || !sc) return;
-    sc.style.maxHeight = '262px';     // measure the box's own padding/border with the default cap first
-    var gap = parseFloat(getComputedStyle(wrap).rowGap) || 0, chrome = nt.offsetHeight - sc.offsetHeight;
-    var free = left.offsetHeight - st.offsetHeight - (parseFloat(st.style.marginTop) || 0) - gap - chrome;
-    sc.style.maxHeight = Math.max(262, Math.floor(free)) + 'px';
+    var st = wrap.querySelector('.actpop-studies'), tv = wrap.querySelector('.actpop-tv');
+    if (!st || !tv) return;
+    var loading = /Loading/.test(st.textContent || '') && !st.querySelector('svg');
+    st.style.display = (st.querySelector('svg') || loading) ? '' : 'none';
+    tv.style.height = '300px';   // same fixed height as the left main graph (.actpop-gchart, 300px)
+  };
+  window.mountTvIntraday = function (el, sym) {
+    if (!el || !sym || el.dataset.tvMounted === sym) return;
+    el.dataset.tvMounted = sym;
+    el.innerHTML = '';
+    var wrapper = document.createElement('div');
+    wrapper.className = 'tradingview-widget-container';
+    wrapper.style.cssText = 'height:100%;width:100%;';
+    var wd = document.createElement('div');
+    wd.className = 'tradingview-widget-container__widget';
+    wd.style.cssText = 'height:100%;width:100%;';
+    wrapper.appendChild(wd);
+    var sc = document.createElement('script');
+    sc.type = 'text/javascript';
+    sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+    sc.async = true;
+    sc.textContent = JSON.stringify({
+      autosize: true, symbol: toTvSym(sym), interval: '5', range: '1D',
+      timezone: 'America/New_York', theme: 'light', style: '1', locale: 'en',
+      withdateranges: false, hide_side_toolbar: true, allow_symbol_change: false,
+      calendar: false, support_host: 'https://www.tradingview.com'
+    });
+    wrapper.appendChild(sc);
+    el.appendChild(wrapper);
   };
 
   function _loadChart(containerEl, tvSym) {

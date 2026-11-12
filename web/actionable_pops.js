@@ -1098,7 +1098,7 @@ function _buildNotesPopHtml(sym, notes, desc) {
     return '#94a3b8';
   };
 
-  h += '<div style="max-width:420px;">';
+  h += '<div class="notes-pop-wide">';
   for (const n of notes.slice(0, 10)) {
     const dt  = fmtMD(n.note_date) || '';
     const src = (n.source_type || '').replace(/_/g, ' ');
@@ -1155,15 +1155,9 @@ async function _actpopLoadNotes(sym) {
   if (_gc && window.mountRrChart) window.mountRrChart(_gc, _gc.dataset.sym);
   const _st = document.querySelector('#sourcePop .actpop-studies');
   if (_st && window.mountActpopStudies) window.mountActpopStudies(_st, _st.dataset.sym);
-  const box = () => document.querySelector('#sourcePop .actpop-notes[data-sym="' + CSS.escape(sym) + '"]');
-  let notes;
-  if (_notesCache.has(sym)) notes = _notesCache.get(sym);
-  else {
-    try { notes = await fetchJson('/api/notes?ticker=' + encodeURIComponent(sym) + '&limit=15'); } catch (_) { notes = []; }
-    _notesCache.set(sym, notes);
-  }
-  const el = box();
-  if (el) { el.innerHTML = _actpopNotesHtml(notes); if (window.fitActpopNotes) window.fitActpopNotes(); }
+  const _tv = document.querySelector('#sourcePop .actpop-tv');
+  if (_tv && window.mountTvIntraday) window.mountTvIntraday(_tv, _tv.dataset.sym);
+  if (window.fitActpopNotes) window.fitActpopNotes();
 }
 
 function _popInteractive() { const p = $('sourcePop'); return !!p && p.style.display !== 'none' && p.style.pointerEvents === 'auto'; }
@@ -2730,10 +2724,8 @@ function _buildActionPopHtmlV2(row) {
   // everything else.
   // 2026-10-21, user: section removed -- see the hover on the Tradability icon (_actpopTradIconHtml).
 
-  // Analyst notes (same feed as the SYMBOL-cell hover); filled async by _actpopLoadNotes.
-  const _nc = _notesCache.get(row.tos_symbol);
-  // 2026-10-29, user: Notes now take the full width along the bottom (both sides), so the block sits under the two columns.
-  const _notesBlock = `<div class="actpop-notes" data-sym="${escapeHtml(row.tos_symbol)}">${_nc ? _actpopNotesHtml(_nc) : '<span style="color:#94a3b8;">Loading notes&hellip;</span>'}</div>`;
+  // 2026-11-12, user: the Notes block is replaced by a TradingView Today 5m chart (mounted by _actpopLoadNotes).
+  const _notesBlock = `<div class="actpop-tv" data-sym="${escapeHtml(row.tos_symbol)}"></div>`;
 
   h += `</div>`;
   // 2026-10-29, user: popup is twice as wide; the existing content above is untouched (left), studies charts go on the right.
