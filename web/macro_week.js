@@ -448,9 +448,14 @@
       // Market chips (DXY/2Y/10Y/VIX/MOVE/Gold/WTI) dropped 2026-10-16: those symbols are on the Macro Rail.
       grp('Next event', [evs[0]]),
       grp('Next event 2', [evs[1]]),
-      grp('Next event 3', [evs[2]]),
-      grp('Book', [data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : ''])
+      grp('Next event 3', [evs[2]])
     ].join('');
+    // 2026-11-13: Book stays in the Outlook changes card (its own strip), the events have their own panel.
+    var bookStrip = document.getElementById('macroBookStrip');
+    if (bookStrip) {
+      bookStrip.innerHTML = grp('Book', [data.holdings.length ? bookChip(data.counts, data.hot_count, data.hot_pct, open) : '']);
+      bookStrip.hidden = !bookStrip.innerHTML;
+    }
     var usdEl = document.getElementById('usdPill');
     if (usdEl) usdEl.innerHTML = '';   // 2026-11-10: the US Dollar chip now lives in the Today panel (web/today_strip.js); usdPill() is kept in case it comes back
     strip.hidden = !strip.innerHTML;

@@ -922,7 +922,7 @@
       // cut further than bottom/sides since there's no header row above the
       // text to justify the same top gap the other cards have.
       return '<div style="' + CARD_BASE + 'max-height:' + maxH + 'px; padding:2px 8px 5px 8px;' + extra + '">' +
-        '<div style="' + CARD_BODY + '">' +
+        '<div style="' + CARD_BODY + (opts.clamp ? 'display:-webkit-box; -webkit-line-clamp:' + opts.clamp + '; -webkit-box-orient:vertical; overflow:hidden;' : '') + '"' + (opts.tip ? ' title="' + esc(opts.tip) + '"' : '') + '>' +
         '<span style="' + titleStyle + '">' + title + '</span>' +
         (dateHtml || '') +
         '<span style="display:inline-block; width:6px;"></span>' +
@@ -1012,7 +1012,7 @@
         var dashRowTop3 = '<div style="margin-top:3px;">' +
           _inlineHdrCard(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
                 td(data.top3_things && data.top3_things.received_at, data.top3_things && data.top3_things.date),
-                { maxH: 150 }) +
+                { maxH: 150, clamp: 2, tip: data.top3_things && data.top3_things.note_text ? data.top3_things.note_text : '' }) +
           '</div>';
 
         if (dashBodyEl) dashBodyEl.innerHTML =

@@ -313,7 +313,8 @@
     if (!el) return;
     var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
     var mk = document.getElementById('mktPills');
-    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
+    var bk = document.getElementById('macroBookStrip');
+    el.hidden = !((bk && !bk.hidden) || (strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
     if (!el.hidden) alignVix();   // the VIX offset can only be measured once the card is visible
   };
   function hideLine() {

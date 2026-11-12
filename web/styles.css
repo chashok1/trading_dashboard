@@ -4111,6 +4111,18 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .mw-usd-bar .msr-rb-fill { background: #64748b; opacity: 1; }
 .mw-usd-bar .msr-rb-fill.hot { background: #ef4444; }
 .mw-usd-bar .msr-rb-fill.cold { background: #4ade80; }
+/* S&P price sits on top of its bar, small and black (2026-11-12) */
+.mw-usd-barwrap.has-px { flex-direction: column; align-items: flex-start; padding-top: 0; gap: 3px; }
+.mw-usd-row { display: flex; gap: 5px; align-items: baseline; line-height: 1; white-space: nowrap; }
+.mw-usd-barwrap.has-px .mw-usd-rr { position: static; margin-left: 0; }
+.mw-usd-rrp { display: inline-block; width: 3.6ch; text-align: right; flex: none; font-size: 9px; font-weight: 600; color: var(--text-3, #6b7280); font-variant-numeric: tabular-nums; }
+.mw-usd-rrp.hot { color: #ef4444; }
+.mw-usd-rrp.cold { color: #16a34a; }
+.ts-vz { font-size: 8.5px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.ts-vz.chop { color: #b45309; }
+.ts-vz.elevated { color: #dc2626; }
+.mw-usd-px { font-size: 8px; line-height: 1; color: #000; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mw-usd-px { position: absolute; top: -3px; left: 0; font-size: 8px; line-height: 1; color: #000; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* RR% sits above the bar, just right of the tick (2026-10-19, user-directed); the old RR% slot now shows today's %chg. */
 .mw-usd-barwrap { position: relative; display: inline-flex; flex: none; padding-top: 8px; }
 .mw-usd-rr { position: absolute; top: -3px; margin-left: 3px; font-size: 8px; line-height: 1; color: var(--text-3, #98a0b3); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -4617,11 +4629,9 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    name, optional level, today's move; tinted green/red by the move (US Dollar pill look). Display only. */
 .ts-card { padding: 6px 8px 8px; position: relative; z-index: 31; overflow: visible; min-height: 30px; }
 /* small collapse button in the top-right corner; takes no line of its own */
-.ts-btn { position: absolute; top: 4px; right: 6px; z-index: 2; font: inherit; font-size: 10px; line-height: 1; color: var(--text-3); background: none; border: 1px solid var(--border); border-radius: 4px; padding: 0; width: 18px; height: 18px; cursor: pointer; }
-.ts-btn:hover { color: var(--text-1); border-color: var(--text-3); }
 /* two side-by-side columns (Market + Cross-asset | Equity + Factors + Areas); stacks to one column when the panel is narrow */
 .ts-card { container-type: inline-size; }
-.ts-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; padding-right: 22px; align-items: start; }
+.ts-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; align-items: start; }
 @container (max-width: 760px) { .ts-body { grid-template-columns: minmax(0, 1fr); } }   /* narrow panel: one column */
 .ts-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ts-head { grid-column: 1 / -1; }   /* the market line (Stocks down, Rates up ...) spans both columns, no heading */
@@ -4643,6 +4653,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-mv.ts-u { color: var(--pct-up); } .ts-mv.ts-d { color: var(--pct-down); }
 .ts-mini { display: inline-flex; gap: 1px; align-self: center; }
 .ts-mini i { width: 3px; height: 10px; border-radius: 1px; background: var(--pct-up); } .ts-mini i.off { background: var(--pct-down); }
+.ts-mini i.rev { background: var(--pct-down); } .ts-mini i.revoff { background: var(--pct-up); }   /* Bnd/Vol: up = stress = red */
 .ts-tip { display: none; position: absolute; left: 0; top: calc(100% + 5px); z-index: 40; min-width: 210px; max-height: 320px; overflow: auto;
   background: var(--card-bg); color: var(--text-1); border: 1px solid var(--text-3); border-radius: 6px; padding: 8px 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 11.5px; line-height: 1.6; white-space: normal; font-weight: 400; cursor: default; }
@@ -4651,6 +4662,12 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
 .ts-tip .ts-src { color: var(--text-3); margin-top: 6px; font-size: 10.5px; display: block; }
 .ts-ut { color: var(--pct-up); } .ts-dt { color: var(--pct-down); }
+.ts-tgrid > .ts-srest { grid-column: 2 / 8; contain: inline-size; align-content: flex-start; }   /* sectors: columns 2-7, under S&P..Oil */
+.ts-tgrid > .ts-sfac { grid-column: 8 / 13; contain: inline-size; align-content: flex-start; }   /* styles (Def..Large): start under 2Y / MOVE */
+.ts-pair .ts-mini { margin-left: 4px; }
+.ts-tgrid > :nth-child(12n+1) { margin-right: 14px; }
+.ts-tgrid > :nth-child(12n+5), .ts-tgrid > :nth-child(12n+7), .ts-tgrid > :nth-child(12n+9) { margin-right: 14px; }   /* extra space after DJI / VXD (before Gold / GVZ), after Oil / OVX (before 2Y / MOVE), after 10Y / 30Y (before BTC / HYG) */   /* extra space between the first column and the second */
+.ts-ud { font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; } .ts-ud b { font-weight: 700; }
 /* Today panel: the US Dollar chip is tinted by its Hedgeye outlook (as on the top-bar US Dollar pill), not by today's move. */
 .ts-chip.ts-ob { --rc: var(--pct-up); --rcbg: #e6f6ee; }
 .ts-chip.ts-os { --rc: var(--pct-down); --rcbg: #fdecec; }
@@ -4705,10 +4722,10 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    is as wide as its widest chip and the spare width is shared out evenly. A narrower panel lets the chips wrap in reading order instead. */
 /* Today panel density (2026-11-10, user-directed): chips are 20px high instead of 24px; the 4px saved on each of the two top lines
    goes into the white space between the lines (row gap 5px -> 13px). */
-.ts-card .ts-chip, .ts-card .oc-chip2 { min-height: 22px; }
+.ts-card .ts-chip, .ts-card .oc-chip2 { min-height: 20px; }
 .ts-card .ts-lab { min-height: 22px; }
 /* Today panel spacing (2026-11-10, user-directed): the same 13px above the first line, between every line, and below the last line. */
-.ts-card { --ts-gap: 13px; padding-top: var(--ts-gap); padding-bottom: var(--ts-gap); }
+.ts-card { --ts-gap: 8px; padding-top: var(--ts-gap); padding-bottom: var(--ts-gap); }   /* 2026-11-13: tighter; the same gap above, between and below the three lines */
 .ts-body { row-gap: var(--ts-gap); }
 /* Today panel: Sector breadth, Best and Worst sector on their own line under the table; chips keep their natural width, left aligned. */
 .ts-chips.ts-sectors { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -4726,6 +4743,18 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-tab { display: flex; flex-direction: column; row-gap: var(--ts-gap); }
 .ts-trow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 .ts-trow > .ts-chip, .ts-trow > .oc-chip2 { flex: 0 0 auto; }
+.ts-gsp { flex: 0 0 0; margin: 0 -2px; }
+.ts-tgrid { display: grid; grid-template-columns: repeat(12, auto); justify-content: start; gap: var(--ts-gap, 6px) 8px; }
+.ts-tgrid > * { min-width: 0; }
+/* USD chip fills the first column: its parts spread evenly across the width */
+.ts-tgrid > .mw-usd { justify-content: space-between; }
+.ts-hp { font-size: 10px; font-weight: 600; opacity: .75; }
+.ts-pair { display: flex; gap: 8px; align-items: stretch; }   /* Sct + FX share the first column; the USD chip above stretches to match */
+/* Inside each price chip: name left; price takes the spare width, right-aligned; range % and today's move sit in fixed slots at the right edge,
+   so the range % and move line up between the chips stacked in the same column. */
+.ts-tgrid .oc-chip2 .oc-lvl { flex: 1 1 auto; text-align: right; margin: 0 2px 0 6px; }
+.ts-tgrid .oc-chip2 .oc-ft { flex: none; min-width: 7.2ch; justify-content: flex-end; margin-left: 0; }
+.ts-tgrid .oc-chip2 .mw-usd-rrp { flex: none; }   /* group spacer between chip groups */
 /* 2026-11-11: safeguard -- while the "+N more" button is showing, Book always leaves at least its width free on the right,
    even if the measured --oc-more-w is 0 or stale (the card used to be visible earlier, so the measurement happened with the card shown). */
 .oc-card:has(.oc-more:not([hidden])) .oc-lead .oc-grp[title="Book"] { margin-right: max(var(--oc-more-w, 0px), 74px); }
@@ -4738,3 +4767,16 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-trow > .oc-chip2.mv-up, .ts-chips .oc-chip2.mv-up, .ts-chip.mv-up { background: rgba(15,157,88,.17); }
 .ts-trow > .oc-chip2.mv-dn, .ts-chips .oc-chip2.mv-dn, .ts-chip.mv-dn { background: rgba(229,72,77,.17); }
 #msrVolFundsSlot .spxrv-warn { margin-left: 0; }   /* beside the flip pill in the MKT SIT header (2026-11-11) */
+
+/* 2026-11-13, user-directed: the Macro Week events get their own panel (#eventsPanelBand), left of the Today panel; Book stays in the outlook-changes card. */
+.ts-split { display: flex; gap: 6px; align-items: stretch; }
+.ts-split > #todayStripBand { flex: 1 1 auto; min-width: 0; }
+.ev-card { flex: none; display: flex; align-items: center; padding: 3px 8px; }
+.ev-card:has(> #macroWeekStrip[hidden]) { display: none; }
+.ts-events { flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: center; gap: 4px; max-width: 320px; }
+.ts-events .oc-grp-gap { margin-right: 0; display: flex; }
+.ts-events .mw-chip { --rc: #8a93a6; --rcbg: #f0f1f5; border-radius: 6px; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--rc) !important;
+                      border-left-style: solid !important; background: var(--rcbg); color: #16181f; padding: 1px 7px 1px 5px; flex: 1 1 auto; }
+.ts-events .mw-chip.mw-bear { --rc: #e5484d; --rcbg: #fdecec; } .ts-events .mw-chip.mw-bull { --rc: #0f9d58; --rcbg: #e6f6ee; }
+.ts-events .mw-chip.mw-warn { --rc: #f59e0b; --rcbg: #fef3c7; }
+.ts-events .mw-chip.mw-quad, .ts-events .mw-chip.mw-ev { --rc: #4f46e5; --rcbg: #eef2ff; }

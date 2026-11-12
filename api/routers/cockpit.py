@@ -2987,7 +2987,9 @@ _TS_SECTORS = [("Tech", "XLK"), ("Financials", "XLF"), ("Energy", "XLE"), ("Heal
 # (label, tos_symbol, kind) -- kind 'yld' = a yield quoted in tenths of a percent (TNX 49.8 = 4.98%).
 _TS_CROSS = [("S&P 500", "SPX", "pct"), ("Nasdaq", "$COMP", "pct"), ("Russell", "RUT", "pct"), ("DJIA", "$DJI", "pct"),
              ("US Dollar", "$DXY", "pct"), ("2Y", "DGS2:FRED", "yld"), ("10Y", "TNX:CGI", "yld"), ("30Y", "TYX:CGI", "yld"), ("Gold", "/GC", "pct"),
-             ("Oil", "/CL", "pct"), ("VIX", "VIX", "pct"), ("HY bonds", "HYG", "pct"), ("BTC", "/BTC", "pct")]
+             ("Oil", "/CL", "pct"), ("VIX", "VIX", "pct"), ("HY bonds", "HYG", "pct"), ("BTC", "/BTC", "pct"),
+             # the other Macro Rail volatility gauges (2026-11-12, chips like the VIX chip)
+             ("VXN", "VXN:CGI", "pct"), ("VXD", "VXD", "pct"), ("RVX", "RVX", "pct"), ("GVZ", "GVZ:CGI", "pct"), ("OVX", "OVX:CGI", "pct"), ("MOVE", "MOVE:GIF", "pct")]
 # Themes already shown elsewhere in the strip, or that are not a market area.
 _TS_SKIP_THEMES = {"Breadth", "Volatility", "USD", "Rates up", "Quantum & speculative"}
 
@@ -3006,7 +3008,10 @@ def get_today_strip(date: Optional[str] = Query(None)):
             {"d": d, "syms": [c[1] for c in _TS_CROSS]}).all()}
         # 2026-11-11, user: the S&P 500 chip shows the risk-range bar (position between the low and high range lines), like the US Dollar chip.
         from api._helpers import rr_pos as _rr_pos_spx
-        spx_rr = s.execute(text("SELECT lrr, trr FROM drv_rr WHERE as_of_date = :d AND tos_symbol = 'SPX'"), {"d": d}).mappings().first()
+        # 2026-11-12, user: every price chip in the first line shows its risk-range position as a plain % next to the price (no bar).
+        rr_by = {r["tos_symbol"]: r for r in s.execute(text(
+            "SELECT tos_symbol, lrr, trr FROM drv_rr WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"),
+            {"d": d, "syms": [c[1] for c in _TS_CROSS]}).mappings()}
         cross = []
         for label, sym, kind in _TS_CROSS:
             r = q.get(sym)
@@ -3014,10 +3019,11 @@ def get_today_strip(date: Optional[str] = Query(None)):
                 continue
             if kind == "yld":
                 cross.append({"name": label, "sym": sym, "level": round(float(r["last_price"]) / 10, 3), "bp": f2(None if r["net_chng"] is None else float(r["net_chng"]) * 10), "pct": None, "outlook": ol.get(sym),
-                              "stale": bool(r["export_date"] and r["export_date"] < d)})
+                              "stale": bool(r["export_date"] and r["export_date"] < d),
+                              "rr_pos": _rr_pos_spx(float(r["last_price"]), rr_by[sym]["lrr"], rr_by[sym]["trr"]) if sym in rr_by else None})
             else:
                 cross.append({"name": label, "sym": sym, "level": f2(r["last_price"]), "pct": f2(r["pct_change"]), "bp": None, "outlook": ol.get(sym),
-                              "rr_pos": _rr_pos_spx(float(r["last_price"]), spx_rr["lrr"], spx_rr["trr"]) if (sym == "SPX" and spx_rr) else None})
+                              "rr_pos": _rr_pos_spx(float(r["last_price"]), rr_by[sym]["lrr"], rr_by[sym]["trr"]) if sym in rr_by else None})
 
         # Treasury yields for the headline: 2Y (short end) and 10Y/30Y (long end). Quoted in tenths of a percent,
         # so bp = net change x 10. The 2Y comes from the Hedgeye risk-range feed and can be a day old (stale = true).
@@ -3031,6 +3037,21 @@ def get_today_strip(date: Optional[str] = Query(None)):
                               "stale": bool(r["export_date"] and r["export_date"] < d)}
         sectors = [{"name": n, "sym": sym, "pct": f2(q[sym]["pct_change"])}
                    for n, sym in _TS_SECTORS if sym in q and q[sym]["pct_change"] is not None]
+
+        # 2026-11-12, user: Volatility breadth chip -- the gauges of the Macro Rail's Volatility panel (ref_macro_area area_key 'volatility').
+        from api._helpers import load_vol_thresholds as _vt, vol_zone as _vz
+        _vtm = _vt(s)
+        vol = []
+        for r in s.execute(text(
+                "SELECT a.member_symbol, x.pct_change, x.last_price FROM ref_macro_area a JOIN drv_quote x ON x.tos_symbol = a.member_symbol AND x.as_of_date = :d "
+                "WHERE a.enabled AND a.area_key = 'volatility' AND x.pct_change IS NOT NULL ORDER BY a.sort_order"), {"d": d}).mappings():
+            t = _vtm.get(r["member_symbol"], {})
+            vol.append({"name": r["member_symbol"].split(":")[0], "sym": r["member_symbol"], "pct": f2(r["pct_change"]), "last": f2(r["last_price"]),
+                        "zone": _vz(r["last_price"], t.get("low"), t.get("high")) if t else None})
+
+        # 2026-11-12, user: FX breadth chip -- six currencies vs the dollar (a futures/ETF price up = that currency up vs USD).
+        _fx_def = [("EUR", "/6E"), ("GBP", "/6B"), ("CAD", "/6C"), ("JPY", "/6J"), ("AUD", "FXA"), ("CHF", "FXF")]
+        fx = [{"name": n, "sym": sym, "pct": f2(q[sym]["pct_change"])} for n, sym in _fx_def if sym in q and q[sym]["pct_change"] is not None]
 
         # US Dollar chip: same facts as the top-bar US Dollar pill (level, 5-session move, risk-range position, Hedgeye outlook).
         from api._helpers import rr_pos as _rr_pos
@@ -3074,4 +3095,4 @@ def get_today_strip(date: Optional[str] = Query(None)):
         up, dn = int(row[0] or 0), int(row[1] or 0)
         return {"up": up, "down": dn, "n": up + dn, "pct": round(100.0 * up / (up + dn)) if (up + dn) else None}
     return {"as_of": d.isoformat(), "price_time": stamp.isoformat() if stamp else None,
-            "cross": cross, "usd": usd, "rates": rates, "sectors": sectors, "breadth": _bre(b), "holdings": _bre(h), "themes": theme_out}
+            "cross": cross, "usd": usd, "rates": rates, "sectors": sectors, "vol": vol, "fx": fx, "breadth": _bre(b), "holdings": _bre(h), "themes": theme_out}
