@@ -98,7 +98,7 @@
       var idx = _richTip(_popBox(
         '#' + esc(r.rank) + ' &middot; ' + esc(r.symbol) + ' &middot; ' + esc(r.side || ''),
         r.rationale));
-      return '<div data-hetip="' + idx + '" style="font-size:11px; line-height:1.55;">' +
+      return '<div data-hetip="' + idx + '" style="font-size:11px; line-height:1.4;">' +
         '<span style="color:#bbb; font-size:9px;">#' + esc(r.rank) + '</span> ' +
         '<strong style="font-size:9px;">' + symLink(r.symbol) + '</strong>' +
         '<span style="color:' + sideColor(r.side) + '; font-size:10px;"> ' + esc(r.side || '') + '</span>' +
@@ -147,7 +147,7 @@
     // User: "reduce the space between the stock and text 'bullish ->
     // neutral' etc, so no horizontal scroll bar appears."
     return rows.map(function (f) {
-      return '<div style="display:flex; align-items:center; gap:2px; font-size:9px; line-height:1.55; margin-bottom:3px;">' +
+      return '<div style="display:flex; align-items:center; gap:2px; font-size:9px; line-height:1.4;">' +
         '<strong style="display:inline-block; width:30px; flex:0 0 auto; overflow:hidden;">' + symLink(f.symbol) + '</strong>' +
         '<span style="display:inline-block; width:38px; flex:0 0 auto; text-align:right; font-size:7.5px; font-weight:700; color:' + sideColor(f.from) + ';">' + esc(titleCase(f.from)) + '</span>' +
         '<span style="flex:0 0 auto; color:#ccc;">&rarr;</span>' +
@@ -236,9 +236,8 @@
         watchDirIcon(w) +
         '</span></div>';
     }
-    // 2026-11-11, user: tile doubled in width, watchlist in two columns; then three columns (width x1.5 again).
-    return '<div style="column-count:3; column-gap:30px;">' +
-      list.map(function (w) { return '<div style="break-inside:avoid;">' + row(w) + '</div>'; }).join('') + '</div>';
+    // 2026-11-12, user: back to a single column (scrolls inside the tile) at the original narrow width.
+    return list.map(row).join('');
   }
 
   function earlyLookHtml(el) {
@@ -1091,7 +1090,7 @@
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
           'minmax(111px, calc(13.9ch + 20px)) minmax(182px, calc(24ch + 46px)) minmax(182px, calc(24ch + 46px)) ' +
           'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
-          'minmax(29px, 1fr) minmax(112px, 157px) minmax(81px, calc(10.5ch + 22px)) minmax(81px, calc(10.5ch + 22px)) minmax(279px, calc(35.7ch + 75px)); ' +
+          'minmax(29px, 1fr) minmax(103px, 144px) minmax(81px, calc(10.5ch + 22px)) minmax(81px, calc(10.5ch + 22px)) minmax(108px, calc(13.8ch + 28px)); ' +
           'gap:3px; align-items:stretch;';
         var _tiles = function (gridCss, cls, top5DateOnly) { return '<div' + (cls ? ' class="' + cls + '"' : '') + ' style="' + gridCss + '">' +
           _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(top5DateOnly ? null : data.top5_received_at, data.top5_date)) +
@@ -1101,7 +1100,7 @@
           _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
           _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
           _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
-          _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
+          _card(linked('RR', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
           _card('Gainers',                               moversHtml(data.movers, 'gainers'), td(null, data.movers_date), NO_SCROLL) +
           _card('Losers',                                moversHtml(data.movers, 'losers'),  td(null, data.movers_date), NO_SCROLL) +
           _card('Watching',                              watchingHtml(data.watching),      '') +

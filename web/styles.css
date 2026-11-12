@@ -4480,6 +4480,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
    except Top-5 (1st), Movers (9th) and Watching (10th) at 104px (half width, then +25%), user-directed. */
 .he-act-tiles > div { flex: 1 1 165px; min-width: 0; }
 .he-act-tiles > div:nth-child(9), .he-act-tiles > div:nth-child(10) { flex: 0 1 104px; }
+.he-act-tiles > div:nth-child(11) { flex: 0 1 121px; }   /* Watching: 104 +5% x3 */
+.he-act-tiles > div:nth-child(8) { flex: 0 1 150px; }   /* RR: 146 +3% */
 .he-act-tiles > div:nth-child(1) { flex: 0 1 104px; }   /* Top-5: 104 -> 109 -> 115 (+5% twice), then -10% */
 
 /* 2026-10-20: bigger-graph popup for the Dashboard Portfolio Mix graphs (web/portfolio_mix.js::_pmOpenGraphModal). */
