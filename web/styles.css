@@ -4106,6 +4106,11 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .mw-usd-l { font-size: 10.5px; font-weight: 700; letter-spacing: 0; color: #16181f; }   /* 2026-10-19: same color and size as the other pills' ticker (.oc-chip2 b) */
 .mw-usd b { font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .mw-usd-bar { width: 38px; flex: none; }
+/* 2026-11-12: clearer fill up to the tick; tick sits at exactly its % of the bar (no end inset) */
+.mw-usd-bar { background: #94a3b8; height: 4px; }
+.mw-usd-bar .msr-rb-fill { background: #64748b; opacity: 1; }
+.mw-usd-bar .msr-rb-fill.hot { background: #ef4444; }
+.mw-usd-bar .msr-rb-fill.cold { background: #4ade80; }
 /* RR% sits above the bar, just right of the tick (2026-10-19, user-directed); the old RR% slot now shows today's %chg. */
 .mw-usd-barwrap { position: relative; display: inline-flex; flex: none; padding-top: 8px; }
 .mw-usd-rr { position: absolute; top: -3px; margin-left: 3px; font-size: 8px; line-height: 1; color: var(--text-3, #98a0b3); font-variant-numeric: tabular-nums; white-space: nowrap; }

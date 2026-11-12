@@ -51,8 +51,8 @@
     var word = o.indexOf('bull') === 0 ? 'Bullish' : o.indexOf('bear') === 0 ? 'Bearish' : o ? 'Neutral' : 'No outlook';
     var oc = o.indexOf('bull') === 0 ? ' ts-ob' : o.indexOf('bear') === 0 ? ' ts-os' : '';
     var has = u.rr_pos != null, pct = has ? Math.round(u.rr_pos * 100) : null;
-    var tick = has ? 'calc(3px + (100% - 6px) * ' + Math.min(Math.max(u.rr_pos, 0), 1).toFixed(4) + ')' : '0';
-    var bar = has ? '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tick + '">' + pct + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tick +
+    var tick = has ? (Math.min(Math.max(u.rr_pos, 0), 1) * 100).toFixed(2) + '%' : '0';
+    var bar = has ? '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tick + '">' + pct + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill' + (u.rr_pos >= 0.85 ? ' hot' : u.rr_pos <= 0.15 ? ' cold' : '') + '" style="width:' + tick +
       '"></span><span class="msr-rb-tick' + (u.rr_pos >= 0.85 ? ' hot' : u.rr_pos <= 0.15 ? ' cold' : '') + '" style="left:' + tick + '"></span></span></span>' : '';
     var arr = u.chg5 ? '<span class="mw-usd-d ' + (u.chg5 > 0 ? 'ts-ut' : 'ts-dt') + '">' + (u.chg5 > 0 ? '▲' : '▼') + '</span>' : '';
     var dp = u.day_pct;
@@ -68,8 +68,8 @@
   // Risk-range bar (0% = low range line, 100% = high range line) -- same look as the US Dollar chip's bar. Only the S&P 500 chip carries one.
   function rrBar(pos) {
     if (pos == null) return '';
-    var tick = 'calc(3px + (100% - 6px) * ' + Math.min(Math.max(pos, 0), 1).toFixed(4) + ')';
-    return '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tick + '">' + Math.round(pos * 100) + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill" style="width:' + tick +
+    var tick = (Math.min(Math.max(pos, 0), 1) * 100).toFixed(2) + '%';
+    return '<span class="mw-usd-barwrap"><span class="mw-usd-rr" style="left:' + tick + '">' + Math.round(pos * 100) + '%</span><span class="msr-rb mw-usd-bar"><span class="msr-rb-fill' + (pos >= 0.85 ? ' hot' : pos <= 0.15 ? ' cold' : '') + '" style="width:' + tick +
       '"></span><span class="msr-rb-tick' + (pos >= 0.85 ? ' hot' : pos <= 0.15 ? ' cold' : '') + '" style="left:' + tick + '"></span></span></span>';
   }
   // One price chip (VIX-pill look). Used by both lines below.
