@@ -174,7 +174,8 @@
     var factors = ['Defensives', 'Cyclicals', 'Momentum', 'Small caps', 'Large caps'].map(function (n) { return th[n] ? themeChip(th[n], 'ts-w2') : ''; }).join('');
     var pair = (eq.sector || '') + (eq.fx || '');
     var restSecs = secs.map(function (x) {
-      return chip(SHORT_SECTOR[x.name] || x.name, '', fpct(x.pct), cls(x.pct) + ' ts-w3', tipRows(x.name, [['Today', fpct(x.pct), x.pct >= 0 ? 'ts-ut' : 'ts-dt']], 'Click to open the Sectors panel.'), JUMP.sector);
+      var so = (x.outlook || '').toLowerCase();   // left edge = Hedgeye outlook (same as the price chips); the fill and the move colour follow today's move
+      return chip(SHORT_SECTOR[x.name] || x.name, '', fpct(x.pct), cls(x.pct) + ' ts-w3' + (so.indexOf('bull') >= 0 ? ' ts-ol-bull' : so.indexOf('bear') >= 0 ? ' ts-ol-bear' : ' ts-ol-neu'), tipRows(x.name, [['Today', fpct(x.pct), x.pct >= 0 ? 'ts-ut' : 'ts-dt']], 'Click to open the Sectors panel.'), JUMP.sector);
     }).join('');
     return { pair: pair, secs: restSecs, factors: factors };   // the style (factor) chips start under the 2Y / MOVE column
   }

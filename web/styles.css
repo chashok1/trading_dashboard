@@ -4417,7 +4417,6 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body::before { grid-column: 1; }
 .oc-card .oc-body::after { grid-column: 2; grid-row: 1 / span 2; }   /* 2026-10-22: the chips panel is two lines tall */
 /* 2026-10-22, user-directed: Next event, Book and +N more form their own third panel, one column wide (the width of Book), right of the chips. */
-.oc-card .oc-side { content: ""; grid-row: 1 / span 2; grid-column: 3; align-self: stretch; justify-self: stretch; margin: -12px; border: 1px solid var(--border, #e5e5e2); border-radius: 6px; background: var(--card-bg, #fff); pointer-events: none; z-index: -1; }
 .oc-lead .oc-grp[title="Next event"] > *, .oc-lead .oc-grp[title="Book"] > * { width: 100%; justify-content: center; box-sizing: border-box; }
 .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Book"] { display: flex; }
 /* 2026-10-22, user-directed: the panel is as wide as Book; the event pill takes no part in sizing (width 0, then min-width 100% of the column) and is clipped to fit. */
@@ -4528,8 +4527,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body { grid-template-rows: 22px 22px 22px; }
 /* Space from a panel's top/bottom edge to its first/last chip = the 10px between the chip lines (8px row gap + 1px of row slack above and below each 20px chip). */
 .cockpit-band.oc-card .oc-body { padding-top: 9px; padding-bottom: 9px; }
-.oc-card .oc-body::before, .oc-card .oc-body::after, .oc-card .oc-side { margin-top: -9px; margin-bottom: -9px; }
-.oc-card .oc-body::after, .oc-card .oc-side { grid-row: 1 / span 3; }
+.oc-card .oc-body::before, .oc-card .oc-body::after { margin-top: -9px; margin-bottom: -9px; }
+.oc-card .oc-body::after { grid-row: 1 / span 3; }
 .oc-card .oc-line { row-gap: 10px; position: relative; top: 1px; }
 .oc-lead > .mw-usd-slot, .oc-lead > .oc-vix, .oc-lead > .oc-mkt, .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Book"], .oc-card .oc-more { align-self: center; }
 .oc-stack { gap: 10px; }
@@ -4585,7 +4584,6 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body { grid-template-columns: auto auto minmax(0, 1fr); }
 .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Next event 2"], .oc-lead .oc-grp[title="Next event 3"] { grid-column: 2; }
 .oc-lead .oc-grp[title="Book"], .oc-line, .oc-more { grid-column: 3; }
-.oc-card .oc-side { grid-column: 2; }
 .oc-card .oc-body::after { grid-column: 3; }
 /* 2026-11-09, user-directed: the 60d / month / quarter chips sit on their own row at the top of the Quad panel (macro_week.js moves them in). */
 #quadCardsPanel > #regimeLineBody { flex: 0 0 100%; min-width: 0; margin: 6px 0; }   /* 2026-11-09: space above and below the chips row */
@@ -4692,7 +4690,6 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .oc-card .oc-body { grid-template-columns: auto minmax(0, 1fr); }
 .oc-card .oc-body::before { display: none; }
 .oc-lead .oc-grp[title="Next event"], .oc-lead .oc-grp[title="Next event 2"], .oc-lead .oc-grp[title="Next event 3"] { grid-column: 1; }
-.oc-card .oc-side { grid-column: 1; }
 .oc-lead .oc-grp[title="Book"], .oc-line, .oc-more { grid-column: 2; }
 .oc-card .oc-body::after { grid-column: 2; }
 .oc-lead > .mw-usd-slot:empty, .oc-lead > .oc-mkt:empty { display: none; }
@@ -4780,3 +4777,11 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-events .mw-chip.mw-bear { --rc: #e5484d; --rcbg: #fdecec; } .ts-events .mw-chip.mw-bull { --rc: #0f9d58; --rcbg: #e6f6ee; }
 .ts-events .mw-chip.mw-warn { --rc: #f59e0b; --rcbg: #fef3c7; }
 .ts-events .mw-chip.mw-quad, .ts-events .mw-chip.mw-ev { --rc: #4f46e5; --rcbg: #eef2ff; }
+
+/* 2026-11-13, user-directed: the Outlook changes card no longer has a left column (USD / Next event pills moved out, the side box is gone),
+   so the chips panel (frame, chips, Book, +N more) uses the whole card width. */
+.oc-card .oc-body { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
+.oc-lead .oc-grp[title="Book"], .oc-line, .oc-more, .oc-card .oc-body::after { grid-column: 1; }
+
+/* 2026-11-13, user-directed: sector chips' left edge = Hedgeye outlook (green bullish / red bearish / grey neutral), like the price chips; fill stays today's move. */
+.ts-chip.ts-ol-bull { --rc: #0f9d58; } .ts-chip.ts-ol-bear { --rc: #e5484d; } .ts-chip.ts-ol-neu { --rc: #8a93a6; }

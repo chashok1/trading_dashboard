@@ -3035,7 +3035,11 @@ def get_today_strip(date: Optional[str] = Query(None)):
             if r and r["last_price"] is not None and r["net_chng"] is not None:
                 rates[key] = {"level": round(float(r["last_price"]) / 10, 3), "bp": round(float(r["net_chng"]) * 10, 1),
                               "stale": bool(r["export_date"] and r["export_date"] < d)}
-        sectors = [{"name": n, "sym": sym, "pct": f2(q[sym]["pct_change"])}
+        # 2026-11-13, user: the sector chips' left edge shows the Hedgeye outlook, like the price chips above them.
+        sec_ol = {r[0]: r[1] for r in s.execute(text(
+            "SELECT tos_symbol, outlook FROM drv_rr WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"),
+            {"d": d, "syms": [x[1] for x in _TS_SECTORS]}).all()}
+        sectors = [{"name": n, "sym": sym, "pct": f2(q[sym]["pct_change"]), "outlook": sec_ol.get(sym)}
                    for n, sym in _TS_SECTORS if sym in q and q[sym]["pct_change"] is not None]
 
         # 2026-11-12, user: Volatility breadth chip -- the gauges of the Macro Rail's Volatility panel (ref_macro_area area_key 'volatility').
