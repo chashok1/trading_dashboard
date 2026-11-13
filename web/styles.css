@@ -4808,4 +4808,11 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 
 /* 2026-11-13: Actionable screen -- the Today panel (two compact lines) replaces the sticky mini-tape ribbon (#rrTape1 stays mounted, hidden, for the Econ toggle). */
 body.act-page #rrTape1 { display: none; }
-.act-today { position: sticky; top: 0; z-index: 91; flex-shrink: 0; margin: 2px 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; }
+.act-today { padding-top: var(--ts-gap, 8px); position: relative; flex-shrink: 0; margin: 0; background: var(--card-bg); border: none; border-radius: 0; }   /* sits flush on top of #hedgeyePanel */
+
+/* 2026-11-13: Actionable -- the page card adds 8px above the Today panel; drop it so the gap above the chips matches the gap below them (to the Hedgeye panel). */
+body.act-page main > .card { padding-top: 0; }
+
+/* 2026-11-13: Portfolio -- the Today panel (one line) replaces the sticky mini-tape ribbon, lined up with the cards below (8px side margins). */
+body.portfolio-page #rrTape1 { display: none; }
+body.portfolio-page .act-today { margin: 0 8px; }

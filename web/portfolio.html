@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Portfolio — Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261022a">
+  <link rel="stylesheet" href="/static/styles.css?v=20261113z1">
   <script src="/static/vendor/chart.umd.js"></script>
   <style>
     /* KPI strip */
@@ -235,6 +235,9 @@
   </header>
 
   <main style="padding-left:0; padding-right:0;">
+    <!-- 2026-11-13, user: same Today panel (one line, vol-zone tags) as the Actionable screen replaces the old mini-tape ribbon; filled by web/today_strip.js -->
+    <section class="ts-card act-today" id="todayStripBand" data-compact="1"><div id="todayStripBody"><div class="msr-loading">Loading&hellip;</div></div></section>
+
     <!-- Snapshot staleness banner — shows when any account's last snapshot
          is older than today. hist_cs / hist_f arrive sporadically so we
          surface staleness so the user knows "current value" may be stale. -->
@@ -688,6 +691,7 @@
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261107a" defer></script>
+  <script src="/static/today_strip.js?v=20261113o" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Rich Portfolio Detail Modal (z-index above existing drilldown) -->

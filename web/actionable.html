@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20261113t">
+  <link rel="stylesheet" href="/static/styles.css?v=20261113z">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261112b">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
@@ -1040,9 +1040,6 @@
     </div>
   </header>
 
-  <!-- 2026-11-13, user: Today panel chips (same as the Dashboard) replace the old mini-tape ribbon; two compact lines, filled by web/today_strip.js -->
-  <section class="ts-card act-today" id="todayStripBand" data-compact="1"><div id="todayStripBody"><div class="msr-loading">Loading&hellip;</div></div></section>
-
   <main>
     <div class="card">
       <div class="act-main-col">
@@ -1070,6 +1067,8 @@
            above loadQuadOutlook(). -->
 
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
+      <!-- 2026-11-13, user: Today panel sits directly above the Hedgeye signals panel (no gap); chips (same as the Dashboard) replace the old mini-tape ribbon; two compact lines, filled by web/today_strip.js -->
+      <section class="ts-card act-today" id="todayStripBand" data-compact="1"><div id="todayStripBody"><div class="msr-loading">Loading&hellip;</div></div></section>
       <div id="hedgeyePanel" style="display:none; margin-bottom:6px;"></div>
 
 
