@@ -638,7 +638,9 @@
       'style="text-decoration:none; text-transform:none; letter-spacing:0; font-weight:400;">&#9998; enter</a>' +
       '</div>' +
       '<div style="' + rowCss + 'color:#888; margin:7px 0 6px; flex-wrap:wrap; gap:4px;">' +
-      '<span style="white-space:nowrap; font-size:9px; color:#4b5563;">' + msrTileTs.replace(/^ <span[^>]*>· /, '<span>') + '</span>' +
+      '<span style="white-space:nowrap; font-size:8px; line-height:9px; color:#000; display:inline-flex; flex-direction:column; margin:-3px 0;">' +
+        // 2026-11-13, user: date and time on two lines ("11/13" over "6:30 AM") in the space on the left; 9px lines, so the row is no taller than before.
+        (function () { var m = /^(\S+)\s+(.+)$/.exec(msrLabel || ''); return m ? '<span>' + esc(m[1]) + '</span><span>' + esc(m[2]) + '</span>' : '<span>' + esc(msrLabel || '') + '</span>'; })() + '</span>' +
       // 2026-11-11, user: "vol funds selling" sits next to the SPX-vs-Flip pill; filled by web/spx_rv.js (window.spxRvSellPillHtml).
       '<span style="display:inline-flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:3px 6px; margin:2px 0 2px auto;"><span id="msrVolFundsSlot" style="display:inline-flex;">' +
       (window.spxRvSellPillHtml ? window.spxRvSellPillHtml() : '') + '</span>' + flipHtml + '</span></div>';
