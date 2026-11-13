@@ -635,11 +635,13 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             if esnap:
                 seen_e: set[str] = set()
                 for r in s.execute(text(
-                        "SELECT COALESCE(tos_symbol, symbol) AS sym FROM hist_etf WHERE snapshot_date = :s "
+                        "SELECT COALESCE(tos_symbol, symbol) AS sym, outlook FROM hist_etf WHERE snapshot_date = :s "
                         "ORDER BY " + _orank.format(c="outlook") + ", symbol"), {"s": esnap}).mappings().all():
                     if r["sym"] and r["sym"] not in seen_e:
                         seen_e.add(r["sym"])
-                        ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": "ETF Pro"})
+                        # 2026-11-13, user: ETF Pro is two groups -- Longs (Bullish) and Shorts (Bearish); anything not Bearish stays with the Longs.
+                        grp = "ETF Pro Shorts" if str(r["outlook"] or "").upper() == "BEARISH" else "ETF Pro Longs"
+                        ps_etf_cfg.append({"member_symbol": r["sym"], "role": "dual", "label": "PS & ETF", "account_group": grp})
             csnap = s.execute(text("SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :d"), {"d": _snap_cap}).scalar()
             if csnap:
                 seen_c: set[str] = set()
