@@ -4673,7 +4673,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-ut { color: var(--pct-up); } .ts-dt { color: var(--pct-down); }
 .ts-tgrid > .ts-srest { grid-column: 2 / 13; contain: inline-size; align-content: flex-start; }   /* sectors, styles and the Book chip share one line from column 2 */
 .ts-pair .ts-mini { margin-left: 4px; }
-.ts-tgrid > :nth-child(12n+1) { margin-right: 14px; }
+.ts-tgrid > :nth-child(12n+1) { margin-right: 88px; }   /* 2026-11-13, user: more space between the USD chip and S&P (was 14px, then 28px, 44px); line 2 and 3 first-column items get the same gap so the columns stay aligned */
 .ts-tgrid > :nth-child(12n+5), .ts-tgrid > :nth-child(12n+7), .ts-tgrid > :nth-child(12n+9) { margin-right: 14px; }   /* extra space after DJI / VXD (before Gold / GVZ), after Oil / OVX (before 2Y / MOVE), after 10Y / 30Y (before BTC / HYG) */   /* extra space between the first column and the second */
 .ts-ud { font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; } .ts-ud b { font-weight: 700; }
 /* Today panel: the US Dollar chip is tinted by its Hedgeye outlook (as on the top-bar US Dollar pill), not by today's move. */
@@ -4833,3 +4833,10 @@ body.portfolio-page .act-today { margin: 0 8px; }
 /* 2026-11-13, user: line break the Today panel uses (only when needed) to put the style chips on their own line so Def can line up under MOVE. */
 .ts-sectors > .ts-br { flex: 0 0 100%; height: 0; }
 .ts-sectors > .ts-br[hidden] { display: none; }
+/* 2026-11-13, user: the US Dollar chip lost its outlook badge; today's move now takes the right end, like the other chips' move. */
+.ts-chips .ts-chip.mw-usd .mw-usd-dp { margin-left: auto; }
+/* 2026-11-13, user: the US Dollar chip's move is a filled pill like the other chips' (.oc-pct), at the right end. */
+.ts-chips .ts-chip.mw-usd .ts-usd-pct { margin-left: auto; font-size: 10.5px; padding: 0 4px; }
+/* 2026-11-13, user: ONLY the US Dollar chip gets wider (48px) -- its right edge moves into the gap before S&P. The first column keeps its width
+   (the other first-column items still keep their 64px margin), so S&P, VIX, the sectors and every other chip stay exactly where they are. */
+.ts-tgrid > .mw-usd { margin-right: 40px; }   /* 2026-11-13: first-column gap raised 64 -> 88px; this stays 24px smaller so the USD chip keeps its width */

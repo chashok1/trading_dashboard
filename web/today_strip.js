@@ -53,7 +53,7 @@
     var oc = o.indexOf('bull') === 0 ? ' ts-ob' : o.indexOf('bear') === 0 ? ' ts-os' : '';
     var has = u.rr_pos != null, pct = has ? Math.round(u.rr_pos * 100) : null;
     var tick = has ? (Math.min(Math.max(u.rr_pos, 0), 1) * 100).toFixed(2) + '%' : '0';
-    var bar = rrPct(u.rr_pos);   // plain % next to the price, no bar (2026-11-12)
+    var bar = rrBar(u.rr_pos);   // 2026-11-13, user: the US Dollar chip shows the risk-range BAR again (its % sits above the tick); the other chips keep the plain %
     var arr = u.chg5 ? '<span class="mw-usd-d ' + (u.chg5 > 0 ? 'ts-ut' : 'ts-dt') + '">' + (u.chg5 > 0 ? '▲' : '▼') + '</span>' : '';
     var dp = u.day_pct;
     var tip = tipRows('US Dollar (DXY)', [['Today', dp == null ? '--' : fpct(dp), dp > 0 ? 'ts-ut' : dp < 0 ? 'ts-dt' : ''],
@@ -61,8 +61,8 @@
       ['5-session change', u.chg5 == null ? '--' : sgn(u.chg5) + Math.abs(u.chg5).toFixed(2)],
       ['Position in risk range', has ? pct + '%' : '--']], 'Click to open the Macro Rail.');
     return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">USD</span><b>' + num(u.last, 2) + '</b>' + bar + arr +
-      (dp != null ? '<span class="mw-usd-dp ' + (dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu') + '">' + fpct(dp) + '</span>' : '') +
-      '<span class="mw-usd-o">' + word + '</span><span class="ts-tip">' + tip + '</span></span>';
+      (dp != null ? '<span class="oc-pct ts-usd-pct ' + (dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu') + '">' + fpct(dp) + '</span>' : '') +
+      '<span class="ts-tip">' + tip + '</span></span>';   // 2026-11-13, user: no Bullish/Bearish badge -- the chip's left edge already shows the outlook (the hover still names it)
   }
 
   // Risk-range bar (0% = low range line, 100% = high range line) -- same look as the US Dollar chip's bar. Only the S&P 500 chip carries one.
