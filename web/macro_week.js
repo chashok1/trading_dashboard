@@ -473,9 +473,11 @@
     if (more) more.addEventListener('click', function () { showAll = !showAll; render(last); });
   }
 
+  window.mwRender = function () { if (last) render(last); };   // 2026-11-13: today_strip.js redraws its HTML, then asks for the Book chip again
+
   // The checklist opens as a popover under the strip, left-aligned to it -- 0px when closed.
   function placeList(list) {
-    var r = document.getElementById('outlookChangesCard').getBoundingClientRect();
+    var r = (document.getElementById('todayStripBand') || document.getElementById('outlookChangesCard')).getBoundingClientRect();   // 2026-11-13: Book now sits in the Today panel
     var w = Math.min(Math.max(r.width, 560), window.innerWidth - 24);
     list.style.top = Math.round(r.bottom + 4) + 'px';
     list.style.left = Math.max(12, Math.min(Math.round(r.left), window.innerWidth - w - 12)) + 'px';

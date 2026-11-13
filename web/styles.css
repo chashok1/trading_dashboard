@@ -4494,11 +4494,19 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 
 /* 2026-10-20: Dashboard copy of the Actionable Hedgeye tiles (hedgeye_panel.js, #hedgeyeActDashPanelBody): equal tiles that wrap,
    except Top-5 (1st), Movers (9th) and Watching (10th) at 104px (half width, then +25%), user-directed. */
-.he-act-tiles > div { flex: 1 1 165px; min-width: 0; }
-.he-act-tiles > div:nth-child(9), .he-act-tiles > div:nth-child(10) { flex: 0 1 104px; }
-.he-act-tiles > div:nth-child(11) { flex: 0 1 121px; }   /* Watching: 104 +5% x3 */
-.he-act-tiles > div:nth-child(8) { flex: 0 1 150px; }   /* RR: 146 +3% */
-.he-act-tiles > div:nth-child(1) { flex: 0 1 104px; }   /* Top-5: 104 -> 109 -> 115 (+5% twice), then -10% */
+/* 2026-11-12, user: Dashboard tiles use the Actionable screen's fixed widths (max of its grid tracks); only Call (7th) is flexible. */
+.he-act-tiles > div { flex: 0 0 auto; min-width: 0; }
+.he-act-tiles > div:nth-child(1)  { width: calc(13.9ch + 20px); }   /* Top-5 */
+.he-act-tiles > div:nth-child(2),
+.he-act-tiles > div:nth-child(3)  { width: calc(24ch + 46px); }     /* Macro Show, RTA */
+.he-act-tiles > div:nth-child(4),
+.he-act-tiles > div:nth-child(6)  { width: calc(15ch + 20px); }     /* ETF, SSS */
+.he-act-tiles > div:nth-child(5)  { width: calc(12.8ch + 20px); }   /* II */
+.he-act-tiles > div:nth-child(7)  { flex: 1 1 165px; }              /* Call: the only flexible tile */
+.he-act-tiles > div:nth-child(8)  { width: 144px; }                 /* RR */
+.he-act-tiles > div:nth-child(9),
+.he-act-tiles > div:nth-child(10) { width: calc(10.5ch + 22px); }   /* Gainers, Losers */
+.he-act-tiles > div:nth-child(11) { width: calc(13.8ch + 28px); }   /* Watching */
 
 /* 2026-10-20: bigger-graph popup for the Dashboard Portfolio Mix graphs (web/portfolio_mix.js::_pmOpenGraphModal). */
 .pm-pop-wrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
@@ -4660,8 +4668,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
 .ts-tip .ts-src { color: var(--text-3); margin-top: 6px; font-size: 10.5px; display: block; }
 .ts-ut { color: var(--pct-up); } .ts-dt { color: var(--pct-down); }
-.ts-tgrid > .ts-srest { grid-column: 2 / 8; contain: inline-size; align-content: flex-start; }   /* sectors: columns 2-7, under S&P..Oil */
-.ts-tgrid > .ts-sfac { grid-column: 8 / 13; contain: inline-size; align-content: flex-start; }   /* styles (Def..Large): start under 2Y / MOVE */
+.ts-tgrid > .ts-srest { grid-column: 2 / 13; contain: inline-size; align-content: flex-start; }   /* sectors, styles and the Book chip share one line from column 2 */
 .ts-pair .ts-mini { margin-left: 4px; }
 .ts-tgrid > :nth-child(12n+1) { margin-right: 14px; }
 .ts-tgrid > :nth-child(12n+5), .ts-tgrid > :nth-child(12n+7), .ts-tgrid > :nth-child(12n+9) { margin-right: 14px; }   /* extra space after DJI / VXD (before Gold / GVZ), after Oil / OVX (before 2Y / MOVE), after 10Y / 30Y (before BTC / HYG) */   /* extra space between the first column and the second */
@@ -4741,7 +4748,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-trow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 .ts-trow > .ts-chip, .ts-trow > .oc-chip2 { flex: 0 0 auto; }
 .ts-gsp { flex: 0 0 0; margin: 0 -2px; }
-.ts-tgrid { display: grid; grid-template-columns: repeat(12, auto); justify-content: start; gap: var(--ts-gap, 6px) 8px; }
+.ts-tgrid { display: grid; grid-template-columns: repeat(11, auto) minmax(0, 1fr); justify-content: start; gap: var(--ts-gap, 6px) 8px; }   /* last column takes the spare panel width, so line 3 (sectors, styles, Book) can use it */
 .ts-tgrid > * { min-width: 0; }
 /* USD chip fills the first column: its parts spread evenly across the width */
 .ts-tgrid > .mw-usd { justify-content: space-between; }
@@ -4785,3 +4792,15 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 
 /* 2026-11-13, user-directed: sector chips' left edge = Hedgeye outlook (green bullish / red bearish / grey neutral), like the price chips; fill stays today's move. */
 .ts-chip.ts-ol-bull { --rc: #0f9d58; } .ts-chip.ts-ol-bear { --rc: #e5484d; } .ts-chip.ts-ol-neu { --rc: #8a93a6; }
+
+/* 2026-11-13, user-directed: Outlook changes card = ONE line; no arrows between the state symbols; the date inside each chip is small and black. */
+.oc-card .oc-ar { display: none; }
+.oc-card .oc-dt { color: #000; font-size: 8.5px; font-weight: 600; }
+.oc-card .oc-body { grid-template-rows: 22px; }
+.oc-card .oc-line { grid-row: 1; }
+.oc-card .oc-more { grid-row: 1; justify-self: end; }
+.oc-card .oc-body::after { grid-row: 1; }
+/* Book chip now lives at the end of the Today panel's third line */
+.ts-card .mw-strip { display: inline-flex; align-items: center; }
+.ts-card .oc-grp-gap { margin-right: 0; }
+.ts-card .mw-chip.mw-book { --rc: #6b7280; border-radius: 6px; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--rc) !important; background: var(--card-bg, #fff); color: #16181f; padding: 1px 7px 1px 5px; font-size: 10.5px; }

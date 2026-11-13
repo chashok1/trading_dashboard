@@ -250,7 +250,7 @@
       // Two static rows (2026-10-22, user-directed: back to two lines): size the line to two chip-rows; anything that wraps onto a third row goes to the overlay.
       var fc = line.querySelector('.oc-chip2'), h = (fc && fc.offsetHeight) || 18, first = -1;
       var gap = parseFloat(getComputedStyle(line).rowGap) || 4;   // row gap comes from CSS (8px)
-      line.style.maxHeight = (3 * h + 2 * gap) + 'px';   // 2026-11-09, user-directed: three rows; on row 3 chips stop short of Book / +N more (blockers below)
+      line.style.maxHeight = h + 'px';   // 2026-11-13, user: a single line; the rest go to the +N more overlay   // 2026-11-09, user-directed: three rows; on row 3 chips stop short of Book / +N more (blockers below)
       var lr = line.getBoundingClientRect(), lb = lr.bottom;
       // Book + the button sit over the third row's right end: chips there must stop short of them.
       // 2026-10-22: the event pill (row 1), Book (row 2) and the button (row 3) sit over the line's right end: a chip that
@@ -313,8 +313,7 @@
     if (!el) return;
     var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
     var mk = document.getElementById('mktPills');
-    var bk = document.getElementById('macroBookStrip');
-    el.hidden = !((bk && !bk.hidden) || (strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
+    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
     if (!el.hidden) alignVix();   // the VIX offset can only be measured once the card is visible
   };
   function hideLine() {

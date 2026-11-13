@@ -1106,11 +1106,13 @@ function _buildNotesPopHtml(sym, notes, desc) {
       ? `<span style="color:${_sideColor(n.signal_kind)};font-weight:600;text-transform:uppercase;font-size:9px;"> ${escapeHtml(n.signal_kind)}</span>`
       : '';
     let txt = (n.note_text || '').trim();
-    // 2026-11-12, user: show the whole note, no cut-off.
+    // 2026-11-12, user: show the whole note, no cut-off -- except Macro Show notes, which are confined to two lines.
+    const clamp = (n.source_type || '') === 'macro_show'
+      ? 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;' : '';
     h += `<div style="margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid #f1f5f9;">`
        + `<div style="font-size:9px;color:${_srcColor(src)};font-weight:700;text-transform:uppercase;letter-spacing:0.3px;">`
        + `${escapeHtml(src)}${sk} <span style="color:#94a3b8;font-weight:400;text-transform:none;">${dt}</span></div>`
-       + `<div style="font-size:10.5px;color:#334155;margin-top:2px;">${escapeHtml(txt)}</div>`
+       + `<div style="font-size:10.5px;color:#334155;margin-top:2px;${clamp}">${escapeHtml(txt)}</div>`
        + `</div>`;
   }
   h += '</div>';

@@ -161,7 +161,7 @@
     while (row2.length < 12) row2.push(no);
     // Line 3 shares the grid: Sct + FX in column 1, the sectors and style chips start in column 2, so the first sector chip (Enrg) lines up with S&P / VIX above.
     var sl = sectorLine(d);
-    var row3 = '<span class="ts-pair">' + sl.pair + '</span><span class="ts-chips ts-sectors ts-srest">' + sl.secs + '</span><span class="ts-chips ts-sectors ts-sfac">' + sl.factors + '</span>';
+    var row3 = '<span class="ts-pair">' + sl.pair + '</span><span class="ts-chips ts-sectors ts-srest">' + sl.secs + sl.factors + '<span id="macroBookStrip" class="mw-strip" hidden></span></span>';   // sectors, styles, then the Book chip (macro_week.js fills #macroBookStrip)
     return '<div class="ts-trow ts-tgrid">' + row1.join('') + row2.join('') + row3 + '</div>';
   }
 
@@ -208,6 +208,7 @@
       '<div class="ts-tab ts-rfull">' + tableHtml(d) + '</div>' +
       // The Areas line (one chip per Hedgeye theme: row('Areas', themeChips(areas, 'ts-w3'), 'ts-units ts-full')) is switched off for now.
       '</div>';
+    if (window.mwRender) window.mwRender();   // the Book chip lives inside this panel, so redraw it after every render
   }
 
   async function load() {
