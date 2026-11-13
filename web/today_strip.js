@@ -32,9 +32,11 @@
   }
 
   // One chip: name, optional level, optional move. jump = id of the Macro Rail band to scroll to.
-  function chip(name, level, move, moveCls, tip, jump, extra) {
+  // 2026-11-13, user: the symbol name on a chip is a Yahoo Finance link (same wrapper the other screens use; opens in a new tab and does not trigger the chip's own click).
+  function yl(text, sym, desc) { return sym && window.symbolLink ? window.symbolLink(esc(text), sym, desc) : esc(text); }
+  function chip(name, level, move, moveCls, tip, jump, extra, sym, desc) {
     return '<span class="ts-chip' + (moveCls || '') + '" tabindex="0"' + (jump ? ' data-jump="' + jump + '"' : '') + '>' +
-      '<span class="ts-nm">' + esc(name) + '</span>' +
+      '<span class="ts-nm">' + yl(name, sym, desc) + '</span>' +
       (level ? '<span class="ts-lv">' + esc(level) + '</span>' : '') + (extra || '') +
       (move ? '<span class="ts-mv' + (moveCls || '') + '">' + esc(move) + '</span>' : '') +
       (tip ? '<span class="ts-tip">' + tip + '</span>' : '') + '</span>';
@@ -60,7 +62,7 @@
       ['Hedgeye outlook', u.outlook || '--'], ['Last', num(u.last, 2)],
       ['5-session change', u.chg5 == null ? '--' : sgn(u.chg5) + Math.abs(u.chg5).toFixed(2)],
       ['Position in risk range', has ? pct + '%' : '--']], 'Click to open the Macro Rail.');
-    return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">USD</span><b>' + num(u.last, 2) + '</b>' + bar + arr +
+    return '<span class="ts-chip mw-usd ts-w6' + oc + (u.day_pct > 0 ? ' mv-up' : u.day_pct < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><span class="mw-usd-l">' + yl('USD', '$DXY', 'US Dollar index') + '</span><b>' + num(u.last, 2) + '</b>' + bar + arr +
       (dp != null ? '<span class="oc-pct ts-usd-pct ' + (dp > 0 ? 'bull' : dp < 0 ? 'bear' : 'neu') + '">' + fpct(dp) + '</span>' : '') +
       '<span class="ts-tip">' + tip + '</span></span>';   // 2026-11-13, user: no Bullish/Bearish badge -- the chip's left edge already shows the outlook (the hover still names it)
   }
@@ -102,7 +104,7 @@
       // Same look as the VIX pill beside the US Dollar pill (.oc-chip2). 2026-11-11, user: the chip's FILL follows today's move (green up, red down);
       // the Hedgeye OUTLOOK is only the 3px left edge. The filled pill is today's move too.
       var o = (c.outlook || '').toLowerCase(), oc = o.indexOf('bull') >= 0 ? '' : o.indexOf('bear') >= 0 ? ' bear' : ' neu';   // 'Mild Bearish' (Dow) counts as bearish
-      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + esc(nm) + '</b>' + '<span class="oc-lvl">' + esc(levelText(c)) + '</span>' + rrPct(c.rr_pos) + volTag(c.name) +
+      return '<span class="oc-chip2 ts-w4' + (/^(2Y|10Y|30Y|VIX)$/.test(c.name) ? ' ts-tight' : '') + oc + (v > 0 ? ' mv-up' : v < 0 ? ' mv-dn' : '') + '" tabindex="0" data-jump="' + JUMP.cross + '"><b>' + yl(nm, c.sym, c.name) + '</b>' + '<span class="oc-lvl">' + esc(levelText(c)) + '</span>' + rrPct(c.rr_pos) + volTag(c.name) +
         '<span class="oc-ft"><span class="oc-pct ' + (v > 0 ? 'bull' : v < 0 ? 'bear' : 'neu') + '">' + esc(mv) + '</span></span><span class="ts-tip">' + tip + '</span></span>';
   }
 
@@ -192,7 +194,7 @@
     var pair = (eq.sector || '') + (eq.fx || '');
     var restSecs = secs.map(function (x) {
       var so = (x.outlook || '').toLowerCase();   // left edge = Hedgeye outlook (same as the price chips); the fill and the move colour follow today's move
-      return chip(SHORT_SECTOR[x.name] || x.name, '', fpct(x.pct), cls(x.pct) + ' ts-w3' + (so.indexOf('bull') >= 0 ? ' ts-ol-bull' : so.indexOf('bear') >= 0 ? ' ts-ol-bear' : ' ts-ol-neu'), tipRows(x.name, [['Today', fpct(x.pct), x.pct >= 0 ? 'ts-ut' : 'ts-dt']], 'Click to open the Sectors panel.'), JUMP.sector);
+      return chip(SHORT_SECTOR[x.name] || x.name, '', fpct(x.pct), cls(x.pct) + ' ts-w3' + (so.indexOf('bull') >= 0 ? ' ts-ol-bull' : so.indexOf('bear') >= 0 ? ' ts-ol-bear' : ' ts-ol-neu'), tipRows(x.name, [['Today', fpct(x.pct), x.pct >= 0 ? 'ts-ut' : 'ts-dt']], 'Click to open the Sectors panel.'), JUMP.sector, '', x.sym, x.name + ' sector ETF');
     }).join('');
     return { pair: pair, secs: restSecs, factors: factors };   // the style (factor) chips start under the 2Y / MOVE column
   }
