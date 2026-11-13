@@ -2526,8 +2526,10 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    within ~1 average day), green otherwise. LRR label stays neutral
    (.rd-meter-pct's default var(--text-3)) -- this gauge is deliberately
    top-of-range-only, see the JS comment above trrCls. */
-.rd-meter-pct-red   { color: var(--bear); font-weight: 700; }
-.rd-meter-pct-green { color: var(--ok); }
+.rd-meter-pct-red   { color: #b3001b; font-weight: 800; }
+.rd-meter-pct-green { color: #0b6b2e; font-weight: 800; }
+/* 2026-11-13, user: both labels sharp and dark. LRR stays a single colour (dark ink), bold. */
+.rd-meter-pct-bottom { color: #1b2230; font-weight: 800; }
 /* 2026-08-14 -- always-visible vertical SPX risk-range indicator, on the
    right side of .rd-meter within .rd-top-row. Fill height = SPX's position
    within LRR/TRR (0=LRR floor, 100%=TRR ceiling); fill colour is a pure

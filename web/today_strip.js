@@ -118,7 +118,7 @@
     if (h && h.n) {
       var htip = tipRows('Held: breadth of the positions you hold', [['Up today', String(h.up), 'ts-ut'], ['Down today', String(h.down), 'ts-dt']],
         'Counts the positions you hold across all accounts. Under 50% means fewer than half are up.');
-      o.holdings = chip('Held', '', '', (h.pct >= 50 ? ' ts-u' : ' ts-d') + ' ts-w5', htip, null, udHtml(h.up, h.down) + ' <span class="ts-hp">' + h.pct + '%</span>');
+      o.holdings = chip('Held', '', '', (h.pct >= 50 ? ' ts-u' : ' ts-d') + ' ts-w5', htip, null, udHtml(h.up, h.down) + ' <span class="ts-hp ' + (h.pct >= 50 ? 'ts-ut' : 'ts-dt') + '">' + h.pct + '%</span>');
     }
     var secs = d.sectors.slice().sort(function (a, b) { return b.pct - a.pct; });
     if (secs.length) {
@@ -133,7 +133,7 @@
       var iu = idx.filter(function (x) { return x.pct > 0; }).length;
       var imini = '<span class="ts-mini">' + idx.map(function (x) { return '<i class="' + (x.pct > 0 ? '' : 'off') + '"></i>'; }).join('') + '</span>';
       var itip = tipRows('Stocks: main indexes', idx.map(function (x) { return [SHORT[x.name] || x.name, fpct(x.pct), x.pct >= 0 ? 'ts-ut' : 'ts-dt']; }), 'S&P 500, Nasdaq and Russell. A bar is lit when the index is up today.');
-      o.stocks = chip('Stk', '', '', (iu * 2 >= idx.length ? ' ts-u' : ' ts-d') + ' ts-w4', itip, JUMP.cross, udHtml(iu, idx.length - iu) + imini);
+      o.stocks = chip('Mkts', '', '', (iu * 2 >= idx.length ? ' ts-u' : ' ts-d') + ' ts-w4', itip, JUMP.cross, udHtml(iu, idx.length - iu) + imini);
     }
     // FX breadth: currencies vs the US dollar. Lit bar = that currency is up vs USD. Green when at least half are up (dollar weak), red otherwise (dollar strong).
     var fx = d.fx || [];
