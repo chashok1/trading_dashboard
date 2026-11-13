@@ -1225,7 +1225,21 @@ function _showDataPop(el, html) {
   pop.style.pointerEvents = String(html).indexOf('class="actpop"') !== -1 ? 'auto' : '';
   if (pop.style.pointerEvents === 'auto') _popWatchStart(el, pop); else _popWatchStop();
   const rect = el.getBoundingClientRect();
+  const isAct = String(html).indexOf('class="actpop"') !== -1;
+  pop.style.maxHeight = isAct ? (window.innerHeight - 16) + 'px' : '';   // never taller than the window; scrolls inside if it must
+  pop.style.overflowY = isAct ? 'auto' : '';
   let top = rect.bottom + 4;
+  if (isAct) {
+    // 2026-11-13, user: the Action popup starts at the TOP of the window so the whole content is visible (it used to open at the row and
+    // run off the bottom). It sits beside the row's button (right of it, else left of it) so the button stays visible and clickable.
+    top = 8;
+    let l = rect.right + 8;
+    if (l + pop.offsetWidth > window.innerWidth - 8) l = rect.left - pop.offsetWidth - 8;
+    if (l < 8) l = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+    pop.style.top = top + 'px';
+    pop.style.left = l + 'px';
+    return;
+  }
   if (top + pop.offsetHeight > window.innerHeight - 8)
     top = Math.max(8, rect.top - pop.offsetHeight - 4);
   let left = rect.left;
