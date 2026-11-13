@@ -154,8 +154,8 @@ def _dominant_quad(session: Session, as_of_date: date) -> Optional[int]:
 # Context builder — one round-trip per source table, reused across gauges.
 # ---------------------------------------------------------------------------
 
-_RR_SYMS = ["SPX", "HYG", "TNX:CGI", "TYX:CGI", "$DXY", "/CL"]
-_QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL", "VIX", "MOVE:GIF",
+_RR_SYMS = ["SPX", "HYG", "TNX:CGI", "TYX:CGI", "DGS2:FRED", "$DXY", "/CL"]
+_QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "TYX:CGI", "DGS2:FRED", "$DXY", "/CL", "VIX", "MOVE:GIF",
                "GVZ:CGI", "OVX:CGI", "/6J", "VXN:CGI", "RVX"]
 
 
@@ -818,37 +818,54 @@ def _g_credit_equity_divergence(ctx):
     )
 
 
+# 2026-11-13, user: the "Yields at a watched level" gauge now covers the 2Y and 30Y as well as the 10Y. Compared on the x10 scale
+# (4.5% = 45). Watch levels come from ref_level_watch (any level or tolerance under 15 is lifted to x10 -- the old 2Y row is in
+# plain percent). The 2Y's 4.5% / 5.0% levels live HERE, not in ref_level_watch, because the Macro Week 2Y chip and the area rules
+# read the highest ref_level_watch level per symbol and would shift if more 2Y rows were added there.
+_YIELD_WATCH = (("10Y", "TNX:CGI"), ("2Y", "DGS2:FRED"), ("30Y", "TYX:CGI"))
+_YIELD_EXTRA_LEVELS = {"DGS2:FRED": [(45.0, 1.0), (50.0, 1.0)]}
+
+
 def _g_yield_level_watch(ctx):
-    raw = ctx["quote"].get("TNX:CGI")
-    tnx = _normalize_tnx(raw)
-    v = _rr_pos_sym(ctx, "TNX:CGI")
-    levels = ctx["levels"].get("TNX:CGI", [])
-    near_level = None
-    if tnx is not None:
-        for lvl, tol in levels:
-            if abs(tnx - lvl) <= tol:
-                near_level = lvl
-                break
-    if tnx is None and v is None:
-        return None, None, "10Y yield unavailable"
-    level_fired = near_level is not None
-    range_fired = v is not None and v >= 0.85
-    fired = level_fired or range_fired
     legs = []
-    if tnx is not None and (level_fired or levels):
-        if level_fired:
-            legs.append((True, -1.0,
-                         f"10Y {tnx/10:.2f}% — within tolerance of {near_level/10:.2f}% watch level"))
-        else:
-            lvl, tol = min(levels, key=lambda lt: abs(tnx - lt[0]) / lt[1] if lt[1] else float("inf"))
-            margin = ((abs(tnx - lvl) - tol) / tol) if tol else 0.0
-            legs.append((False, margin, f"10Y {tnx/10:.2f}% (nearest watch level {lvl/10:.2f}%)"))
-    if v is not None:
-        prefix = f"10Y {tnx/10:.2f}% — " if tnx is not None else ""
-        legs.append((range_fired, (0.85 - v) / 0.85, f"{prefix}{v*100:.0f}% of risk range"))
+    fired = False
+    best_pos = None
+    any_data = False
+    for lab, sym in _YIELD_WATCH:
+        y = _normalize_tnx(ctx["quote"].get(sym))
+        v = _rr_pos_sym(ctx, sym)
+        raw = list(ctx["levels"].get(sym, [])) + _YIELD_EXTRA_LEVELS.get(sym, [])
+        levels = []
+        for lvl, tol in raw:
+            if lvl < 15:
+                lvl, tol = lvl * 10, tol * 10
+            if (lvl, tol) not in levels:
+                levels.append((lvl, tol))
+        if y is None and v is None:
+            continue
+        any_data = True
+        near = next((lvl for lvl, tol in levels if y is not None and abs(y - lvl) <= tol), None)
+        range_fired = v is not None and v >= 0.85
+        fired = fired or near is not None or range_fired
+        if v is not None and (best_pos is None or v > best_pos):
+            best_pos = v
+        if y is not None and (near is not None or levels):
+            if near is not None:
+                legs.append((True, -1.0, f"{lab} {y/10:.2f}% — within tolerance of {near/10:.2f}% watch level"))
+            else:
+                lvl, tol = min(levels, key=lambda lt: abs(y - lt[0]) / lt[1] if lt[1] else float("inf"))
+                margin = ((abs(y - lvl) - tol) / tol) if tol else 0.0
+                legs.append((False, margin, f"{lab} {y/10:.2f}% (nearest watch level {lvl/10:.2f}%)"))
+        if v is not None:
+            prefix = f"{lab} {y/10:.2f}% — " if y is not None else ""
+            legs.append((range_fired, (0.85 - v) / 0.85, f"{prefix}{v*100:.0f}% of risk range"))
+        elif y is not None and not levels:
+            legs.append((False, 1.0, f"{lab} {y/10:.2f}%"))
+    if not any_data:
+        return None, None, "10Y yield unavailable"
     if not legs:
-        legs.append((False, 0.0, f"10Y {tnx/10:.2f}%" if tnx is not None else "10Y n/a"))
-    return fired, v if v is not None else tnx, _leg_detail(legs, fired)
+        return False, best_pos, "yields n/a"
+    return fired, best_pos, _leg_detail(legs, fired)
 
 
 def _g_curve_inverting(ctx):

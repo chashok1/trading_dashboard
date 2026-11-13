@@ -534,13 +534,17 @@ async function loadRiskDial() {
       const avgDaily = r.spx_avg_daily_pct_10d;
       let trrTitle = detail;
       let trrCls = '';
-      if (upM && avgDaily != null) {
-        const upVal = Math.abs(parseFloat(upM[1]));
-        trrCls = upVal < avgDaily ? ' rd-meter-pct-red' : ' rd-meter-pct-green';
-        trrTitle = `${detail} · 10d avg daily move ±${avgDaily.toFixed(2)}%`;
+      let lrrCls = '';
+      if (upM && avgDaily != null) trrTitle = `${detail} · 10d avg daily move ±${avgDaily.toFixed(2)}%`;
+      // 2026-11-13, user: TRR label is green when the room up to TRR is bigger than the room down to LRR; LRR label is red when the room
+      // down to LRR is bigger. Any label that is not green/red stays black.
+      if (upM && dnM) {
+        const upVal = Math.abs(parseFloat(upM[1])), dnVal = Math.abs(parseFloat(dnM[1]));
+        trrCls = upVal > dnVal ? ' rd-meter-pct-green' : '';
+        lrrCls = dnVal > upVal ? ' rd-meter-pct-red' : '';
       }
       if (upM) meterLabelTop = `<span class="rd-meter-pct rd-meter-pct-top${trrCls}" title="${escapeHtml(trrTitle)}">${upM[1]}% TRR</span>`;
-      if (dnM) meterLabelBottom = `<span class="rd-meter-pct rd-meter-pct-bottom" title="${escapeHtml(detail)}">${dnM[1]}% LRR</span>`;
+      if (dnM) meterLabelBottom = `<span class="rd-meter-pct rd-meter-pct-bottom${lrrCls}" title="${escapeHtml(detail)}">${dnM[1]}% LRR</span>`;
     }
     // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
     // index.html (this card is self-explanatory: the number +
