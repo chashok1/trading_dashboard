@@ -4818,3 +4818,18 @@ body.act-page main > .card { padding-top: 0; }
 /* 2026-11-13: Portfolio -- the Today panel (one line) replaces the sticky mini-tape ribbon, lined up with the cards below (8px side margins). */
 body.portfolio-page #rrTape1 { display: none; }
 body.portfolio-page .act-today { margin: 0 8px; }
+
+/* 2026-11-13, user: the Book chip sits in the Outlook changes card, in its own column right AFTER the "+N more" button (they cannot overlap:
+   the chips line and the button share column 1, Book is column 2). The card's frame (::after) spans both columns. */
+.oc-card .oc-body { grid-template-columns: minmax(0, 1fr) auto; }
+.oc-card .oc-body::after { grid-column: 1 / -1; }
+.oc-card .oc-body > .oc-book { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; position: relative; z-index: 1; margin: 0 0 0 10px; }
+.oc-card .oc-body > .oc-book[hidden] { display: none !important; }
+.oc-card .oc-body > .oc-book .oc-grp { margin: 0; }
+/* 2026-11-13, user: more room above and below the chips inside the "+N more" popup (top and bottom padding 6px -> 14px; a little extra between rows). */
+.oc-card .oc-pop { padding-top: 14px; padding-bottom: 14px; row-gap: 10px; }
+/* 2026-11-13, user: the Book popup lists all holdings at once, so it may grow taller before it scrolls. */
+.mw-list { max-height: 88vh; }
+/* 2026-11-13, user: line break the Today panel uses (only when needed) to put the style chips on their own line so Def can line up under MOVE. */
+.ts-sectors > .ts-br { flex: 0 0 100%; height: 0; }
+.ts-sectors > .ts-br[hidden] { display: none; }

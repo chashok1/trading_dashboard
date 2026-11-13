@@ -256,7 +256,7 @@
       // 2026-10-22: the event pill (row 1), Book (row 2) and the button (row 3) sit over the line's right end: a chip that
       // shares a row with one of them must stop short of it, so it is checked by vertical overlap, not by a fixed row.
       var blockers = [];
-      [document.querySelector('#outlookChangesCard .oc-grp[title="Next event"]'), document.querySelector('#outlookChangesCard .oc-grp[title="Book"]'), more].forEach(function (b) {
+      [document.querySelector('#outlookChangesCard .oc-grp[title="Next event"]'), more].forEach(function (b) {
         if (b && !b.hidden && b.offsetParent) blockers.push(b.getBoundingClientRect());
       });
       Array.prototype.forEach.call(line.children, function (c, i) {
@@ -296,7 +296,7 @@
       // 2026-11-11: also set Book's right margin directly (an inline style beats every stylesheet rule), so Book always stops short of the
       // "+N more" button -- the stylesheet margin was not clearing the button on screen.
       var bookEl = document.querySelector('#outlookChangesCard .oc-grp[title="Book"]');
-      if (bookEl) bookEl.style.marginRight = nChips ? more.offsetWidth + 8 + 'px' : '0px';
+      if (bookEl) bookEl.style.marginRight = '0px';   // 2026-11-13, user: Book now sits in its own column AFTER the "+N more" button, so it needs no room reserved
       if (!nChips) setOpen(false);
     }
     window.ocFit = fit;   // macro_week.js re-fits once the Book chip is drawn (it reserves room on the third row)
@@ -313,7 +313,8 @@
     if (!el) return;
     var strip = document.getElementById('macroWeekStrip'), usd = document.getElementById('usdPill'), line = document.getElementById('ocLine');
     var mk = document.getElementById('mktPills');
-    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (line && !line.hidden && line.children.length));
+    var bk = document.getElementById('macroBookStrip');
+    el.hidden = !((strip && !strip.hidden) || (usd && usd.innerHTML) || (mk && mk.innerHTML) || (bk && !bk.hidden) || (line && !line.hidden && line.children.length));
     if (!el.hidden) alignVix();   // the VIX offset can only be measured once the card is visible
   };
   function hideLine() {

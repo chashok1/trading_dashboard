@@ -238,8 +238,8 @@
 
   function listHtml(data) {
     var hs = data.holdings;
-    var shown = showAll ? hs : hs.slice(0, TOP_N);
-    var more = hs.length - TOP_N;
+    var shown = hs;   // 2026-11-13, user: the Book popup shows every holding at once (no "show all" button)
+    var more = 0;
     var evs = data.events.length
       ? data.events.map(function (e) {
         return '<div>' + (e.major ? '⚑ ' : '') + '<b>' + dayName(e.date) + '</b> ' + esc(e.name) + '</div>';
@@ -477,7 +477,7 @@
 
   // The checklist opens as a popover under the strip, left-aligned to it -- 0px when closed.
   function placeList(list) {
-    var r = (document.getElementById('todayStripBand') || document.getElementById('outlookChangesCard')).getBoundingClientRect();   // 2026-11-13: Book now sits in the Today panel
+    var r = (document.getElementById('outlookChangesCard') || document.getElementById('todayStripBand')).getBoundingClientRect();   // 2026-11-13: Book sits in the Outlook changes card, after "+N more"
     var w = Math.min(Math.max(r.width, 560), window.innerWidth - 24);
     list.style.top = Math.round(r.bottom + 4) + 'px';
     list.style.left = Math.max(12, Math.min(Math.round(r.left), window.innerWidth - w - 12)) + 'px';

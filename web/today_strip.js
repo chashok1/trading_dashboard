@@ -6,8 +6,8 @@
   'use strict';
   var FACTORS = { 'Momentum': 1, 'Defensives': 1, 'Large caps': 1, 'Cyclicals': 1, 'Small caps': 1 };
   var RENAME = { 'Duration': 'Bonds', 'Tech/software': 'Software' };
-  var SHORT_THEME = { 'Momentum': 'Mtum', 'Defensives': 'Def', 'Cyclicals': 'Cyc', 'Small caps': 'Small', 'Large caps': 'Large' };
-  var SHORT_SECTOR = { 'Financials': 'Fin', 'Energy': 'Enrg', 'Healthcare': 'Hlth', 'Discretionary': 'Disc', 'Staples': 'Stpl', 'Utilities': 'Util', 'Industrials': 'Indu', 'Materials': 'Matl', 'Real estate': 'RE', 'Comm. svcs': 'Comm' };   // second-line chip names; hover has the full name   // short chip names; the hover keeps the full name
+  var SHORT_THEME = { 'Momentum': 'Mtum', 'Defensives': 'Def', 'Cyclicals': 'Cyc', 'Small caps': 'Sml', 'Large caps': 'Lrg' };
+  var SHORT_SECTOR = { 'Financials': 'Fin', 'Energy': 'Engy', 'Healthcare': 'Hlth', 'Discretionary': 'Disc', 'Staples': 'Stpl', 'Utilities': 'Util', 'Industrials': 'Ind', 'Materials': 'Mat', 'Real estate': 'RE', 'Comm. svcs': 'Com' };   // second-line chip names; hover has the full name   // short chip names; the hover keeps the full name
   // Click targets: the Macro Rail panel that holds the same symbols.
   var JUMP = { sector: 'macroSectorEtfsBand', cross: 'macroTop9Band', Energy: 'macroEnergyBand', Gold: 'macroMetalsBand',
     'Precious metals': 'macroMetalsBand', Credit: 'macroCreditBand', Duration: 'macroRatesBand', Ags: 'macroAgBand', Crypto: 'macroCannabisBand' };
@@ -167,7 +167,7 @@
     while (row2.length < 12) row2.push(no);
     // Line 3 shares the grid: Sct + FX in column 1, the sectors and style chips start in column 2, so the first sector chip (Enrg) lines up with S&P / VIX above.
     var sl = sectorLine(d);
-    var row3 = '<span class="ts-pair">' + sl.pair + '</span><span class="ts-chips ts-sectors ts-srest">' + sl.secs + sl.factors + '<span id="macroBookStrip" class="mw-strip" hidden></span></span>';   // sectors, styles, then the Book chip (macro_week.js fills #macroBookStrip)
+    var row3 = '<span class="ts-pair">' + sl.pair + '</span><span class="ts-chips ts-sectors ts-srest">' + sl.secs + '<span class="ts-br" hidden></span>' + sl.factors + '</span>';   // sectors, then styles (2026-11-13, user: the Book chip moved to the Outlook changes card, after "+N more")
     return '<div class="ts-trow ts-tgrid">' + row1.join('') + row2.join('') + row3 + '</div>';
   }
 
@@ -226,6 +226,33 @@
       // The Areas line (one chip per Hedgeye theme: row('Areas', themeChips(areas, 'ts-w3'), 'ts-units ts-full')) is switched off for now.
       '</div>';
     if (window.mwRender) window.mwRender();   // the Book chip lives inside this panel, so redraw it after every render
+    alignStyles(host); watchAlign(host);
+  }
+
+  // 2026-11-13, user: the first style chip (Def) on line 3 starts exactly under the left edge of the MOVE chip on line 2, whatever the
+  // chip widths do. Measured from the real positions (not guessed), so it follows window resizes, font loads and chips that change width.
+  // Def gets a left margin equal to the gap; if the sector chips already run past MOVE's left edge, Def drops to its own line first.
+  function alignStyles(host) {
+    var grid = host.querySelector('.ts-tgrid');
+    if (!grid) return;   // the compact Actionable / Portfolio layout has no grid
+    var find = function (root, nm) { return Array.prototype.filter.call(root.querySelectorAll('.ts-chip, .oc-chip2'), function (c) { var n = c.querySelector('.ts-nm, b'); return n && n.textContent === nm; })[0]; };
+    var move = find(grid, 'MOVE'), def = find(grid.querySelector('.ts-srest') || grid, 'Def'), br = grid.querySelector('.ts-br');
+    if (!move || !def) return;
+    def.style.marginLeft = ''; if (br) br.hidden = true;
+    var dx = move.getBoundingClientRect().left - def.getBoundingClientRect().left;
+    if (dx < -0.5 && br) { br.hidden = false; dx = move.getBoundingClientRect().left - def.getBoundingClientRect().left; }
+    if (dx > 0.5) def.style.marginLeft = dx + 'px';
+  }
+  var _alignRO = null, _alignHost = null;
+  function watchAlign(host) {
+    if (!window.ResizeObserver) return;
+    if (!_alignRO) _alignRO = new ResizeObserver(function () { if (_alignHost) alignStyles(_alignHost); });
+    _alignRO.disconnect(); _alignHost = host;
+    var grid = host.querySelector('.ts-tgrid');
+    if (!grid) return;
+    _alignRO.observe(grid);
+    Array.prototype.forEach.call(grid.children, function (c) { _alignRO.observe(c); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (_alignHost) alignStyles(_alignHost); });
   }
 
   async function load() {
