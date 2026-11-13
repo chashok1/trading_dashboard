@@ -649,7 +649,8 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     if cp is None:
         return None, "no pct_delta value"
     if cp < 0:
-        return "REDUCE", f"pct_delta {cp:+g} negative"
+        # 2026-11-13, user: no warning for a negative SSS weight either -- just HOLD (no rising/INCREASE while negative).
+        return "HOLD", f"pct_delta {cp:+g} negative"
     try:
         pp = float(prev_pct) if prev_pct is not None else None
     except (TypeError, ValueError):
@@ -658,9 +659,8 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
         return "HOLD", f"pct_delta {cp:+g}, no prior to compare"
     if cp > pp:
         return "INCREASE", f"pct_delta {pp:+g} -> {cp:+g} (rising)"
-    if cp < pp:
-        return "REDUCE", f"pct_delta {pp:+g} -> {cp:+g} (falling)"
-    return "HOLD", f"pct_delta steady at {cp:+g}"
+    # 2026-11-13, user: no warning for a week-over-week fall in the SSS weight -- a fall is now just HOLD.
+    return "HOLD", f"pct_delta {pp:+g} -> {cp:+g}" if cp != pp else f"pct_delta steady at {cp:+g}"
 
 
 def _call_window_states(session: Session, table: str, date_col: str,

@@ -179,8 +179,8 @@ this snapshot — `rr_action` is the more direct check.
 Initial); analyst rank is display-only:
 
 - new → ADD; dropped → REMOVE if held, else silent
-- on the list both weeks: pct_delta < 0 → REMOVE; rising → INCREASE;
-  falling → REDUCE; steady → HOLD
+- on the list both weeks: pct_delta < 0 → HOLD (was REDUCE warning, removed 2026-11-13); rising → INCREASE;
+  falling or steady → HOLD (the falling → REDUCE warning was removed 2026-11-13)
 
 ## Stage 2 — consolidation (`derive_actionable.py`)
 
