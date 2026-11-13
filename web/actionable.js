@@ -3234,7 +3234,7 @@ function _finalCallHtml(row) {
   // SA (SELL ALL) / BS (BUY SOME) match the HEDGEYE panel's red/green exactly (2026-10-26, user: BM and BS
   // colors swapped -- BM now takes the standard green); weaker tiers (SS/STM/SO/SW, BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
-                    : fcDisp.code === 'SA' ? 'background:#d4537e;'
+                    : fcDisp.code === 'SA' ? 'background:#e5484d;'
                     : fcDisp.code === 'BM' ? 'background:#2f9e2f;'
                     : fcDisp.code === 'BS' ? 'background:#1d9e75;'
                     : '';
@@ -5490,7 +5490,7 @@ function _renderFocusCard() {
     const fcText = fc.label || actionText(fc);
     const fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
     const fcColorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
-    const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;' : fcDisp.code === 'BM' ? 'background:#2f9e2f;' : fcDisp.code === 'BS' ? 'background:#1d9e75;' : '';
+    const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#e5484d;' : fcDisp.code === 'BM' ? 'background:#2f9e2f;' : fcDisp.code === 'BS' ? 'background:#1d9e75;' : '';
     $('fcAction').innerHTML = `<span class="act-badge ${fcColorCls}" style="${fcHedgeyeStyle}font-size:16px;padding:4px 14px;" title="${escapeHtml(fc.label || fcText)}">${escapeHtml(fcText)}</span>`;
   }
   $('fcAmt').textContent = fmtUsd(r._amt) || '—';

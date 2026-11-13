@@ -102,7 +102,7 @@
   function _zoneColor(zone) {
     if (zone === 'investable') return '#1d9e75';
     if (zone === 'chop')       return '#eab308';
-    if (zone === 'elevated')   return '#d4537e';
+    if (zone === 'elevated')   return '#e5484d';
     return '#888';
   }
 

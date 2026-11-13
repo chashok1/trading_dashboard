@@ -4165,7 +4165,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 /* 2026-10-16 -- AI Bubble panel: like Major Markets, one column of rail rows per supply-chain layer (wraps on narrow windows). */
 #aiBubbleBand.ab-collapsed .ab-body { display: none; }
 #aiBubbleBand .mr-sect-legend { margin-left: 8px; }
-#aiBubbleBand .ab-up { color: #1d9e75; font-weight: 700; } #aiBubbleBand .ab-dn { color: #d4537e; font-weight: 700; }
+#aiBubbleBand .ab-up { color: #1d9e75; font-weight: 700; } #aiBubbleBand .ab-dn { color: #e5484d; font-weight: 700; }
 /* packed by web/macro_areas.js::renderAiBubble: 6 columns of 6 stocks, layers flowing from one column into the next */
 .ab-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 8px; padding: 4px 6px 6px; align-items: start; }
 .ab-col { min-width: 0; }
@@ -4173,7 +4173,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .ab-colhdr { display: flex; justify-content: space-between; align-items: baseline; font-size: 8.5px; font-weight: 700; text-transform: uppercase;
              letter-spacing: .03em; color: var(--text-2, #5b6172); border-bottom: 1px solid var(--border); padding: 0 2px 2px; margin-bottom: 2px; }
 .ab-cnt { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 9.5px; }
-.ab-cnt .up { color: #1d9e75; } .ab-cnt .dn { color: #d4537e; }
+.ab-cnt .up { color: #1d9e75; } .ab-cnt .dn { color: #e5484d; }
 #aiBubbleBand .oc-slot { display: none; }   /* no change-marker slot here -- keeps a row within one layer column */
 
 /* 2026-10-16, user-directed: the right column (.rail-split-side) = account checkboxes, the P&L / Asset Allocation / Macro Stance /
@@ -4220,7 +4220,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .oc-slot.ms { display: inline-flex !important; }
 .ms-tag { font-style: normal; font-size: 7.5px; font-weight: 700; padding: 0 3px; border-radius: 3px; line-height: 11px; color: #fff; background: #9ca3af; }
 .ms-tag.ms-BS { background: #1d9e75; } .ms-tag.ms-BM { background: #0f6b4d; }
-.ms-tag.ms-SA { background: #a8335c; } .ms-tag.ms-STM { background: #d4537e; }
+.ms-tag.ms-SA { background: #a8335c; } .ms-tag.ms-STM { background: #e5484d; }
 .ms-tag.ms-HOLD { background: #9ca3af; }
 
 /* 2026-10-17 -- OPEX / Earnings "soon" highlight in the Cross-Asset panel: soft tinted pill with a

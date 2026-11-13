@@ -7,7 +7,7 @@
  * The rows and settings it reads are fetched once from the same /api endpoints the Actionable screen uses. */
 (function () {
   'use strict';
-  var POPS_URL = '/static/actionable_pops.js?v=20261112c';
+  var POPS_URL = '/static/actionable_pops.js?v=20261113c';
   var api = null, loading = null, rows = {};
   var popState = {
     date: null, anchorDate: null, rows: [], allRows: [], filters: { trade_mode: false, act_only: false },
@@ -143,7 +143,7 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
     var tag = t.closest('.msr-row .ms-tag');
     if (tag) return { el: tag, kind: 'act' };
     var nm = t.closest('.msr-row .msr-name-tick');
-    if (nm) return { el: nm, kind: 'sym' };
+    if (nm) return (window.symNotesPopOn && !window.symNotesPopOn()) ? null : { el: nm, kind: 'sym' };   // notes popup only when the toggle is on
     return null;
   }
 

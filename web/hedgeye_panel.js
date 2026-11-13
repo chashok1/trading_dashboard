@@ -27,7 +27,7 @@
   function sideColor(side) {
     var v = String(side || '').toLowerCase();
     if (v.indexOf('long') >= 0 || v.indexOf('bull') >= 0 || v.indexOf('buy') >= 0) return '#1d9e75';
-    if (v.indexOf('short') >= 0 || v.indexOf('bear') >= 0 || v.indexOf('sell') >= 0) return '#d4537e';
+    if (v.indexOf('short') >= 0 || v.indexOf('bear') >= 0 || v.indexOf('sell') >= 0) return '#e5484d';
     return '#888780';
   }
 
@@ -100,8 +100,8 @@
         r.rationale));
       return '<div data-hetip="' + idx + '" style="font-size:11px; line-height:1.4;">' +
         '<span style="color:#bbb; font-size:9px;">#' + esc(r.rank) + '</span> ' +
-        '<strong style="font-size:9px;">' + symLink(r.symbol) + '</strong>' +
-        '<span style="color:' + sideColor(r.side) + '; font-size:10px;"> ' + esc(r.side || '') + '</span>' +
+        '<strong style="font-size:9px; display:inline-block; width:38px; vertical-align:bottom; white-space:nowrap; overflow:hidden;">' + symLink(r.symbol) + '</strong>' +
+        '<span style="color:' + sideColor(r.side) + '; font-size:10px;">' + esc(r.side || '') + '</span>' +
         '</div>';
     }).join('');
   }
@@ -117,7 +117,11 @@
     if (!rows || !rows.length) return '';
     return rows.map(function (a) {
       var sc = sideColor(a.side);
-      var durs = (a.durations || []).map(function (d) { return chip(d, sc); }).join('');
+      // 2026-11-13, user: TRADE / TREND / TAIL sit in three fixed slots at the row's right edge, so they line up down every row (a missing one leaves an empty slot).
+      var have = {}; (a.durations || []).forEach(function (d) { have[String(d).toUpperCase()] = 1; });
+      var durs = ['TRADE', 'TREND', 'TAIL'].map(function (d) {
+        return '<span style="flex:0 0 26px; text-align:left;">' + (have[d] ? chip(d, sc) : '') + '</span>';
+      }).join('');
       var corr = a.is_correction ? chip('CORR', '#993c1d') : '';
       var px = (a.price != null) ? ' <span style="color:#888; font-size:10px;">@ ' + esc(a.price) + '</span>' : '';
       var tm = fmtTime(a.ts);
@@ -125,9 +129,10 @@
       var idx = _richTip(_popBox(
         esc(a.symbol) + ' &middot; RTA' + (tm ? ' &middot; ' + esc(tm) : ''),
         a.notes));
-      return '<div data-hetip="' + idx + '" style="font-size:9px; line-height:1.6;">' +
+      return '<div data-hetip="' + idx + '" style="font-size:9px; line-height:1.6; display:flex; align-items:center;">' +
+        '<span style="flex:1 1 auto; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">' +
         '<strong style="color:' + sc + ';">' + esc(a.action || a.side || '') + '</strong> ' +
-        '<strong>' + symLink(a.symbol) + '</strong>' + px + tmHtml + durs + corr +
+        '<strong>' + symLink(a.symbol) + '</strong>' + px + tmHtml + corr + '</span>' + durs +
         '</div>';
     }).join('');
   }
@@ -169,7 +174,7 @@
     if (!gainers.length && !losers.length) return '';
     function row(r) {
       var up = r.pct >= 0;
-      var color = up ? '#1d9e75' : '#d4537e';
+      var color = up ? '#1d9e75' : '#e5484d';
       var pctStr = (up ? '+' : '') + r.pct.toFixed(2) + '%';
       return '<div style="display:flex; justify-content:space-between; align-items:center; ' +
         'font-size:9px; line-height:1.4;">' +
@@ -196,7 +201,7 @@
   function watchDirIcon(w) {
     if (w.triggered_at) return '<span title="Triggered" style="color:#d97706; font-weight:700;">&#128276;</span>';
     if (w.trigger_pct_dir === 'UP')   return '<span title="Watching for a rally" style="color:#1d9e75; font-weight:700;">&#9650;</span>';
-    if (w.trigger_pct_dir === 'DOWN') return '<span title="Watching for a drop" style="color:#d4537e; font-weight:700;">&#9660;</span>';
+    if (w.trigger_pct_dir === 'DOWN') return '<span title="Watching for a drop" style="color:#e5484d; font-weight:700;">&#9660;</span>';
     return '<span title="Watching (level/reminder)" style="color:#7c93c9;">&#9679;</span>';
   }
   // Rich hover tooltip for a Watching row -- bulleted breakdown of the
@@ -226,7 +231,7 @@
     function row(w) {
       var pct = w.pct_change;
       var up = pct != null && Number(pct) >= 0;
-      var color = pct == null ? '#999' : (up ? '#1d9e75' : '#d4537e');
+      var color = pct == null ? '#999' : (up ? '#1d9e75' : '#e5484d');
       var pctStr = pct == null ? '—' : (up ? '+' : '') + Number(pct).toFixed(2) + '%';
       return '<div title="' + esc(watchTip(w)) + '" style="display:flex; justify-content:space-between; align-items:center; gap:4px; ' +
         'font-size:9px; line-height:1.4;">' +
@@ -702,7 +707,7 @@
       return '<div style="font-size:10px; line-height:1.7;">' +
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' + label + '</span> ' +
         arr.map(function (c) {
-          var sc = c.side === 'long' ? '#1d9e75' : '#d4537e';
+          var sc = c.side === 'long' ? '#1d9e75' : '#e5484d';
           var titleHtml = etf.date
             ? esc(etf.date) + ' &middot; etf_changes &middot; ' + esc(c.sym)
             : esc(c.sym);
@@ -722,7 +727,7 @@
       return '<div style="font-size:10px; line-height:1.7;">' +
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' + label + '</span> ' +
         arr.map(function (c) {
-          var sc = c.side === 'long' ? '#1d9e75' : '#d4537e';
+          var sc = c.side === 'long' ? '#1d9e75' : '#e5484d';
           return '<span style="color:' + sc + ';">' + symLink(c.sym) + '</span>';
         }).join(' ') + '</div>';
     };
@@ -775,7 +780,7 @@
       if (!arr.length) return '';
       return '<div style="font-size:10px; line-height:1.7;">' +
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' +
-        label + '(' + arr.length + ')</span> ' +
+        label + '(' + (arr.length < 10 ? '0' : '') + arr.length + ')</span> ' +
         arr.map(function (p) { return symHtml(p, color); }).join(' ') + '</div>';
     };
     var n = (pos.neutral || []);
@@ -784,7 +789,7 @@
         n.map(function (p) { return symHtml(p, '#999'); }).join(' ') + '</div>'
       : '';
     return line('L', pos.longs, '#1d9e75') +
-           line('S', pos.shorts, '#d4537e') +
+           line('S', pos.shorts, '#e5484d') +
            neutralLine;
   }
 
@@ -798,7 +803,7 @@
       var shown = arr.slice(0, 12);
       return '<div style="font-size:10px; line-height:1.7;">' +
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' +
-        label + '(' + arr.length + ')</span> ' +
+        label + '(' + (arr.length < 10 ? '0' : '') + arr.length + ')</span> ' +
         shown.map(function (p) {
           var titleHtml = stanceDate
             ? esc(stanceDate) + ' &middot; macro_show &middot; ' + esc(p.sym || '')
@@ -807,7 +812,7 @@
           return '<span' + t + '>' + esc(p.sym || '') + '</span>';
         }).join(' ') + (arr.length > 12 ? ' …' : '') + '</div>';
     };
-    return line('L', bull, '#1d9e75') + line('S', bear, '#d4537e');
+    return line('L', bull, '#1d9e75') + line('S', bear, '#e5484d');
   }
 
   function render(data, loadedAt) {

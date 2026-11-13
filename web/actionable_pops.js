@@ -41,7 +41,7 @@ function _pctChgChipHtml(pct) {
   if (pct === null || pct === undefined) return '';
   const n = Number(pct);
   const flat = Math.abs(n) < 0.001;
-  const bg = flat ? '#888' : (n > 0 ? '#1d9e75' : '#d4537e');
+  const bg = flat ? '#888' : (n > 0 ? '#1d9e75' : '#e5484d');
   const txt = (n > 0 ? '+' : '') + n.toFixed(2) + '%';
   return `<span class="msr-chg" style="background:${bg};flex:0 0 auto;">${escapeHtml(txt)}</span>`;
 }
@@ -182,7 +182,7 @@ function _symOutlookColor(row) {
   // Green and red are the same two the symbol column already used (BM / SA palette).
   const o = ((row && row.rr_outlook) || '').toString().toLowerCase();
   if (o.indexOf('bull') !== -1) return '#1d9e75';
-  if (o.indexOf('bear') !== -1) return '#d4537e';
+  if (o.indexOf('bear') !== -1) return '#e5484d';
   return '#9ca3af';
 }
 
@@ -1120,6 +1120,7 @@ function _buildNotesPopHtml(sym, notes, desc) {
 }
 
 async function showNotesPop(el, sym, desc) {
+  if (window.symNotesPopOn && !window.symNotesPopOn()) return;   // 2026-11-13: symbol-hover notes only when the toggle is on
   if (_notesCache.has(sym)) {
     _showDataPop(el, _buildNotesPopHtml(sym, _notesCache.get(sym), desc));
     return;
