@@ -801,7 +801,7 @@
     if (!e) return cell(_extOpen ? '' : '–', 'na') + cell('', 'na') + cell('', 'na');
     var p = e.pct, cls = p == null ? '' : p > 0 ? 'up' : p < 0 ? 'dn' : '';
     if (m.inverted && cls) cls = cls === 'up' ? 'dn' : 'up';
-    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(1), cls) + cell(_fmtPrice(e.px)) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
+    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(2), cls) + cell(_fmtPrice(e.px)) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
   }
   async function _loadExtMap() {
     try {
