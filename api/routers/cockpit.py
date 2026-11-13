@@ -655,22 +655,58 @@ def get_spx_realized_vol(days: int = Query(126, ge=20, le=500), date: Optional[s
 
 @router.get("/api/cockpit/yield-curve")
 def get_yield_curve(days: int = Query(1100, ge=30, le=4000), date: Optional[str] = Query(None)):
-    """2Y / 10Y Treasury yields and the 10Y-2Y spread (FRED, hist_macro), last `days` calendar days up to the anchor date.
-    rows = [date, dgs2, dgs10, t10y2y]; a series is null on a day FRED has not published it yet (yields trail the spread)."""
+    """2Y / 10Y / 30Y Treasury yields and the 10Y-2Y spread (FRED, hist_macro), last `days` calendar days up to the anchor date.
+    rows = [date, dgs2, dgs10, t10y2y, dgs30, live]; a series is null on a day FRED has not published it yet (yields trail the spread).
+    2026-11-13, user: FRED's yield closes trail the live quotes by days, so for every day after a series' last FRED close (and for the 30Y, which
+    FRED may not hold yet) the value comes from the stored daily quote (drv_quote: DGS2:FRED / TNX:CGI / TYX:CGI, x10 scale lifted to percent).
+    `live` = the series keys on that row that came from a quote ('y2', 'y10', 'y30'); the spread is 10Y minus 2Y on a day FRED has no spread."""
     from datetime import timedelta as _td
     d = _resolve_date(date)
+    lo = d - _td(days=days)
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT obs_date, series_id, value FROM hist_macro
-            WHERE series_id IN ('DGS2', 'DGS10', 'T10Y2Y') AND value IS NOT NULL
+            WHERE series_id IN ('DGS2', 'DGS10', 'DGS30', 'T10Y2Y') AND value IS NOT NULL
               AND obs_date <= :d AND obs_date >= :lo
             ORDER BY obs_date
-        """), {"d": d, "lo": d - _td(days=days)}).all()
+        """), {"d": d, "lo": lo}).all()
+        qrows = s.execute(text("""
+            SELECT as_of_date, tos_symbol, last_price FROM drv_quote
+            WHERE tos_symbol IN ('DGS2:FRED', 'TNX:CGI', 'TYX:CGI') AND last_price IS NOT NULL
+              AND as_of_date <= :d AND as_of_date >= :lo
+            ORDER BY as_of_date
+        """), {"d": d, "lo": lo}).all()
     by = {}
+    last = {}
     for dt, sid, v in rows:
         by.setdefault(dt.isoformat(), {})[sid] = round(float(v), 3)
-    return {"as_of": d.isoformat(),
-            "rows": [[k, v.get("DGS2"), v.get("DGS10"), v.get("T10Y2Y")] for k, v in sorted(by.items())]}
+        if last.get(sid) is None or dt.isoformat() > last[sid]:
+            last[sid] = dt.isoformat()
+    qmap = {"DGS2:FRED": ("DGS2", "y2"), "TNX:CGI": ("DGS10", "y10"), "TYX:CGI": ("DGS30", "y30")}
+    live = {}
+    for dt, sym, px in qrows:
+        sid, key = qmap[sym]
+        k = dt.isoformat()
+        if last.get(sid) is not None and k <= last[sid]:
+            continue   # FRED has this day (or a later one): keep the official close
+        v = float(px)
+        v = v / 10.0 if v >= 15 else v   # the quote is sometimes on the x10 index scale
+        by.setdefault(k, {})[sid] = round(v, 3)
+        live.setdefault(k, []).append(key)
+    for k, v in by.items():
+        if "T10Y2Y" not in v and v.get("DGS2") is not None and v.get("DGS10") is not None and (last.get("T10Y2Y") is None or k > last["T10Y2Y"]):
+            v["T10Y2Y"] = round(v["DGS10"] - v["DGS2"], 3)
+    # 2026-11-13, user: the table's "High" column is the highest level SINCE 2000 (all-time highs from 1981 were too far away to be useful).
+    # From hist_macro; the 30Y shows "--" until its FRED history (DGS30) is loaded: python -m etl.fetch_macro --series DGS30 --full
+    highs = {}
+    with session_scope() as s2:
+        for key, sid in (("y2", "DGS2"), ("y10", "DGS10"), ("y30", "DGS30"), ("sp", "T10Y2Y")):
+            r = s2.execute(text("SELECT value, obs_date FROM hist_macro WHERE series_id = :s AND value IS NOT NULL AND obs_date >= DATE '2000-01-01' "
+                                "ORDER BY value DESC, obs_date DESC LIMIT 1"), {"s": sid}).first()
+            if r:
+                highs[key] = {"v": round(float(r[0]), 2), "d": r[1].isoformat()}
+    return {"as_of": d.isoformat(), "highs": highs,
+            "rows": [[k, v.get("DGS2"), v.get("DGS10"), v.get("T10Y2Y"), v.get("DGS30"), live.get(k, [])] for k, v in sorted(by.items())]}
 
 
 @router.get("/api/cockpit/move-vix")

@@ -1,20 +1,22 @@
-/* Yield curve panel, 2026-10-17 (user-directed): 2-year and 10-year Treasury yields plus the 10Y-2Y spread (right axis), with a change
+/* Yield curve panel, 2026-10-17 (user-directed): 2-year, 10-year and 30-year Treasury yields plus the 10Y-2Y spread (right axis), with a change
  * table (2026-11-11, user: a positive change = green background, a negative change = red -- plain up/down, not good/bad for stocks). Dashboard left column, below Breadth. Click the chart for a large popup with the full table.
  * Data: GET /api/cockpit/yield-curve -> rows [date, dgs2, dgs10, t10y2y] (FRED; yields trail the spread by a day, so the table uses the
  * latest day that has all three and says which date that is). */
 (function () {
   'use strict';
   var L = 34, R = 34, T = 8, B = 18;
-  var rowsAll = [];
+  var rowsAll = [], highs = {};   // highs: all-time high per series {y2:{v,d},...} for the table's High column
   // Matches the Hedgeye Macro Show yield-curve chart: 2Y black, 10Y gray, spread blue.
-  var COL = { y2: '#000000', y10: '#7f7f7f', sp: '#1f6fb8' };
-  var ST = 'yc', KEYS = ['y2', 'y10', 'sp'];
+  var COL = { y2: '#000000', y10: '#7f7f7f', y30: '#b45309', sp: '#1f6fb8' };   // 30Y amber (2026-11-13, user)
+  var ST = 'yc', KEYS = ['y2', 'y10', 'y30', 'sp'];
 
   function currentDate() {
     var dp = document.getElementById('datePicker');
     return (dp && dp.value) ? dp.value : '';
   }
   function f2(v) { return v == null ? '--' : v.toFixed(2); }
+  // 2026-11-13, user: a value taken from the live quote (FRED's close for that day is not in yet) is marked in the hover.
+  function lv(row, k) { return row[5] && row[5].indexOf(k) >= 0 ? ' <i style="opacity:.7">(live quote)</i>' : ''; }
 
   // Latest index that has all three series, and the value n observations back for a series (skipping gaps).
   function lastFull(D) {
@@ -30,19 +32,25 @@
     return null;
   }
 
+  function hiCell(key) {
+    var h = highs[key];
+    return h ? '<td title="Highest since 2000: ' + f2(h.v) + (h.d ? ' on ' + h.d : '') + '">' + f2(h.v) + '</td>' : '<td title="Not loaded yet: run python -m etl.fetch_macro --series DGS30 --full">--</td>';
+  }
+
   function tableHtml(D, full) {
-    var li = lastFull(D), names = [['2-year yield', 1], ['10-year yield', 2], ['10Y - 2Y spread', 3]];
+    var li = lastFull(D), names = [['2-year yield', 1], ['10-year yield', 2], ['30-year yield', 4], ['10Y - 2Y spread', 3]];
     var cell = function (cur, past) {
       if (cur == null || past == null) return '<td>--</td>';
       var bp = Math.round((cur - past) * 100);
       return '<td class="' + (bp > 0 ? 'yc-g' : bp < 0 ? 'yc-r' : '') + '">' + (bp > 0 ? '+' : '') + bp + ' bp</td>';
     };
-    var head = '<tr><th>Series</th><th>Latest</th>' + (full ? '<th>1 day ago</th><th>1 week ago</th><th>4 weeks ago</th>' : '') +
+    var keyOf = { 1: 'y2', 2: 'y10', 4: 'y30', 3: 'sp' };
+    var head = '<tr><th>Series</th><th>Latest</th><th title="Highest level since 2000 (the date is in the hover)">Hist</th>' + (full ? '<th>1 day ago</th><th>1 week ago</th><th>4 weeks ago</th>' : '') +
       '<th>Day</th><th>Week</th><th>Month</th></tr>';
     var body = names.map(function (a) {
       var k = a[1], v = back(D, li, k, 0), d1 = back(D, li, k, 1), w1 = back(D, li, k, 5), m1 = back(D, li, k, 20);
       var tip = 'Latest ' + f2(v) + ' | 1 day ago ' + f2(d1) + ' | 1 week ago ' + f2(w1) + ' | 4 weeks ago ' + f2(m1);
-      return '<tr title="' + tip + '"><td>' + a[0] + '</td><td><b>' + f2(v) + '</b></td>' +
+      return '<tr title="' + tip + '"><td>' + a[0] + '</td><td><b>' + f2(v) + '</b></td>' + hiCell(keyOf[k]) +
         (full ? '<td>' + f2(d1) + '</td><td>' + f2(w1) + '</td><td>' + f2(m1) + '</td>' : '') +
         cell(v, d1) + cell(v, w1) + cell(v, m1) + '</tr>';
     }).join('');
@@ -53,11 +61,11 @@
     var n = D.length;
     if (n < 2) return '<div class="msr-loading">No yield data yet.</div>';
     var hid = SeriesToggle.hidden(ST), on = function (k) { return !hid[k]; };
-    var showL = on('y2') || on('y10'), showR = on('sp');
+    var showL = on('y2') || on('y10') || on('y30'), showR = on('sp');
     var x = function (i) { return L + (W - L - R) * i / (n - 1); };
     // Axis ranges come from the lines still showing on that axis.
     var yl = [];
-    D.forEach(function (r) { if (on('y2') && r[1] != null) yl.push(r[1]); if (on('y10') && r[2] != null) yl.push(r[2]); });
+    D.forEach(function (r) { if (on('y2') && r[1] != null) yl.push(r[1]); if (on('y10') && r[2] != null) yl.push(r[2]); if (on('y30') && r[4] != null) yl.push(r[4]); });
     if (!yl.length) yl = [0, 1];
     var lo = Math.floor(Math.min.apply(null, yl) * 2) / 2 - 0.25, hi = Math.ceil(Math.max.apply(null, yl) * 2) / 2 + 0.25;
     var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
@@ -88,6 +96,7 @@
       return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
     if (on('sp')) s += path(3, sy, COL.sp, 1.3, 'sp');
+    if (on('y30')) s += path(4, y, COL.y30, 1.4, 'y30');
     if (on('y10')) s += path(2, y, COL.y10, 1.4, 'y10');
     if (on('y2')) s += path(1, y, COL.y2, 1.6, 'y2');
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
@@ -98,7 +107,7 @@
         if ((+m.slice(5) - 1) % 3 === 0) s += '<text x="' + x(i) + '" y="' + (H - 4) + '" font-size="' + fs + '" fill="currentColor">' + MN[+m.slice(5) - 1] + " '" + m.slice(2, 4) + '</text>';
       }
     });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="2-year and 10-year Treasury yields and the 10Y-2Y spread">' + s + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="yc-svg ' + cls + '" role="img" aria-label="2-year, 10-year and 30-year Treasury yields and the 10Y-2Y spread">' + s + '</svg>';
   }
 
   // Curve shape over `off` observations back: spread change vs how the 2Y and 10Y moved (bp). A move under 3 bp in the spread reads as unchanged.
@@ -117,6 +126,7 @@
   function descHtml(D) {
     return '<div class="cr-desc cr-desc-lg">' +
       '<p><b>2-year yield (black):</b> what the US government pays to borrow for 2 years. It follows what traders expect the Fed to do with interest rates: it falls when cuts are expected and rises when hikes are expected.</p>' +
+      '<p><b style="color:' + COL.y30 + '">30-year yield (amber):</b> what the government pays to borrow for 30 years. It is the longest benchmark, so it moves most with inflation worries and with how much the government has to borrow. Days marked &quot;live quote&quot; in the hover use the latest market quote because the official daily close is not published yet.</p>' +
       '<p><b>10-year yield (gray):</b> what the government pays to borrow for 10 years. It reflects the longer-term view on growth and inflation, and it is the rate that mortgages and corporate loans are priced off.</p>' +
       '<p><b style="color:' + COL.sp + '">10Y - 2Y spread (blue, right axis):</b> the 10-year minus the 2-year, which shows how steep the curve is. Positive is normal. Negative means the curve is inverted (short-term rates above long-term), which has often come before recessions.</p>' +
       '<p><b>Steepener</b> = the spread is rising. <b>Flattener</b> = the spread is falling. <b>Bull</b> = yields are falling overall (bond prices rising); <b>bear</b> = yields are rising overall.</p>' +
@@ -139,7 +149,7 @@
 
   function legendHtml() {
     var it = function (k, text) { return '<span>' + SeriesToggle.item(ST, k, '<i style="background:' + COL[k] + '"></i>' + text) + '</span>'; };
-    return '<div class="yc-leg">' + it('y2', '2Y') + it('y10', '10Y') + it('sp', '10Y-2Y spread (right axis)') + '</div>';
+    return '<div class="yc-leg">' + it('y2', '2Y') + it('y10', '10Y') + it('y30', '30Y') + it('sp', '10Y-2Y spread (right axis)') + '</div>';
   }
 
   // Hover: dashed guide + tooltip with the three values for the nearest day.
@@ -162,8 +172,9 @@
       if (!tip) { tip = document.createElement('div'); tip.className = 'spxrv-tip'; document.body.appendChild(tip); }
       var hid = SeriesToggle.hidden(ST);
       tip.innerHTML = '<b>' + row[0] + '</b>' +
-        (hid.y2 ? '' : '<br><span style="color:' + COL.y2 + '">&#9632;</span> 2Y: ' + f2(row[1])) +
-        (hid.y10 ? '' : '<br><span style="color:' + COL.y10 + '">&#9632;</span> 10Y: ' + f2(row[2])) +
+        (hid.y2 ? '' : '<br><span style="color:' + COL.y2 + '">&#9632;</span> 2Y: ' + f2(row[1]) + lv(row, 'y2')) +
+        (hid.y10 ? '' : '<br><span style="color:' + COL.y10 + '">&#9632;</span> 10Y: ' + f2(row[2]) + lv(row, 'y10')) +
+        (hid.y30 || row[4] == null ? '' : '<br><span style="color:' + COL.y30 + '">&#9632;</span> 30Y: ' + f2(row[4]) + lv(row, 'y30')) +
         (hid.sp ? '' : '<br><span style="color:' + COL.sp + '">&#9632;</span> Spread: ' + f2(row[3]));
       var tw = tip.offsetWidth, left = ev.clientX + 14;
       if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 14;
@@ -215,7 +226,8 @@
       var d = currentDate();
       var res = await fetch('/api/cockpit/yield-curve' + (d ? '?date=' + encodeURIComponent(d) : ''));
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      rowsAll = (await res.json()).rows || [];
+      var js = await res.json();
+      rowsAll = js.rows || []; highs = js.highs || {};
       render();
     } catch (e) {
       body.innerHTML = '<div class="msr-loading">Yield curve unavailable.</div>';
