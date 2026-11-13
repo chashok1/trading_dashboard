@@ -2988,6 +2988,8 @@ _TS_SECTORS = [("Tech", "XLK"), ("Financials", "XLF"), ("Energy", "XLE"), ("Heal
 _TS_CROSS = [("S&P 500", "SPX", "pct"), ("Nasdaq", "$COMP", "pct"), ("Russell", "RUT", "pct"), ("DJIA", "$DJI", "pct"),
              ("US Dollar", "$DXY", "pct"), ("2Y", "DGS2:FRED", "yld"), ("10Y", "TNX:CGI", "yld"), ("30Y", "TYX:CGI", "yld"), ("Gold", "/GC", "pct"),
              ("Oil", "/CL", "pct"), ("VIX", "VIX", "pct"), ("HY bonds", "HYG", "pct"), ("BTC", "/BTC", "pct"),
+             # 2026-11-13: Actionable screen Today panel also shows LQD, QQQ and the yen future
+             ("LQD", "LQD", "pct"), ("QQQ", "QQQ", "pct"), ("YEN", "/6J", "pct"),
              # the other Macro Rail volatility gauges (2026-11-12, chips like the VIX chip)
              ("VXN", "VXN:CGI", "pct"), ("VXD", "VXD", "pct"), ("RVX", "RVX", "pct"), ("GVZ", "GVZ:CGI", "pct"), ("OVX", "OVX:CGI", "pct"), ("MOVE", "MOVE:GIF", "pct")]
 # Themes already shown elsewhere in the strip, or that are not a market area.

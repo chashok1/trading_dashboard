@@ -27,6 +27,7 @@
     var dec = c.level >= 1000 ? 0 : 2;
     if (c.sym === '/GC' || c.sym === '/CL') return '$' + num(c.level, dec);
     if (c.sym === '/BTC') return '$' + num(c.level, 0);
+    if (c.sym === '/6J') return num(c.level, 5);   // yen future quotes in fractions of a dollar
     return num(c.level, dec);
   }
 
@@ -80,8 +81,13 @@
   // warning tag (Chop = amber, Elevated = red). Filled from d.vol at the start of tableHtml.
   var VMAP = { 'S&P 500': 'VIX', 'Nasdaq': 'VXN', 'DJIA': 'VXD', 'Russell': 'RVX', 'Gold': 'GVZ', 'Oil': 'OVX', '2Y': 'MOVE', '10Y': 'MOVE', '30Y': 'MOVE' };
   var VZONE = {};
+  var ZONE_ALWAYS = false;   // Actionable screen: every gauge-backed chip shows its zone (Inv / Chop / Elev), not only the warnings
   function volTag(name) {
     var g = VMAP[name], z = g && VZONE[g];
+    if (ZONE_ALWAYS && z && z.zone) {
+      var zs = z.zone === 'elevated' ? 'Elev' : z.zone === 'chop' ? 'Chop' : 'Inv';
+      return '<span class="ts-vz ' + z.zone + '" title="' + esc(g + ' ' + z.last + ' is ' + (z.zone === 'elevated' ? 'Elevated (not investable)' : z.zone === 'chop' ? 'in Chop (not investable)' : 'Investable')) + '">' + zs + '</span>';
+    }
     if (!z || z.zone === 'investable') return '';
     var short = z.zone === 'elevated' ? 'Elev' : 'Chop';
     return '<span class="ts-vz ' + z.zone + '" title="' + esc(g + ' ' + z.last + ' is ' + (z.zone === 'elevated' ? 'Elevated' : 'in Chop') + ' (not investable)') + '">⚠ ' + short + '</span>';
@@ -165,6 +171,17 @@
     return '<div class="ts-trow ts-tgrid">' + row1.join('') + row2.join('') + row3 + '</div>';
   }
 
+  // Actionable screen: one chip per instrument, one compact line (user layout 2026-11-13). Gauge-backed chips carry their zone tag.
+  function compactHtml(d) {
+    ZONE_ALWAYS = true;
+    VZONE = {}; (d.vol || []).forEach(function (x) { if (x.zone) VZONE[x.name] = x; });
+    var by = {}; d.cross.forEach(function (c) { by[c.name] = c; });
+    var pc = function (n) { return by[n] ? priceChip(by[n]) : ''; };
+    var all = [d.usd ? usdChip(d.usd) : '', pc('S&P 500'), pc('Nasdaq'), pc('Russell'), pc('DJIA'), pc('Gold'), pc('Oil'), pc('2Y'),
+               pc('10Y'), pc('30Y'), pc('HY bonds'), pc('LQD'), pc('BTC'), pc('QQQ'), pc('YEN')].join('');
+    return '<div class="ts-trow">' + all + '</div>';   // one line (wraps only if the window is too narrow)
+  }
+
   function sectorLine(d) {
     var by = {}; d.cross.forEach(function (c) { by[c.name] = c; });
     var eq = equityChips(d);
@@ -205,7 +222,7 @@
       // One line (full width, no labels): US Dollar, Stocks word, cross-assets, Equity chips, Factors. Every chip is 2, 3, 4, 5 or 6 units wide
       // (w2 short, w3 medium, w4 price chips, w5 holdings breadth, w6 US Dollar) on one shared unit grid, so widths follow the content.
       // Below it: Areas.
-      '<div class="ts-tab ts-rfull">' + tableHtml(d) + '</div>' +
+      '<div class="ts-tab ts-rfull">' + (host.parentNode && host.parentNode.getAttribute('data-compact') ? compactHtml(d) : tableHtml(d)) + '</div>' +
       // The Areas line (one chip per Hedgeye theme: row('Areas', themeChips(areas, 'ts-w3'), 'ts-units ts-full')) is switched off for now.
       '</div>';
     if (window.mwRender) window.mwRender();   // the Book chip lives inside this panel, so redraw it after every render

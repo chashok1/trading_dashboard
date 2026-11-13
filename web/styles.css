@@ -4119,6 +4119,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 .mw-usd-rrp.hot { color: #ef4444; }
 .mw-usd-rrp.cold { color: #16a34a; }
 .ts-vz { font-size: 8.5px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.ts-vz.investable { color: #15803d; }
 .ts-vz.chop { color: #b45309; }
 .ts-vz.elevated { color: #dc2626; }
 .mw-usd-px { font-size: 8px; line-height: 1; color: #000; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -4804,3 +4805,7 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 .ts-card .mw-strip { display: inline-flex; align-items: center; }
 .ts-card .oc-grp-gap { margin-right: 0; }
 .ts-card .mw-chip.mw-book { --rc: #6b7280; border-radius: 6px; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--rc) !important; background: var(--card-bg, #fff); color: #16181f; padding: 1px 7px 1px 5px; font-size: 10.5px; }
+
+/* 2026-11-13: Actionable screen -- the Today panel (two compact lines) replaces the sticky mini-tape ribbon (#rrTape1 stays mounted, hidden, for the Econ toggle). */
+body.act-page #rrTape1 { display: none; }
+.act-today { position: sticky; top: 0; z-index: 91; flex-shrink: 0; margin: 2px 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; }
