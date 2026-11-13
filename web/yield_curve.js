@@ -79,17 +79,17 @@
       }
       s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + sy(0) + '" y2="' + sy(0) + '" stroke="' + COL.sp + '" stroke-dasharray="4 4" opacity=".5"/>';
     }
-    var path = function (k, sc, color, w) {
+    var path = function (k, sc, color, w, key) {
       var p = '', on = false;
       D.forEach(function (r, i) {
         if (r[k] == null) { on = false; return; }
         p += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + sc(r[k]).toFixed(1); on = true;
       });
-      return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
+      return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    if (on('sp')) s += path(3, sy, COL.sp, 1.3);
-    if (on('y10')) s += path(2, y, COL.y10, 1.4);
-    if (on('y2')) s += path(1, y, COL.y2, 1.6);
+    if (on('sp')) s += path(3, sy, COL.sp, 1.3, 'sp');
+    if (on('y10')) s += path(2, y, COL.y10, 1.4, 'y10');
+    if (on('y2')) s += path(1, y, COL.y2, 1.6, 'y2');
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);

@@ -68,15 +68,15 @@
       s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="' + (v === 0 ? 'currentColor' : 'var(--border,#e5e5e2)') + '" ' + (v === 0 ? 'opacity=".4"' : '') + '/>' +
         '<text x="' + (L - 4) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="' + fs + '" fill="currentColor">' + v + '%</text>';
     }
-    var path = function (k, color, w) {
+    var path = function (k, color, w, key) {
       var p = '', on = false;
       C.forEach(function (r, i) {
         if (r[k + 1] == null) { on = false; return; }
         p += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(r[k + 1]).toFixed(1); on = true;
       });
-      return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
+      return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    SYMS.forEach(function (sym, k) { if (!hid[sym]) s += path(k, COL[sym] || 'currentColor', 1.6); });
+    SYMS.forEach(function (sym, k) { if (!hid[sym]) s += path(k, COL[sym] || 'currentColor', 1.6, sym); });
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     C.forEach(function (r, i) {
       var m = r[0].slice(0, 7);

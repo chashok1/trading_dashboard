@@ -99,18 +99,18 @@
       if (!showR || r[3] == null) return;
       var y0 = ry(0), y1 = ry(Math.max(rlo, Math.min(rhi, r[3])));
       s += '<rect x="' + (x(i) - bw / 2).toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) + '" width="' + bw.toFixed(1) +
-        '" height="' + Math.max(0.5, Math.abs(y1 - y0)).toFixed(1) + '" fill="#9a9a9a" opacity="0.7"/>';
+        '" data-k="bars" height="' + Math.max(0.5, Math.abs(y1 - y0)).toFixed(1) + '" fill="#9a9a9a" opacity="0.7"/>';
     });
-    var line = function (k, color, w) {
+    var line = function (k, color, w, key) {
       var p = '', on = false;
       D.forEach(function (r, i) {
         if (r[k] == null) return;
         p += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(r[k]).toFixed(1); on = true;
       });
-      return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
+      return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    if (on('m1')) s += line(1, '#2b2bf0', 1.5);
-    if (on('m3')) s += line(2, '#ff5a14', 2.5);
+    if (on('m1')) s += line(1, '#2b2bf0', 1.5, 'm1');
+    if (on('m3')) s += line(2, '#ff5a14', 2.5, 'm3');
     for (var t = 0; t < 4; t++) {
       var i = Math.round((n - 1) * t / 3), pp = D[i][0].split('-');
       s += '<text x="' + x(i) + '" y="' + (H - 4) + '" text-anchor="' + (t === 0 ? 'start' : t === 3 ? 'end' : 'middle') +

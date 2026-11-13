@@ -148,17 +148,17 @@
         s += '<text x="' + (W - R + 4) + '" y="' + (ty(q) + 4) + '" font-size="' + fs + '" fill="' + COL.tr + '">' + q + '</text>';
       }
     }
-    var path = function (k, sc, color, w) {
+    var path = function (k, sc, color, w, key) {
       var p = '', pen = false;
       D.forEach(function (r, i) {
         if (r[k] == null) { pen = false; return; }
         p += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + sc(r[k]).toFixed(1); pen = true;
       });
-      return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
+      return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    if (showR) s += path(2, ty, COL.tr, 1.5);
-    if (on('bbb')) s += path(3, y, COL.bbb, 1.5);
-    if (on('hy')) s += path(1, y, COL.hy, 1.8);
+    if (showR) s += path(2, ty, COL.tr, 1.5, 'tr');
+    if (on('bbb')) s += path(3, y, COL.bbb, 1.5, 'bbb');
+    if (on('hy')) s += path(1, y, COL.hy, 1.8, 'hy');
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);

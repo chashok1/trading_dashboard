@@ -1198,6 +1198,21 @@ window.SeriesToggle = (function () {
   // `keys` = all series keys of the chart (array, or a function returning one); `rerender` redraws the panel and any open popup.
   function bind(host, key, keys, rerender) {
     if (!host) return;
+    // Hovering a legend item highlights its line (thicker) and fades the others; leaving restores them (2026-11-13, user-directed).
+    function hl(ev, on) {
+      var lab = ev.target && ev.target.closest && ev.target.closest('label.st-i');
+      var cb = lab && lab.querySelector('input[data-st="' + key + '"]');
+      if (!cb || (lab.contains(ev.relatedTarget))) return;
+      var k = cb.getAttribute('data-k');
+      host.querySelectorAll('svg.yc-svg [data-k]').forEach(function (el) {
+        if (!on) { el.style.opacity = ''; el.style.strokeWidth = ''; return; }
+        var me = el.getAttribute('data-k') === k;
+        el.style.opacity = me ? '1' : '0.2';
+        if (me && el.tagName === 'path') el.style.strokeWidth = (parseFloat(el.getAttribute('stroke-width')) * 1.8) + 'px';
+      });
+    }
+    host.addEventListener('mouseover', function (ev) { hl(ev, true); });
+    host.addEventListener('mouseout', function (ev) { hl(ev, false); });
     host.addEventListener('change', function (ev) {
       var cb = ev.target;
       if (!cb || !cb.matches || !cb.matches('input[data-st="' + key + '"]')) return;

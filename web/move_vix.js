@@ -86,20 +86,20 @@
       s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.low) + '" y2="' + y(t.low) + '" stroke="' + COL.warn + '" stroke-dasharray="5 4"/>' +
         '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t.high) + '" y2="' + y(t.high) + '" stroke="' + COL.hot + '" stroke-dasharray="5 4"/>';
     }
-    var path = function (k, sc, color, w) {
+    var path = function (k, sc, color, w, key) {
       var p = '', on = false;
       D.forEach(function (r, i) {
         if (r[k] == null) { on = false; return; }
         p += (on ? 'L' : 'M') + x(i).toFixed(1) + ' ' + sc(r[k]).toFixed(1); on = true;
       });
-      return '<path d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
+      return '<path data-k="' + key + '" d="' + p + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>';
     };
-    if (on('ovx')) s += path(6, vy, COL.ovx, 1.3);
-    if (on('gvz')) s += path(5, vy, COL.gvz, 1.3);
-    if (on('rvx')) s += path(4, vy, COL.rvx, 1.3);
-    if (on('vxn')) s += path(3, vy, COL.vxn, 1.3);
-    if (on('vix')) s += path(2, vy, COL.vix, 1.5);
-    if (on('move')) s += path(1, y, COL.move, 1.8);
+    if (on('ovx')) s += path(6, vy, COL.ovx, 1.3, 'ovx');
+    if (on('gvz')) s += path(5, vy, COL.gvz, 1.3, 'gvz');
+    if (on('rvx')) s += path(4, vy, COL.rvx, 1.3, 'rvx');
+    if (on('vxn')) s += path(3, vy, COL.vxn, 1.3, 'vxn');
+    if (on('vix')) s += path(2, vy, COL.vix, 1.5, 'vix');
+    if (on('move')) s += path(1, y, COL.move, 1.8, 'move');
     var MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], pm = '';
     D.forEach(function (r, i) {
       var m = r[0].slice(0, 7);
