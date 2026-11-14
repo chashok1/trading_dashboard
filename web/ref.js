@@ -198,6 +198,7 @@ async function loadTable(tableName) {
         // Update reload button state
         const tableMeta = state.tables.find(t => t.name === tableName);
         DOM.reloadBtn.disabled = !tableMeta || !tableMeta.tunable;
+        if (window.quadPasteSync) window.quadPasteSync(tableName);
 
         // Update table info
         const maxPage = Math.ceil(state.rows.length / state.pageSize);

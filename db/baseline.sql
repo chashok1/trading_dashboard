@@ -9712,3 +9712,15 @@ CREATE TABLE IF NOT EXISTS user_builder_set (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- 2026-11-14: history of pasted monthly-quad imports (ref_quad_periods) so each can be reviewed/undone.
+-- changes = JSON list of {year, num, status, old, new}; only new/changed months are stored.
+CREATE TABLE IF NOT EXISTS meta_quad_import_log (
+    id          SERIAL PRIMARY KEY,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    pasted_text TEXT,
+    n_new       INT NOT NULL DEFAULT 0,
+    n_changed   INT NOT NULL DEFAULT 0,
+    changes     JSONB NOT NULL,
+    undone_at   TIMESTAMPTZ
+);

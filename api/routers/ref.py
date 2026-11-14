@@ -8,6 +8,7 @@ This router handles:
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -229,6 +230,94 @@ class TableStats(BaseModel):
 # =============================================================================
 # Buysell code → seq map (for Actionable default sort)
 # =============================================================================
+
+def _qm_view(d):
+    n, o = d["new"], d["old"]
+    ks = ("quad1_pct", "quad2_pct", "quad3_pct", "quad4_pct")
+    return dict(label=n["label"], quad=n["quad"], status=d["status"],
+                pcts=[n[k] for k in ks], old=[o[k] for k in ks] if o else None,
+                old_quad=o["quad"] if o else None)
+
+
+@router.post("/api/ref/quad-months/import", response_model=dict)
+def import_quad_months(body: dict):
+    """Paste-import monthly quad values. body: {text, apply}. apply=false previews."""
+    from etl import quad_months_import as qm
+    rows, errors = qm.parse(body.get("text", ""))
+    if errors or not rows:
+        return {"ok": False, "errors": errors or ["Nothing to import"], "rows": []}
+    with session_scope() as s:
+        diffs = qm.diff(s, rows)
+        log_id = None
+        if body.get("apply"):
+            log_id = qm.apply(s, diffs, body.get("text", ""))
+            s.commit()
+    return {"ok": True, "errors": [], "applied": bool(body.get("apply")), "log_id": log_id,
+            "rows": [_qm_view(d) for d in diffs]}
+
+
+@router.get("/api/ref/quad-months/history", response_model=list)
+def quad_months_history():
+    from etl import quad_months_import as qm
+    with session_scope() as s:
+        return qm.history(s)
+
+
+@router.get("/api/ref/quad-months/history/{imp_id}", response_model=dict)
+def quad_months_history_detail(imp_id: int):
+    from etl import quad_months_import as qm
+    with session_scope() as s:
+        imp = qm.get_import(s, imp_id)
+    if not imp:
+        raise HTTPException(status_code=404, detail="Import not found")
+    return {"id": imp["id"], "imported_at": imp["imported_at"], "undone_at": imp["undone_at"],
+            "rows": [_qm_view(c) for c in imp["changes"]]}
+
+
+@router.post("/api/ref/quad-months/history/{imp_id}/undo", response_model=dict)
+def quad_months_undo(imp_id: int):
+    from etl import quad_months_import as qm
+    with session_scope() as s:
+        ok, msg = qm.undo(s, imp_id)
+        if ok:
+            s.commit()
+    return {"ok": ok, "message": msg}
+
+
+_QM_REDERIVE = {"state": "idle", "date": None, "error": None, "started": None, "finished": None}
+
+
+def _qm_rederive_worker():
+    from etl.derive import derive_all, get_anchor_date
+    try:
+        with session_scope() as s:
+            d = get_anchor_date(s)
+            _QM_REDERIVE["date"] = d.isoformat() if d else None
+            if d is None:
+                raise RuntimeError("No anchor date (hist_td empty)")
+            derive_all(s, d)
+        _QM_REDERIVE.update(state="done", error=None)
+    except Exception as e:  # noqa: BLE001
+        _QM_REDERIVE.update(state="error", error=str(e)[:300])
+    finally:
+        _QM_REDERIVE["finished"] = datetime.now().isoformat()
+
+
+@router.post("/api/ref/quad-months/rederive", response_model=dict)
+def quad_months_rederive():
+    """Re-run derive_all for the current anchor date so MACRO/Risk Dial/Action pick up new quad values."""
+    import threading
+    if _QM_REDERIVE["state"] == "running":
+        return dict(_QM_REDERIVE)
+    _QM_REDERIVE.update(state="running", error=None, started=datetime.now().isoformat(), finished=None)
+    threading.Thread(target=_qm_rederive_worker, daemon=True).start()
+    return dict(_QM_REDERIVE)
+
+
+@router.get("/api/ref/quad-months/rederive", response_model=dict)
+def quad_months_rederive_status():
+    return dict(_QM_REDERIVE)
+
 
 @router.get("/api/ref/buysell", response_model=dict)
 def get_buysell_seq():

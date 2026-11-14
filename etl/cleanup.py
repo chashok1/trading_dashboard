@@ -151,6 +151,7 @@ META_PRUNE = [
     ("meta_etl_run",         "started_at"),
     ("meta_derived_run",     "started_at"),
     ("meta_cleanup_history", "cleanup_at"),
+    ("meta_quad_import_log", "imported_at"),
 ]
 
 
