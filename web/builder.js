@@ -318,6 +318,31 @@
       (!tx || n.sym.toUpperCase().includes(tx)));
   }
 
+  // 2026-11-17, user: "Allocate my holdings". Ticks the stocks the account holds (only in asset classes that have a target, or all of
+  // them when no target is set) and gives each its share of its class, in proportion to what is held now. Targets are not touched,
+  // and picks you chose by hand that are not held keep their own %. Runs from the button and after a preset is chosen.
+  function allocateHoldings() {
+    const res = S.preview || {};
+    const held = (res.account && res.account.holdings) || [];
+    const chosen = res.mix_target || {}, anyTarget = Object.keys(chosen).some(k => chosen[k] > 0);
+    const hold = {};
+    let added = 0;
+    held.forEach(h => {
+      if (!(h.value > 0) || !h.bucket || h.bucket === 'Cash' || !BUCKETS.includes(h.bucket)) return;
+      if (anyTarget && !(chosen[h.bucket] > 0)) return;
+      hold[h.sym] = h.value;
+      if (!picked(h.sym)) { S.picks.push({ sym: h.sym, bucket: h.bucket, pct: null, amt: null, grp: '' }); added++; }
+    });
+    const tot = {};
+    S.picks.forEach(p => { if (hold[p.sym] > 0) tot[p.bucket] = (tot[p.bucket] || 0) + hold[p.sym]; });
+    S.picks.forEach(p => { if (hold[p.sym] > 0) p.pct = Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100; });
+    const n = Object.keys(hold).length;
+    const hint = $('srcNamesHint');
+    if (hint) hint.textContent = n ? 'Allocated ' + n + ' held stocks across ' + Object.keys(tot).length + ' asset classes (' + added + ' added to picks).' : 'No held stocks fall in an asset class with a target.';
+    if (n) planDirty();
+    renderSourceNames(); schedule(0);
+  }
+
   function setPick(sym, on) {
     const n = S.nameCache[sym];
     const b = bucketOf(n);
@@ -418,6 +443,24 @@
       if (gap > 500) return `<td class="n bld-up">Room ${usd(gap)}</td>`;
       return '<td class="n bld-muted">On plan</td>';
     };
+    // 2026-11-17, user: "Covered" = how much of the target the stocks you already hold fill (held up to the target, as % of the target),
+    // and how many held stocks that is. The count needs each stock's sector / style / quad, so it comes from the names list when known.
+    const heldList = ((res.account && res.account.holdings) || []).filter(h => h.value > 0 && h.bucket && h.bucket !== 'Cash');
+    const heldIn = flt => heldList.filter(h => {
+      if (!flt) return false;
+      const n = S.nameCache[h.sym];
+      if (flt[0] === 'cls') return h.bucket === flt[1];
+      if (!n) return false;
+      if (flt[0] === 'sector') return n.sector === flt[1];
+      if (flt[0] === 'factor') return factorOk(n, flt[1]);
+      if (flt[0] === 'quad') return (n.quad || [])[+flt[1]] === 'bull';
+      return false;
+    }).length;
+    const coverTd = (hv, eff, flt) => {
+      if (eff == null || !(eff > 0) || !hasHeld || hv == null) return '<td></td>';
+      const c = Math.min(hv, eff) / eff * 100, n = flt ? heldIn(flt) : null;
+      return `<td class="n bld-tip" data-tip="Your held stocks fill ${c.toFixed(0)}% of this target${n != null ? ' (' + n + ' stock' + (n === 1 ? '' : 's') + ')' : ''}. Held ${hv.toFixed(0)}% of the account, target ${eff.toFixed(0)}%."><b class="${c >= 95 ? 'bld-up' : 'bld-warn'}">${c.toFixed(0)}%</b>${n != null && n > 0 ? ' <span class="bld-muted">' + n + '</span>' : ''}</td>`;
+    };
     // One row. pv / hv = percent picked / held (null = nothing there). key = target key (null: no target cell);
     // asset = asset class name (its target is the mix you chose; judged against the mix after the Risk Dial).
     const R = (label, pv, hv, tip, key, asset, flt, tvx) => {   // tvx = a reference value with no box (Cash: what is left after the asset classes)
@@ -428,7 +471,7 @@
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${barTd}${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
-        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${planTd(asset, asset && Object.keys(chosen).length ? (chosen[asset] || 0) : null, hv)}</tr>`;
+        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${coverTd(hv, eff, flt)}${planTd(asset, asset && Object.keys(chosen).length ? (chosen[asset] || 0) : null, hv)}</tr>`;
     };
     const generalTip = 'Asset class rows are % of the account. Everything below is also % of the account (the same basis the plan check uses). Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
     let t = '';
@@ -440,7 +483,7 @@
       heldInvested += cur[b] || 0;
       t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
-    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
+    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td><td></td></tr>`;
     t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
     if (cur.Unmapped > 0.04) t += R('Unmapped', null, cur.Unmapped, 'Held with no asset class: cannot be picked');
     t += sec('Risk');
@@ -471,8 +514,8 @@
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = !!S.collapsed[skey];
-      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + (first ? presetHtml() : '') + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th><th class="bld-bar-h" title="Bar = picks (green on target, amber short, red over), thin grey = portfolio, black line = target">Chart</th>` +
-        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th></th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
+      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th><th class="bld-bar-h" title="Bar = picks (green on target, amber short, red over), thin grey = portfolio, black line = target">Chart</th>` +
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th><th class="n bld-tip" data-tip="How much of the Target your held stocks already fill, and how many stocks that is. 100% = the target is fully covered by what you hold.">Covered</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th></th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
@@ -482,7 +525,7 @@
   // The Preset sits between the Asset class bar chart and its grid: it only fills the asset class % boxes below it.
   function presetHtml() {
     const opts = (S.presetOpts || [['current', 'My current mix'], ['custom', 'Custom']]).map(p => `<option value="${esc(p[0])}"${p[0] === S.preset ? ' selected' : ''}>${esc(p[1])}</option>`).join('');
-    return `<div class="bld-line" style="gap:6px;margin:4px 0"><b style="min-width:0" class="bld-tip" data-tip="A ready-made mix that fills the asset class % boxes below. Type a % in any box and this switches to Custom.">Fill classes from</b><select id="preset">${opts}</select></div>`;
+    return `<b style="min-width:0;font-weight:600" class="bld-tip" data-tip="A ready-made mix that fills the asset class % boxes below. Type a % in any box and this switches to Custom.">Fill classes from</b><select id="preset">${opts}</select><button class="bld-btn sm alt" id="allocHold" title="Tick the stocks you hold and give each its share of its asset class (in proportion to what you hold), laid over the Target % you set. Targets are not changed.">Allocate my holdings</button>`;
   }
   const tgtOf = key => (S.targets[key] == null ? null : S.targets[key]);
 
@@ -525,8 +568,11 @@
       const box = c.closest('.bld-sec'); box.classList.toggle('collapsed', !!S.collapsed[k]);
       c.innerHTML = S.collapsed[k] ? '&#9656;' : '&#9662;'; c.title = (S.collapsed[k] ? 'Show' : 'Hide') + ' this section';
     });
-    const pe = host.querySelector('#preset');
-    if (pe) pe.onchange = () => { S.preset = pe.value; if (S.preset !== 'custom') S.mix = null; planDirty(); schedule(); };
+    // the preset + Allocate controls live on the Charts and grids heading line
+    const slot = $('presetSlot'); if (slot) slot.innerHTML = presetHtml();
+    const ah = slot && slot.querySelector('#allocHold'); if (ah) ah.onclick = () => allocateHoldings();
+    const pe = slot && slot.querySelector('#preset');
+    if (pe) pe.onchange = () => { S.preset = pe.value; if (S.preset !== 'custom') { S.mix = null; S.allocNext = true; } planDirty(); schedule(); };
     host.querySelectorAll('[data-tgt-asset]').forEach(i => i.onchange = () => setAssetTarget(i.dataset.tgtAsset, i.value));
     markActiveFilters();
   }
@@ -611,7 +657,7 @@
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
-          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"> % ` +
+          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
             `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : '<span class="bld-muted">not buyable</span>'}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
@@ -684,6 +730,7 @@
       S.preview = res;
       render(res);
       if (S.fillGapNext) { S.fillGapNext = false; fillBuyGaps(res); }
+      if (S.allocNext) { S.allocNext = false; allocateHoldings(); }   // a preset was just chosen: its targets are now in, so lay the held stocks over them
       if (S.matchNext) { S.matchNext = false; startFromHoldings(true); }   // auto-picked held names take the account's own weights
     } catch (e) {
       if (seq !== S.reqSeq) return;

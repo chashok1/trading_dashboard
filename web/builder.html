@@ -229,7 +229,7 @@
     .bld-modal > div { border-radius: 12px; box-shadow: 0 18px 50px rgba(15,23,42,.28); }
 
     /* 2026-10-28, user: the comparison sections (asset class, risk, Quad, sectors, style) sit in three columns */
-    .bld-cmp3 { width: 676px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 20px; align-items: start; }
+    .bld-cmp3 { width: 768px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 20px; align-items: start; }
     .bld-cmp3 > div { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
     .bld-cmp3 .bld-exp th:first-child { white-space: normal; border-left: 3px solid var(--accent); background: #f3f5fa; color: var(--text-2); letter-spacing: .05em; }
     .bld-cmp3 .bld-exp th.n { font-size: 9px; white-space: normal; line-height: 1.15; vertical-align: bottom; }
@@ -257,6 +257,7 @@
     .bld-cmp3 .bld-exp th:nth-child(6), .bld-cmp3 .bld-exp td:nth-child(6) { width: 58px; }
     .bld-cmp3 .bld-exp th:nth-child(2), .bld-cmp3 .bld-exp td:nth-child(2) { min-width: 52px; }
     .bld-cmp3 .bld-exp th:nth-child(7), .bld-cmp3 .bld-exp td:nth-child(7) { width: 92px; }
+    .bld-cmp3 .bld-exp th:nth-child(8), .bld-cmp3 .bld-exp td:nth-child(8) { width: 92px; }
     .bld-exp td.bld-bar { padding-top: 0; padding-bottom: 0; vertical-align: middle; }
     .bld-exp td.bld-bar .bld-viz { margin: 0; }
     .bld-exp td.bld-bar .vrow { margin: 0; }
@@ -391,11 +392,11 @@
             <select id="srcfFactor" title="Factor"></select>
             <span class="bld-quadf" id="srcfQuad" title="Show only names Hedgeye favours (Bull) in the Quad(s) ticked. A stock takes its sector's view.">Quad favored <label><input type="checkbox" value="0">Q1</label><label><input type="checkbox" value="1">Q2</label><label><input type="checkbox" value="2">Q3</label><label><input type="checkbox" value="3">Q4</label></span>
             <input type="search" id="srcfText" placeholder="Symbol" style="width:90px">
+<button class="bld-btn sm alt" id="matchHold" title="Copy what the account holds into the plan: the asset class %, each picked stock's share, and the sector / style / beta limits">Start from my holdings</button>
           </div>
           <div class="bld-line" style="gap:10px 6px">
             <button class="bld-btn sm alt" id="selShown">Select all shown</button>
             <button class="bld-btn sm alt" id="clearPicks">Clear picks</button>
-            <button class="bld-btn sm alt" id="matchHold" title="Copy what the account holds into the plan: the asset class %, each picked stock's share, and the sector / style / beta limits">Start from my holdings</button>
             <button class="bld-btn sm alt" id="clearFilters">Clear filters</button>
             <input type="search" id="myAddSym" placeholder="Add my stock" style="width:110px"><button class="bld-btn sm" id="myAdd" title="Add a stock of your own to the My stocks list. A stock Hedgeye lists moves to the Hedgeye names.">Add</button><span class="bld-muted" id="myMsg"></span>
             <span class="bld-muted" id="srcNamesCount"></span>
@@ -426,7 +427,7 @@
           <div class="bld-card bld-picks"><div id="symTable"></div></div>
           <div class="bld-card bld-chartbox">
             <details id="cmpPanel" open hidden>
-              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
+              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span id="presetSlot" style="display:flex;align-items:center;gap:6px;margin-left:12px"></span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
               <div id="cmpTable"></div>
             </details>
           </div>
@@ -442,7 +443,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261117i"></script>
+  <script src="/static/builder.js?v=20261117q"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>
