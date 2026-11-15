@@ -10,12 +10,12 @@
   <style>
     [hidden] { display: none !important; }
     .bld-wrap { width: 100%; padding: 8px 16px 24px; }
-    .bld-note { background: var(--mr-warn-bg); color: var(--mr-warn); border: 1px solid #f1d9ad; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px; }
+    .bld-note { background: var(--mr-warn-bg); color: var(--mr-warn); border: 1px solid #f1d9ad; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; font-size: 11px; }
     .bld-tabs { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
-    .bld-tab { border: 1px solid var(--border); background: var(--card-bg); padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+    .bld-tab { border: 1px solid var(--border); background: var(--card-bg); padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; }
     .bld-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
     .bld-sp { flex: 1; }
-    .bld-muted { color: var(--text-3); font-size: 12px; }
+    .bld-muted { color: var(--text-3); font-size: 11px; }
     .bld-acct { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
     .bld-acct select { min-width: 280px; font-weight: 600; }
     /* step 0 sits in the left column: stack its parts */
@@ -24,7 +24,7 @@
     .bld-grid .bld-acct .bld-pill { align-self: flex-start; }
     .bld-grid .bld-acct label { justify-content: space-between; }
     .bld-grid .bld-acct label input[type=number] { margin-left: auto; text-align: right; }
-    .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 12px; }
+    .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 11px; }
     .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
     .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
     .bld-grid { grid-template-columns: 875px minmax(760px, 1fr); }
@@ -41,6 +41,16 @@
     .bld-toprow .bld-acct { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(190px, 1.2fr); gap: 8px 14px; align-items: start; }
     .bld-acol { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 0; }
     .bld-acol .bld-pill { align-self: flex-start; }
+    /* account panel tidy-up: both columns read the same way -- small heading, then the control, then notes; the Plan buttons sit in one even row */
+    .bld-acol { gap: 12px; }
+    .bld-acol > span > b, .bld-acol .bld-line > b { font-size: 9px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-3); }
+    .bld-acol .bld-line { margin: 0; gap: 6px; row-gap: 10px; align-items: center; }
+    .bld-acol .bld-line > select { order: 2; flex: 1 1 100%; min-width: 0; width: 100%; }
+    .bld-acol .bld-line > .bld-btn { order: 3; margin: 0; flex: 0 0 auto; }
+    .bld-acol .bld-line > .bld-pill { order: 1; }
+    .bld-acol .bld-line > #planActivate { order: 4; }
+    .bld-acol .bld-line > .bld-btn.sm { padding-left: 8px; padding-right: 8px; }
+    .bld-acol .bld-pill { padding: 1px 8px; }
     @media (max-width: 1000px) { .bld-toprow .bld-acct { grid-template-columns: 1fr; } }
     @media (max-width: 1000px) { .bld-toprow { grid-template-columns: 1fr; } }
     .bld-below { margin-top: 4px; }
@@ -51,7 +61,7 @@
     @media (max-width: 1000px) { .bld-grid { grid-template-columns: 1fr; }  }
     /* To do block */
     .td-h { font-weight: 600; margin: 10px 0 4px; }
-    .td-p { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; background: #f6f6f3; color: var(--text-2); white-space: nowrap; }
+    .td-p { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: #f6f6f3; color: var(--text-2); white-space: nowrap; }
     .td-p.buy, .td-p.ok { background: #e4efe7; color: #2f6b45; } .td-p.sell, .td-p.bad { background: #f4e6e6; color: #9e3636; } .td-p.warn { background: #fdf3e3; color: #b45309; }
     .td-bar { position: relative; height: 10px; background: #ecebe7; border-radius: 3px; overflow: hidden; }
     .td-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); } .td-bar i.o { background: #b45309; } .td-bar i.h { background: #9e3636; }
@@ -59,54 +69,54 @@
     .td-msg { padding: 7px 10px; border-radius: 6px; background: #e4efe7; color: #2f6b45; margin-top: 8px; } .td-msg.w { background: #fdf3e3; color: #b45309; }
     .td-dim { opacity: .5; pointer-events: none; }
     .bld-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-    .bld-card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
-    .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 11px; line-height: 18px; margin-right: 6px; }
+    .bld-card h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+    .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 10px; line-height: 18px; margin-right: 6px; }
     .bld-card select, .bld-card input[type=number], .bld-card input[type=text], .bld-card input[type=search],
-    .bld-acct select, .bld-acct input[type=number] { padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font: inherit; font-size: 13px; background: #fff; }
+    .bld-acct select, .bld-acct input[type=number] { padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font: inherit; font-size: 12px; background: #fff; }
     .bld-acct label { display: inline-flex; align-items: center; gap: 6px; }
     .bld-acct input[type=number] { width: 120px; text-align: right; }
     /* source / check tick-boxes: two even columns, box and text on one line */
     .bld-chks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 4px 0; }
-    .bld-chks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+    .bld-chks label { display: flex; align-items: center; gap: 6px; font-size: 9px; cursor: pointer; }
     .bld-chks input { margin: 0; flex: 0 0 auto; }
     .bld-chks .bld-muted { white-space: normal; line-height: 1.25; }
     /* step 3: actual mix vs target, factor mix, picks */
     .bld-mixrow { margin-bottom: 7px; }
-    .bld-mixhead { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 2px; }
+    .bld-mixhead { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px; }
     .bld-mixbar { height: 8px; background: #eceae4; border-radius: 4px; overflow: hidden; }
     .bld-mixbar span { display: block; height: 100%; border-radius: 4px; }
     .bld-facs { margin: 6px 0; }
-    .bld-fac { display: grid; grid-template-columns: 96px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 3px; }
+    .bld-fac { display: grid; grid-template-columns: 96px 1fr 40px; gap: 8px; align-items: center; font-size: 11px; margin-bottom: 3px; }
     .bld-fac b { text-align: right; }
-    .bld-pickhead { margin: 10px 0 2px; font-size: 12.5px; }
+    .bld-pickhead { margin: 10px 0 2px; font-size: 11px; }
     .bld-over { color: #dc2626; font-weight: 700; }
     .bld-exp input[type=number] { width: 58px; text-align: right; padding: 2px 4px; }
     .bld-exp input.tgt-over { color: #dc2626; border-color: #dc2626; font-weight: 700; }
-    .bld-quadf { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+    .bld-quadf { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); }
     .bld-quadf label { display: inline-flex; align-items: center; gap: 2px; }
     .bld-quadf input { margin: 0; }
-    .bld-qp { display: inline-block; width: 22px; text-align: center; font-size: 10px; font-weight: 700; border-radius: 3px; margin-right: 2px; }
+    .bld-qp { display: inline-block; width: 22px; text-align: center; font-size: 9px; font-weight: 700; border-radius: 3px; margin-right: 2px; }
     .bld-qp.bull { background: rgba(22,163,74,.16); color: #16a34a; }
     .bld-qp.bear { background: rgba(220,38,38,.16); color: #dc2626; }
     .bld-qp.neutral { background: rgba(148,163,184,.18); color: var(--text-3); }
     .bld-qp.none { background: transparent; color: var(--text-3); }
     .bld-exp th, .bld-exp td { padding: 3px 6px; }
-    .bld-exp .sec td { background: #f6f6f3; font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); }
+    .bld-exp .sec td { background: #f6f6f3; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); }
     #pickList .bld-t td { padding: 3px 6px; }
     #mixRows td:first-child { white-space: nowrap; }
     #mixRows td:first-child .bld-sw { vertical-align: baseline; }
     .bld-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 2px 0; }
-    .bld-seg button { border: 0; border-right: 1px solid var(--border); background: #fff; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+    .bld-seg button { border: 0; border-right: 1px solid var(--border); background: #fff; padding: 4px 10px; font: inherit; font-size: 11px; cursor: pointer; }
     .bld-seg button:last-child { border-right: 0; }
     .bld-seg button.on { background: var(--accent); color: #fff; }
     .bld-seg button:disabled { color: var(--text-3); cursor: not-allowed; background: #fafaf9; }
-    .bld-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 5px 0; font-size: 12px; color: var(--text-2); }
+    .bld-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 5px 0; font-size: 11px; color: var(--text-2); }
     .bld-line > b { min-width: 74px; display: inline-block; color: var(--text-1); }
-    .bld-btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; margin-right: 6px; }
+    .bld-btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; font-size: 12px; cursor: pointer; margin-right: 6px; }
     .bld-btn.alt { background: #fff; color: var(--text-1); border: 1px solid var(--border); }
-    .bld-btn.sm { padding: 3px 9px; font-size: 12px; }
+    .bld-btn.sm { padding: 3px 9px; font-size: 11px; }
     .bld-btn:disabled { opacity: .5; cursor: not-allowed; }
-    table.bld-t { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    table.bld-t { border-collapse: collapse; width: 100%; font-size: 11px; }
     .bld-t th { text-align: left; color: var(--text-2); font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 7px; white-space: nowrap; }
     .bld-t td { padding: 4px 7px; border-bottom: 1px solid #f0efec; vertical-align: middle; }
     .bld-t .n { text-align: right; font-variant-numeric: tabular-nums; }
@@ -120,18 +130,18 @@
     .bld-t input[type=number] { width: 66px; text-align: right; }
     .bld-up { color: var(--pct-up); } .bld-dn { color: var(--pct-down); } .bld-warn { color: var(--mr-warn); }
     .bld-amb { background: var(--mr-warn-bg); color: var(--mr-warn); font-weight: 600; }
-    .bld-chip { display: inline-block; min-width: 22px; text-align: center; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 6px; }
+    .bld-chip { display: inline-block; min-width: 22px; text-align: center; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 6px; }
     .bld-chip.B { background: var(--act-buy-strong-bg); color: var(--act-buy-strong); }
     .bld-chip.S { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
     .bld-chip.H, .bld-chip.dash { background: var(--act-neutral-bg, #f3f4f6); color: var(--act-neutral, #6b7280); }
-    .bld-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .bld-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
     .bld-badge.buy { background: var(--act-buy-bg); color: var(--act-buy); }
     .bld-badge.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
     .bld-badge.neutral { background: var(--act-neutral-bg, #f3f4f6); color: var(--act-neutral, #6b7280); }
     .bld-pillcell { display: inline-block; width: 40px; }
-    .bld-stack { display: flex; height: 18px; border-radius: 4px; overflow: hidden; margin: 3px 0; font-size: 11px; color: #fff; }
+    .bld-stack { display: flex; height: 18px; border-radius: 4px; overflow: hidden; margin: 3px 0; font-size: 10px; color: #fff; }
     .bld-stack span { display: flex; align-items: center; justify-content: flex-start; padding: 0 5px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
-    .bld-stackrow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+    .bld-stackrow { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 11px; color: var(--text-2); }
     .bld-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
     .bld-frow { cursor: pointer; }
     .bld-t tr.bld-frow:hover td:first-child, .bld-viz .vrow.bld-frow:hover .vlab { text-decoration: underline; }
@@ -144,15 +154,15 @@
     .bld-ftag.on { font-weight: 700; text-decoration: underline; }
     .bld-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 10px; }
     .bld-kpi { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-    .bld-kpi small { color: var(--text-2); display: block; font-size: 11px; }
-    .bld-kpi b { font-size: 18px; }
+    .bld-kpi small { color: var(--text-2); display: block; font-size: 10px; }
+    .bld-kpi b { font-size: 16px; }
     .bld-tip { border-bottom: 1px dotted var(--text-3); cursor: help; position: relative; }
-    .bld-tip:hover::after { content: attr(data-tip); white-space: pre; position: absolute; left: 0; top: 100%; background: #1c1917; color: #fff; padding: 7px 10px; border-radius: 6px; z-index: 20; font-size: 12px; font-weight: 400; min-width: 220px; text-align: left; }
-    .bld-box { padding: 8px; background: #f3f4f6; border-radius: 6px; font-size: 12.5px; margin-top: 8px; }
+    .bld-tip:hover::after { content: attr(data-tip); white-space: pre; position: absolute; left: 0; top: 100%; background: #1c1917; color: #fff; padding: 7px 10px; border-radius: 6px; z-index: 20; font-size: 11px; font-weight: 400; min-width: 220px; text-align: left; }
+    .bld-box { padding: 8px; background: #f3f4f6; border-radius: 6px; font-size: 11px; margin-top: 8px; }
     .bld-bars { display: flex; gap: 14px; align-items: flex-end; height: 80px; margin-top: 6px; }
     .bld-bars div { display: flex; gap: 2px; align-items: flex-end; height: 100%; }
     .bld-bars span { width: 14px; display: block; border-radius: 2px 2px 0 0; }
-    .bld-disc { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+    .bld-disc { font-size: 10px; color: var(--text-3); margin-top: 6px; }
     .bld-modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
     .bld-modal > div { background: #fff; border-radius: 8px; padding: 14px 18px; width: min(900px, 94vw); max-height: 86vh; overflow: auto; }
 
@@ -168,9 +178,9 @@
     .bld-tab.on { box-shadow: 0 1px 3px rgba(37,99,235,.35); }
     /* cards */
     .bld-card, .bld-acct { border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 4px 14px rgba(15,23,42,.04); border-color: #e5e7ee; margin-bottom: 14px; }
-    .bld-card h3 { display: flex; align-items: center; gap: 4px; margin: -2px -2px 12px; padding-bottom: 9px; border-bottom: 1px solid #eef0f5; font-size: 11.5px; font-weight: 700; letter-spacing: .07em; color: var(--text-1); }
+    .bld-card h3 { display: flex; align-items: center; gap: 4px; margin: -2px -2px 12px; padding-bottom: 9px; border-bottom: 1px solid #eef0f5; font-size: 11px; font-weight: 700; letter-spacing: .07em; color: var(--text-1); }
     .bld-card h3 .bld-muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
-    .bld-step { width: 20px; height: 20px; line-height: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 1px 2px rgba(37,99,235,.35); }
+    .bld-step { width: 20px; height: 20px; line-height: 20px; font-size: 10px; font-weight: 700; box-shadow: 0 1px 2px rgba(37,99,235,.35); }
     .bld-muted { line-height: 1.45; }
     /* inputs */
     .bld-card select, .bld-card input[type=number], .bld-card input[type=text], .bld-card input[type=search],
@@ -192,20 +202,20 @@
     .bld-side .bld-line select { max-width: 150px; }
     .bld-quadf { background: #f6f7fb; border: 1px solid #e5e7ee; border-radius: 7px; padding: 3px 9px; gap: 8px; }
     /* tables */
-    table.bld-t { font-size: 11px; }
-    .bld-t th { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 700; padding: 5px 8px; border-bottom: 1px solid #e5e7ee; background: #fafbfd; }
+    table.bld-t { font-size: 10px; }
+    .bld-t th { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 700; padding: 5px 8px; border-bottom: 1px solid #e5e7ee; background: #fafbfd; }
     .bld-t td { padding: 2px 8px; border-bottom: 1px solid #f1f2f6; }
-    .bld-card .bld-t td input:not([type=checkbox]), .bld-card .bld-t td select, .bld-card .bld-t td button { padding: 0 5px; height: 18px; line-height: 16px; font-size: 11px; box-sizing: border-box; border-radius: 4px; }
+    .bld-card .bld-t td input:not([type=checkbox]), .bld-card .bld-t td select, .bld-card .bld-t td button { padding: 0 5px; height: 18px; line-height: 16px; font-size: 10px; box-sizing: border-box; border-radius: 4px; }
     .bld-card .bld-t td .bld-btn.sm { padding: 0 8px; }
     .bld-t tbody tr:hover { background: #f6f8ff; }
     .bld-side .bld-t tbody tr:nth-child(even):not(:hover) { background: #fbfbfd; }
-    .bld-side .bld-t td:nth-child(3) { color: var(--text-3); font-size: 11.5px; }
-    .bld-side .bld-t td:nth-child(8) { color: var(--text-2); font-size: 12px; }
+    .bld-side .bld-t td:nth-child(3) { color: var(--text-3); font-size: 11px; }
+    .bld-side .bld-t td:nth-child(8) { color: var(--text-2); font-size: 11px; }
     .bld-side .bld-t thead th { box-shadow: 0 1px 0 #e5e7ee; z-index: 2; }
     .bld-qp { width: 24px; padding: 1px 0; border-radius: 5px; margin-right: 3px; font-weight: 700; }
     /* targets vs portfolio comparison */
     .bld-exp th, .bld-exp td { padding: 2px 8px; }
-    .bld-exp .sec td { background: #f3f5fa; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .07em; border-top: 1px solid #e5e7ee; border-left: 3px solid var(--accent); padding-top: 7px; padding-bottom: 7px; }
+    .bld-exp .sec td { background: #f3f5fa; color: var(--text-2); font-size: 10px; font-weight: 700; letter-spacing: .07em; border-top: 1px solid #e5e7ee; border-left: 3px solid var(--accent); padding-top: 7px; padding-bottom: 7px; }
     .bld-exp input[type=number] { width: 64px; border-radius: 6px; background: #fbfbfd; }
     .bld-exp input[type=number]:focus { background: #fff; }
     .bld-t .bld-sw { width: 11px; height: 11px; border-radius: 3px; }
@@ -214,7 +224,7 @@
     .bld-note { border-radius: 8px; padding: 8px 12px; }
     .bld-box { border-radius: 8px; background: #f4f6fb; }
     .bld-kpi { border-radius: 10px; padding: 9px 12px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
-    .bld-kpi b { font-size: 19px; }
+    .bld-kpi b { font-size: 16px; }
     .bld-disc { text-align: center; padding: 6px 0 2px; }
     .bld-modal > div { border-radius: 12px; box-shadow: 0 18px 50px rgba(15,23,42,.28); }
 
@@ -222,7 +232,7 @@
     .bld-cmp3 { width: 676px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 20px; align-items: start; }
     .bld-cmp3 > div { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
     .bld-cmp3 .bld-exp th:first-child { white-space: normal; border-left: 3px solid var(--accent); background: #f3f5fa; color: var(--text-2); letter-spacing: .05em; }
-    .bld-cmp3 .bld-exp th.n { font-size: 10px; white-space: normal; line-height: 1.15; vertical-align: bottom; }
+    .bld-cmp3 .bld-exp th.n { font-size: 9px; white-space: normal; line-height: 1.15; vertical-align: bottom; }
     .bld-cmp3 .bld-exp input[type=number] { width: 74px; }
     /* the symbol table below: two columns (every class but Equities on the left, Equities on the right) */
     .bld-sym2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 14px 20px; align-items: start; margin-top: 10px; }
@@ -239,7 +249,7 @@
     .bld-exp td.bld-bar { padding-top: 0; padding-bottom: 0; vertical-align: middle; }
     .bld-exp td.bld-bar .bld-viz { margin: 0; }
     .bld-exp td.bld-bar .vrow { margin: 0; }
-    .bld-exp th.bld-bar-h { font-size: 10px; text-align: left; }
+    .bld-exp th.bld-bar-h { font-size: 9px; text-align: left; }
     .bld-cmp3 .bld-exp td:first-child { overflow: hidden; text-overflow: ellipsis; }
     .bld-cmp3 .bld-exp th:first-child { width: 21%; }
     .bld-cmp3 .bld-exp td, .bld-cmp3 .bld-exp th { padding-left: 5px; padding-right: 5px; }
@@ -264,34 +274,35 @@
       #view-list, #view-detail { grid-column: 1 / -1; grid-row: 4; }
     }
       /* compact control boxes everywhere on this screen (grids stay 18px, set above) */
-    body.builder-page input:not([type=checkbox]):not([type=radio]):not([type=range]), body.builder-page select, body.builder-page button { height: 22px; padding-top: 0; padding-bottom: 0; line-height: 20px; font-size: 12px; box-sizing: border-box; }
+    body.builder-page input, body.builder-page select, body.builder-page option, body.builder-page button, body.builder-page textarea { font-family: inherit; }
+    body.builder-page input:not([type=checkbox]):not([type=radio]):not([type=range]), body.builder-page select, body.builder-page button { height: 22px; padding-top: 0; padding-bottom: 0; line-height: 20px; font-size: 10px; box-sizing: border-box; }
     body.builder-page .bld-tab, body.builder-page .bld-seg button, body.builder-page .bld-btn { padding-top: 0; padding-bottom: 0; }
-    body.builder-page .bld-card .bld-t td input:not([type=checkbox]), body.builder-page .bld-card .bld-t td select, body.builder-page .bld-card .bld-t td button { height: 18px; line-height: 16px; font-size: 11px; }
-    .bld-tsum { font-size: 9.5px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); }
+    body.builder-page .bld-card .bld-t td input:not([type=checkbox]), body.builder-page .bld-card .bld-t td select, body.builder-page .bld-card .bld-t td button { height: 18px; line-height: 16px; font-size: 10px; }
+    .bld-tsum { font-size: 9px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); }
     /* no gap under the menu bar or above the panels */
     body.builder-page main.bld-wrap { margin-top: 0; padding-top: 4px; }
     body.builder-page .bld-tabs { margin-bottom: 4px; }
-    .bld-cnt { margin: -4px 0 4px; font-size: 11px; }
+    .bld-cnt { margin: -4px 0 4px; font-size: 10px; }
     .bld-cnt:has(span:empty) { display: none; }
     /* live picks strip: allocation bars + gap-to-target bars */
-    .bld-psum { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 13px; list-style: none; }
+    .bld-psum { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 12px; list-style: none; }
     .bld-psum::-webkit-details-marker { display: none; }
     .bld-psum::before { content: '\25BE'; color: var(--text-2); }
     #cmpPanel:not([open]) > .bld-psum::before { content: '\25B8'; }
-    .bld-viz { margin: 2px 0 8px; font-size: 11px; }
+    .bld-viz { margin: 2px 0 8px; font-size: 10px; }
     .bld-chev { cursor: pointer; user-select: none; display: inline-block; width: 14px; color: var(--text-2); }
     .bld-sec.collapsed > .bld-viz, .bld-sec.collapsed tbody, .bld-sec.collapsed th:not(:first-child) { display: none; }
     .bld-viz .vrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
     .bld-viz .vlab { width: 92px; flex: 0 0 auto; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bld-viz .vstack { flex: 1; display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: #eceae4; }
-    .bld-viz .vstack span { display: block; height: 100%; color: #fff; font-size: 9.5px; line-height: 14px; padding-left: 3px; overflow: hidden; white-space: nowrap; }
+    .bld-viz .vstack span { display: block; height: 100%; color: #fff; font-size: 9px; line-height: 14px; padding-left: 3px; overflow: hidden; white-space: nowrap; }
     .bld-viz .vtrack { flex: 1; position: relative; height: 10px; background: #eceae4; border-radius: 3px; }
     .bld-viz .vfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
     .bld-viz .vtick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text-1); }
     .bld-viz .vnum { width: 92px; flex: 0 0 auto; text-align: right; color: var(--text-2); white-space: nowrap; }
-    .bld-viz .vhead { font-weight: 700; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
+    .bld-viz .vhead { font-weight: 700; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
     .bld-viz .vlab { width: 80px; }
-    .bld-viz .vpct { flex: 0 0 auto; min-width: 46px; text-align: right; font-size: 10px; color: var(--text-3); white-space: nowrap; }
+    .bld-viz .vpct { flex: 0 0 auto; min-width: 46px; text-align: right; font-size: 9px; color: var(--text-3); white-space: nowrap; }
     .bld-viz .vpct b { color: var(--text-1); font-weight: 600; }
     .bld-viz .vpct i { font-style: normal; }
     .bld-viz .vtrack2 { flex: 1; position: relative; height: 12px; background: #f1f0ec; border-radius: 3px; }
@@ -308,6 +319,8 @@
     .bld-wrap { column-gap: 6px; }
     .bld-left { gap: 6px; }
     .bld-toprow { gap: 6px; }
+    .bld-toprow > .bld-card { padding-top: 9px; padding-bottom: 9px; }
+    .bld-toprow > .bld-card .bld-chks { margin: 0; }
     .bld-pair { gap: 0 6px; }
     .bld-pair > .bld-card, .bld-toprow .bld-acct, .bld-toprow .bld-card { margin-bottom: 6px; }
     /* column 1: the stacked panels are spaced only by the 6px gap (their own bottom margins added to it) */
@@ -316,10 +329,10 @@
     body.builder-page main.bld-wrap { padding: 2px 4px 4px; margin-top: 0; }
     /* every panel can be collapsed to its title (button at the top right of the panel; remembered in this browser) */
     .bld-card, .bld-acct { position: relative; }
-    .bld-cx { position: absolute; top: 3px; right: 6px; z-index: 5; border: 0; background: transparent; cursor: pointer; color: var(--text-2); font-size: 12px; line-height: 1; }
+    .bld-cx { position: absolute; top: 3px; right: 6px; z-index: 5; border: 0; background: transparent; cursor: pointer; color: var(--text-2); font-size: 11px; line-height: 1; }
     body.builder-page .bld-cx { height: 16px; width: 18px; padding: 0; box-shadow: none; }
     .cx-collapsed > *:not(.bld-cx) { display: none !important; }
-    .cx-collapsed::before { content: attr(data-ctitle); display: block; font-size: 12px; font-weight: 700; color: var(--text-2); padding: 2px 24px 2px 2px; letter-spacing: .03em; }
+    .cx-collapsed::before { content: attr(data-ctitle); display: block; font-size: 11px; font-weight: 700; color: var(--text-2); padding: 2px 24px 2px 2px; letter-spacing: .03em; }
 </style>
 </head>
 <body class="builder-page">
@@ -343,24 +356,23 @@
         <div class="bld-left">
         <div class="bld-toprow">
           <div class="bld-acct">
-            <div class="bld-acol"><span><b>Account</b></span>
+            <div class="bld-acol"><span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b>Account</b><span class="bld-muted" id="acctSnap" style="font-size:10px"></span></span>
             <select id="acctSel" aria-label="account"></select>
             <span class="bld-pill" id="acctType"></span>
-            <span class="bld-muted" id="acctSnap"></span>
 </div>
             <div class="bld-acol">
-            <span class="bld-line" style="gap:6px;flex-wrap:wrap"><b style="min-width:0">Plan</b><span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
+            <span class="bld-line" style="flex-wrap:wrap"><b style="min-width:0">Plan</b><span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
             <div class="bld-muted" id="planMsg" hidden></div>
             </div>
           </div>
-          <div class="bld-card"><h3 style="border-bottom:0;padding-bottom:0;margin-bottom:6px">Lists to choose from</h3>
+          <div class="bld-card">
             <div id="srcBox" class="bld-chks"></div>
           </div>
         </div>
 
         <!-- column 2: names on the ticked lists, filtered; tick the ones you want -->
         <aside id="srcNames" class="bld-card bld-side">
-          <div class="bld-line" style="gap:6px">
+          <div class="bld-line" style="gap:10px 6px;margin-bottom:10px">
             <select id="srcfSource" title="List"></select>
             <select id="srcfClass" title="Asset class"></select>
             <select id="srcfSector" title="Sector (equities)"></select>
@@ -369,7 +381,7 @@
             <span class="bld-quadf" id="srcfQuad" title="Show only names Hedgeye favours (Bull) in the Quad(s) ticked. A stock takes its sector's view.">Quad favored <label><input type="checkbox" value="0">Q1</label><label><input type="checkbox" value="1">Q2</label><label><input type="checkbox" value="2">Q3</label><label><input type="checkbox" value="3">Q4</label></span>
             <input type="search" id="srcfText" placeholder="Symbol" style="width:90px">
           </div>
-          <div class="bld-line" style="gap:6px">
+          <div class="bld-line" style="gap:10px 6px">
             <button class="bld-btn sm alt" id="selShown">Select all shown</button>
             <button class="bld-btn sm alt" id="clearPicks">Clear picks</button>
             <button class="bld-btn sm alt" id="matchHold" title="Copy what the account holds into the plan: the asset class %, each picked stock's share, and the sector / style / beta limits">Start from my holdings</button>
@@ -419,7 +431,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261116x"></script>
+  <script src="/static/builder.js?v=20261117c"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

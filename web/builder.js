@@ -118,7 +118,7 @@
     const lab = document.createElement('label');
     lab.className = 'bld-muted';
     lab.innerHTML = 'Amount <input type="number" id="amount" min="0" step="1000" style="width:110px" title="Defaults to the account value. Lower it to model part of the account.">';
-    $('acctSnap').before(lab);
+    $('acctType').after(lab);
     $('amount').onchange = () => { const v = parseFloat($('amount').value); S.amount = v > 0 ? v : null; schedule(); };
     await reloadAll(true);
   }
@@ -737,7 +737,7 @@
     const atype = S.acct === 'ALL' ? 'all accounts' : (a.type && a.type !== 'OTHER' ? a.type : '');
     $('acctType').textContent = atype ? 'Type: ' + atype : '';
     $('acctType').hidden = !atype;
-    $('acctSnap').textContent = a.snap_date ? 'Positions file: ' + a.snap_date + (a.positions_stale ? ' (older than 3 trading days)' : '') : '';
+    $('acctSnap').textContent = a.snap_date ? 'Pos File: ' + a.snap_date + (a.positions_stale ? ' (older than 3 trading days)' : '') : '';
     if ($('amount') && document.activeElement !== $('amount')) $('amount').value = S.amount || Math.round(a.value || 0);
   }
 
