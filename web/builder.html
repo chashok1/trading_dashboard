@@ -34,6 +34,15 @@
     .bld-side-scroll { flex: 1; min-height: 0; overflow: auto; }
     .bld-side .bld-t thead th { position: sticky; top: 0; background: var(--card-bg); }
     @media (max-width: 1000px) { .bld-grid { grid-template-columns: 1fr; }  }
+    /* To do block */
+    .td-h { font-weight: 600; margin: 10px 0 4px; }
+    .td-p { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; background: #f6f6f3; color: var(--text-2); white-space: nowrap; }
+    .td-p.buy, .td-p.ok { background: #e4efe7; color: #2f6b45; } .td-p.sell, .td-p.bad { background: #f4e6e6; color: #9e3636; } .td-p.warn { background: #fdf3e3; color: #b45309; }
+    .td-bar { position: relative; height: 10px; background: #ecebe7; border-radius: 3px; overflow: hidden; }
+    .td-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); } .td-bar i.o { background: #b45309; } .td-bar i.h { background: #9e3636; }
+    .td-bar b { position: absolute; left: 0; bottom: 0; height: 3px; background: #7f90a8; z-index: 1; }
+    .td-msg { padding: 7px 10px; border-radius: 6px; background: #e4efe7; color: #2f6b45; margin-top: 8px; } .td-msg.w { background: #fdf3e3; color: #b45309; }
+    .td-dim { opacity: .5; pointer-events: none; }
     .bld-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
     .bld-card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
     .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 11px; line-height: 18px; margin-right: 6px; }
@@ -243,7 +252,13 @@
     .bld-cnt { margin: -4px 0 4px; font-size: 11px; }
     .bld-cnt:has(span:empty) { display: none; }
     /* live picks strip: allocation bars + gap-to-target bars */
+    .bld-psum { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 13px; list-style: none; }
+    .bld-psum::-webkit-details-marker { display: none; }
+    .bld-psum::before { content: '\25BE'; color: var(--text-2); }
+    #cmpPanel:not([open]) > .bld-psum::before { content: '\25B8'; }
     .bld-viz { margin: 2px 0 8px; font-size: 11px; }
+    .bld-chev { cursor: pointer; user-select: none; display: inline-block; width: 14px; color: var(--text-2); }
+    .bld-sec.collapsed > .bld-viz, .bld-sec.collapsed tbody, .bld-sec.collapsed th:not(:first-child) { display: none; }
     .bld-viz .vrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
     .bld-viz .vlab { width: 92px; flex: 0 0 auto; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bld-viz .vstack { flex: 1; display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: #eceae4; }
@@ -282,14 +297,8 @@
 
   <main class="bld-wrap">
     <div id="bldProblems" class="bld-note" hidden></div>
-    <div class="bld-tabs">
-      <button class="bld-tab on" data-v="build">Build new</button>
-      <button class="bld-tab" data-v="list">Portfolios <span id="listCount"></span></button>
-    </div>
-
     <!-- VIEW 1: BUILD NEW -->
     <section id="view-build">
-      <div id="runBanner" class="bld-note" hidden></div>
       <div class="bld-grid">
         <!-- column 1: account (step 0) and setup -->
         <div>
@@ -297,20 +306,15 @@
             <span><b>Account</b></span>
             <select id="acctSel" aria-label="account"></select>
             <span class="bld-pill" id="acctType"></span>
-            <span class="bld-pill" id="acctRun"></span>
             <span class="bld-muted" id="acctSnap"></span>
+            <span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span>
+            <span class="bld-line" style="gap:6px"><b>Plan</b><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
+            <div class="bld-muted" id="planMsg" hidden></div>
           </div>
           <div class="bld-card"><h3>Lists to choose from</h3>
             <div class="bld-muted" style="margin-bottom:4px">Tick lists to see their names in the middle column, then tick the ones you want.</div>
             <div id="srcBox" class="bld-chks"></div>
           </div>
-
-          <div class="bld-card"><h3>Warnings <span class="bld-muted">(optional, alert only, never trades)</span></h3>
-            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="drop"> Tell me if the model is down 10% from start</label>
-            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="quad_turn"> Tell me if the Quad check says "transition"</label>
-            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="no_new_risk"> Tell me if the Risk Dial says "No new risk"</label>
-            <label style="display:block;font-size:12.5px"><input type="checkbox" data-warn="final_call_sell"> Tell me if a holding's Final Call turns Sell</label>
-            <div class="bld-muted">Always on: stale prices or a possible split.</div></div>
         </div>
 
         <!-- column 2: names on the ticked lists, filtered; tick the ones you want -->
@@ -327,9 +331,9 @@
           <div class="bld-line" style="gap:6px">
             <button class="bld-btn sm alt" id="selShown">Select all shown</button>
             <button class="bld-btn sm alt" id="clearPicks">Clear picks</button>
-            <button class="bld-btn sm" id="matchHold" title="Fill each pick's % from what the account holds, so the picks copy your holdings class by class">Match my holdings</button>
-            <button class="bld-btn sm" id="fillGaps" title="Filter the list to what your targets are still missing; click again for the next gap">Show what's missing</button>
+            <button class="bld-btn sm alt" id="matchHold" title="Copy what the account holds into the plan: the asset class %, each picked stock's share, and the sector / style / beta limits">Start from my holdings</button>
             <button class="bld-btn sm alt" id="clearFilters">Clear filters</button>
+            <input type="search" id="myAddSym" placeholder="Add my stock" style="width:110px"><button class="bld-btn sm" id="myAdd" title="Add a stock of your own to the My stocks list. A stock Hedgeye lists moves to the Hedgeye names.">Add</button><span class="bld-muted" id="myMsg"></span>
             <span class="bld-muted" id="srcNamesCount"></span>
             <span class="bld-muted" id="srcNamesHint"></span>
             <button type="button" class="bld-copy" data-copy="shown" title="Copy the symbols shown in this list (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
@@ -340,45 +344,38 @@
         <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
         <div>
           <div class="bld-card bld-cmpcard">
-            <div class="bld-line" style="gap:10px;flex-wrap:wrap"><span class="bld-muted bld-cnt" style="margin:0"><span id="picksCount"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></span>
-              <b style="min-width:0">Preset</b><select id="preset"></select>
-              <b style="min-width:0">Saved</b><select id="setSel"><option value="">(none saved)</option></select>
-              <button class="bld-btn alt" id="setOpen">Open</button><button class="bld-btn" id="setSave">Save as…</button><button class="bld-btn alt" id="setDel">Delete</button>
-              <span class="bld-muted" id="setMsg"></span></div>
-            <div id="cmpTable"></div>
+            <details id="cmpPanel" open hidden>
+              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
+              <div id="cmpTable"></div>
+            </details>
             <div id="symTable"></div>
+          </div>
+          <!-- 2026-11-14: To do list from the ACTIVE plan (sells for classes above plan, planned buys, what is left) -->
+          <div class="bld-card" id="todoCard">
+            <div class="bld-line" style="justify-content:space-between"><h3 style="margin:0">To do <span class="bld-muted" id="tdSub" style="font-weight:400"></span></h3></div>
+            <div id="tdEmpty" class="bld-muted" style="margin-top:6px" hidden>Save a plan for this account and your to-do list appears here.</div>
+            <div id="tdBody">
+              <div class="td-h">Sell <span class="bld-muted">classes above their plan %</span></div><div id="tdSells"></div>
+              <div class="td-h">Buy <span class="bld-muted">your planned picks; counts only when Actionable says Buy</span></div>
+              <div style="overflow-x:auto"><table class="bld-t" id="tdBuys"></table></div>
+              <div class="td-h">What is left <span class="bld-muted">this account only</span></div>
+              <div id="tdLeft" style="display:flex;flex-direction:column;gap:8px"></div>
+              <div class="td-msg" id="tdMsg"></div>
+              <ul id="tdNotes" style="margin:6px 0 0;padding-left:18px"></ul>
+            </div>
           </div>
         </div>
       </div>
 
       <div class="bld-below">
-          <div class="bld-disc">Past results are not a forecast. The Builder never trades and never changes the Actionable Final Call.</div>
+          <div class="bld-disc">The Builder never trades and never changes the Actionable Final Call.</div>
       </div>
-    </section>
-
-    <!-- VIEW 2: LIST -->
-    <section id="view-list" hidden>
-      <div class="bld-card">
-        <div class="bld-line"><label>Account <select id="listAcct"><option value="">All accounts</option></select></label>
-          <label>Status <select id="listStatus"><option value="active">Running + review due</option><option value="all">All</option><option value="closed">Closed</option></select></label></div>
-        <div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Account</th><th>Name</th><th>Mix</th><th>Split</th><th>Period</th><th>Day</th><th class="n">Value</th><th class="n">Return</th><th class="n">vs SPY</th><th class="n">vs account</th><th>Status</th></tr></thead>
-          <tbody id="listRows"></tbody></table></div>
-        <div class="bld-muted" style="margin-top:6px">One running model per account. Click a row for details. "vs account" = the model against that account's own holdings at the start, left untouched.</div>
-      </div>
-    </section>
-
-    <!-- VIEW 3: DETAIL -->
-    <section id="view-detail" hidden>
-      <div class="bld-muted" style="margin-bottom:6px"><a href="#" id="backToList">&larr; Portfolios</a></div>
-      <div id="detailBody"></div>
     </section>
   </main>
 
-  <div id="modalHost"></div>
-
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261107a"></script>
+  <script src="/static/builder.js?v=20261115f"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

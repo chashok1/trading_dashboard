@@ -77,7 +77,7 @@ def load_trend_history(session, syms: list, d: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Fund list + measures (shared by drv_pb_score and the preview)
+# Fund list + measures (used by the preview)
 # ---------------------------------------------------------------------------
 def fund_metrics(session, d: date, problems: Optional[list] = None, uni_rows: Optional[list] = None) -> dict:
     """{sym: fund dict} for every fund in ref_pb_universe (or in uni_rows, same column order: the source pool),
@@ -215,6 +215,10 @@ def source_names(session, d: date, sources: list, problems: Optional[list] = Non
         for sym in ((pos or {}).get("holdings") or {}):
             on.setdefault(sym, set()).add("HELD")
             bull.add(sym)
+    if "MINE" in (sources or []):         # the user's own stocks (one Hedgeye lists is stamped moved_on and leaves this list)
+        for (sym,) in _q(session, "SELECT tos_symbol FROM user_my_stock WHERE moved_on IS NULL", None, problems, "user_my_stock"):
+            on.setdefault(sym, set()).add("MINE")
+            bull.add(sym)
     if not on:
         return []
     info = name_info(session, d, sorted(on), problems, uni_bucket)
@@ -278,13 +282,14 @@ def name_info(session, d: date, syms: list, problems: Optional[list] = None, uni
     return out
 
 
-def exposure(values: dict, info: dict) -> dict:
-    """Percent of the money in each factor. values = {sym: dollars}; info = name_info rows. Percent basis = the money
-    in names with a known row (so Picked and Held are comparable). Styles / Quad can overlap, so rows need not add up."""
+def exposure(values: dict, info: dict, base: Optional[float] = None) -> dict:
+    """Percent of the money in each factor. values = {sym: dollars}; info = name_info rows. Percent basis = `base` dollars
+    (2026-11-14: the whole account, so a Target typed here means the same thing the plan check reads); with no base, the money
+    in the names given. Styles / Quad can overlap, so rows need not add up."""
     from etl.derive_model_portfolio import FLAVOURS
     STYLE_GROUPS = {k: {t.lower() for t in v} for k, v in FLAVOURS.items() if v}
     tot = sum(v for s, v in values.items() if v > 0)
-    out = {"total": tot, "beta": None, "asset": {}, "sector": {}, "style": {}, "quad": {}, "lowbeta": 0.0, "highbeta": 0.0}
+    out = {"total": tot, "beta": None, "asset": {}, "sector": {}, "style": {}, "quad": {}, "lowbeta": 0.0, "highbeta": 0.0, "midbeta": 0.0, "nobeta": 0.0, "nostyle": 0.0}
     if tot <= 0:
         return out
     bsum = bw = 0.0
@@ -293,20 +298,28 @@ def exposure(values: dict, info: dict) -> dict:
         if v <= 0:
             continue
         r = info.get(sym) or {}
-        p = v / tot * 100.0
+        p = v / (base if base and base > 0 else tot) * 100.0
         b = r.get("bucket") or "Unmapped"
         out["asset"][b] = out["asset"].get(b, 0.0) + p
         sec = r.get("sector") if b == "Equities" and r.get("sector") not in (None, "Unmapped", "Other") else b
         out["sector"][sec] = out["sector"].get(sec, 0.0) + p
-        have = {str(t).lower() for t in (r.get("styles") or [])}
-        for k, tags in STYLE_GROUPS.items():
-            if have & tags:
-                out["style"][k] = out["style"].get(k, 0.0) + p
-        if r.get("beta") is not None:
-            bsum += v
-            bw += r["beta"] * v
-            out["lowbeta"] += p if r["beta"] <= 0.8 else 0.0
-            out["highbeta"] += p if r["beta"] > 1.2 else 0.0
+        if b == "Equities":      # beta and style limits are about equities (the same basis the plan check uses)
+            have = {str(t).lower() for t in (r.get("styles") or [])}
+            hit = False
+            for k, tags in STYLE_GROUPS.items():
+                if have & tags:
+                    out["style"][k] = out["style"].get(k, 0.0) + p
+                    hit = True
+            if not hit:
+                out["nostyle"] += p
+            if r.get("beta") is not None:
+                bsum += v
+                bw += r["beta"] * v
+                out["lowbeta"] += p if r["beta"] <= 0.8 else 0.0
+                out["highbeta"] += p if r["beta"] > 1.2 else 0.0
+                out["midbeta"] += p if 0.8 < r["beta"] <= 1.2 else 0.0
+            else:
+                out["nobeta"] += p
         for i, w in enumerate(r.get("quad") or [None] * 4):
             quad[i][w or "none"] += p
     out["beta"] = (bw / bsum) if bsum else None
@@ -521,20 +534,6 @@ def keep_list(session, short: str) -> list:
                              {"a": short}, None, "ref_account_keep")]
 
 
-def lt_hold_symbols(session) -> list:
-    return [r[0] for r in _q(session, "SELECT DISTINCT tos_symbol FROM ref_conviction_hold WHERE status = 'ACTIVE' AND "
-                                      "COALESCE(direction, 'HOLD') = 'HOLD'", None, None, "ref_conviction_hold")] or \
-        [r[0] for r in _q(session, "SELECT DISTINCT tos_symbol FROM ref_conviction_hold WHERE status = 'ACTIVE'", None, None, "ref_conviction_hold")]
-
-
-def running_model(session, short: str):
-    r = _q(session, "SELECT portfolio_id, name, horizon, end_date, status FROM user_model_portfolio WHERE account_short = :a "
-                    "AND status IN ('PENDING', 'RUNNING') ORDER BY portfolio_id DESC LIMIT 1", {"a": short}, None, "user_model_portfolio")
-    if not r:
-        return None
-    return {"portfolio_id": r[0][0], "name": r[0][1], "horizon": r[0][2], "end_date": r[0][3].isoformat() if r[0][3] else None, "status": r[0][4]}
-
-
 def list_accounts(session, d: date) -> dict:
     problems: list = []
     funds = fund_metrics(session, d, problems)
@@ -552,7 +551,6 @@ def list_accounts(session, d: date) -> dict:
         out.append({"short": short, "type": g["type"], "value": pos["value"], "snap_date": pos["snap_date"].isoformat(),
                     "stale": pos["stale"], "current_mix": current_mix(pos), "kept": kept,
                     "kept_value": sum(pos["holdings"][s]["value"] for s in kept if s in pos["holdings"]),
-                    "running": running_model(session, short),
                     "holdings": [{"sym": s, "value": h["value"], "bucket": h["bucket"], "area": h["area"]}
                                  for s, h in sorted(pos["holdings"].items(), key=lambda kv: -kv[1]["value"])]})
     return {"accounts": out, "whole_book_value": total_all, "problems": problems}
@@ -624,86 +622,3 @@ _BT_CACHE: dict = {}
 _BT_IN: dict = {}
 
 
-def _bt_inputs(session, d: date, sources, horizon: str, problems: list):
-    """Funds + closes + trend + Quad inputs for a back-test, cached per (day, sources, horizon)."""
-    key = (d, tuple(sorted(sources or [])), horizon)
-    if key in _BT_IN:
-        return _BT_IN[key]
-    funds = pool_funds(session, d, sources, problems) if sources else fund_metrics(session, d, problems)
-    if not funds:
-        return None
-    syms = list(funds) + [SPY]
-    closes = load_closes(session, syms, d, problems)
-    trend = load_trend_history(session, syms, d)
-    quad = quad_context(session, d, horizon, problems)
-    base_ctx = {"outlook": outlook_map(session, problems), "presets": presets(session, problems),
-                "quad_inputs": {"monthly": quad.get("monthly"), "quarterly": quad.get("quarterly")}}
-    if len(_BT_IN) > 5:
-        _BT_IN.clear()
-    _BT_IN[key] = (funds, closes, trend, base_ctx)
-    return _BT_IN[key]
-
-
-def run_backtest(session, d: date, req: dict) -> dict:
-    """"What would have happened": replays the build on past start dates (see builder_engine.backtest).
-    INFORMATIONAL ONLY: it never removes or changes a pick. Cached per (D, request, horizon).
-    Uses hist_quote_daily automatically if it ever has data."""
-    import hashlib
-    from etl.builder_engine import backtest
-    horizon = req.get("horizon") or "3M"
-    key = (d, horizon, hashlib.md5(json.dumps(req, sort_keys=True, default=str).encode()).hexdigest())
-    if key in _BT_CACHE:
-        return _BT_CACHE[key]
-    problems: list = []
-    inp = _bt_inputs(session, d, req.get("sources"), horizon, problems)
-    if inp is None:
-        return {"periods": [], "summary": {"periods": 0, "message": "Not enough history yet", "bars": []}, "problems": problems}
-    funds, closes, trend, base_ctx = inp
-    res = backtest(closes, trend, funds, base_ctx, req, horizon)
-    res["problems"] = problems
-    res["note"] = ("Uses today's fund list for old dates (survivorship, minor for big index funds). The Final Call skip, Hedgeye "
-                   "outlooks and flavour filters are not replayed. Applies your recipe mechanically. Past results only, not a forecast.")
-    if req.get("sources"):
-        res["note"] += (" Source lists are replayed with TODAY'S membership (their past membership is not kept), "
-                        "so names that were added because they already went up flatter the result. Information only: it never removes a pick.")
-    if len(_BT_CACHE) > 50:
-        _BT_CACHE.clear()
-    _BT_CACHE[key] = res
-    return res
-
-
-COMPARE_VARIANTS = [("as_picked", "As picked", []), ("low_beta", "+ Low beta", ["low_beta"]),
-                    ("quad", "+ Quad check", ["quad"]), ("both", "+ Both", ["low_beta", "quad"])]
-
-
-def compare_variants(session, d: date, account: str, horizon: str, req: dict) -> dict:
-    """Option B: the same source pool built with each validation check, side by side, plus a back-test per variant.
-    The back-test is informational only: it never feeds back into which names are picked."""
-    from etl.builder_engine import build_positions
-    problems: list = []
-    ctx = load_context(session, d, account, horizon, problems, sources=req.get("sources"))
-    funds = ctx["funds"]
-    out = []
-    for key, label, checks in COMPARE_VARIANTS:
-        r = dict(req, checks=checks)
-        res = build_positions(ctx, r)
-        pos = [x for x in res["positions"] if not x["is_kept"]]
-        tv = sum(x["value"] for x in pos) or 0.0
-        bw = [(x["value"], (funds.get(x["sym"]) or {}).get("beta")) for x in pos]
-        bw = [(v, b) for v, b in bw if b is not None]
-        removed = [s for s in res["skipped"] if s.get("kind") == "check"]
-        try:
-            bt = run_backtest(session, d, dict(r, account=account, horizon=horizon))
-            bts = bt.get("summary")
-        except Exception as e:  # never let the info-only back-test break the comparison
-            log.warning("compare back-test failed: %s", e)
-            bts = {"message": "Back-test unavailable", "periods": 0}
-        out.append({"key": key, "label": label, "checks": checks, "n_positions": len(pos),
-                    "invested_pct": (res.get("invested", 0.0) / res["amount"] * 100.0) if res["amount"] else None,
-                    "cash_pct": (res.get("cash") or {}).get("pct"),
-                    "beta": (sum(v * b for v, b in bw) / sum(v for v, _ in bw)) if bw else None,
-                    "removed": [{"sym": s["sym"], "reason": s["reason"]} for s in removed],
-                    "top": [{"sym": x["sym"], "weight": x["weight"], "sources": x.get("sources")}
-                            for x in sorted(pos, key=lambda x: -x["value"])[:10]],
-                    "backtest": bts})
-    return {"variants": out, "problems": ctx["problems"], "pool_size": sum(1 for f in funds.values() if f.get("eligible"))}

@@ -1,0 +1,192 @@
+"""Behaviour tests for etl/plan_check.py (pure, no database)."""
+from etl import plan_check as pc
+
+SIDE = lambda c: "buy" if c in ("BM", "BS") else ("sell" if c in ("SA", "SS") else "neutral")
+
+
+def _plan(**cls):
+    base = {"Equities": 50, "Fixed Income": 30, "Gold": 0, "Commodities": 0, "Crypto": 0, "Currency": 2, "Cash": 18}
+    base.update(cls)
+    return {"cls": base}
+
+
+def _acct():
+    return {"value": 100000.0, "cash": 20000.0, "holdings": {
+        "SPY": {"value": 40000.0, "bucket": "Equities"},
+        "TLT": {"value": 30000.0, "bucket": "Fixed Income"},
+        "GLD": {"value": 10000.0, "bucket": "Gold"}}}
+
+
+INFO = {"SPY": {"bucket": "Equities", "sector": "Broad", "beta": 1.0, "styles": []},
+        "MSFT": {"bucket": "Equities", "sector": "Technology", "beta": 1.1, "styles": []},
+        "AAPL": {"bucket": "Equities", "sector": "Technology", "beta": 1.2, "styles": []}}
+
+
+def test_classes_must_add_to_100():
+    assert pc.validate_plan(_plan()) == []
+    assert any("100" in e for e in pc.validate_plan(_plan(Cash=10)))
+
+
+def test_sector_total_cannot_exceed_equities():
+    p = _plan()
+    p["sector"] = {"Technology": 40, "Health Care": 20}
+    assert any("Sectors" in e for e in pc.validate_plan(p))
+
+
+def test_cash_to_spend_keeps_cash_percent_and_floor():
+    # cash 20,000, Cash plan 18% of 100,000 = 18,000 -> only 2,000 may be spent
+    assert pc.cash_to_spend(20000, 0, 100000, _plan()) == 2000
+    # a ticked sell adds to what may be spent
+    assert pc.cash_to_spend(20000, 5000, 100000, _plan()) == 7000
+    assert pc.cash_to_spend(500, 0, 100000, _plan()) == 0
+
+
+def test_class_planned_zero_means_sell_all():
+    now = pc.now_lines(_acct()["holdings"], INFO, 20000)
+    needs = {n["cls"]: n for n in pc.sell_needs(_plan(), now, 100000)}
+    assert needs["Gold"]["all"] is True and needs["Gold"]["need"] == 10000
+    assert "Equities" not in needs          # 40% held, plan 50%
+
+
+def _todo(picks, plan=None, calls=None, caps=None):
+    return pc.todo(plan or _plan(), _acct(), picks, calls or {"MSFT": "BM", "AAPL": "HOLD"}, INFO, {}, SIDE, caps)
+
+
+def test_unticked_sell_changes_nothing_and_ticked_sell_adds_cash_here():
+    base = _todo([])
+    assert base["sell_cash"] == 0 and base["cash_to_spend"] == 2000
+    t = _todo([{"id": 1, "side": "SELL", "members": ["GLD"], "amount": 0, "ticked": True}])
+    assert t["sell_cash"] == 10000 and t["cash_to_spend"] == 12000
+
+
+def test_buy_is_cut_to_cash_and_never_exceeds_it():
+    t = _todo([{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 9000, "ticked": True}])
+    b = t["buys"][0]
+    assert b["result"] == "SHRUNK" and b["allowed"] == 2000 and t["cash_left"] == 0
+
+
+def test_buy_blocked_when_no_cash():
+    picks = [{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 2000, "ticked": True},
+             {"id": 2, "side": "BUY", "members": ["MSFT"], "amount": 1000, "ticked": True}]
+    b = _todo(picks)["buys"]
+    assert b[0]["result"] == "OK" and b[1]["result"] == "BLOCKED"
+
+
+def test_planned_buy_counts_without_a_buy_call_and_a_group_counts_once():
+    g = {"id": 1, "side": "BUY", "members": ["MSFT", "AAPL"], "amount": 1500, "ticked": False}
+    nocall = _todo([g], calls={"MSFT": "HOLD", "AAPL": "HOLD"})
+    assert nocall["bought"] == 1500 and nocall["buys"][0]["has_call"] is False and nocall["buys"][0]["buy_member"] is None
+    t = _todo([g], calls={"MSFT": "BM", "AAPL": "BM"})
+    assert t["bought"] == 1500 and t["buys"][0]["buy_member"] in ("MSFT", "AAPL")
+
+
+def test_no_amount_means_not_counted():
+    t = _todo([{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 0, "ticked": True}])
+    assert t["bought"] == 0 and t["buys"][0]["result"] == "READY" and t["cash_left"] == t["cash_to_spend"]
+
+
+def test_line_states_for_classes_and_ceilings():
+    v = 100000.0
+    cls = lambda left, key="Equities": {"kind": "cls", "key": key, "left": left}
+    assert pc.line_state(cls(5000), v) == "ROOM" and pc.line_state(cls(100), v) == "ON_PLAN"
+    assert pc.line_state(cls(-5000), v) == "OVER" and pc.line_state(cls(-5000, "Cash"), v) == "SHORT"
+    ceil = lambda now, used=0: {"kind": "sector", "key": "IT", "plan": 10000.0, "now": now, "used": used}
+    assert pc.line_state(ceil(5000), v) == "OK" and pc.line_state(ceil(9000), v) == "NEAR"
+    assert pc.line_state(ceil(8000, 1500), v) == "NEAR" and pc.line_state(ceil(10400, 400), v) == "OVER"
+
+
+def test_small_account_tolerance_is_tighter():
+    assert pc.tolerance(100000) == 500 and pc.tolerance(20000) == 100
+
+
+def test_max_add_names_the_tightest_limit_and_uses_the_stock_max():
+    t = _todo([{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 1000, "ticked": False}],
+              caps={"MSFT": {"min": 1000.0, "max": 2000.0, "unit": 500.0}})
+    b = t["buys"][0]
+    assert b["max_add"] == 2000 and b["binding"] in ("Cash to spend", "The stock's own Max")
+    assert b["suggest"] == 1000                      # not held -> the amount rules' Min
+    t2 = _todo([{"id": 1, "side": "BUY", "members": ["SPY"], "amount": 1500, "ticked": False}],
+               caps={"SPY": {"min": 1000.0, "max": 40500.0, "unit": 500.0}})
+    b2 = t2["buys"][0]
+    assert b2["binding"] == "The stock's own Max" and b2["max_add"] == 500 and b2["suggest"] == 500
+    assert any(o["line"] == "The stock's own Max" for o in b2["over"])
+
+
+def test_percentage_lines_warn_but_do_not_cut():
+    p = _plan(Equities=41, Cash=18, **{"Fixed Income": 39})
+    p["sector"] = {"Technology": 0.5}
+    b = _todo([{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 2000, "ticked": True}], plan=p)["buys"][0]
+    assert b["allowed"] == 2000 and b["result"] == "OVER_PLAN" and b["over"]
+
+
+def test_open_lines_never_limit():
+    b = _todo([{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 2000, "ticked": True}])["buys"][0]
+    assert b["result"] == "OK"
+
+
+def test_same_input_same_answer():
+    picks = [{"id": 1, "side": "BUY", "members": ["MSFT"], "amount": 1000, "ticked": True}]
+    assert _todo(picks) == _todo(picks)
+
+
+def test_plan_keeps_grid_picks_with_amount_and_group():
+    p = pc.clean_plan({"cls": {"Equities": 100}, "picks": [{"sym": "msft", "amt": "9000", "grp": "A"}, {"sym": " ", "amt": 5}, {"sym": "KO"}]})
+    assert [x["sym"] for x in p["picks"]] == ["MSFT", "KO"]
+    assert p["picks"][0]["amt"] == 9000.0 and p["picks"][0]["grp"] == "A" and p["picks"][1]["amt"] == 0.0
+
+
+def test_save_and_check_saves_always_and_checks_only_a_valid_plan(monkeypatch):
+    from datetime import date
+    from etl import plan_store as ps
+    calls = []
+
+    class FakeSession:
+        def execute(self, *a, **k):
+            calls.append("sql")
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(ps, "save_version", lambda s, a, n, p: calls.append("version") or (n or "Main"))
+    monkeypatch.setattr(ps, "activate", lambda s, a, p, dry_run=False: calls.append("activate") or {"changes": ["x"]})
+    bad = ps.save_and_check(FakeSession(), date(2026, 11, 13), "IRA", _plan(Cash=10), "Main")
+    assert bad["saved"] and not bad["checking"] and "100" in bad["problems"][0] and calls == ["version"]
+    good = ps.save_and_check(FakeSession(), date(2026, 11, 13), "IRA", _plan(), "Defensive")
+    assert good["checking"] and good["name"] == "Defensive" and good["warning"] is None and "activate" in calls
+
+
+def test_plan_remembers_the_ticked_lists():
+    p = pc.clean_plan({"cls": {"Equities": 100}, "sources": ["PS", "", "RR"]})
+    assert p["sources"] == ["PS", "RR"]
+
+
+def test_middle_and_unknown_beta_and_no_style_are_real_lines():
+    info = {"A": {"bucket": "Equities", "sector": "Tech", "beta": 1.0, "styles": []},
+            "B": {"bucket": "Equities", "sector": "Tech", "beta": None, "styles": []},
+            "C": {"bucket": "Equities", "sector": "Tech", "beta": 1.5, "styles": []}}
+    hold = {"A": {"value": 30000.0, "bucket": "Equities"}, "B": {"value": 10000.0, "bucket": "Equities"}, "C": {"value": 20000.0, "bucket": "Equities"}}
+    now = pc.now_lines(hold, info, 40000.0, {})
+    assert now["beta"]["mid"] == 30000 and now["beta"]["none"] == 10000 and now["beta"]["high"] == 20000
+    assert now["style"]["none"] == 60000
+    plan = {"cls": {"Equities": 60, "Cash": 40}, "beta": {"mid": 20.0, "none": 5.0}, "style": {"none": 50.0}}
+    assert pc.validate_plan(plan) == []
+    rows = {(r["kind"], r["key"]): r for r in pc._line_rows(pc.clean_plan(plan), 100000.0, now, {"cls": {}, "sector": {}, "style": {}, "beta": {}})}
+    assert rows[("beta", "mid")]["state"] if "state" in rows[("beta", "mid")] else True
+    assert pc.line_state(dict(rows[("beta", "mid")]), 100000.0) == "OVER"        # 30,000 held vs a 20,000 limit
+    assert rows[("style", "none")]["label"] == "No style tag" and rows[("beta", "none")]["label"] == "No beta known"
+    assert any("beta limits" in e for e in pc.validate_plan({"cls": {"Equities": 100}, "beta": {"low": 60.0, "mid": 50.0}}))
+
+
+def test_quad_favored_limits_count_money_in_bull_names():
+    info = {"A": {"bucket": "Equities", "sector": "Tech", "beta": 1.0, "styles": [], "quad": ["bull", "neutral", "bear", None]},
+            "B": {"bucket": "Gold", "beta": None, "quad": ["bull", "bull", "neutral", "neutral"]}}
+    hold = {"A": {"value": 30000.0, "bucket": "Equities"}, "B": {"value": 10000.0, "bucket": "Gold"}}
+    now = pc.now_lines(hold, info, 60000.0, {})
+    assert now["quad"] == {"Q1": 40000.0, "Q2": 10000.0, "Q3": 0.0, "Q4": 0.0}
+    plan = {"cls": {"Equities": 30, "Gold": 10, "Cash": 60}, "quad": {"Q1": 30.0}}
+    assert pc.validate_plan(plan) == []
+    rows = {(r["kind"], r["key"]): r for r in pc._line_rows(pc.clean_plan(plan), 100000.0, now, {"cls": {}, "sector": {}, "style": {}, "beta": {}, "quad": {}})}
+    assert pc.line_state(dict(rows[("quad", "Q1")]), 100000.0) == "OVER" and rows[("quad", "Q1")]["label"] == "Q1 favored (Bull)"
+    # a planned buy of a Q1-bull name is counted against the Q1 limit and the tightest limit says so
+    t = pc.todo(plan, {"value": 100000.0, "cash": 60000.0, "holdings": hold}, [{"id": 1, "side": "BUY", "members": ["A"], "amount": 5000, "ticked": False}], {}, info, {}, lambda c: "neutral")
+    assert t["buys"][0]["max_add"] == 0 and t["buys"][0]["binding"] in ("Q1 favored (Bull)", "Equities")

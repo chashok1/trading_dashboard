@@ -3976,19 +3976,6 @@ def _derive_all_impl(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
-    # Portfolio Builder (DESIGN_SPEC_9/10/11): nightly fund scores, then the daily paper marks of every
-    # frozen model portfolio. After drv_actionable (Final Call) and the risk-dial / quad-check steps.
-    # Non-critical and additive: never touches the Final Call.
-    try:
-        from etl.derive_model_portfolio import derive_pb_score, derive_model_marks
-        counts["drv_pb_score"] = _safe("drv_pb_score", derive_pb_score)
-        counts["drv_model_mark"] = _safe("drv_model_mark", derive_model_marks)
-    except Exception:
-        log.exception("derive_model_portfolio import failed (non-fatal)")
-        counts["drv_pb_score"] = 0
-        try: session.rollback()
-        except Exception: pass
-
     # TASK_66: score bull_prob + bull_agreement after drv_actionable is built.
     # Non-critical: if no active model the columns stay NULL (additive only).
     try:

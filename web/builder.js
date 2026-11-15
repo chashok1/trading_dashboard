@@ -62,7 +62,6 @@
 
   // ---------------------------------------------------------------- init
   async function init() {
-    document.querySelectorAll('.bld-tab').forEach(t => t.onclick = () => showView(t.dataset.v));
     try {
       const dates = await api('/api/dates');
       const sel = $('datePicker');
@@ -72,20 +71,22 @@
       sel.onchange = () => { S.date = sel.value; reloadAll(); };
     } catch (e) { problems(['Could not load dates: ' + e.message]); }
     $('refreshBtn').onclick = reloadAll;
-    $('backToList').onclick = e => { e.preventDefault(); showView('list'); };
-    $('preset').onchange = () => { S.preset = $('preset').value; if (S.preset !== 'custom') S.mix = null; schedule(); };
     document.querySelectorAll('[data-warn]').forEach(c => c.onchange = () => { S.warn[c.dataset.warn] = c.checked; });
-    $('acctSel').onchange = () => { S.acct = $('acctSel').value; S.amount = null; S.targets = {}; S.seeded = null; S.preset = 'current'; S.mix = null; loadSourceNames(); schedule(0); };
+    // 2026-11-14 save-safety: ask before dropping unsaved edits; the old account's picks never follow you to the next account;
+    // the saved plan (if any) loads first and marks the targets as seeded so holdings never overwrite them.
+    $('acctSel').onchange = () => {
+      if (PL.dirty && !window.confirm('You have unsaved changes for ' + S.acct + '. Switch account and lose them?')) { $('acctSel').value = S.acct; return; }
+      S.acct = $('acctSel').value; S.amount = null; S.targets = {}; S.seeded = null; S.guideFor = null; S.preset = 'current'; S.mix = null;
+      S.picks = []; S.fillGapNext = false; S.matchNext = false; PL.dirty = false;
+      loadSourceNames(); planLoad(); schedule(0);
+    };
     try {
       const so = await api('/api/builder/sources');
       S.srcList = so.sources || [];
       if (S.srcList.some(x => x.code === 'HELD')) S.sources = ['HELD'];
       renderSources();
     } catch (e) { problems(['Could not load source lists: ' + e.message]); }
-    $('setOpen').onclick = openSet; $('setSave').onclick = saveSet; $('setDel').onclick = deleteSet;
-    loadSets();
-    $('listAcct').onchange = loadList;
-    $('listStatus').onchange = loadList;
+
     // editable amount (defaults to the account value)
     const lab = document.createElement('label');
     lab.className = 'bld-muted';
@@ -109,11 +110,10 @@
       if (!S.acct || ![...$('acctSel').options].some(o => o.value === S.acct)) S.acct = S.accounts.length ? S.accounts.slice().sort((x, y) => y.value - x.value)[0].short : 'ALL';
       $('acctSel').value = S.acct;
       const po = [['current', 'My current mix']].concat(Object.keys(S.presets).map(k => [k, S.presets[k].label])).concat([['custom', 'Custom']]);
-      $('preset').innerHTML = po.map(p => `<option value="${esc(p[0])}">${esc(p[1])}</option>`).join('');
+      S.presetOpts = po;
       if (!po.some(p => p[0] === S.preset)) S.preset = po.length > 2 ? po[1][0] : 'current';
-      $('preset').value = S.preset;
+      planInit();
     } catch (e) { problems(['Could not load accounts: ' + e.message]); }
-    await loadList();
     loadSourceNames();
     if (first !== true || true) schedule(0);
   }
@@ -125,12 +125,6 @@
     el.innerHTML = msgs.map(esc).join('<br>');
   }
 
-  function showView(v) {
-    ['build', 'list', 'detail'].forEach(x => { $('view-' + x).hidden = x !== v; });
-    document.querySelectorAll('.bld-tab').forEach(t => t.classList.toggle('on', t.dataset.v === v || (v === 'detail' && t.dataset.v === 'list')));
-    if (v === 'list') loadList();
-  }
-
   // ---------------------------------------------------------------- Hedgeye source pool + checks
   function renderSources() {
     $('srcBox').innerHTML = S.srcList.map(x => `<label><input type="checkbox" data-src="${esc(x.code)}" ${S.sources.includes(x.code) ? 'checked' : ''}> ${esc(x.code)} <span class="bld-muted">${esc(x.label)}</span></label>`).join('');
@@ -140,7 +134,6 @@
     });
     ['srcfSource', 'srcfClass', 'srcfFactor', 'srcfIndustry'].forEach(id => $(id).onchange = renderSourceNames);
     $('srcfSector').onchange = () => { fillIndustries(''); renderSourceNames(); };
-    $('fillGaps').onclick = fillGaps;
     $('clearFilters').onclick = () => {
       ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor'].forEach(id => { $(id).value = ''; });
       fillIndustries('');
@@ -153,17 +146,34 @@
     $('srcfText').oninput = renderSourceNames;
     $('selShown').onclick = selectShown;
     $('srcNamesRows').addEventListener('click', e => { const t = e.target.closest('[data-ftype]'); if (t) toggleFilter(t.dataset.ftype, t.dataset.fval); });
-    // fill each held pick's % of its class from the account's holdings (the class totals follow the 'current' mix)
-    $('matchHold').onclick = matchHoldings;
-    function matchHoldings() {
+    // Start from my holdings (one direct function, no hidden flags). A click ticks every stock the account holds (your other
+    // picks stay), sets each one's share of its class, sets the asset class % to the current mix, fills the sector / style /
+    // beta limits and the Buy $ gaps, and says what it did. The automatic pass on opening an account (auto = true) only ticks
+    // and matches the held stocks: it never fills the limits or any Buy $.
+    $('matchHold').onclick = () => startFromHoldings(false);
+    startFromHoldings = function (auto) {
+      const held = ((S.preview && S.preview.account && S.preview.account.holdings) || []);
       const hold = {};
-      ((S.preview && S.preview.account && S.preview.account.holdings) || []).forEach(h => { hold[h.sym] = h.value || 0; });
+      held.forEach(h => { hold[h.sym] = h.value || 0; });
+      if (!auto) {
+        const have = new Set(S.picks.map(p => p.sym));
+        held.forEach(h => { if (h.value > 0 && h.bucket && h.bucket !== 'Cash' && BUCKETS.includes(h.bucket) && !have.has(h.sym)) S.picks.push({ sym: h.sym, bucket: h.bucket, pct: null }); });
+      }
       const tot = {};
       S.picks.forEach(p => { if (hold[p.sym] > 0) tot[p.bucket] = (tot[p.bucket] || 0) + hold[p.sym]; });
       S.picks.forEach(p => { p.pct = hold[p.sym] > 0 ? Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100 : null; });
-      if (S.preset !== 'current') S.preset = 'current';
+      S.fillGapNext = !auto;
+      // opening an account with no saved plan starts the same way (limits = holdings, so the bars are green); it never
+      // overwrites limits you already typed and does not count as an unsaved change
+      if (auto && S.preview && !Object.keys(S.targets).length) seedTargets(S.preview);
+      if (!auto) {
+        S.preset = 'current'; S.mix = null;
+        if (S.preview) seedTargets(S.preview);
+        planDirty();
+        $('srcNamesHint').textContent = 'Started from your holdings: ' + S.picks.filter(p => hold[p.sym] > 0).length + ' stocks, ' + Object.keys(S.targets).length + ' limits.';
+      }
       renderSourceNames(); schedule(0);
-    }
+    };
     $('clearPicks').onclick = () => { S.picks = []; renderSourceNames(); schedule(0); };
     renderSourceNames();
   }
@@ -212,6 +222,10 @@
   // symbol text coloured by its Hedgeye outlook (same colours as the other screens); plain when unknown
   const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${window.symbolLink ? window.symbolLink(esc(sym), sym) : esc(sym)}</span>`; };
   const picked = sym => S.picks.find(p => p.sym === sym);
+  const isEquitySector = n => !!n && !BUCKETS.includes(n) && !['Equities', 'Unmapped', 'Other', 'Cash'].includes(n);
+  // which comparison sections are collapsed (Asset class, Risk, Style, ...): remembered in this browser only
+  try { S.collapsed = JSON.parse(localStorage.getItem('bld_collapsed') || '{}') || {}; } catch (e) { S.collapsed = {}; }
+  let startFromHoldings = () => {};   // set in renderSources()
 
   // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
   const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -230,6 +244,7 @@
   document.addEventListener('click', async e => {
     const b = e.target.closest('.bld-copy');
     if (!b) return;
+    e.preventDefault();   // the copy icon sits in the panel header: do not also open / close the panel
     const k = b.dataset.copy;
     const syms = k === 'shown' ? shownNames().map(n => n.sym) : k === 'picks' ? S.picks.map(p => p.sym) : (b.dataset.syms || '').split(',').filter(Boolean);
     if (!syms.length) { b.title = 'Nothing to copy'; return; }
@@ -279,7 +294,7 @@
   function setPick(sym, on) {
     const n = S.nameCache[sym];
     const b = bucketOf(n);
-    if (on && n && b && n.usable && !picked(sym)) S.picks.push({ sym, bucket: b, pct: null });
+    if (on && n && b && n.usable && !picked(sym)) S.picks.push({ sym, bucket: b, pct: null, amt: null, grp: '' });
     if (!on) S.picks = S.picks.filter(p => p.sym !== sym);
   }
 
@@ -329,7 +344,7 @@
     const w = v => Math.min(Math.max(v, 0) / scale * 100, 100);
     return '<div class="bld-viz">' + rows.map(r => {
       const pv = r.pv, tv = r.tv;
-      const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#6b7fd7'));
+      const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#b8bcc8'));
       return `<div class="vrow${r.flt ? ' bld-frow' : ''}"${r.flt ? ` data-ftype="${r.flt[0]}" data-fval="${esc(r.flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
         `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
         `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div>` +
@@ -362,20 +377,31 @@
       return `<td class="n ${c}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 0)}${dec ? '' : ' pts'}</td>`;
     };
     const tgtCell = (attr, tv, dec) => `<td class="n"><input type="number" min="0" step="${dec ? 0.05 : 1}" ${attr} value="${tv == null ? '' : tv}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}"></td>`;
+    // 2026-11-14, user: in the Asset class grid, say in dollars what the account must do to reach the target (the account's own value).
+    // Target vs what it holds now: Sell all / Sell $X / Room to buy $X / On plan. Information only; nothing trades.
+    const planTd = (asset, tv, hv) => {
+      if (curKey !== 'Asset class') return '';
+      if (!asset || tv == null || !hasHeld) return '<td></td>';
+      const gap = (tv - (hv || 0)) / 100 * amt;
+      if (tv === 0 && (hv || 0) * amt / 100 > 500) return `<td class="n bld-dn"><b>Sell all ${usd((hv || 0) * amt / 100)}</b></td>`;
+      if (gap < -500) return `<td class="n bld-dn">Sell ${usd(-gap)}</td>`;
+      if (gap > 500) return `<td class="n bld-up">Room ${usd(gap)}</td>`;
+      return '<td class="n bld-muted">On plan</td>';
+    };
     // One row. pv / hv = percent picked / held (null = nothing there). key = target key (null: no target cell);
     // asset = asset class name (its target is the mix you chose; judged against the mix after the Risk Dial).
-    const R = (label, pv, hv, tip, key, asset, flt) => {
+    const R = (label, pv, hv, tip, key, asset, flt, tvx) => {   // tvx = a reference value with no box (Cash: what is left after the asset classes)
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
-      const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : tv;
+      const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : (key ? tv : (tvx > 0 ? tvx : null));
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : '<td></td>');
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
-        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
+        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${planTd(asset, asset && Object.keys(chosen).length ? (chosen[asset] || 0) : null, hv)}</tr>`;
     };
-    const generalTip = 'Asset class rows are % of the account. Everything below is % of the invested money on that side. Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
+    const generalTip = 'Asset class rows are % of the account. Everything below is also % of the account (the same basis the plan check uses). Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
     let t = '';
-    t += sec('Asset class · % of the account');
+    t += sec('Asset class');
     let placedTotal = 0, heldInvested = 0;
     for (const b of mixBuckets(res)) {
       const placed = (res.positions || []).filter(p => p.bucket === b).reduce((a, p) => a + p.value, 0) / amt * 100;
@@ -383,16 +409,14 @@
       heldInvested += cur[b] || 0;
       t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
-    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td></tr>`;
-    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed');
+    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
+    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, fin.Cash);
     if (cur.Unmapped > 0.04) t += R('Unmapped', null, cur.Unmapped, 'Held with no asset class: cannot be picked');
-    t += sec('Risk · % of the invested money');
+    t += sec('Risk');
     const fb = v => (v == null ? dash : v.toFixed(2));
-    const bt = tgtOf('beta');
-    t += `<tr><td class="bld-tip" data-tip="Weighted average beta against SPY (SPY = 1.00). Names with no beta are left out.">Portfolio beta</td>${tgtCell('data-tgt="beta"', bt, true)}` +
-      `<td class="n">${hasPick && P.beta != null ? `<b class="${bt != null ? judge(P.beta, bt, true) : ''}">${P.beta.toFixed(2)}</b>` : dash}</td><td class="n">${hasHeld ? fb(H.beta) : dash}</td>` +
-      `${bt != null ? gapCell(P.beta, bt, true, 2, true) : gapCell(P.beta, H.beta, hasHeld, 2, false)}</tr>`;
-    t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta', ['factor', 'lowbeta']) + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta', ['factor', 'highbeta']);
+    t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta', undefined, ['factor', 'lowbeta']) + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta', undefined, ['factor', 'highbeta']);
+    t += R('Middle beta (0.8 to 1.2)', hasPick ? P.midbeta : null, hasHeld ? H.midbeta : null, 'Names with a beta between 0.8 and 1.2: not low, not high.', 'midbeta')
+      + R('No beta known', hasPick ? P.nobeta : null, hasHeld ? H.nobeta : null, 'Names with no beta yet (cash, new listings, some funds). Not covered by the beta rows above.', 'nobeta');
     t += sec('Quad favored (Bull)');
     for (const q of ['Q1', 'Q2', 'Q3', 'Q4']) {
       const pq = (P.quad || {})[q], hq = (H.quad || {})[q];
@@ -409,19 +433,26 @@
     t += sec('Style');
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
       .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0], undefined, ['factor', f[0]]); });
+    t += R('No style tag', hasPick ? P.nostyle : null, hasHeld ? H.nostyle : null, 'Names that carry none of the style groups above.', 'style:none');
     // 2026-10-28, user: show the sections in three columns. Cut the rows at each section break, one small table per section.
     const parts = t.split(/\u0001([^\u0002]*)\u0002/);          // ['', title1, rows1, title2, rows2, ...]
     const tables = {};
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
-      tables[title.split(' ·')[0]] = barBlock(vizRows[title.split(' ·')[0]]) + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title}</th>` +
-        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${first && S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Port&shy;folio</th><th class="n">Gap</th></tr></thead><tbody>${parts[i + 1]}</tbody></table>`;
+      const skey = title.split(' ·')[0], shut = !!S.collapsed[skey];
+      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + barBlock(vizRows[skey]) + (first ? presetHtml() : '') + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th>` +
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${first && S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Port&shy;folio</th><th class="n">Gap</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : ''}</tr></thead><tbody>${parts[i + 1]}</tbody></table></div>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
     return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Risk')}</div><div>${T('Style')}${T('Quad favored (Bull)')}</div><div>${T('Sectors')}</div></div>`;   // keys are the title up to " ·"
   }
 
+  // The Preset sits between the Asset class bar chart and its grid: it only fills the asset class % boxes below it.
+  function presetHtml() {
+    const opts = (S.presetOpts || [['current', 'My current mix'], ['custom', 'Custom']]).map(p => `<option value="${esc(p[0])}"${p[0] === S.preset ? ' selected' : ''}>${esc(p[1])}</option>`).join('');
+    return `<div class="bld-line" style="gap:6px;margin:4px 0"><b style="min-width:0" class="bld-tip" data-tip="A ready-made mix that fills the asset class % boxes below. Type a % in any box and this switches to Custom.">Fill classes from</b><select id="preset">${opts}</select></div>`;
+  }
   const tgtOf = key => (S.targets[key] == null ? null : S.targets[key]);
 
   // an asset class target typed in the table: it becomes the custom mix (the rest stays Cash; the classes cannot add to more than 100)
@@ -431,7 +462,7 @@
     delete base.Cash;
     const others = Object.keys(base).reduce((t, k) => t + (k === b ? 0 : (base[k] || 0)), 0);
     base[b] = raw === '' ? 0 : Math.max(0, Math.min(parseFloat(raw) || 0, 100 - others));
-    S.mix = base; S.preset = 'custom'; $('preset').value = 'custom'; schedule(0);
+    S.mix = base; S.preset = 'custom'; planDirty(); schedule(0);
   }
 
   // targets typed on the other rows are guides only: redraw the table, no server call
@@ -441,9 +472,30 @@
     host.querySelectorAll('[data-tgt]').forEach(i => i.onchange = () => {
       const k = i.dataset.tgt;
       if (i.value === '') delete S.targets[k]; else S.targets[k] = Math.max(0, parseFloat(i.value) || 0);
+      planDirty();
       host.innerHTML = compareTable(S.preview);
       bindCmp();
     });
+    // the whole charts-and-grids panel: shown only when there is something to show; open/closed is remembered in this browser
+    const panel = $('cmpPanel');
+    if (panel) {
+      panel.hidden = !host.innerHTML.trim();
+      if (!panel.dataset.bound) {
+        panel.dataset.bound = '1';
+        try { if (localStorage.getItem('bld_panel') === 'closed') panel.open = false; } catch (x) { /* private window */ }
+        panel.addEventListener('toggle', () => { try { localStorage.setItem('bld_panel', panel.open ? 'open' : 'closed'); } catch (x) { /* private window */ } });
+      }
+    }
+    host.querySelectorAll('[data-sec-toggle]').forEach(c => c.onclick = e => {
+      e.stopPropagation();
+      const k = c.dataset.secToggle;
+      S.collapsed[k] = !S.collapsed[k];
+      try { localStorage.setItem('bld_collapsed', JSON.stringify(S.collapsed)); } catch (x) { /* private window */ }
+      const box = c.closest('.bld-sec'); box.classList.toggle('collapsed', !!S.collapsed[k]);
+      c.innerHTML = S.collapsed[k] ? '&#9656;' : '&#9662;'; c.title = (S.collapsed[k] ? 'Show' : 'Hide') + ' this section';
+    });
+    const pe = host.querySelector('#preset');
+    if (pe) pe.onchange = () => { S.preset = pe.value; if (S.preset !== 'custom') S.mix = null; planDirty(); schedule(); };
     host.querySelectorAll('[data-tgt-asset]').forEach(i => i.onchange = () => setAssetTarget(i.dataset.tgtAsset, i.value));
     markActiveFilters();
   }
@@ -496,18 +548,9 @@
     renderSourceNames();
   }
 
-  function fillGaps() {
-    const gaps = gapList();
-    if (!gaps.length) { $('srcNamesHint').textContent = 'No target is short by more than 5 pts.'; return; }
-    S.gapIdx = ((S.gapIdx == null ? -1 : S.gapIdx) + 1) % gaps.length;
-    const g = gaps[S.gapIdx], f = {};
-    g.apply(f);
-    setFilters(f);
-    $('srcNamesHint').textContent = `Showing: ${g.label}${gaps.length > 1 ? ` (${S.gapIdx + 1} of ${gaps.length}, click for next)` : ''}`;
-  }
-
   // One symbol table: a row for every symbol you picked OR the account holds, grouped by asset class, with
   // Your picks and My portfolio side by side. The % box on a picked row is where you set its share of the class.
+  const GRP_COL = ['#1d4ed8', '#0d9488', '#b45309', '#9333ea', '#be185d', '#4d7c0f'];
   function symbolTable(res) {
     const holdBy = {};
     ((res.account && res.account.holdings) || []).forEach(h => { holdBy[h.sym] = h; });
@@ -525,7 +568,7 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
@@ -533,7 +576,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
+      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
@@ -542,7 +585,12 @@
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}><td>${symHtml(r.sym)}</td><td class="n">${pCell}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        const gl = r.pk && r.pk.grp ? r.pk.grp : '', gcol = gl ? GRP_COL[gl.charCodeAt(0) - 65] : '';
+        const amtCells = r.pk
+          ? `<td class="n"><input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="$" style="width:74px" title="Dollars to buy"></td>` +
+            `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select></td>`
+          : '<td></td><td></td>';
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
           `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`;
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
@@ -554,7 +602,8 @@
   // ---------------------------------------------------------------- step 2: your picks, actual mix, factor mix
   function renderPicks(res) {
     Object.assign(S.outlooks, res.outlooks || {});
-    $('picksCount').textContent = S.picks.length ? `${S.picks.length} picked` : '';
+    if ($('picksCount')) $('picksCount').textContent = S.picks.length ? `${S.picks.length} picked` : '';
+    const pcb = document.querySelector('#cmpPanel .bld-copy'); if (pcb) pcb.hidden = !S.picks.length;
     $('cmpTable').innerHTML = compareTable(res);
     bindCmp();
     $('symTable').innerHTML = symbolTable(res);
@@ -562,7 +611,31 @@
       const p = picked(i.dataset.pct);
       if (p) { p.pct = i.value === '' ? null : Math.max(0, parseFloat(i.value)); schedule(0); }
     });
-    $('symTable').querySelectorAll('[data-drop]').forEach(btn => btn.onclick = () => { setPick(btn.dataset.drop, false); renderSourceNames(); schedule(0); });
+    $('symTable').querySelectorAll('[data-drop]').forEach(btn => btn.onclick = () => { setPick(btn.dataset.drop, false); renderSourceNames(); planDirty(); schedule(0); });
+    // 2026-11-14: a pick's dollars, and 'buy one of' groups (same letter = buy any one; the group shares one amount)
+    $('symTable').querySelectorAll('[data-amt]').forEach(i => i.onchange = () => {
+      const p = picked(i.dataset.amt); if (!p) return;
+      p.amt = i.value === '' ? null : Math.max(0, parseFloat(i.value) || 0);
+      if (p.grp) S.picks.forEach(q => { if (q.grp === p.grp) q.amt = p.amt; });
+      planDirty(); renderPicks(res);
+    });
+    $('symTable').querySelectorAll('[data-grp]').forEach(sel => sel.onchange = () => {
+      const p = picked(sel.dataset.grp); if (!p) return;
+      p.grp = sel.value;
+      if (p.grp) { const o = S.picks.find(q => q !== p && q.grp === p.grp && q.amt); if (o) p.amt = o.amt; else if (p.amt) S.picks.forEach(q => { if (q.grp === p.grp) q.amt = p.amt; }); }
+      planDirty(); renderPicks(res);
+    });
+  }
+
+  // Buy $ = what the pick still needs to reach the plan: the dollars the plan gives it minus what the account holds
+  // (rounded to $100; nothing when it is already at or over the plan; a 'buy one of' group shares the biggest gap).
+  function fillBuyGaps(res) {
+    const posBy = {}, holdBy = {};
+    (res.positions || []).forEach(p => { posBy[p.sym] = p.value || 0; });
+    ((res.account && res.account.holdings) || []).forEach(h => { holdBy[h.sym] = h.value || 0; });
+    S.picks.forEach(p => { if (p.amt) return; const gap = (posBy[p.sym] || 0) - (holdBy[p.sym] || 0); p.amt = gap >= 500 ? Math.round(gap / 100) * 100 : null; });   // never overwrite an amount you typed
+    S.picks.forEach(p => { if (p.grp) { const m = Math.max(...S.picks.filter(q => q.grp === p.grp).map(q => q.amt || 0)); S.picks.filter(q => q.grp === p.grp).forEach(q => { q.amt = m || null; }); } });
+    planDirty(); renderPicks(res);
   }
 
   // ---------------------------------------------------------------- preview
@@ -578,79 +651,49 @@
       if (seq !== S.reqSeq) return;
       S.preview = res;
       render(res);
-      if (S.matchNext) { S.matchNext = false; $('matchHold').click(); }   // auto-picked held names take the account's own weights
+      if (S.fillGapNext) { S.fillGapNext = false; fillBuyGaps(res); }
+      if (S.matchNext) { S.matchNext = false; startFromHoldings(true); }   // auto-picked held names take the account's own weights
     } catch (e) {
       if (seq !== S.reqSeq) return;
       $('cmpTable').innerHTML = `<span class="bld-warn">Could not build: ${esc(e.message)}</span>`;
     }
   }
 
-  // ---------------------------------------------------------------- saved sets (picks + targets, by name)
-  async function loadSets(selectId) {
-    try {
-      const r = await api('/api/builder/sets');
-      S.sets = r.sets || [];
-      $('setSel').innerHTML = S.sets.length ? S.sets.map(x => `<option value="${x.id}">${esc(x.name)}${x.account ? ' · ' + esc(x.account) : ''}</option>`).join('') : '<option value="">(none saved)</option>';
-      if (selectId) $('setSel').value = String(selectId);
-    } catch (e) { $('setMsg').textContent = 'Could not load saved sets: ' + e.message; }
-  }
-
-  async function saveSet() {
-    const cur = (S.sets || []).find(x => String(x.id) === $('setSel').value);
-    const name = window.prompt('Save as (an existing name is replaced)', cur ? cur.name : '');
-    if (!name || !name.trim()) return;
-    const state = { acct: S.acct, picks: S.picks, assign: S.assign, targets: S.targets, preset: S.preset, mix: S.mix,
-      sources: S.sources, useDial: S.useDial, amount: S.amount };
-    try {
-      const r = await api('/api/builder/sets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), account: S.acct, state }) });
-      await loadSets(r.id);
-      $('setMsg').textContent = 'Saved "' + r.name + '"';
-    } catch (e) { $('setMsg').textContent = e.message; }
-  }
-
-  async function openSet() {
-    const id = $('setSel').value;
-    if (!id) return;
-    try {
-      const r = await api('/api/builder/sets/' + id), st = r.state || {};
-      S.acct = st.acct || r.account || S.acct;
-      if ([...$('acctSel').options].some(o => o.value === S.acct)) $('acctSel').value = S.acct;
-      S.picks = st.picks || []; S.assign = st.assign || {}; S.targets = st.targets || {};
-      S.preset = st.preset || 'current'; S.mix = st.mix || null; S.useDial = false; S.amount = st.amount || null;
-      S.sources = st.sources || []; S.seeded = S.acct;
-      renderSources();
-      $('preset').value = S.preset;
-      $('setMsg').textContent = 'Opened "' + r.name + '"';
-      await loadSourceNames();
-      schedule(0);
-    } catch (e) { $('setMsg').textContent = e.message; }
-  }
-
-  async function deleteSet() {
-    const id = $('setSel').value;
-    if (!id || !window.confirm('Delete this saved set?')) return;
-    try { await api('/api/builder/sets/' + id, { method: 'DELETE' }); await loadSets(); $('setMsg').textContent = 'Deleted'; }
-    catch (e) { $('setMsg').textContent = e.message; }
-  }
-
-  // first view of an account: every Target starts at what the account holds now, to edit as you work
+  // 'Start from my holdings' (and the first view of an account with no saved plan): the sector / style / beta limits become what the account holds now.
+  // Opening an account with no saved plan does this too (limits = holdings, bars green); clear a box to leave that line without a limit.
   function seedTargets(res) {
     const H = (res.exposure || {}).held || {};
-    if (S.seeded === S.acct || !(H.total > 0)) return;
-    S.seeded = S.acct;
-    const t = {}, r0 = v => Math.round(v);
-    const put = (k, v) => { if (v != null && v >= 0.5) t[k] = r0(v); };
-    if (H.beta != null) t.beta = Math.round(H.beta * 100) / 100;
-    put('lowbeta', H.lowbeta); put('highbeta', H.highbeta);
+    if (!(H.total > 0)) return;
+    const t = {}, r0 = v => Math.round(v * 100) / 100;   // 2 decimals: a fill from holdings must land on a gap of 0, not a rounded one
+    const put = (k, v) => { if (v != null && v >= 0.005) t[k] = r0(v); };
+    put('lowbeta', H.lowbeta); put('highbeta', H.highbeta); put('midbeta', H.midbeta); put('nobeta', H.nobeta);
     ['Q1', 'Q2', 'Q3', 'Q4'].forEach(q => put('quad:' + q, ((H.quad || {})[q] || {}).bull));
-    Object.keys(H.sector || {}).forEach(s => put('sector:' + s, H.sector[s]));
+    Object.keys(H.sector || {}).filter(isEquitySector).forEach(s => put('sector:' + s, H.sector[s]));   // equity sectors only: Fixed Income, Gold, Currency, 'Equities' (no sector) are not sector limits
     Object.keys(H.style || {}).forEach(s => put('style:' + s, H.style[s]));
+    put('style:none', H.nostyle);
+    put('sector:Equities', (H.sector || {}).Equities);   // 'No sector' guide row (not a saved limit)
     S.targets = t;
+  }
+  // 'No sector' is a guide only: a saved plan does not hold it, so after a plan loads it is filled from what the
+  // account holds (once per account), without touching the limits the plan did save.
+  function fillGuides(res) {
+    const H = (res.exposure || {}).held || {};
+    if (!(H.total > 0) || !(Object.keys(S.targets).length || (S.legacyKeys || []).length)) return;   // nothing typed or loaded yet: the first fill from holdings covers these rows
+    S.guideFor = S.acct;
+    const put = (k, v) => { if (S.targets[k] == null && v != null && v >= 0.005) S.targets[k] = Math.round(v * 100) / 100; };
+    // limit rows added after this plan was saved (the plan has no such key at all, so it never said "no limit"): fill them from holdings once
+    const lg = S.legacyKeys || [];
+    if (lg.includes('midbeta')) put('midbeta', H.midbeta);
+    if (lg.includes('nobeta')) put('nobeta', H.nobeta);
+    if (lg.includes('style:none')) put('style:none', H.nostyle);
+    ['Q1', 'Q2', 'Q3', 'Q4'].forEach(q => { if (lg.includes('quad:' + q)) put('quad:' + q, ((H.quad || {})[q] || {}).bull); });
+    S.legacyKeys = [];
+    put('sector:Equities', (H.sector || {}).Equities);   // only 'No sector' is still a guide; Quad boxes are saved limits now (a blank one stays blank)
   }
 
   function render(res) {
     problems(res.problems);
-    seedTargets(res);
+    if (S.guideFor !== S.acct) fillGuides(res);
     renderAcct(res);
     renderMix(res);
     renderPicks(res);
@@ -663,196 +706,252 @@
     const atype = S.acct === 'ALL' ? 'all accounts' : (a.type && a.type !== 'OTHER' ? a.type : '');
     $('acctType').textContent = atype ? 'Type: ' + atype : '';
     $('acctType').hidden = !atype;
-    const run = a.running;
-    $('acctRun').textContent = S.acct === 'ALL' ? 'Preview only, cannot be frozen' : (run ? `Running model: ${run.name} (ends ${run.end_date})` : 'Running model: none');
-    $('acctRun').className = 'bld-pill' + (run ? ' warn' : '');
     $('acctSnap').textContent = a.snap_date ? 'Positions file: ' + a.snap_date + (a.positions_stale ? ' (older than 3 trading days)' : '') : '';
     if ($('amount') && document.activeElement !== $('amount')) $('amount').value = S.amount || Math.round(a.value || 0);
-    const rb = $('runBanner');
-    rb.hidden = !(run && S.acct !== 'ALL');
-    rb.textContent = run ? `${S.acct} already has a running model: ${run.name} (ends ${run.end_date}). Accepting a new one will close it and start this one.` : '';
   }
 
   // ---------------------------------------------------------------- step 2: mix
-  function stackBar(vals, extra) {
-    const segs = BUCKETS.concat(['Cash']).map(b => [b, vals[b] || 0, b === 'Cash' ? _PM_ASSET_COLORS.Cash : bcol(b)]);
-    if (extra && extra.Unmapped) segs.push(['Unmapped', extra.Unmapped, _PM_ASSET_COLORS.Unclassified]);
-    return segs.filter(s => s[1] > 0.04).map(s => `<span style="width:${s[1]}%;background:${s[2]}" title="${esc(s[0])} ${s[1].toFixed(1)}%">${s[1] >= 6 ? esc(s[0]) + ' ' + Math.round(s[1]) + '%' : ''}</span>`).join('');
-  }
-
   function renderMix(res) {
     const cur = res.mix_current || {}, tgt = res.mix_target || {}, fin = res.mix_final || {};
     if (S.preset === 'custom' && !S.mix) S.mix = Object.assign({}, tgt);
-    $('preset').value = S.preset;
   }
 
-  // ---------------------------------------------------------------- proposal
-  function fcBadge(p) {
-    if (!p.final_code) return '<span class="bld-muted">-</span>';
-    const side = p.final_side || 'neutral';
-    return `<span class="bld-badge ${side}">${esc(ACT_LABEL[p.final_code] || p.final_code)}</span>` + (p.conflict ? ' <span class="bld-badge sell">Conflict</span>' : '');
+  // ---------------------------------------------------------------- plan per account (2026-11-14, DESIGN_SPEC_16)
+  // The Target % typed in the grids are this account's plan. Save plan keeps them as the plan the To do
+  // list and warnings use (class % must add to 100, Cash is the rest). Nothing here trades or changes the Final Call.
+  const PLAN_CLASSES = ['Equities', 'Fixed Income', 'Gold', 'Commodities', 'Crypto', 'Currency', 'Cash'];
+  const PL = { name: null, checked: null, versions: [], dirty: false, activeAt: null };
+  const planSend = (u, b, m) => api(u, { method: m || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) });
+  function planNote(html, warn) {
+    const el = $('planMsg'); if (!el) return;
+    el.hidden = !html; el.innerHTML = html || ''; el.style.color = warn ? '#b45309' : '';
   }
-
-  // ---------------------------------------------------------------- list view
-  async function loadList() {
-    const acct = $('listAcct').value, status = $('listStatus').value;
-    try {
-      const r = await api(withDate('/api/builder/portfolios?' + (acct ? 'account=' + encodeURIComponent(acct) + '&' : '') + 'status=' + status));
-      if (r.problems && r.problems.length) problems(r.problems);
-      const have = new Set([...$('listAcct').options].map(o => o.value));
-      S.accounts.forEach(a => { if (!have.has(a.short)) { $('listAcct').insertAdjacentHTML('beforeend', `<option value="${esc(a.short)}">${esc(a.short)}</option>`); } });
-      $('listCount').textContent = '(' + r.portfolios.filter(p => p.status !== 'CLOSED').length + ')';
-      const totals = {};
-      (r.totals || []).forEach(t => { totals[t.account] = t; });
-      let h = '', prev = null;
-      const flush = a => {
-        const t = totals[a];
-        if (!t) return;
-        h += `<tr class="tot"><td>${esc(a)} total</td><td colspan="5" class="bld-muted">running model only · all periods paper gain ${sgnUsd(t.all_gain)}</td><td class="n">${t.running_amount ? usd(t.running_value) : '—'}</td><td class="n ${cls(t.running_ret)}">${t.running_ret == null ? '' : sgnPct(t.running_ret)}</td><td colspan="3"></td></tr>`;
-      };
-      for (const p of r.portfolios) {
-        if (prev !== null && prev !== p.account) flush(prev);
-        prev = p.account;
-        const alert = p.alerts.length ? ` <span class="bld-tip bld-warn" data-tip="${tipAttr(p.alerts)}">&#9679;</span>` : '';
-        const stt = p.status === 'REVIEW_DUE' ? '<span class="bld-warn">Review due</span>' : p.status === 'CLOSED' ? `<span class="bld-muted">Closed${p.close_reason ? ' (' + esc(p.close_reason) + ')' : ''}</span>` : esc(p.status === 'RUNNING' ? 'Running' : p.status);
-        h += `<tr class="click" data-id="${p.portfolio_id}"><td>${esc(p.account)}</td><td>${esc(p.name)}${alert}</td><td>${esc(p.mix)}</td><td>${esc(p.split)}</td><td>${esc(p.start)} → ${esc(p.end)}</td>` +
-          `<td>${p.days} / ${p.total_days || '?'}</td><td class="n">${usd(p.value)}</td><td class="n ${cls(p.ret)}">${sgnPct(p.ret)}</td><td class="n ${cls(p.vs_spy)}">${sgnPct(p.vs_spy)}</td><td class="n ${cls(p.vs_account)}">${sgnPct(p.vs_account)}</td><td>${stt}</td></tr>`;
-      }
-      if (prev !== null) flush(prev);
-      const sf = r.shared_funds || { funds: [], over_note: [] };
-      const tip = sf.funds.length ? tipAttr(sf.funds.map(f => `${f.sym}: ${f.models} models, ${usd(f.value)}${f.share != null ? ' = ' + pct(f.share, 0) + ' of all running models' : ''}`).concat(sf.over_note.length ? ['Over 20% of all running models: ' + sf.over_note.join(', ')] : [])) : tipAttr(['No fund is in 2 or more running models']);
-      if (r.portfolios.length) h += `<tr class="gtot"><td>All accounts</td><td colspan="5"><span class="bld-tip" data-tip="${tip}">Same fund in several accounts: ${sf.funds.length} fund${sf.funds.length === 1 ? '' : 's'}</span></td><td class="n">${usd(r.grand.value)}</td><td class="n ${cls(r.grand.ret)}">${sgnPct(r.grand.ret)}</td><td colspan="3" class="bld-muted">value-weighted, running models</td></tr>`;
-      $('listRows').innerHTML = h || '<tr><td colspan="11" class="bld-muted">No model portfolios yet. Build one and accept it.</td></tr>';
-      $('listRows').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => openDetail(parseInt(tr.dataset.id, 10)));
-    } catch (e) { problems(['Could not load model portfolios: ' + e.message]); }
+  function planPill() {
+    const el = $('planPill'); if (!el) return;
+    const act = PL.checked ? 'Active plan: ' + PL.checked + (PL.activeAt ? ' (since ' + PL.activeAt.slice(5, 10) + ')' : '') : 'No active plan';
+    const view = PL.name && PL.name !== PL.checked ? ' · viewing "' + PL.name + '"' : '';
+    el.textContent = act + view + (PL.dirty ? ' · unsaved' : '');
   }
-
-  // ---------------------------------------------------------------- detail view
-  async function openDetail(id) {
-    try {
-      const d = await api(withDate('/api/builder/portfolios/' + id));
-      S.detail = d;
-      showView('detail');
-      renderDetail(d);
-    } catch (e) { problems([e.message]); }
-  }
-
-  function driftStack(vals) {
-    return stackBar(vals);
-  }
-
-  function renderDetail(d) {
-    Object.assign(S.outlooks, d.outlooks || {});
-    const k = d.kpis, ai = d.account_info || {};
-    const stat = d.status === 'REVIEW_DUE' ? 'review due' : d.status.toLowerCase();
-    let h = `<h3 style="margin:0 0 8px">${esc(d.name)} · account ${esc(d.account)} (${esc(d.account_type || 'OTHER')}) · day ${d.day} of ${d.total_days || '?'} · frozen since ${esc(d.start)} · ends ${esc(d.end)} · ${esc(stat)}${d.close_reason ? ' (' + esc(d.close_reason) + ')' : ''}</h3>`;
-    h += `<div class="bld-kpis"><div class="bld-kpi"><small>Return</small><b class="${cls(k.ret)}">${sgnPct(k.ret)}</b></div><div class="bld-kpi"><small>vs SPY</small><b class="${cls(k.vs_spy)}">${sgnPct(k.vs_spy)}</b></div>` +
-      `<div class="bld-kpi"><small>vs account ${esc(d.account)}</small><b class="${cls(k.vs_account)}">${sgnPct(k.vs_account)}</b></div><div class="bld-kpi"><small>Worst drop</small><b class="bld-dn">${k.worst_drop == null ? '-' : sgnPct(k.worst_drop)}</b></div>` +
-      `<div class="bld-kpi"><small>Swings (model vs SPY)</small><b>${k.swings == null ? 'n/a yet' : pct(k.swings, 0) + ' vs ' + pct(k.spy_swings, 0)}</b></div><div class="bld-kpi"><small>Alerts</small><b>${k.alerts}</b></div></div>`;
-    h += `<div class="bld-muted" style="margin-bottom:6px">${esc(d.note)} "vs account" compares with what the account held at the start, left untouched (not a flow-adjusted return).</div>`;
-    // alerts + opt-in warnings
-    const oi = d.opt_in || {};
-    h += `<div class="bld-card"><h3>Alerts <span class="bld-muted">(alert only: they never change the portfolio)</span></h3>` +
-      (d.alerts.length ? d.alerts.map(a => `<div><span class="bld-warn">&#9679;</span> ${esc(a.message)} <span class="bld-muted">(${esc(a.date)})</span> <button class="bld-btn sm alt" data-dismiss="${esc(a.code)}">Dismiss</button></div>`).join('') : '<div class="bld-muted">No alerts.</div>') +
-      `<div class="bld-line" style="margin-top:6px">` + [['drop', 'down 10% from start'], ['quad_turn', 'Quad check says "transition"'], ['no_new_risk', 'Risk Dial says "No new risk"'], ['final_call_sell', 'a Final Call turns Sell']].map(w => `<label><input type="checkbox" data-optin="${w[0]}" ${oi[w[0]] ? 'checked' : ''}> Tell me if ${w[1]}</label>`).join(' ') + `</div></div>`;
-    h += `<div class="bld-card"><h3>Model, same money in SPY, and your account's untouched holdings</h3><div style="height:260px"><canvas id="detChart"></canvas></div></div>`;
-    // drift
-    if (d.drift) {
-      const cur = {}, tgt = {}, mod = {};
-      d.drift.forEach(r => { tgt[r.bucket] = r.target; mod[r.bucket] = r.model; cur[r.bucket] = r.account; });
-      h += `<div class="bld-card"><h3>Allocation drift <span class="bld-muted">(${esc(d.account)}, today; click Equities for areas)</span></h3><table class="bld-t"><thead><tr><th>Bucket</th><th class="n">Target</th><th class="n">Model now</th><th class="n">Account now</th><th class="n">Account vs target</th></tr></thead><tbody>` +
-        d.drift.map(r => `<tr${r.bucket === 'Equities' ? ' class="click" id="eqDrift"' : ''}><td><span class="bld-sw" style="background:${r.bucket === 'Cash' ? _PM_ASSET_COLORS.Cash : bcol(r.bucket)}"></span>${esc(r.bucket)}${r.bucket === 'Equities' && d.area_drift ? ' ▸' : ''}</td><td class="n">${r.target.toFixed(0)}%</td><td class="n">${r.model.toFixed(0)}%</td><td class="n">${r.account.toFixed(0)}%</td><td class="n ${r.amber ? 'bld-amb' : ''}">${r.gap > 0 ? '+' : ''}${r.gap.toFixed(0)} pts</td></tr>`).join('') + '</tbody></table>' +
-        `<div style="margin-top:8px"><div class="bld-stackrow"><span>Target</span><div class="bld-stack">${driftStack(tgt)}</div></div><div class="bld-stackrow"><span>Model now</span><div class="bld-stack">${driftStack(mod)}</div></div><div class="bld-stackrow"><span>Account now</span><div class="bld-stack">${driftStack(cur)}</div></div></div>`;
-      if (d.area_drift && d.area_drift.length) h += `<div id="driftAreas" hidden style="margin-top:10px"><table class="bld-t"><thead><tr><th>Equities area</th><th>Macro at build</th><th class="n">Target</th><th class="n">Model now</th><th class="n">Account now</th><th class="n">Gap</th></tr></thead><tbody>` +
-        d.area_drift.map(r => `<tr><td>${esc(r.area)}</td><td><span class="bld-chip ${r.chip_at_build === '-' ? 'dash' : r.chip_at_build}">${esc(r.chip_at_build)}</span></td><td class="n">${r.target.toFixed(1)}%</td><td class="n">${r.model.toFixed(1)}%</td><td class="n">${r.account.toFixed(1)}%</td><td class="n ${r.amber ? 'bld-amb' : ''}">${r.gap > 0 ? '+' : ''}${r.gap.toFixed(1)} pts</td></tr>`).join('') + '</tbody></table></div>';
-      h += '<div class="bld-muted">Amber = 5 points or more away from target. Drift is not good or bad, so no green or red. "Model now" drifts with prices because we hold shares, not weights.</div></div>';
-    } else if (ai.active === false) h += '<div class="bld-card bld-muted">Account inactive: the model keeps marking on its frozen shares.</div>';
-    // holdings
-    h += `<div class="bld-card"><h3>Holdings</h3><div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Fund</th><th>Area</th><th class="n">Shares</th><th class="n">Entry</th><th class="n">Now</th><th class="n">Return</th><th class="n">Weight now</th><th>Final Call now</th><th>Why here</th></tr></thead><tbody>` +
-      d.positions.map(p => `<tr><td>${symHtml(p.sym)}${p.is_kept ? ' &#128274;' : ''}${p.stale_days ? ` <span class="bld-warn" title="No new price for ${p.stale_days} day(s)">&#9679;</span>` : ''}</td><td>${esc(p.area || '')}</td><td class="n">${p.shares == null ? '' : Math.round(p.shares)}</td><td class="n">${p.entry == null ? '' : p.entry.toFixed(2)}</td><td class="n">${p.close == null ? '' : p.close.toFixed(2)}</td><td class="n ${cls(p.ret)}">${sgnPct(p.ret)}</td><td class="n">${pct(p.weight_now, 1)}</td>` +
-        `<td>${p.final_now ? `<span class="bld-badge ${/^(SA|SS|STM|SO|SW|SWW|REMOVE|REDUCE)$/.test(p.final_now) ? 'sell' : /^(BM|BS|BMN|BW|BSW|INCREASE|ADD)$/.test(p.final_now) ? 'buy' : 'neutral'}">${esc(ACT_LABEL[p.final_now] || p.final_now)}</span>` : '-'}</td><td><span class="bld-tip" data-tip="${tipAttr(p.why_detail)}">${esc(p.why || '')}</span></td></tr>`).join('') + '</tbody></table></div></div>';
-    // vs account
-    const va = d.vs_account;
-    if (va) {
-      h += `<div class="bld-card"><h3>vs your account <span class="bld-muted">(${esc(d.account)} holdings only, no scaling)</span></h3><div style="overflow-x:auto"><table class="bld-t"><thead><tr><th>Fund</th><th>Area</th><th class="n">Model $</th><th class="n">You hold $</th><th class="n">Gap $</th><th>Trade to match</th><th class="n">Tax if sold</th></tr></thead><tbody>` +
-        va.rows.map(r => `<tr><td>${symHtml(r.sym)}${r.kept ? ' &#128274;' : ''}</td><td>${esc(r.area || '')}</td><td class="n">${r.model == null ? '—' : usd(r.model)}</td><td class="n">${usd(r.hold)}</td><td class="n">${r.gap == null ? '—' : sgnUsd(r.gap)}</td><td>${esc(r.trade)}${r.trade.startsWith('Buy') || r.trade.startsWith('Sell') ? ' <span class="bld-muted">(only if you want to match, not advice)</span>' : ''}</td><td class="n">${r.tax == null ? '' : sgnUsd(r.tax) + (r.tax >= 0 ? ' gain' : ' loss')}</td></tr>`).join('') +
-        `</tbody></table></div><div style="margin-top:6px"><b>Matches model: ${va.match_pct == null ? '-' : va.match_pct.toFixed(0) + '%'}</b>${va.tax ? ` · selling to match would realise about <b>${sgnUsd(va.tax.gain)}</b> gain / <b>${sgnUsd(va.tax.loss)}</b> loss (estimate, not tax advice)` : ''}${va.paper_only ? ' · 401k: paper-only, plan funds only' : ''}</div></div>`;
-    }
-    // promise
-    const pc = d.promise || { items: [], hit_rate: {} };
-    h += `<div class="bld-card"><h3>Promise check <span class="bld-muted">(fills in as days pass; final at the end)</span></h3>` +
-      pc.items.map(i => `<div>${i.result === 'pass' ? '<span class="bld-up">✓</span>' : i.result === 'fail' ? '<span class="bld-dn">✗</span>' : '•'} ${esc(i.label)} <b>${esc(i.detail)}</b></div>`).join('') +
-      `<div>• Funds beating SPY: <b>${pc.hit_rate.beat == null ? 'n/a yet' : pc.hit_rate.beat + ' of ' + pc.hit_rate.of}</b></div></div>`;
-    h += `<button class="bld-btn alt" id="reviewBtn" ${d.review_available ? '' : 'disabled'} title="Opens on the end date; it never runs by itself">End-of-period review</button> <span class="bld-muted">Roll over · Change recipe · Close (available from ${esc(d.end)})</span>`;
-    $('detailBody').innerHTML = h;
-    if ($('eqDrift')) $('eqDrift').onclick = () => { const el = $('driftAreas'); if (el) el.hidden = !el.hidden; };
-    document.querySelectorAll('[data-dismiss]').forEach(b => b.onclick = async () => { await api('/api/builder/portfolios/' + d.portfolio_id + '/warnings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dismiss: [b.dataset.dismiss] }) }); openDetail(d.portfolio_id); });
-    document.querySelectorAll('[data-optin]').forEach(c => c.onchange = async () => { await api('/api/builder/portfolios/' + d.portfolio_id + '/warnings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ opt_in: { [c.dataset.optin]: c.checked } }) }); });
-    if ($('reviewBtn')) $('reviewBtn').onclick = () => openReview(d);
-    drawChart(d);
-  }
-
-  function drawChart(d) {
-    if (S.chart) { S.chart.destroy(); S.chart = null; }
-    const cv = $('detChart');
-    if (!cv || typeof Chart === 'undefined' || !d.series.dates.length) return;
-    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || undefined;
-    S.chart = new Chart(cv, {
-      type: 'line',
-      data: { labels: d.series.dates, datasets: [
-        { label: 'Model', data: d.series.model, borderColor: css('--cat1') || '#1d4ed8', pointRadius: 2, tension: 0.1 },
-        { label: 'Same money in SPY', data: d.series.spy, borderColor: css('--neutral') || '#6b7280', pointRadius: 0, borderDash: [4, 3], tension: 0.1 },
-        { label: 'Your account, untouched', data: d.series.account, borderColor: css('--cat2') || '#0f9488', pointRadius: 0, tension: 0.1 },
-      ] },
-      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { y: { ticks: { callback: v => '$' + Math.round(v).toLocaleString() } } } },
+  function planDirty() { PL.dirty = true; planPill(); }
+  function planFromState() {
+    const res = S.preview || {}, base = Object.assign({}, S.mix || res.mix_target || {});
+    const cls = {}; let sum = 0;
+    PLAN_CLASSES.filter(c => c !== 'Cash').forEach(c => { cls[c] = +(base[c] || 0); sum += cls[c]; });
+    cls.Cash = +Math.max(0, 100 - sum).toFixed(2);
+    const plan = { cls, beta: { low: tgtOf('lowbeta'), high: tgtOf('highbeta'), mid: tgtOf('midbeta'), none: tgtOf('nobeta') }, sector: {}, style: {}, quad: { Q1: tgtOf('quad:Q1'), Q2: tgtOf('quad:Q2'), Q3: tgtOf('quad:Q3'), Q4: tgtOf('quad:Q4') }, cash_keep: 1000,
+      picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0, grp: p.grp || '' })), sources: S.sources.slice() };
+    Object.keys(S.targets).forEach(k => {
+      if (k.startsWith('sector:')) { if (isEquitySector(k.slice(7))) plan.sector[k.slice(7)] = S.targets[k]; }
+      else if (k.startsWith('style:')) plan.style[k.slice(6)] = S.targets[k];
     });
+    if (!('none' in plan.style)) plan.style.none = null;   // always present, so a blank 'No style tag' box is remembered as 'no limit'
+    return plan;
   }
-
-  // ---------------------------------------------------------------- end-of-period review
-  async function openReview(d) {
-    const host = $('modalHost');
-    host.innerHTML = '<div class="bld-modal"><div><span class="bld-muted">Building a fresh proposal with the same settings...</span></div></div>';
-    try {
-      const r = await api(withDate('/api/builder/portfolios/' + d.portfolio_id + '/review-preview'));
-      const k = d.kpis, c = r.change;
-      const list = (a, f) => a.length ? a.map(f).join(', ') : 'none';
-      host.innerHTML = `<div class="bld-modal"><div><h3 style="margin-top:0">End-of-period review · ${esc(d.name)}</h3>` +
-        `<div class="bld-kpis"><div class="bld-kpi"><small>Return</small><b class="${cls(k.ret)}">${sgnPct(k.ret)}</b></div><div class="bld-kpi"><small>vs SPY</small><b class="${cls(k.vs_spy)}">${sgnPct(k.vs_spy)}</b></div><div class="bld-kpi"><small>vs account</small><b class="${cls(k.vs_account)}">${sgnPct(k.vs_account)}</b></div><div class="bld-kpi"><small>Worst drop</small><b>${k.worst_drop == null ? '-' : sgnPct(k.worst_drop)}</b></div></div>` +
-        d.promise.items.map(i => `<div>${i.result === 'pass' ? '✓' : i.result === 'fail' ? '✗' : '•'} ${esc(i.label)} <b>${esc(i.detail)}</b></div>`).join('') +
-        `<div><b>Hit rate:</b> ${d.promise.hit_rate.beat == null ? 'n/a' : d.promise.hit_rate.beat + ' of ' + d.promise.hit_rate.of} funds beat SPY</div>` +
-        `<h4>What changes if you roll over (same settings, today's data)</h4>` +
-        `<div><b>Keep (${c.keep.length}):</b> ${esc(list(c.keep, x => x.sym + ' ' + Math.round(x.old_shares) + '→' + Math.round(x.new_shares) + ' sh'))}</div>` +
-        `<div><b>Add (${c.add.length}):</b> ${esc(list(c.add, x => x.sym + ' ' + Math.round(x.new_shares) + ' sh'))}</div>` +
-        `<div><b>Drop (${c.drop.length}):</b> ${esc(list(c.drop, x => x.sym + ' ' + Math.round(x.old_shares) + ' sh'))}</div>` +
-        `<div class="bld-disc">This applies your chosen recipe mechanically. Past results only, not a forecast.</div>` +
-        `<div style="margin-top:10px"><button class="bld-btn" id="rvRoll">Roll over</button><button class="bld-btn alt" id="rvChange">Change recipe</button><button class="bld-btn alt" id="rvClose">Close</button><button class="bld-btn alt" id="rvCancel">Cancel</button></div></div></div>`;
-      $('rvCancel').onclick = () => { host.innerHTML = ''; };
-      $('rvClose').onclick = async () => { if (!confirm('Stop tracking this model and keep its history?')) return; await review(d, 'close'); };
-      $('rvRoll').onclick = async () => { if (!confirm('Freeze the fresh build as a new portfolio linked to this one?')) return; await review(d, 'roll'); };
-      $('rvChange').onclick = () => { host.innerHTML = ''; prefill(d); };
-    } catch (e) { host.innerHTML = ''; window.alert(e.message); }
-  }
-
-  async function review(d, action) {
-    try {
-      await post('/api/builder/portfolios/' + d.portfolio_id + '/review', { action });
-      $('modalHost').innerHTML = '';
-      await reloadAll();
-      showView('list');
-    } catch (e) { window.alert(e.message); }
-  }
-
-  function prefill(d) {
-    const req = (d.settings && d.settings.req) || {};
-    S.acct = d.account; S.horizon = req.horizon || d.horizon; S.preset = req.preset || 'balanced'; S.mix = req.mix || null;
-    S.useDial = false; S.amount = null;
-    S.picks = req.manual ? (req.picks || []).map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct == null ? null : p.pct })) : [];
-    renderSourceNames();
-    $('acctSel').value = S.acct;
-    showView('build');
+  function planApply(p) {
+    const mix = {};
+    PLAN_CLASSES.filter(c => c !== 'Cash').forEach(c => { if ((p.cls || {})[c] > 0) mix[c] = p.cls[c]; });
+    S.mix = mix; S.preset = 'custom';
+    S.targets = {}; S.seeded = S.acct;   // saved limits win: holdings must never re-seed (overwrite) them
+    S.legacyKeys = []; if (!p.beta || !('mid' in p.beta)) S.legacyKeys.push('midbeta', 'nobeta'); if (!p.style || !('none' in p.style)) S.legacyKeys.push('style:none');
+    if (!p.quad) ['Q1', 'Q2', 'Q3', 'Q4'].forEach(q => S.legacyKeys.push('quad:' + q)); S.guideFor = null;
+    if (p.beta && p.beta.low != null) S.targets.lowbeta = p.beta.low;
+    if (p.beta && p.beta.high != null) S.targets.highbeta = p.beta.high;
+    if (p.beta && p.beta.mid != null) S.targets.midbeta = p.beta.mid;
+    if (p.beta && p.beta.none != null) S.targets.nobeta = p.beta.none;
+    Object.keys(p.quad || {}).forEach(k => { if (p.quad[k] != null) S.targets['quad:' + k] = p.quad[k]; });
+    Object.keys(p.sector || {}).forEach(k => { if (p.sector[k] != null) S.targets['sector:' + k] = p.sector[k]; });
+    Object.keys(p.style || {}).forEach(k => { if (p.style[k] != null) S.targets['style:' + k] = p.style[k]; });
+    if (Array.isArray(p.sources) && p.sources.length) { S.sources = p.sources.slice(); renderSources(); loadSourceNames(); }
+    if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '' })); renderSourceNames(); }
     schedule(0);
   }
+  // The account's saved versions go in the Plan box; the checked one (tick) opens first, else the newest.
+  function planVersionsFill(r) {
+    PL.versions = r.versions || []; PL.checked = r.checked || null;
+    if ($('planVer')) $('planVer').innerHTML = PL.versions.length ? PL.versions.map(v => `<option value="${esc(v.name)}">${v.name === PL.checked ? '&#10003; ' : ''}${esc(v.name)}</option>`).join('') : '<option value="">(none saved)</option>';
+  }
+  async function planLoad(keepName) {
+    if (!S.acct || S.acct === 'ALL' || !$('planPill')) { PL.name = null; PL.checked = null; PL.dirty = false; planPill(); return; }
+    planNote('');
+    try {
+      const r = await api('/api/builder/plan/versions?account=' + encodeURIComponent(S.acct));
+      PL.name = keepName || r.checked || (r.versions[0] && r.versions[0].name) || null;
+      planVersionsFill(r);
+      PL.dirty = false;
+      if (PL.name) {
+        const v = await api('/api/builder/plan/version?account=' + encodeURIComponent(S.acct) + '&name=' + encodeURIComponent(PL.name));
+        planApply(v.plan);
+        const st = await api('/api/builder/plan/saved?account=' + encodeURIComponent(S.acct));
+        PL.activeAt = st.active_at;
+      }
+    } catch (e) { PL.name = null; PL.checked = null; }
+    planPill();
+    todoLoad();
+  }
+  async function planAfterSave(name, activated) {
+    PL.name = name; PL.dirty = false;
+    planVersionsFill(await api('/api/builder/plan/versions?account=' + encodeURIComponent(S.acct)));
+    if (activated) PL.activeAt = new Date().toISOString();
+    planPill(); todoLoad();
+  }
+  // Names look like "Plan 11-14-2026" (the screen's date)
+  function defaultPlanName() {
+    const d = (S.date || new Date().toISOString().slice(0, 10)).split('-');
+    return 'Plan ' + d[1] + '-' + d[2] + '-' + d[0];
+  }
+  const planNeedAcct = () => { if (!S.acct || S.acct === 'ALL') { planNote('Choose one account first. A plan belongs to one account.', true); return true; } return false; };
+  // Keep the screen as plan `name`. Saving the ACTIVE plan also refreshes what the To do list reads; any other plan is only kept.
+  async function planStore(name) {
+    if (name === PL.checked) {
+      const r = await planSend('/api/builder/plan/save-check', { account: S.acct, name, plan: planFromState(), date: S.date });
+      await planAfterSave(r.name, r.checking);
+      return r;
+    }
+    const r = await planSend('/api/builder/plan/save-as', { account: S.acct, name, plan: planFromState() });
+    await planAfterSave(r.name, false);
+    return r;
+  }
+  async function planSave() {
+    if (planNeedAcct()) return;
+    const name = PL.name || defaultPlanName();
+    await planStore(name);
+    planNote('<b>Saved "' + esc(name) + '".</b>' + (name === PL.checked ? ' It is the active plan.' : ''));
+  }
+  async function planSaveAs() {
+    if (planNeedAcct()) return;
+    const name = (window.prompt('Save this plan as', defaultPlanName()) || '').trim();
+    if (!name) return;
+    if ((PL.versions || []).some(v => v.name === name) && !window.confirm('A saved plan named "' + name + '" already exists. Replace it?')) return;
+    await planStore(name);
+    planNote('<b>Saved as "' + esc(name) + '".</b> Press Activate to make it the active plan.');
+  }
+  async function planActivate() {
+    if (planNeedAcct()) return;
+    const name = PL.name || defaultPlanName();
+    if (PL.dirty && !window.confirm('Save your changes to "' + name + '" and make it the active plan?')) return;
+    const r = await planSend('/api/builder/plan/save-check', { account: S.acct, name, plan: planFromState(), date: S.date });
+    await planAfterSave(r.name, r.checking);
+    if (!r.checking) { planNote('<b>Saved, but it cannot be activated yet.</b> ' + (r.problems || []).map(esc).join(' '), true); return; }
+    planNote('<b>"' + esc(r.name) + '" is now the active plan.</b> The To do list uses it.');
+  }
+  async function planDelete() {
+    if (!S.acct || S.acct === 'ALL') return;
+    if (!PL.name) { S.picks = []; S.targets = {}; S.mix = null; S.preset = 'current'; PL.dirty = false; planPill(); renderSourceNames(); schedule(0); return; }
+    if (!window.confirm('Delete the saved plan "' + PL.name + '" for ' + S.acct + '?' + (PL.name === PL.checked ? ' It is the active plan, so the To do list and its planned buys stop. ' : ' ') + 'Your My stocks list is kept.')) return;
+    try {
+      await planSend('/api/builder/plan?account=' + encodeURIComponent(S.acct) + '&name=' + encodeURIComponent(PL.name), {}, 'DELETE');
+      S.picks = []; S.targets = {}; S.seeded = null; S.mix = null; S.preset = 'current'; PL.name = null;
+      await planLoad(); renderSourceNames(); schedule(0);
+      planNote('Plan deleted for ' + esc(S.acct) + '.');
+      } catch (e) { planNote(esc(e.message), true); }
+  }
+  // ---------------------------------------------------------------- To do (2026-11-14): from the ACTIVE plan
+  // Sells = holdings in classes above their plan % (plan 0% = sell all); a ticked sell adds EXPECTED cash to this account only.
+  // Buys = the picks with an amount (Save plan writes them), counted when Actionable says Buy and the pick is ticked.
+  // Money blocks or cuts a buy (account cash, cash floor, the plan's Cash %); the % lines only warn. Nothing trades.
+  const TD = { data: null, seq: 0 };
+  const tdPill = (cls, t) => `<span class="td-p ${cls}">${esc(t)}</span>`;
+  const tdCall = c => c ? (ACT_LABEL[c] || c) : 'No call';
+  function tdMsg(t, warn) { $('tdMsg').textContent = t; $('tdMsg').className = 'td-msg' + (warn ? ' w' : ''); }
+  async function todoLoad() {
+    if (!$('todoCard')) return;
+    const seq = ++TD.seq;
+    if (!S.acct || S.acct === 'ALL') { $('tdEmpty').hidden = false; $('tdBody').hidden = true; $('tdSub').textContent = ''; return; }
+    $('tdBody').classList.add('td-dim');
+    try {
+      const t = await api(withDate('/api/builder/todo?account=' + encodeURIComponent(S.acct)));
+      if (seq !== TD.seq) return;
+      TD.data = t; todoRender();
+    } catch (e) { if (seq === TD.seq) tdMsg('Could not load the to-do list: ' + e.message, true); }
+    $('tdBody').classList.remove('td-dim');
+  }
+  function todoRender() {
+    const t = TD.data;
+    $('tdEmpty').hidden = t.state !== 'none'; $('tdBody').hidden = t.state === 'none';
+    $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (PL.dirty ? ' · your unsaved changes are not in this list' : '');
+    if (t.state === 'none') return;
 
+    // sells
+    $('tdSells').innerHTML = (t.sells || []).length ? t.sells.map(s => `<div style="margin-bottom:8px"><div class="bld-line"><b>${esc(s.cls)}</b>` +
+      tdPill('sell', s.all ? 'Plan 0%: sell all ' + usd(s.held) : 'Over plan by about ' + usd(s.need)) +
+      `<span class="bld-muted" style="margin-left:auto">Ticked ${usd(s.ticked_total)} of ${usd(s.need)}</span></div>` +
+      '<table class="bld-t"><thead><tr><th></th><th>Holding</th><th class="n">Value</th><th>Actionable</th></tr></thead><tbody>' +
+      s.holdings.map(h => `<tr><td><input type="checkbox" data-tdsell="${esc(h.sym)}" data-pid="${h.pick_id || ''}" data-val="${h.value}"${h.ticked ? ' checked' : ''} aria-label="Sell ${esc(h.sym)}"></td><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td>${tdPill(h.side === 'sell' ? 'sell' : h.side === 'buy' ? 'buy' : '', tdCall(h.call))}</td></tr>`).join('') +
+      '</tbody></table></div>').join('') : '<div class="bld-muted">Nothing is over its plan. No sells needed.</div>';
+    $('tdSells').querySelectorAll('[data-tdsell]').forEach(e => e.onchange = async () => {
+      try {
+        if (e.checked) await planSend('/api/builder/pick', { account: S.acct, side: 'SELL', members: [e.dataset.tdsell], amount: Number(e.dataset.val), ticked: true });
+        else if (e.dataset.pid) await planSend('/api/builder/pick/' + e.dataset.pid, {}, 'DELETE');
+        await todoLoad();
+      } catch (x) { tdMsg(x.message, true); }
+    });
+
+    // buys
+    const RES = { OK: ['ok', 'OK'], OVER_PLAN: ['warn', 'Over plan'], SHRUNK: ['warn', 'Cut'], BLOCKED: ['bad', 'Blocked'], WAITING: ['', 'Waiting'], READY: ['buy', 'Has a Buy'] };
+    let b = '<thead><tr><th></th><th>Pick</th><th>Actionable today</th><th class="n">Amount</th><th class="n">Allowed</th><th>Result</th></tr></thead><tbody>';
+    (t.buys || []).forEach(x => {
+      const names = x.members.map(m => `<b>${esc(m)}</b>`).join(x.members.length > 1 ? ' <span class="bld-muted">or</span> ' : '');
+      const calls = x.members.map(m => esc(m) + ': ' + esc(tdCall(x.calls[m]))).join(' · ');
+      const r = RES[x.result] || ['', x.result];
+      b += `<tr><td><input type="checkbox" data-tdbuy="${x.id}"${x.ticked ? ' checked' : ''}${x.result === 'WAITING' ? ' disabled' : ''} aria-label="Count this pick"></td><td>${names}<div class="bld-muted">${calls}</div></td><td>` +
+        (x.buy_member ? tdPill('buy', 'Buy: ' + x.buy_member) : tdPill('', 'None yet')) + `</td><td class="n"><input type="number" min="0" step="500" data-tdamt="${x.id}" value="${x.amount || ''}" placeholder="$0" style="width:78px"></td><td class="n">${x.allowed ? usd(x.allowed) : '-'}</td><td>${tdPill(r[0], r[1])} <span class="bld-muted">${esc(x.why)}</span></td></tr>`;
+    });
+    if (!(t.buys || []).length) b += '<tr><td colspan="6" class="bld-muted">No planned buys yet. Type a Buy $ on a pick, then press Save plan.</td></tr>';
+    $('tdBuys').innerHTML = b + '</tbody>';
+    const patch = async (id, body) => { try { await planSend('/api/builder/pick/' + id, body, 'PATCH'); await todoLoad(); } catch (x) { tdMsg(x.message, true); } };
+    $('tdBuys').querySelectorAll('[data-tdbuy]').forEach(e => e.onchange = () => patch(e.dataset.tdbuy, { ticked: e.checked }));
+    $('tdBuys').querySelectorAll('[data-tdamt]').forEach(e => e.onchange = () => patch(e.dataset.tdamt, { amount: Math.max(0, Number(e.value) || 0) }));
+
+    // what is left
+    const bar = (now, used, plan, hard) => {
+      const after = now + used, w = plan > 0 ? Math.min(after / plan * 100, 100) : (after > 0 ? 100 : 0), nw = plan > 0 ? Math.min(now / plan * 100, 100) : (now > 0 ? 100 : 0);
+      return `<div class="td-bar"><i class="${hard ? 'h' : after > plan + 1 ? 'o' : ''}" style="width:${w}%"></i><b style="width:${nw}%"></b></div>`;
+    };
+    let L = '';
+    (t.lines || []).filter(r => r.kind === 'cls' && r.key !== 'Cash' && (r.plan > 0 || r.now > 500)).forEach(r => {
+      const over = r.left < -1;
+      L += `<div><div class="bld-line"><b>${esc(r.key)}</b><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-r.left) + ' (warning)' : usd(r.left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}<div class="bld-muted">Plan ${r.plan_pct}% = ${usd(r.plan)}</div></div>`;
+    });
+    const hard = t.cash_left <= 0;
+    L += `<div><div class="bld-line"><b>Cash you can spend</b><span style="margin-left:auto;color:${hard ? '#9e3636' : '#16a34a'}">${usd(t.cash_left)} left</span></div>` +
+      `<div class="td-bar"><i class="${hard ? 'h' : ''}" style="width:${t.cash_to_spend > 0 ? Math.min((t.cash_to_spend - t.cash_left) / t.cash_to_spend * 100, 100) : 100}%"></i></div>` +
+      `<div class="bld-muted">Cash ${usd(t.cash)}${t.sell_cash ? ' + ' + usd(t.sell_cash) + ' expected from sells (not in your broker file yet)' : ''}. Keeps the plan's Cash % and ${usd(t.cash_keep)}. A money limit: it blocks.</div></div>`;
+    const opt = (t.lines || []).filter(r => r.kind !== 'cls');
+    if (opt.length) L += '<div class="bld-muted"><b>Optional lines (warn only)</b></div>' + opt.map(r => { const over = r.left < -1; return `<div><div class="bld-line"><span>${esc(r.label)}</span><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-r.left) : usd(r.left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}</div>`; }).join('');
+    $('tdLeft').innerHTML = L;
+    const cut = (t.buys || []).some(x => x.result === 'SHRUNK' || x.result === 'BLOCKED');
+    const overNote = (t.notes || []).some(n => /over its plan/.test(n));
+    const parts = ['Buys counted: ' + usd(t.bought) + '.'];
+    if (t.sell_cash) parts.push('Sells ticked: ' + usd(t.sell_cash) + ' (expected).');
+    parts.push(cut ? 'A cash limit cut a buy. Tick more sells or lower an amount.' : overNote ? 'Some lines are over plan. You can still place these.' : t.bought ? 'Everything is inside the plan.' : 'Nothing counted yet.');
+    tdMsg(parts.join(' '), cut || overNote);
+    $('tdNotes').innerHTML = (t.notes || []).map(n => `<li>${esc(n)}</li>`).join('');
+  }
+
+  async function myAdd() {
+    const sym = ($('myAddSym').value || '').trim().toUpperCase();
+    if (!sym) return;
+    try {
+      await planSend(withDate('/api/builder/my-stocks/' + encodeURIComponent(sym)), {}, 'PUT');
+      $('myAddSym').value = ''; $('myMsg').textContent = sym + ' added to My stocks.';
+      if (!S.sources.includes('MINE')) S.sources.push('MINE');
+      renderSources(); loadSourceNames();
+    } catch (e) { $('myMsg').textContent = e.message; }
+  }
+  function planInit() {
+    if ($('myAdd')) $('myAdd').onclick = myAdd;
+    if ($('tdRefresh')) $('tdRefresh').onclick = todoLoad;
+    if (!$('planPill')) return;
+    $('planSave').onclick = () => planSave().catch(e => planNote(esc(e.message), true));
+    $('planDelete').onclick = planDelete;
+    $('planSaveAs').onclick = () => planSaveAs().catch(e => planNote(esc(e.message), true));
+    $('planActivate').onclick = () => planActivate().catch(e => planNote(esc(e.message), true));
+    $('planVer').onchange = () => {
+      if (PL.dirty && !window.confirm('You have unsaved changes. Open another saved plan and lose them?')) { $('planVer').value = PL.name || ''; return; }
+      if ($('planVer').value) planLoad($('planVer').value);
+    };
+    if (!PL.dirty) planLoad();   // date change / Refresh must not replace unsaved edits with the saved plan
+  }
 
   document.addEventListener('DOMContentLoaded', init);
 })();

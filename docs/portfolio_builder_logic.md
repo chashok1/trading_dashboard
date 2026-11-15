@@ -1,75 +1,65 @@
 # Portfolio Builder logic
 
-Screen `/builder`. Specs: `DESIGN_SPEC_9.md` (measures, recipes, storage, marks, back-test, warnings), `DESIGN_SPEC_10.md`
-(accounts, asset-allocation mix), `DESIGN_SPEC_11.md` (area split). Where they disagree, 11 beats 10 beats 9.
-The Builder **never trades and never changes the Actionable Final Call**.
+Screen `/builder`. The Builder is a **per-account planning screen**. It **never trades and never changes the Actionable Final Call**.
+History: the first version (DESIGN_SPEC_9/10/11) built paper "model portfolios" you could freeze and track. That was removed on 2026-11-15
+(no freeze, no daily marks, no back-test, no Compare, no Portfolios tab; tables dropped). Round 16-18 design notes: `DESIGN_SPEC_16/17/18.md`.
 
 ## Flow
-Account -> how long (1/3/6/12 months) -> mix by asset class -> split each bucket (by area, or by recipe) -> accept and freeze.
-Buckets are the Portfolio pie's: Equities, Fixed Income, Gold, Commodities, Crypto, Currency (pie "FX"), Cash (the rest).
-Unmapped holdings are shown in the "current" bar but can never be a target.
+Account -> asset class % (required, Cash is a class, adds to 100) -> optional sector / style / beta limits -> optionally pick stocks or
+"buy any one of these" groups -> amounts -> **Save**. The **active** plan is the one the To do list and the Actionable "My plan" chip read.
+
+A new account opens already started from its holdings (classes, held stocks, limits = holdings, so the bars are green). **Start from my holdings**
+does the same on demand. All limits are a **% of the whole account** (one basis).
+
+## Plans (per account)
+- `user_plan_version` (`account_short`, `name`, `plan`): saved plans by name (default name `Plan MM-DD-YYYY`). `user_plan.active` is the ONE active
+  copy (`active_name` says which), `user_plan_pick` holds its planned buys / ticked sells, `user_my_stock` is the user's own stock list.
+- Buttons: **Save** (keeps the plan you are on), **Save as...** (copy under a new name, not active), **Activate** (saves and makes it the active plan),
+  **Delete** (deleting the active plan stops the To do list and clears its planned buys). The dropdown ticks the active plan; the label says which is active.
+- A plan stores asset class %, beta (low / middle / high / no beta known) / sector (equity sectors only) / style (incl. "No style tag") / Quad favored (Q1-Q4, money in names Hedgeye favours as Bull, any asset class) limits, picks (with amounts and buy-one-of groups) and the ticked lists.
+- Saved edits, switching account and date change are guarded by an "unsaved" flag and confirms (`PL.dirty` in `web/builder.js`).
+
+## Checking (pure maths in `etl/plan_check.py`, tests `tests/test_plan_check.py`)
+- Planned buys count against the limits **as soon as they have an amount** (a Buy call is not needed: this is planning).
+- Line states: asset classes Room / On plan / Over (Cash: Room / On plan / Short); sector, style, beta OK / Near (90% used, `NEAR`) / Over.
+  On-plan band = the smaller of $500 and 0.5% of the account (`tolerance`). Both numbers are GUESSES in one place.
+- Per planned buy: `max_add` = the smallest room among cash to spend, class, sector, styles, beta and the stock's own Max (from the existing amount
+  rules `drv_account_size`: Min / Max / Unit); `binding` names the tightest; `suggest` = Min if not held, else one Unit, capped at `max_add`.
+- Money BLOCKS or cuts a buy (account cash, `cash_keep` $1,000, the plan's Cash %); class / sector / style / beta only WARN. Nothing trades.
+- There is **no top-bar warning** and no check message on save (decided 2026-11-15: the row bars already show where you stand).
+
+## The screen build / preview
+`POST /api/builder/preview` (`etl/builder_engine.py::build_positions`, `vs_account`) turns the typed picks into whole-share positions. A held stock whose
+target is within half a share of its holding keeps the held shares and value, so "match my holdings" gives a gap of 0 (trade column says **Matched**).
+`exposure()` in `etl/builder_data.py` gives % of the account per sector / style / Quad / beta (plus Middle beta, No beta known, No style tag rows). Beta and style lines count **equities only**, the same as `plan_check`; "No sector" is a guide (not saved, not checked).
+Charts and grids sit in one collapsible panel; each section collapses too (remembered in the browser).
 
 ## Files
 | Piece | File |
 |---|---|
-| Every tunable number (GUESS values), measures, recipes, area stance + fill, mix, caps, alerts, promise check (PURE) | `etl/derive_model_portfolio.py` (`PB_PARAMS`) |
-| Nightly `drv_pb_score` + `derive_model_marks` step (in `derive_all` after the symbol-tier step) | same file, bottom |
-| Build engine `build_positions(ctx, req)`, `vs_account`, `drift_table`, `backtest` (PURE) | `etl/builder_engine.py` |
-| Read-only loaders (funds + measures, Quad mix, accounts, holdings, presets, back-test runner) | `etl/builder_data.py` |
-| Accept/freeze, daily marks, list, detail, review, warnings, keep list | `etl/builder_store.py` |
-| API | `api/routers/builder.py` (`/api/builder/*`) |
+| Tunable numbers, measures, recipes, area fill, mix, caps (PURE) | `etl/derive_model_portfolio.py` (`PB_PARAMS`) |
+| Build / preview engine (PURE) | `etl/builder_engine.py` |
+| Read-only loaders (funds, Quad mix, accounts, holdings, presets, source names, exposure) | `etl/builder_data.py` |
+| Plan maths (PURE) | `etl/plan_check.py` |
+| Plan storage, versions, picks, To do page data, Actionable plan check | `etl/plan_store.py` |
+| API | `api/routers/builder.py` (`/api/builder/*`: accounts, presets, preview, asset-class, sources, source-names, plan/*, todo, plan-check, pick*, my-stocks*) |
 | Page | `web/builder.html`, `web/builder.js`; nav item in `web/_common.js`; route in `api/routers/pages.py` |
-| Tables | `db/baseline.sql` (end of file); fund list + presets `db/seeds_portfolio_builder.sql` |
-| Tests | `tests/test_model_portfolio.py` (pure functions, no DB) |
+| Tables | `ref_pb_universe`, `ref_pb_mix_preset`, `ref_account_keep` (read by the preview), `user_plan`, `user_plan_version`, `user_plan_pick`, `user_my_stock` (`db/baseline.sql`); seeds `db/seeds_portfolio_builder.sql` |
+| Tests | `tests/test_plan_check.py`, `tests/test_model_portfolio.py` (pure functions, no DB) |
 
-## Source pool + validation checks (2026-10-27)
-Optional: tick Hedgeye lists (PS, GOANY, II, CALL, ETF, SSS, RR) and the pick pool becomes their bullish names (stocks and ETFs together)
-instead of `ref_pb_universe`. Request keys: `sources`, `checks`.
-- Pool = `drv_source_standing` on-list rows, bullish per `builder_data.source_bullish` (PS/GOANY on list; II/ETF/RR/CALL outlook Bullish/Long or CALL weight > 0; SSS signal_sign > 0). Bucket/area from the Portfolio-pie maps. Unmapped asset class = not available. SPY is added as benchmark-only (never picked) so freeze can track against it.
-- Pool mode splits every bucket by recipe (default Equities Momentum, Fixed Income Core); a bucket with no pool names is dropped and its share spread over the others (Cash share unchanged: `pool_trim_mix`).
-- **Checks** (`builder_engine.apply_checks`, filters, shown under "Removed by your check"): `low_beta` = beta must be <= 0.8; `quad` = drop names whose area is a Sell area for the period's Quad mix (no Quad view passes).
-- **Compare** (`POST /api/builder/compare`, `builder_data.compare_variants`): as picked / +Low beta / +Quad / +Both side by side, each with a back-test.
-- **Back-test is information only**: it never removes or changes a pick. For source pools it uses TODAY's list membership (past membership not kept), so it flatters.
-- Not done: nightly `drv_pb_score` does not score pool names (only the fixed list); end-of-period review re-uses the stored `sources`.
+## Source pool (kept)
+Tick Hedgeye lists (PS, GOANY, II, CALL, ETF, SSS, RR), HELD or MINE and their names appear in the names list (`GET /api/builder/source-names`,
+bullish per `builder_data.source_bullish`). The names list filters by list, class, sector, industry, factor, Quad and symbol.
 
-## Numbers (all in `PB_PARAMS`, none scattered)
-$5M median daily traded value; swings = stdev of last 63 daily returns x sqrt(252) (needs 55); beta = cov/var vs SPY over 126 returns
-(fallback 63, needs 55); momentum = close(t-21)/close(t-126)-1 (needs 127 closes); low-beta floor 0.2; Momentum +5 points for an RR/ETF
-Bullish; fund cap 20% of the account; sector cap 40% of the bucket; 3% minimum weight; area fill = base x (1 + k x stance), k = 1; chip band
-+/-0.25; minimum areas 3 (Equities) / 2 (Fixed Income); area floor 3%; Broad US / Foreign get 2 funds from 15% of the bucket; Quad tilt 0.25
-(also `ref_pb_mix_preset.quad_tilt`); WATCH blend 25%, TRANSITION blend 50%; drift amber 5 points; drop warning 10%; 3 stale days; split
-flag +/-40% in a day; beta promise 0.8; household over-concentration note 20%.
+## Rules still in the engine (unchanged)
+Quad mix over the holding period, area stance and `fill_areas`, `pick_in_area`, Quad tilt, Risk Dial trim, kept holdings, whole shares
+(see the pure functions and tests). The Final Call is shown per name but never removes a pick.
 
-## Rules in one place
-- **Quad mix over the holding period** = `derive_macro.window_weights` + `build_effective_distribution` with the window set to the period
-  (30/91/182/365 days). Months with no monthly row use the quarter's declared Quad (one-hot). Under 50% coverage: a note. WATCH /
-  TRANSITION from `drv_quad_check` blends toward `target_quad`.
-- **Area stance** = sum of (Quad share x outlook) from `ref_quad_outlook` (Bullish +1, Neutral 0, Bearish -1). Quad buttons override:
-  one Quad = that outlook, several = AND (+1 if Bullish in all, -1 if Bearish in any). Chip B/H/S at +/-0.25. Macro and Quad are never added.
-- **Fill** (`fill_areas`): equal base share per eligible area, Sell areas to zero, minimum areas revived at half base, user locks kept,
-  40% cap, 3% floor, kept holdings counted first (excess taken off the other unlocked areas).
-- **Inside an area** (`pick_in_area`): Low volatility / Low beta / Momentum (Equities), Core / Low volatility (Fixed Income); next-ranked fund
-  replaces a Final Call Sell; no qualifying fund -> that area's money stays unspent and goes to Cash with the reason.
-- **Mix**: preset (or current / custom), Quad-tilted preset applies +/-25% by bucket stance and keeps Cash, Risk Dial multiplies Equities,
-  Commodities and Crypto and moves the difference to Cash, never below the kept floor.
-- **Kept holdings** (`ref_account_keep`): keep their shares, count toward their bucket, never traded, never picked again.
-- **Final Call skip REMOVED 2026-10-27** (user: calls are temporary, info only when building). The call still shows per name (and a Conflict badge), never removes or swaps a name. Old rule text: `drv_actionable.final_code` in {SA, SS, STM, SO, SW, SWW, REMOVE, REDUCE} is a Sell; buy family {BM, BS, BMN, BW, BSW, INCREASE, ADD}.
-- **Freeze**: shares bought at the accept-day price (re-priced by the derive on the start date until the next derive date), whole shares,
-  leftover to cash. One PENDING/RUNNING model per account; a new one closes the old one ("replaced"). Whole book = preview only.
-- **Daily marks** (`drv_model_mark`, `drv_model_position_mark`): value = shares x close + cash; missing close carried forward and counted
-  stale; SPY line = same dollars in SPY; "vs account" = the account's holdings at the start left untouched (price move only, not a TWR).
-- **Alerts** (alert only): drop 10%, Quad TRANSITION, Risk Dial NOT INVESTABLE, a holding's Final Call turns Sell (all opt-in), plus always-on
-  stale price (3 days) and possible split (+/-40% in a day). Each fires once, shows until dismissed, one `meta_warning` row (screen `builder`).
-- **Promise check** and **end-of-period review** (roll over / change recipe / close; opens on the end date, never runs by itself).
-- **Back-test**: every 21st trading day back, only data up to each start date. Final Call skip, Hedgeye outlooks, flavours and kept holdings
-  are not replayed. Counts shown are non-overlapping periods; under 6 = "Too few periods to mean much"; none = "Not enough history yet" /
-  "Not enough Quad history". Uses `hist_quote_daily` automatically if it ever has data (Yahoo backfill not built).
-
-## Tables
-`ref_pb_universe`, `ref_pb_mix_preset`, `ref_accounts.account_type`, `ref_account_keep`, `drv_pb_score`, `user_model_portfolio`,
-`user_model_position` (write-once), `drv_model_mark`, `drv_model_position_mark`. `drv_*` tables use `tos_symbol` and are idempotent per
-`as_of_date`.
+## Removed 2026-11-15
+Accept / freeze, daily marks (`drv_model_mark`, `drv_model_position_mark`), nightly `drv_pb_score`, back-test, Compare, end-of-period review, warnings card,
+saved sets (`user_builder_set`), Portfolios list / detail views, the top-bar plan warning, and `etl/builder_store.py`.
+`web/builder_plan.js` is an unused leftover from round 16 (not loaded by any page).
 
 ## Apply
-`python -m db.init_db`, then apply `db/seeds_portfolio_builder.sql`, set each account's type on Ref Data, restart the server (`etl/` is not
-hot-reloaded), then re-derive (e.g. `python -m etl.backfill_derives` or the next load).
+`python -m db.init_db` (drops the removed tables), apply `db/seeds_portfolio_builder.sql`, set each account's type on Ref Data, restart the server
+(`etl/` is not hot-reloaded).

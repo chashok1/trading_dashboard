@@ -6,7 +6,6 @@ import pytest
 
 from etl import derive_model_portfolio as m
 from etl import builder_engine as eng
-from etl.builder_store import add_months
 
 
 # ---------------------------------------------------------------- measures
@@ -303,43 +302,7 @@ def test_vs_account_never_suggests_selling_what_the_model_skips():
     assert eng.vs_account(model, hold, set(), "IRA")["tax"] is None
 
 
-def test_drift_table_flags_five_points():
-    rows = eng.drift_table({"Equities": 42, "Cash": 28}, {"Equities": 43, "Cash": 28}, {"Equities": 71, "Cash": 10})
-    by = {r["bucket"]: r for r in rows}
-    assert by["Equities"]["amber"] and by["Cash"]["amber"] and by["Equities"]["gap"] == 29
-
-
 # ---------------------------------------------------------------- paper marks, alerts, promise
-def test_series_stats_and_worst_drop():
-    vals = [101, 103, 99, 100, 104, 106]
-    spy = [100, 101, 102, 101, 103, 104]
-    s = m.series_stats(vals, spy, 100.0)
-    assert s["ret"] == pytest.approx(0.06) and s["spy_ret"] == pytest.approx(0.04)
-    assert s["worst_drop"] == pytest.approx(99 / 103 - 1)
-    assert s["swings"] is not None
-
-
-def test_alerts_fire_once_and_data_alerts_always_on():
-    state = {"value": 85.0, "amount": 100.0, "quad_label": "TRANSITION", "risk_label": "NOT INVESTABLE",
-             "positions": [{"sym": "A", "stale_days": 3, "move": 0.5, "final_side": "sell", "is_kept": False}]}
-    none = m.evaluate_alerts({}, state)
-    assert {a["code"] for a in none} == {"stale:A", "split:A"}
-    allon = m.evaluate_alerts({"drop": True, "quad_turn": True, "no_new_risk": True, "final_call_sell": True}, state)
-    assert {"drop", "quad_turn", "no_new_risk", "final_call_sell"} <= {a["code"] for a in allon}
-    w = m.fire_once({}, allon, date(2026, 10, 23))
-    n = len(w["fired"])
-    assert len(m.fire_once(w, allon, date(2026, 10, 24))["fired"]) == n
-
-
-def test_promise_check():
-    stats = {"ret": 0.03, "spy_ret": 0.01, "swings": 0.09, "spy_swings": 0.13, "beta": 0.6}
-    r = m.promise_check(["low_vol", "low_beta", "momentum"], True, stats, {"A": 0.05, "B": -0.01}, {"A": "B", "B": "H"}, ["HOLDING", "WATCH"])
-    res = {i["label"]: i["result"] for i in r["items"]}
-    assert all(v == "pass" for v in res.values()) and r["hit_rate"] == {"beat": 1, "of": 2}
-    early = m.promise_check(["low_vol"], False, {"ret": 0.0, "spy_ret": 0.0, "swings": None, "spy_swings": None}, {}, {}, [])
-    assert early["items"][0]["result"] == "pending"
-
-
 # ---------------------------------------------------------------- back-test
 def _bt_inputs(n):
     cal = [date(2025, 1, 1) + timedelta(days=i) for i in range(n)]
@@ -354,39 +317,7 @@ def _bt_inputs(n):
     return closes, funds
 
 
-def test_backtest_counts_periods_honestly():
-    closes, funds = _bt_inputs(400)
-    ctx = {"outlook": {}, "presets": {"balanced": {"mix": {"Equities": 60, "Fixed Income": 30, "Cash": 10}}},
-           "quad_inputs": {"monthly": {}, "quarterly": {}}}
-    req = {"preset": "balanced", "buckets": {"Equities": {"split": "recipe", "recipe": "low_vol", "n": 4},
-                                              "Fixed Income": {"split": "core", "n": 3}}}
-    r = eng.backtest(closes, {}, funds, ctx, req, "1M")
-    s = r["summary"]
-    assert s["periods"] >= 6 and s["message"] is None
-    assert s["periods_total"] >= s["periods"]
-    long_ = eng.backtest(closes, {}, funds, ctx, req, "12M")
-    assert long_["summary"]["periods"] < 3 and long_["summary"]["message"]
-    short = _bt_inputs(60)
-    none = eng.backtest(short[0], {}, short[1], ctx, req, "3M")
-    assert none["summary"]["periods"] == 0 and none["summary"]["message"] == "Not enough history yet"
-
-
-def test_backtest_area_mode_without_quad_history_says_so():
-    closes, funds = _bt_inputs(300)
-    ctx = {"outlook": {}, "presets": {"balanced": {"mix": {"Equities": 60, "Fixed Income": 30, "Cash": 10}}},
-           "quad_inputs": {"monthly": {}, "quarterly": {}}}
-    req = {"preset": "balanced", "buckets": {"Equities": {"split": "area", "pick": "low_vol"}, "Fixed Income": {"split": "area"}}}
-    r = eng.backtest(closes, {}, funds, ctx, req, "1M")
-    assert r["summary"]["periods"] == 0 and r["summary"]["message"] == "Not enough Quad history"
-
-
 # ---------------------------------------------------------------- misc
-def test_add_months_clamps_end_of_month():
-    assert add_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
-    assert add_months(date(2026, 10, 23), 3) == date(2027, 1, 23)
-    assert add_months(date(2026, 10, 23), 12) == date(2027, 10, 23)
-
-
 def test_final_call_sides():
     assert m.final_call_side("SS") == "sell" and m.final_call_side("BM") == "buy" and m.final_call_side("HOLD") == "neutral"
     assert m.final_call_side(None) == "neutral"

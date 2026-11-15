@@ -411,6 +411,13 @@ def build_positions(ctx: dict, req: dict) -> dict:
         price = f.get("price")
         sh = whole_shares(d["dollars"], price)
         val = sh * (price or 0.0)
+        # 2026-11-14: a name the account already holds, whose target is within half a share of the holding, keeps the
+        # held share count and the held value (rounding down must not lose a share, and the model price can differ from
+        # the position file's price). Match-my-holdings then lands on a gap of 0.
+        h = holdings.get(sym) or {}
+        hq = float(h.get("qty") or 0.0)
+        if price and hq >= 1 and hq == int(hq) and not h.get("is_cash") and abs(d["dollars"] - float(h.get("value") or hq * price)) < 0.5 * price:
+            sh, val = int(hq), float(h.get("value") or hq * price)
         if sh <= 0:
             cash_extra += d["dollars"]
             out["notes"].append("%s: %s is less than one share: goes to Cash." % (sym, _usd(d["dollars"])))
@@ -472,7 +479,7 @@ def vs_account(model: list, holdings: dict, kept: set, account_type: Optional[st
                 sh = int(abs(row["gap"]) // price)
                 row["trade"] = ("Buy %d sh" if row["gap"] > 0 else "Sell %d sh") % sh
             else:
-                row["trade"] = "Close enough"
+                row["trade"] = "Matched" if abs(row["gap"]) < 1.0 else "Close enough"   # under $1 = the same position
         if show_tax and s not in kept and hv > 0 and h.get("cost") is not None:
             frac = 1.0 if m is None else (min(1.0, max(0.0, -row["gap"] / hv)) if row["gap"] is not None and row["gap"] < 0 else 0.0)
             g = (hv - float(h["cost"])) * frac
@@ -487,134 +494,3 @@ def vs_account(model: list, holdings: dict, kept: set, account_type: Optional[st
     mtot = sum(r["model"] or 0.0 for r in rows)
     return {"rows": rows, "match_pct": (both / mtot * 100.0) if mtot else None,
             "tax": {"gain": gain, "loss": loss} if show_tax else None, "paper_only": paper_only}
-
-
-def drift_table(target: dict, model_now: dict, account_now: dict, amber: float = None) -> list:
-    """Per bucket: target / model now / account now (all in %) and account minus target, amber flag."""
-    amber = PB_PARAMS["drift_amber_pts"] if amber is None else amber
-    out = []
-    for b in BUCKETS + ["Cash"]:
-        t, m, a = target.get(b, 0.0), model_now.get(b, 0.0), account_now.get(b, 0.0)
-        if not (t or m or a):
-            continue
-        gap = a - t
-        out.append({"bucket": b, "target": t, "model": m, "account": a, "gap": gap, "amber": abs(gap) >= amber})
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Back-test ("what would have happened"): replay the same build on past dates, using only
-# data up to each start date. Uses hist closes (drv_quote + hist_quote_daily if it has data).
-# Not replayed (history not kept): Final Call skip, Hedgeye outlooks, style flavours, kept holdings.
-# ---------------------------------------------------------------------------
-def _min_index_for(req: dict) -> int:
-    """Smallest start index (0-based, in the SPY calendar) that has enough history for the chosen pick rules."""
-    from etl.derive_model_portfolio import RECIPES
-    need = PB_PARAMS["vol_min_obs"]
-    for b, cfg in (req.get("buckets") or {}).items():
-        rule = cfg.get("pick") if cfg.get("split", "area") == "area" else (cfg.get("recipe") or cfg.get("split"))
-        if rule in RECIPES:
-            need = max(need, RECIPES[rule]["min_days"] - 1)
-    if not (req.get("buckets") or {}).get("Equities"):
-        # the default Equities recipe is Momentum in a source pool, Low volatility otherwise
-        need = max(need, RECIPES["momentum" if req.get("sources") else "low_vol"]["min_days"] - 1)
-    return need
-
-
-def backtest(closes: dict, trend: dict, base_funds: dict, base_ctx: dict, req: dict, horizon: str) -> dict:
-    """closes {sym: {date: close}} incl. SPY; trend {sym: {date: trend}}; base_funds = ctx['funds'] (meta only);
-    base_ctx carries outlook, presets, quad_inputs {monthly, quarterly}. Returns periods + honest counts."""
-    from etl.derive_model_portfolio import (
-        swings, beta_vs_spy, momentum, above_trend, horizon_quad_mix, series_stats,
-    )
-    spy = closes.get("SPY") or {}
-    cal = sorted(spy)
-    n = len(cal)
-    h = PB_PARAMS["horizon_trading_days"].get(horizon, 63)
-    hd = PB_PARAMS["horizon_days"].get(horizon, 91)
-    step = PB_PARAMS["backtest_step"]
-    first = _min_index_for(req)
-    pool = bool(req.get("sources"))
-    area_mode = any((cfg.get("split") or ("recipe" if pool else "area")) == "area" for b, cfg in (req.get("buckets") or {"Equities": {}}).items()
-                    if b in ("Equities", "Fixed Income")) or (not req.get("buckets") and not pool)
-    quad_needed = area_mode or "quad" in (req.get("checks") or [])
-    qin = base_ctx.get("quad_inputs") or {}
-    out = {"periods": [], "skipped_quad": 0, "calendar_days": n, "horizon": horizon, "area_mode": quad_needed}
-    if n < first + h + 1:
-        out.update(summary=_bt_summary([], horizon, out))
-        return out
-    starts = []
-    i = n - 1 - h
-    while i >= first:
-        starts.append(i)
-        i -= step
-    starts.reverse()
-    notional = 10000.0
-    for i in starts:
-        t = cal[i]
-        dates_t = cal[: i + 1]
-        funds_t = {}
-        for sym, f in base_funds.items():
-            c = closes.get(sym) or {}
-            if not f.get("listed", True) or t not in c:
-                funds_t[sym] = dict(f, eligible=False, reason="no close that day")
-                continue
-            series = [c[d_] for d_ in sorted(c) if d_ <= t]
-            beta_v, _w = beta_vs_spy(c, spy, dates_t) if sym != "SPY" else (1.0, 0)
-            funds_t[sym] = dict(f, eligible=True, reason=None, price=c[t], vol63=swings(series), beta=beta_v, mom=momentum(series),
-                                above_trend=above_trend(c[t], (trend.get(sym) or {}).get(t)), hedgeye={}, styles=[], final_code=None)
-        quad = horizon_quad_mix(t, hd, qin.get("monthly") or {}, qin.get("quarterly") or {}, None, None)
-        if quad_needed and not req.get("quad_override") and (quad["shares"] is None or quad["coverage_pct"] < PB_PARAMS["quad_min_cover_pct"]):
-            out["skipped_quad"] += 1
-            continue
-        if quad_needed and quad["shares"] is not None and not any(ym in (qin.get("monthly") or {}) for ym, _w in quad["weighted"]):
-            out["quarter_only"] = out.get("quarter_only", 0) + 1
-        ctx_t = {"D": t, "funds": funds_t, "outlook": base_ctx.get("outlook") or {}, "quad": quad, "risk_mult": None,
-                 "presets": base_ctx.get("presets") or {}, "kept": [],
-                 "account": {"value": notional, "holdings": {}, "cash": notional, "current_mix": {"Cash": 100.0}}}
-        req_t = dict(req, amount=notional, use_risk_dial=False, skip_sells=False)
-        res = build_positions(ctx_t, req_t)
-        pos = res["positions"]
-        if len(pos) < 3:
-            continue
-        cash = res["cash"]["dollars"]
-        path, spy_path = [], []
-        last_px = {x["sym"]: x["price"] for x in pos}
-        for k in range(1, h + 1):
-            dk = cal[i + k]
-            for x in pos:
-                px = (closes.get(x["sym"]) or {}).get(dk)
-                if px:
-                    last_px[x["sym"]] = px
-            path.append(sum(x["shares"] * last_px[x["sym"]] for x in pos) + cash)
-            spy_path.append(notional * spy[dk] / spy[t])
-        st_ = series_stats(path, spy_path, notional)
-        out["periods"].append({"start_idx": i, "start": t.isoformat(), "end": cal[i + h].isoformat(), "ret": st_["ret"],
-                               "spy_ret": st_["spy_ret"], "excess": st_["ret"] - st_["spy_ret"], "worst_drop": st_["worst_drop"],
-                               "calmer": (st_["swings"] < st_["spy_swings"]) if (st_["swings"] is not None and st_["spy_swings"] is not None) else None,
-                               "positions": len(pos)})
-    out["summary"] = _bt_summary(out["periods"], horizon, out)
-    return out
-
-
-def _bt_summary(periods: list, horizon: str, out: dict) -> dict:
-    h = PB_PARAMS["horizon_trading_days"].get(horizon, 63)
-    chosen, last = [], None
-    for p_ in periods:
-        if last is None or p_["start_idx"] >= last + h:
-            chosen.append(p_)
-            last = p_["start_idx"]
-    s = {"periods_total": len(periods), "periods": len(chosen), "beat_spy": sum(1 for p_ in chosen if p_["excess"] > 0),
-         "calmer": sum(1 for p_ in chosen if p_["calmer"]), "calmer_known": sum(1 for p_ in chosen if p_["calmer"] is not None),
-         "avg_excess": (sum(p_["excess"] for p_ in periods) / len(periods)) if periods else None,
-         "worst_excess": min((p_["excess"] for p_ in periods), default=None), "message": None,
-         "bars": [{"start": p_["start"], "model": p_["ret"], "spy": p_["spy_ret"]} for p_ in chosen]}
-    if not chosen:
-        s["message"] = ("Not enough Quad history" if out.get("skipped_quad") else "Not enough history yet")
-    elif len(chosen) < PB_PARAMS["backtest_min_periods"]:
-        s["message"] = "Too few periods to mean much"
-    if out.get("area_mode") and out.get("quarter_only"):
-        s["quad_note"] = ("%d period(s) used the quarter's declared Quad: the monthly Quad mix was not stored before Sep 2026. " % out["quarter_only"]) + s.get("quad_note", "")
-    if out.get("area_mode") and out.get("skipped_quad"):
-        s["quad_note"] = s.get("quad_note", "") + "'By area' needs the stored monthly Quad mix: %d past period(s) skipped for lack of it." % out["skipped_quad"]
-    return s

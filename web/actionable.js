@@ -11,6 +11,7 @@ const TOGGLEABLE_COLS = [
   { id: 'macro',     label: 'MACRO' },
   { id: 'pvv',       label: 'PVV' },
   { id: 'live',      label: 'LIVE' },
+  { id: 'plan',      label: 'Plan' },
   { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
   { id: 'iv',        label: 'IV' },
@@ -74,6 +75,7 @@ const state = {
     iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
     headwind_only: false, // TASK_149 chip — held/buy rows whose area is in Headwind (driver_flags)
     act_only: false,      // TASK_153 "Act (N)" chip — MUST + CONSIDER + BUYIDEA stocks from /api/actionable/live
+    plan_only: false,     // 2026-11-14 "My plan (N)" chip — stocks the Builder's ACTIVE plans pick or sell (/api/builder/plan-check)
     rr_min: 0, rr_max: 100, // RR (Risk Range %) dual-thumb slider — 0/100 = no filter
     quads: [],           // Quad favorability filter (multi-select, like symbols_multi) --
                           // '1'..'4', empty = no filter. A row must be net-bullish
@@ -1750,7 +1752,7 @@ async function loadActionable(opts) {
   // them anyway keeps this consistent/harmless if that ever changes.
   // TASK_153: the Act (N) chip also needs suppressed rows (an "AT CEILING" stock can still carry
   // a live trim or buy-back).
-  if ((state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only)
+  if ((state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only || state.filters.plan_only)
       && !state.filters.show_hidden) {
     params.append('show_suppressed', 'true');
   }
@@ -1829,6 +1831,8 @@ async function loadActionable(opts) {
     // Own try/catch -- a live-advice failure must never block the grid.
     await _fetchLiveData();
     _applyLiveToRows();
+    await _fetchPlanData();       // 2026-11-14: My plan (Builder); own try/catch inside
+    _applyPlanToRows();
     // Expose monthly score map for market_bar.js tape chips
     window._macroScoreMap = Object.fromEntries(
       state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
@@ -2083,12 +2087,13 @@ function matchesBaseFilters(r) {
   // TASK_153: the "Act (N)" chip picks its own rows (the stocks in Today's actions), so it
   // skips the hidden-row rule below, same as Trade / Trade2 do.
   if (state.filters.act_only && !_liveActSet().has(r.tos_symbol)) return false;
+  if (state.filters.plan_only && !_planSet().has(r.tos_symbol)) return false;     // 2026-11-14 My plan chip
   if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
     const tmOk = state.filters.trade_mode && _matchesTradeMode(r);
     const tmdOk = state.filters.trade_mode_diff && _matchesTradeModeDiff(r);
     const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
     if (!tmOk && !tmdOk && !wlOk) return false;
-  } else if (!state.filters.show_hidden && !state.filters.act_only) {
+  } else if (!state.filters.show_hidden && !state.filters.act_only && !state.filters.plan_only) {
     // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove
     // rows -- same criteria as the grid's own "H" flag, via _hiddenReason (kept as
     // a single source of truth after the two independently drifted, see its own
@@ -2224,7 +2229,7 @@ function applyClientFilter(opts) {
     }
     // 2026-10-03 (user): Trade / Trade2 / My already pick their own rows, so the Actionable
     // toggle no longer applies on top of them (it hid stop-breached positions whose call was HOLD).
-    const _ownList = state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only;
+    const _ownList = state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.act_only || state.filters.plan_only;
     if (state.filters.actionable_only && !_ownList) {
       const a = _chipAction(r);
       return a !== 'HOLD' && a !== 'NONE';
@@ -2542,6 +2547,8 @@ function _syncTriggerSourcePills() {
   // TASK_153: "Act (N)" = stocks in Today's actions (MUST + CONSIDER + Buy ideas).
   const ac = wrap.querySelector('[data-flag-pill="act_only"] .act-count');
   if (ac) ac.textContent = String(_liveActSet().size);
+  const pcn = wrap.querySelector('[data-flag-pill="plan_only"] .plan-count');   // 2026-11-14: My plan (N)
+  if (pcn) pcn.textContent = String(_planSet().size);
 }
 
 // Returns the display name for an account_number using state.allAccounts lookup.
@@ -2768,7 +2775,7 @@ function clearAllFilters() {
   f.bull_prob_min = 0;
   f.agreement_class = '';
   f.symbols_multi = [];
-  f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false; f.act_only = false;
+  f.etfchg_only = false; f.iichg_only = false; f.headwind_only = false; f.act_only = false; f.plan_only = false;
   f.sector = ''; f.style = ''; f.asset_class = ''; f.industry = '';
   f.rr_min = 0; f.rr_max = 100;
   state.colFilters = {};
@@ -4104,6 +4111,63 @@ const _LIVE_TIER_IDX = { MUST: 0, CONSIDER: 1, BUYIDEA: 2, INFO: 3 };
 const _LIVE_TIER_LABEL = { MUST: 'Do today', CONSIDER: 'Consider', BUYIDEA: 'Buy idea', INFO: 'Info only' };
 state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen: null };
 
+// 2026-11-14: My plan (Builder). Per symbol, what each account's ACTIVE plan says: a planned pick / buy-one-of group, a sell (its class
+// is above the plan), or a Buy call that would be over plan or out of cash there. Information only: never changes the Final Call.
+state.plan = { rows: {}, accounts: [] };
+async function _fetchPlanData() {
+  try {
+    const d = await fetchJson('/api/builder/plan-check' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''));
+    state.plan.rows = d.rows || {}; state.plan.accounts = d.accounts || [];
+  } catch (e) {
+    console.warn('plan check unavailable:', e);
+    state.plan.rows = {}; state.plan.accounts = [];
+  }
+  try { _syncTriggerSourcePills(); } catch (e) { console.warn('plan chip:', e); }
+}
+// The Plan column's value for sort + the header filter: the most important thing any active plan says about the stock.
+const _PLAN_RANK = { 'Over plan': 5, 'Low cash': 4, 'Sell': 3, 'Buy one of': 2, 'Pick': 1, '': 0 };
+function _planStateFor(sym) {
+  const it = (state.plan && state.plan.rows[sym]) || [];
+  if (!it.length) return '';
+  if (it.some(i => i.kind === 'buy' && i.over && i.over.length)) return 'Over plan';
+  if (it.some(i => i.kind === 'buy')) return 'Low cash';
+  if (it.some(i => i.kind === 'sell')) return 'Sell';
+  if (it.some(i => i.kind === 'group')) return 'Buy one of';
+  return 'Pick';
+}
+function _applyPlanToRows() {
+  for (const r of (state.allRows || [])) { r._plan_state = _planStateFor(r.tos_symbol); r._plan_rank = _PLAN_RANK[r._plan_state] || 0; }
+}
+function _planItems(sym) { return (state.plan && state.plan.rows[sym]) || []; }
+function _planSet() {
+  const out = new Set();
+  Object.keys((state.plan && state.plan.rows) || {}).forEach(s => { if (state.plan.rows[s].some(i => i.kind !== 'buy')) out.add(s); });
+  return out;
+}
+function _planUsd(n) { return '$' + (n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n)); }
+function _planPillsHtml(r) {
+  const items = _planItems(r.tos_symbol);
+  if (!items.length) return '';
+  const tip = lines => escapeHtml(lines.filter(Boolean).map(l => '\u2022 ' + l).join('\n')).replace(/\n/g, '&#10;');
+  const pill = (bg, fg, text, lines) => `<div style="margin-top:2px;"><span style="display:inline-block;padding:0 6px;border-radius:9px;font-size:10px;font-weight:600;background:${bg};color:${fg};white-space:nowrap;" title="${tip(lines)}">${escapeHtml(text)}</span></div>`;
+  return items.map(i => {
+    if (i.kind === 'buy') {
+      if (i.over && i.over.length) {
+        const o = i.over.slice().sort((a, b) => b.over - a.over)[0];
+        return pill('#fdf3e3', '#b45309', '\u26a0 Over plan in ' + i.account, [i.account + ' plan: ' + o.line + ' has no room left (over by ' + _planUsd(o.over) + ')', 'Most that fits: ' + _planUsd(i.fits), 'Information only. The Final Call does not change.']);
+      }
+      return pill('#fdf3e3', '#b45309', 'Low cash in ' + i.account, [i.account + ' plan: no cash left to spend above its Cash % and cash floor', 'Information only. The Final Call does not change.']);
+    }
+    if (i.kind === 'sell') {
+      return pill('#f4e6e6', '#9e3636', i.all ? 'Plan: sell all in ' + i.account : 'Plan: sell in ' + i.account,
+        [i.account + ' plan: ' + i.cls + (i.all ? ' is planned at 0%' : ' is over its plan by about ' + _planUsd(i.need)), 'You hold ' + _planUsd(i.value) + ' of ' + r.tos_symbol, 'Information only. The Final Call does not change.']);
+    }
+    const grp = i.kind === 'group';
+    return pill('#e3ebfb', '#1d4ed8', grp ? 'Plan: ' + i.account + ' one of ' + i.members.join(' or ') : 'Plan: ' + i.account + ' pick',
+      [i.account + ' plan: ' + (grp ? 'buy any one of ' + i.members.join(', ') : 'planned buy'), 'Amount: ' + _planUsd(i.amount || 0), 'Information only. The Final Call does not change.']);
+  }).join('');
+}
+
 async function _fetchLiveData() {
   try {
     // Live advice is for "now": skip it when a past date is on screen.
@@ -4918,7 +4982,7 @@ function renderGrid() {
     r._fc_side     = fc.side;
     // TASK_124: Trade Mode's own criteria already narrows to entry-ripe
     // qualifying buys — never band these into the collapsed Watchlist.
-    r._watchlisted = (state.filters.trade_mode || state.filters.act_only) ? false : _buyNoiseGated(r);
+    r._watchlisted = (state.filters.trade_mode || state.filters.act_only || state.filters.plan_only) ? false : _buyNoiseGated(r);
     r._actionInfo = _actionedInfo(r);
     r._parkedActioned = !!r._actionInfo;   // 2026-10-02: parked in every view (was Trade view only; else just dimmed)
     r._priority = _computePriority(r);
@@ -4970,7 +5034,7 @@ function renderGrid() {
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
     state.filters.agreement_class || state.filters.stopOnly ||
     state.filters.etfchg_only || state.filters.iichg_only || state.filters.headwind_only ||
-    state.filters.act_only || state.filters.watchlist_only ||
+    state.filters.act_only || state.filters.plan_only || state.filters.watchlist_only ||
     (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
 
@@ -5029,7 +5093,7 @@ function _watchlistBandRowEl(count, expanded) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 21;
+  td.colSpan = 22;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -5055,7 +5119,7 @@ function _actionedBandRowEl(count, expanded, rows) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 21;
+  td.colSpan = 22;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -5324,6 +5388,7 @@ function _buildRowEl(r) {
       <td data-col="macro" style="padding:4px 6px; text-align:center;"><div class="hdr-anchor-box">${macroCellHtml(r)}</div></td>
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="live" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_liveCellHtml(r)}</td>
+      <td data-col="plan" style="padding:4px 6px; text-align:left;">${_planPillsHtml(r)}</td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
         <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}</div>
@@ -7203,7 +7268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.filters[key] = !state.filters[key];
         _syncTriggerSourcePills();
         // TASK_153: Act (N) needs suppressed rows from the server (see loadActionable).
-        if (key === 'act_only') { loadActionable({ preserveState: true }); return; }
+        if (key === 'act_only' || key === 'plan_only') { loadActionable({ preserveState: true }); return; }
         applyClientFilter();
         return;
       }

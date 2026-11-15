@@ -301,6 +301,7 @@
       STATE.pageWarnings = [];
       render();
     },
+    refresh: () => poll(),          // re-read /api/warnings now (e.g. right after Save & check)
   };
 
   // ---- entry ----------------------------------------------------------
