@@ -74,6 +74,7 @@
       el.dataset.ctitle = title;
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'bld-cx';
+      if (key === 'acct' || key === 'picks') { b.classList.add('bld-cx-l'); el.classList.add('cx-left'); }   // 2026-11-17, user: these two panels carry the button before their label (Account / Symbol)
       const paint = () => { const shut = el.classList.contains('cx-collapsed'); b.innerHTML = shut ? '&#9656;' : '&#9662;'; b.title = (shut ? 'Show ' : 'Hide ') + title; };
       b.onclick = () => {
         el.classList.toggle('cx-collapsed');
@@ -645,7 +646,7 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
@@ -653,7 +654,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
+      t += `<tr class="sec"><td>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
