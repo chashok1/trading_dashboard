@@ -364,19 +364,22 @@
 
   // bars above each grid: one row per line of the grid. Bar = picks (green within 5 pts of the target, amber short, red over),
   // thin grey bar = portfolio, black line = target. Shown from the start, before anything is picked.
-  function barBlock(rows) {
-    rows = (rows || []).filter(r => r.pv != null || r.hv != null || r.tv != null);
-    if (!rows.length) return '';
-    const scale = Math.max(10, ...rows.map(r => Math.max(r.pv || 0, r.hv || 0, r.tv || 0))) * 1.15;
+  // 2026-11-15, user: chart and grid side by side, each bar on its own row. The bar is a cell inside the grid row, so it can never drift.
+  // Rows are written with a placeholder cell (\u0005section\u0006index\u0007); this swaps in the real bar once the section's scale is known.
+  function barCells(html, key, rows) {
+    rows = rows || [];
+    const any = rows.filter(r => r.pv != null || r.hv != null || r.tv != null);
+    const scale = Math.max(10, ...any.map(r => Math.max(r.pv || 0, r.hv || 0, r.tv || 0))) * 1.15;
     const w = v => Math.min(Math.max(v, 0) / scale * 100, 100);
-    return '<div class="bld-viz">' + rows.map(r => {
+    return html.replace(/\u0005[^\u0006]*\u0006(\d+)\u0007/g, (m, i) => {
+      const r = rows[+i];
+      if (!r || (r.pv == null && r.hv == null && r.tv == null)) return '<td class="bld-bar"></td>';
       const pv = r.pv, tv = r.tv;
       const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#b8bcc8'));
-      return `<div class="vrow${r.flt ? ' bld-frow' : ''}"${r.flt ? ` data-ftype="${r.flt[0]}" data-fval="${esc(r.flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><span class="vlab" title="${esc(r.label)}">${r.col ? `<span class="bld-sw" style="background:${r.col}"></span>` : ''}${esc(r.label)}</span>` +
+      return '<td class="bld-bar"><div class="bld-viz"><div class="vrow">' +
         `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
-        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div>` +
-        `<span class="vpct" title="Picks ${pv == null ? '-' : pv.toFixed(0) + '%'}, portfolio ${r.hv == null ? '-' : r.hv.toFixed(0) + '%'}${tv != null && tv > 0 ? ', target ' + tv.toFixed(0) + '%' : ''}"><b>${pv == null ? '' : pv.toFixed(0)}</b>${r.hv == null ? '' : '<i>' + (pv == null ? '' : ' / ') + r.hv.toFixed(0) + '</i>'}%</span></div>`;
-    }).join('') + '</div>';
+        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div></div></div></td>`;
+    });
   }
 
   // One comparison table: factor names down the left, "Your picks" and "My portfolio" side by side, then the gap.
@@ -407,7 +410,7 @@
     // 2026-11-14, user: in the Asset class grid, say in dollars what the account must do to reach the target (the account's own value).
     // Target vs what it holds now: Sell all / Sell $X / Room to buy $X / On plan. Information only; nothing trades.
     const planTd = (asset, tv, hv) => {
-      if (curKey !== 'Asset class') return '';
+      if (curKey !== 'Asset class') return '<td></td>';
       if (!asset || tv == null || !hasHeld) return '<td></td>';
       const gap = (tv - (hv || 0)) / 100 * amt;
       if (tv === 0 && (hv || 0) * amt / 100 > 500) return `<td class="n bld-dn"><b>Sell all ${usd((hv || 0) * amt / 100)}</b></td>`;
@@ -422,8 +425,9 @@
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : (key ? tv : (tvx > 0 ? tvx : null));
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" title="Calculated: 100% minus the asset class targets above"><b>${Math.round(tvx * 100) / 100}</b></td>` : '<td></td>'));
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
+      const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
-      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
+      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${barTd}${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
         `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${planTd(asset, asset && Object.keys(chosen).length ? (chosen[asset] || 0) : null, hv)}</tr>`;
     };
     const generalTip = 'Asset class rows are % of the account. Everything below is also % of the account (the same basis the plan check uses). Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
@@ -436,7 +440,7 @@
       heldInvested += cur[b] || 0;
       t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
-    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
+    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
     t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
     if (cur.Unmapped > 0.04) t += R('Unmapped', null, cur.Unmapped, 'Held with no asset class: cannot be picked');
     t += sec('Risk');
@@ -444,7 +448,7 @@
     t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta', undefined, ['factor', 'lowbeta']) + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta', undefined, ['factor', 'highbeta']);
     t += R('Middle beta (0.8 to 1.2)', hasPick ? P.midbeta : null, hasHeld ? H.midbeta : null, 'Names with a beta between 0.8 and 1.2: not low, not high.', 'midbeta')
       + R('No beta known', hasPick ? P.nobeta : null, hasHeld ? H.nobeta : null, 'Names with no beta yet (cash, new listings, some funds). Not covered by the beta rows above.', 'nobeta');
-    t += sec('Quad favored (Bull)');
+    t += sec('Quad');
     for (const q of ['Q1', 'Q2', 'Q3', 'Q4']) {
       const pq = (P.quad || {})[q], hq = (H.quad || {})[q];
       const tip = `${q} outlook. Picks: Bull ${bd(pq, 'bull').toFixed(0)}%, Neutral ${bd(pq, 'neutral').toFixed(0)}%, Bear ${bd(pq, 'bear').toFixed(0)}%, no view ${bd(pq, 'none').toFixed(0)}%. Portfolio: Bull ${bd(hq, 'bull').toFixed(0)}%, Neutral ${bd(hq, 'neutral').toFixed(0)}%, Bear ${bd(hq, 'bear').toFixed(0)}%, no view ${bd(hq, 'none').toFixed(0)}%`;
@@ -467,12 +471,12 @@
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = !!S.collapsed[skey];
-      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + barBlock(vizRows[skey]) + (first ? presetHtml() : '') + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th>` +
-        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks${first && S.picks.length ? ' (' + S.picks.length + ')' : ''}</th><th class="n">Port&shy;folio</th><th class="n">Gap</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : ''}</tr></thead><tbody>${parts[i + 1]}</tbody></table></div>`;
+      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + (first ? presetHtml() : '') + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th><th class="bld-bar-h" title="Bar = picks (green on target, amber short, red over), thin grey = portfolio, black line = target">Chart</th>` +
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th></th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
-    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Sectors')}</div><div>${T('Style')}${T('Quad favored (Bull)')}${T('Risk')}</div></div>`;   // keys are the title up to " ·"
+    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Sectors')}</div><div>${T('Style')}${T('Quad')}${T('Risk')}</div></div>`;   // keys are the title up to " ·"
   }
 
   // The Preset sits between the Asset class bar chart and its grid: it only fills the asset class % boxes below it.
