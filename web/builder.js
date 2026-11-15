@@ -61,7 +61,34 @@
   }
 
   // ---------------------------------------------------------------- init
+  // Every panel gets a small button (top right) that collapses it to its title. Remembered in this browser only.
+  function makePanelsCollapsible() {
+    const panels = [['.bld-acct', 'Account and plan', 'acct'], ['#srcBox', 'Lists to choose from', 'lists', '.bld-card'], ['#srcNames', 'Names', 'names'],
+      ['.bld-picks', 'Stock picks', 'picks'], ['#todoCard', 'To do', 'todo']];
+    let st = {};
+    try { st = JSON.parse(localStorage.getItem('bld_cx') || '{}') || {}; } catch (e) { st = {}; }
+    panels.forEach(([sel, title, key, up]) => {
+      let el = document.querySelector(sel);
+      if (el && up) el = el.closest(up);
+      if (!el || el.querySelector(':scope > .bld-cx')) return;
+      el.dataset.ctitle = title;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'bld-cx';
+      const paint = () => { const shut = el.classList.contains('cx-collapsed'); b.innerHTML = shut ? '&#9656;' : '&#9662;'; b.title = (shut ? 'Show ' : 'Hide ') + title; };
+      b.onclick = () => {
+        el.classList.toggle('cx-collapsed');
+        st[key] = el.classList.contains('cx-collapsed');
+        try { localStorage.setItem('bld_cx', JSON.stringify(st)); } catch (e) { /* private window */ }
+        paint();
+      };
+      if (st[key]) el.classList.add('cx-collapsed');
+      el.prepend(b);
+      paint();
+    });
+  }
+
   async function init() {
+    makePanelsCollapsible();
     try {
       const dates = await api('/api/dates');
       const sel = $('datePicker');
@@ -393,7 +420,7 @@
     const R = (label, pv, hv, tip, key, asset, flt, tvx) => {   // tvx = a reference value with no box (Cash: what is left after the asset classes)
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : (key ? tv : (tvx > 0 ? tvx : null));
-      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : '<td></td>');
+      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" title="Calculated: 100% minus the asset class targets above"><b>${Math.round(tvx * 100) / 100}</b></td>` : '<td></td>'));
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
@@ -410,7 +437,7 @@
       t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
     t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
-    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, fin.Cash);
+    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
     if (cur.Unmapped > 0.04) t += R('Unmapped', null, cur.Unmapped, 'Held with no asset class: cannot be picked');
     t += sec('Risk');
     const fb = v => (v == null ? dash : v.toFixed(2));
@@ -445,7 +472,7 @@
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
-    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Risk')}</div><div>${T('Style')}${T('Quad favored (Bull)')}</div><div>${T('Sectors')}</div></div>`;   // keys are the title up to " ·"
+    return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Sectors')}</div><div>${T('Style')}${T('Quad favored (Bull)')}${T('Risk')}</div></div>`;   // keys are the title up to " ·"
   }
 
   // The Preset sits between the Asset class bar chart and its grid: it only fills the asset class % boxes below it.
@@ -560,7 +587,7 @@
     ((res.vs_account && res.vs_account.rows) || []).forEach(r => { vsBy[r.sym] = r; });
     const acctVal = (res.account && res.account.value) || 0, amt = res.amount || 1, fin = res.mix_final || {};
     const syms = [...new Set(S.picks.map(p => p.sym).concat(Object.keys(holdBy)))];
-    if (!syms.length) return '<div class="bld-muted" style="margin-top:8px">Nothing picked yet. Tick names in the middle column.</div>';
+    if (!syms.length) return '<div class="bld-muted" style="margin-top:8px">Nothing picked yet. Tick names in the list on the left.</div>';
     const rows = syms.map(sym => {
       const pk = picked(sym), pos = posBy[sym], h = holdBy[sym];
       const bucket = (pk && pk.bucket) || (pos && pos.bucket) || (h && h.bucket) || 'Unmapped';
@@ -576,7 +603,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}${(fin[b] || 0) > 0 ? `<br><span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td></td></tr>`;
+      t += `<tr class="sec"><td><span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
@@ -802,7 +829,7 @@
   const planNeedAcct = () => { if (!S.acct || S.acct === 'ALL') { planNote('Choose one account first. A plan belongs to one account.', true); return true; } return false; };
   // Keep the screen as plan `name`. Saving the ACTIVE plan also refreshes what the To do list reads; any other plan is only kept.
   async function planStore(name) {
-    if (name === PL.checked) {
+    if (name === PL.checked || !PL.checked) {   // the active plan, or the account's first plan (nothing active yet): saving also makes it active
       const r = await planSend('/api/builder/plan/save-check', { account: S.acct, name, plan: planFromState(), date: S.date });
       await planAfterSave(r.name, r.checking);
       return r;
@@ -814,8 +841,9 @@
   async function planSave() {
     if (planNeedAcct()) return;
     const name = PL.name || defaultPlanName();
-    await planStore(name);
-    planNote('<b>Saved "' + esc(name) + '".</b>' + (name === PL.checked ? ' It is the active plan.' : ''));
+    const r = await planStore(name);
+    if (r && r.checking === false && (r.problems || []).length) { planNote('<b>Saved "' + esc(name) + '", but it cannot be used by the To do list yet.</b> ' + r.problems.map(esc).join(' '), true); return; }
+    planNote('<b>Saved "' + esc(name) + '".</b>' + (name === PL.checked ? ' It is the active plan, so the To do list uses it.' : ''));
   }
   async function planSaveAs() {
     if (planNeedAcct()) return;
@@ -908,17 +936,30 @@
       return `<div class="td-bar"><i class="${hard ? 'h' : after > plan + 1 ? 'o' : ''}" style="width:${w}%"></i><b style="width:${nw}%"></b></div>`;
     };
     let L = '';
+    // a line within the on-plan band (the smaller of $500 and 0.5% of the account) counts as matched: "$0 left"
+    // (holdings-based targets are kept to 2 decimals, so a few dollars of rounding must not read as "over")
+    const tol = Math.min(500, 0.005 * (t.value || 0)) || 500;
+    const lf = v => (Math.abs(v) <= tol ? 0 : v);
     (t.lines || []).filter(r => r.kind === 'cls' && r.key !== 'Cash' && (r.plan > 0 || r.now > 500)).forEach(r => {
-      const over = r.left < -1;
-      L += `<div><div class="bld-line"><b>${esc(r.key)}</b><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-r.left) + ' (warning)' : usd(r.left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}<div class="bld-muted">Plan ${r.plan_pct}% = ${usd(r.plan)}</div></div>`;
+      const left = lf(r.left), over = left < -1;
+      L += `<div><div class="bld-line"><b>${esc(r.key)}</b><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-left) + ' (warning)' : usd(left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}<div class="bld-muted">Plan ${r.plan_pct}% = ${usd(r.plan)}</div></div>`;
     });
     const hard = t.cash_left <= 0;
     L += `<div><div class="bld-line"><b>Cash you can spend</b><span style="margin-left:auto;color:${hard ? '#9e3636' : '#16a34a'}">${usd(t.cash_left)} left</span></div>` +
       `<div class="td-bar"><i class="${hard ? 'h' : ''}" style="width:${t.cash_to_spend > 0 ? Math.min((t.cash_to_spend - t.cash_left) / t.cash_to_spend * 100, 100) : 100}%"></i></div>` +
       `<div class="bld-muted">Cash ${usd(t.cash)}${t.sell_cash ? ' + ' + usd(t.sell_cash) + ' expected from sells (not in your broker file yet)' : ''}. Keeps the plan's Cash % and ${usd(t.cash_keep)}. A money limit: it blocks.</div></div>`;
-    const opt = (t.lines || []).filter(r => r.kind !== 'cls');
-    if (opt.length) L += '<div class="bld-muted"><b>Optional lines (warn only)</b></div>' + opt.map(r => { const over = r.left < -1; return `<div><div class="bld-line"><span>${esc(r.label)}</span><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-r.left) : usd(r.left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}</div>`; }).join('');
-    $('tdLeft').innerHTML = L;
+    // two columns: Asset class (with Cash) on the left, Sectors on the right; the other optional lines (style, beta, Quad) stay below as before
+    const optRow = r => { const left = lf(r.left), over = left < -1; return `<div><div class="bld-line"><span>${esc(r.label)}</span><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-left) : usd(left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}</div>`; };
+    const sectors = (t.lines || []).filter(r => r.kind === 'sector');
+    const opt = (t.lines || []).filter(r => r.kind !== 'cls' && r.kind !== 'sector');
+    const col = h => h ? `<div style="display:flex;flex-direction:column;gap:8px">${h}</div>` : '<div></div>';
+    // optional lines: each group (Style, Quad, Beta) stays together and the groups are split into two columns as evenly as possible
+    const grp = []; opt.forEach(r => { const g = grp.length && grp[grp.length - 1].kind === r.kind ? grp[grp.length - 1] : (grp.push({ kind: r.kind, rows: [] }), grp[grp.length - 1]); g.rows.push(r); });
+    let cut1 = 0, best = 1e9;
+    for (let k = 0; k <= grp.length; k++) { const a = grp.slice(0, k).reduce((n, g) => n + g.rows.length, 0), b = opt.length - a; if (Math.abs(a - b) < best) { best = Math.abs(a - b); cut1 = k; } }
+    const colOf = gs => `<div style="display:flex;flex-direction:column;gap:8px;min-width:0">${gs.map(g => g.rows.map(optRow).join('')).join('')}</div>`;
+    $('tdLeft').innerHTML = col(L) + col(sectors.map(optRow).join('')) +
+      (opt.length ? '<div style="grid-column:1/-1"><div class="bld-muted" style="margin-bottom:8px"><b>Optional lines (warn only)</b></div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;align-items:start">' + colOf(grp.slice(0, cut1)) + colOf(grp.slice(cut1)) + '</div></div>' : '');
     const cut = (t.buys || []).some(x => x.result === 'SHRUNK' || x.result === 'BLOCKED');
     const overNote = (t.notes || []).some(n => /over its plan/.test(n));
     const parts = ['Buys counted: ' + usd(t.bought) + '.'];

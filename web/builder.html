@@ -27,7 +27,22 @@
     .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 12px; }
     .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
     .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
-    .bld-grid { grid-template-columns: 255px minmax(437px, .71fr) minmax(480px, 1.12fr); }
+    .bld-grid { grid-template-columns: 875px minmax(760px, 1fr); }
+    .bld-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    /* right column: [stock picks by asset class] | [charts and grids] side by side */
+    /* right column: two separate panels side by side -- [stock picks] | [charts and grids]; the charts panel wraps under the picks when the window is too narrow */
+    .bld-pair { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: flex-start; }
+    .bld-pair > .bld-card { margin-bottom: 8px; }
+    .bld-pair > .bld-picks { flex: 1 1 560px; min-width: 0; order: 1; overflow-x: auto; }
+    .bld-pair > .bld-chartbox { flex: 1 1 660px; min-width: 0; order: 2; }
+    .bld-chartbox:has(#cmpPanel[hidden]) { display: none; }
+    .bld-toprow { display: grid; grid-template-columns: minmax(250px, 1.15fr) minmax(200px, 1fr); gap: 12px; align-items: start; }
+    .bld-toprow .bld-acct, .bld-toprow .bld-card { margin-bottom: 0; }
+    .bld-toprow .bld-acct { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(190px, 1.2fr); gap: 8px 14px; align-items: start; }
+    .bld-acol { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 0; }
+    .bld-acol .bld-pill { align-self: flex-start; }
+    @media (max-width: 1000px) { .bld-toprow .bld-acct { grid-template-columns: 1fr; } }
+    @media (max-width: 1000px) { .bld-toprow { grid-template-columns: 1fr; } }
     .bld-below { margin-top: 4px; }
     /* 2026-10-28, user: Names scrolls with the page like the other panels (was pinned: position:sticky + a fixed viewport height) */
     .bld-side { display: flex; flex-direction: column; margin-bottom: 0; }
@@ -51,7 +66,7 @@
     .bld-acct label { display: inline-flex; align-items: center; gap: 6px; }
     .bld-acct input[type=number] { width: 120px; text-align: right; }
     /* source / check tick-boxes: two even columns, box and text on one line */
-    .bld-chks { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 4px 0; }
+    .bld-chks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 4px 0; }
     .bld-chks label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
     .bld-chks input { margin: 0; flex: 0 0 auto; }
     .bld-chks .bld-muted { white-space: normal; line-height: 1.25; }
@@ -212,6 +227,7 @@
     /* the symbol table below: two columns (every class but Equities on the left, Equities on the right) */
     .bld-sym2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 14px 20px; align-items: start; margin-top: 10px; }
     .bld-sym2 > div { min-width: 0; overflow-x: auto; }
+    .bld-sym2 .bld-t td, .bld-sym2 .bld-t th { white-space: nowrap; }   /* every pick row on one line, whatever the asset class; the block scrolls sideways if it must */
     /* same column widths in every grid so Target / Picks / Portfolio / Gap line up from one grid to the next */
     .bld-cmp3 table.bld-exp { table-layout: fixed; width: 100%; }
     .bld-cmp3 .bld-exp th:nth-child(2), .bld-cmp3 .bld-exp td:nth-child(2) { width: 86px; }
@@ -225,7 +241,7 @@
        the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
        columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
     @media (min-width: 1001px) {
-      .bld-wrap { display: grid; grid-template-columns: 255px minmax(437px, .71fr) minmax(480px, 1.12fr); column-gap: 16px; row-gap: 0; align-items: start;
+      .bld-wrap { display: grid; grid-template-columns: 875px minmax(760px, 1fr); column-gap: 16px; row-gap: 0; align-items: start;
         /* rows: problems, banner, buttons, left-column cards, disclaimer. The tall Names/Picks cards span rows 3-4; the 1fr
            row 4 soaks up their extra height so the buttons' row stays short and Account sits right under the buttons. */
         grid-template-rows: auto auto auto 1fr auto; }
@@ -235,9 +251,8 @@
       #view-build { display: contents; }
       #view-build > #runBanner { grid-column: 1 / -1; grid-row: 2; }
       #view-build > .bld-grid { display: contents; }
-      .bld-grid > :nth-child(1) { grid-column: 1; grid-row: 4; }
-      .bld-grid > .bld-side { grid-column: 2; grid-row: 3 / span 2; }
-      .bld-grid > :nth-child(3) { grid-column: 3; grid-row: 3 / span 2; }
+      .bld-grid > .bld-left { grid-column: 1; grid-row: 3 / span 2; }
+      .bld-grid > .bld-right { grid-column: 2; grid-row: 3 / span 2; }
       #view-build > .bld-below { grid-column: 1 / -1; grid-row: 5; }
       #view-list, #view-detail { grid-column: 1 / -1; grid-row: 4; }
     }
@@ -277,10 +292,27 @@
     .bld-viz .vtrack2 .vhold { position: absolute; left: 0; bottom: 0; height: 4px; border-radius: 2px; background: #9ca3af; }
     .bld-viz .vtrack2 .vtick { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-1); }
     /* 2026-10-29, user: tighter top margin and control lines in the Names column and the comparison column */
-    .bld-card.bld-side, .bld-card.bld-cmpcard { padding-top: 6px; padding-bottom: 8px; }
-    .bld-side .bld-line, .bld-cmpcard .bld-line { margin: 3px 0; }
-    .bld-cmpcard > .bld-line { margin-bottom: 12px; }
+    .bld-card.bld-side, .bld-card.bld-picks, .bld-card.bld-chartbox { padding-top: 6px; padding-bottom: 8px; }
+    .bld-side .bld-line, .bld-picks .bld-line, .bld-chartbox .bld-line { margin: 3px 0; }
     .bld-side > .bld-line + .bld-side-scroll { margin-top: 12px; }
+    /* tight spacing between panels everywhere (2026-11-16, user) */
+    .bld-card, .bld-acct { margin-bottom: 6px; }
+    .bld-grid { gap: 6px; }
+    .bld-wrap { column-gap: 6px; }
+    .bld-left { gap: 6px; }
+    .bld-toprow { gap: 6px; }
+    .bld-pair { gap: 0 6px; }
+    .bld-pair > .bld-card, .bld-toprow .bld-acct, .bld-toprow .bld-card { margin-bottom: 6px; }
+    /* column 1: the stacked panels are spaced only by the 6px gap (their own bottom margins added to it) */
+    .bld-left > .bld-card, .bld-left > .bld-toprow, .bld-toprow > .bld-acct, .bld-toprow > .bld-card { margin-bottom: 0; }
+    /* and the space between the panels and the browser edges */
+    body.builder-page main.bld-wrap { padding: 2px 4px 4px; margin-top: 0; }
+    /* every panel can be collapsed to its title (button at the top right of the panel; remembered in this browser) */
+    .bld-card, .bld-acct { position: relative; }
+    .bld-cx { position: absolute; top: 3px; right: 6px; z-index: 5; border: 0; background: transparent; cursor: pointer; color: var(--text-2); font-size: 12px; line-height: 1; }
+    body.builder-page .bld-cx { height: 16px; width: 18px; padding: 0; box-shadow: none; }
+    .cx-collapsed > *:not(.bld-cx) { display: none !important; }
+    .cx-collapsed::before { content: attr(data-ctitle); display: block; font-size: 12px; font-weight: 700; color: var(--text-2); padding: 2px 24px 2px 2px; letter-spacing: .03em; }
 </style>
 </head>
 <body class="builder-page">
@@ -300,19 +332,21 @@
     <!-- VIEW 1: BUILD NEW -->
     <section id="view-build">
       <div class="bld-grid">
-        <!-- column 1: account (step 0) and setup -->
-        <div>
+        <!-- left column: [account] [lists to choose from] over the filtered names -->
+        <div class="bld-left">
+        <div class="bld-toprow">
           <div class="bld-acct">
-            <span><b>Account</b></span>
+            <div class="bld-acol"><span><b>Account</b></span>
             <select id="acctSel" aria-label="account"></select>
             <span class="bld-pill" id="acctType"></span>
             <span class="bld-muted" id="acctSnap"></span>
-            <span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span>
-            <span class="bld-line" style="gap:6px"><b>Plan</b><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
+</div>
+            <div class="bld-acol">
+            <span class="bld-line" style="gap:6px;flex-wrap:wrap"><b style="min-width:0">Plan</b><span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
             <div class="bld-muted" id="planMsg" hidden></div>
+            </div>
           </div>
-          <div class="bld-card"><h3>Lists to choose from</h3>
-            <div class="bld-muted" style="margin-bottom:4px">Tick lists to see their names in the middle column, then tick the ones you want.</div>
+          <div class="bld-card"><h3 style="border-bottom:0;padding-bottom:0;margin-bottom:6px">Lists to choose from</h3>
             <div id="srcBox" class="bld-chks"></div>
           </div>
         </div>
@@ -340,16 +374,6 @@
           </div>
           <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th>Lists</th><th>Asset class</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
         </aside>
-
-        <!-- column 3: one comparison, factor names down the left, Your picks and My portfolio side by side -->
-        <div>
-          <div class="bld-card bld-cmpcard">
-            <details id="cmpPanel" open hidden>
-              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
-              <div id="cmpTable"></div>
-            </details>
-            <div id="symTable"></div>
-          </div>
           <!-- 2026-11-14: To do list from the ACTIVE plan (sells for classes above plan, planned buys, what is left) -->
           <div class="bld-card" id="todoCard">
             <div class="bld-line" style="justify-content:space-between"><h3 style="margin:0">To do <span class="bld-muted" id="tdSub" style="font-weight:400"></span></h3></div>
@@ -359,10 +383,23 @@
               <div class="td-h">Buy <span class="bld-muted">your planned picks; counts only when Actionable says Buy</span></div>
               <div style="overflow-x:auto"><table class="bld-t" id="tdBuys"></table></div>
               <div class="td-h">What is left <span class="bld-muted">this account only</span></div>
-              <div id="tdLeft" style="display:flex;flex-direction:column;gap:8px"></div>
+              <div id="tdLeft" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px"></div>
               <div class="td-msg" id="tdMsg"></div>
               <ul id="tdNotes" style="margin:6px 0 0;padding-left:18px"></ul>
             </div>
+          </div>
+        </div>
+
+        <!-- right column: one comparison, factor names down the left, Your picks and My portfolio side by side -->
+        <div class="bld-right">
+          <div class="bld-pair">
+          <div class="bld-card bld-picks"><div id="symTable"></div></div>
+          <div class="bld-card bld-chartbox">
+            <details id="cmpPanel" open hidden>
+              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
+              <div id="cmpTable"></div>
+            </details>
+          </div>
           </div>
         </div>
       </div>
@@ -375,7 +412,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261115f"></script>
+  <script src="/static/builder.js?v=20261116s"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

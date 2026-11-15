@@ -420,9 +420,9 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
         r["state"] = line_state(r, value)
     notes = []
     for r in rows:
-        if r["kind"] != "cls" and r["left"] < -1:
+        if r["kind"] != "cls" and r["left"] < -tolerance(value):      # inside the on-plan band (rounding of a limit taken from holdings) is not "over"
             notes.append("%s is $%s over its plan." % (r["label"], format(int(-r["left"]), ",")))
-        elif r["kind"] == "cls" and r["key"] not in ("Cash",) and r["left"] < -MIN_NEED and r["used"] > 0:
+        elif r["kind"] == "cls" and r["key"] not in ("Cash",) and r["left"] < -max(MIN_NEED, tolerance(value)) and r["used"] > 0:
             notes.append("%s is $%s over its plan." % (r["label"], format(int(-r["left"]), ",")))
     if now["cls"].get("Unmapped", 0) > MIN_NEED:
         notes.append("$%s of holdings have no asset class, so no plan line covers them." % format(int(now["cls"]["Unmapped"]), ","))

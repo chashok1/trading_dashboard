@@ -190,3 +190,13 @@ def test_quad_favored_limits_count_money_in_bull_names():
     # a planned buy of a Q1-bull name is counted against the Q1 limit and the tightest limit says so
     t = pc.todo(plan, {"value": 100000.0, "cash": 60000.0, "holdings": hold}, [{"id": 1, "side": "BUY", "members": ["A"], "amount": 5000, "ticked": False}], {}, info, {}, lambda c: "neutral")
     assert t["buys"][0]["max_add"] == 0 and t["buys"][0]["binding"] in ("Q1 favored (Bull)", "Equities")
+
+
+def test_rounding_dollars_over_a_limit_taken_from_holdings_is_not_a_warning_note():
+    info = {"A": {"bucket": "Equities", "sector": "Utilities", "beta": 1.0, "styles": []}}
+    hold = {"A": {"value": 11010.0, "bucket": "Equities"}}
+    plan = {"cls": {"Equities": 100}, "sector": {"Utilities": 11006.0 / 451063.5 * 100}}
+    t = pc.todo(plan, {"value": 451063.5, "cash": 0.0, "holdings": hold}, [], {}, info, {}, lambda c: "neutral")
+    assert not any("over its plan" in n for n in t["notes"])
+    big = pc.todo({"cls": {"Equities": 100}, "sector": {"Utilities": 0.5}}, {"value": 451063.5, "cash": 0.0, "holdings": hold}, [], {}, info, {}, lambda c: "neutral")
+    assert any("over its plan" in n for n in big["notes"])
