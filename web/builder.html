@@ -237,6 +237,17 @@
     /* the symbol table below: two columns (every class but Equities on the left, Equities on the right) */
     .bld-sym2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 14px 20px; align-items: start; margin-top: 10px; }
     .bld-sym2 > div { min-width: 0; overflow-x: auto; }
+    /* every asset class table (Fixed Income, Currency, Equities...) uses the same column positions, so the columns line up across the two blocks */
+    .bld-sym2 table.bld-symt { table-layout: fixed; width: 100%; min-width: 640px; }
+    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 92px; overflow: hidden; text-overflow: ellipsis; }
+    .bld-symt th:nth-child(2), .bld-symt td:nth-child(2) { width: 200px; }
+    .bld-symt th:nth-child(3), .bld-symt td:nth-child(3) { width: 84px; }
+    .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { width: 58px; }
+    .bld-symt th:nth-child(5), .bld-symt td:nth-child(5) { width: 130px; }
+    .bld-symt th:nth-child(6), .bld-symt td:nth-child(6) { width: 76px; }
+    /* input boxes start at the same left edge in every row and every block: the Picks and Buy $ cells are left-aligned */
+    .bld-symt th:nth-child(2), .bld-symt td:nth-child(2), .bld-symt th:nth-child(3), .bld-symt td:nth-child(3) { text-align: left; }
+    .bld-symt td:nth-child(2) input, .bld-symt td:nth-child(3) input { box-sizing: border-box; }
     .bld-sym2 .bld-t td, .bld-sym2 .bld-t th { white-space: nowrap; }   /* every pick row on one line, whatever the asset class; the block scrolls sideways if it must */
     /* same column widths in every grid so Target / Picks / Portfolio / Gap line up from one grid to the next */
     .bld-cmp3 table.bld-exp { table-layout: fixed; width: 100%; }
@@ -431,7 +442,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261117c"></script>
+  <script src="/static/builder.js?v=20261117i"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

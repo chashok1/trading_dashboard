@@ -599,7 +599,7 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Portfolio</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
@@ -611,8 +611,8 @@
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
-          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"> % ` +
-            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : '<span class="bld-muted">not buyable</span>'} <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
+          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"> % ` +
+            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : '<span class="bld-muted">not buyable</span>'}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
@@ -626,8 +626,9 @@
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
     }
-    const tbl = rowsHtml => rowsHtml ? head + rowsHtml + '</tbody></table>' : '';
-    return `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right)}</div></div>`;
+    // 2026-11-17, user: the column names show once, on the left block; the Equities block drops its own header row (it keeps one when it is the only block)
+    const tbl = (rowsHtml, noHead) => rowsHtml ? (noHead ? head.replace(/<thead>.*<\/thead>/, '') : head) + rowsHtml + '</tbody></table>' : '';
+    return `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
   }
 
   // ---------------------------------------------------------------- step 2: your picks, actual mix, factor mix
