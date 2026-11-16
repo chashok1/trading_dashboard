@@ -949,3 +949,11 @@ Every term is symmetric ±3 and counts the same: Risk Range position (×3), RSI,
 
 ## 2026-11-10 — CALL Neutral no longer drives Sell All
 A Neutral CALL (weight 0) on a held name does nothing by itself. It only gives REMOVE when the call fell from a positive weight to Neutral inside the 30-day window. Bearish (weight below 0) still always gives REMOVE. Code: `etl/derive_outlook_action.py::_action_call_standing`.
+
+## Account columns (Held $ / Max $ / Bucket $ / Planned $) and "+ unheld" (2026-11-20)
+With an account picked in the toolbar's **Acct** box, four columns appear after Plan (hidden otherwise; also toggleable in the column manager): **Held $** (what the account holds),
+**Max $** (the most this one stock can still be bought: its amount rule less what is held; ETFs count as equities, no per-stock rule = dash), **Bucket $** (room left in cash / asset class / sector /
+style / beta after the planned buys; a $0 shows which bucket is full) and **Planned $** (the active plan's buy still to do: saved amount less shares bought since it was saved). Data:
+`GET /api/builder/acct-room?account=<short_name>&date=` -> `etl/plan_store.py::acct_room_page` (same maths as the Builder, `etl/plan_check.py::room_for`); rows = held, planned or Buy-call stocks.
+Information only: never changes the Final Call. The Plan column shows only the picked account's tags (`_planItems`). The **+ unheld** checkbox (`state.filters.show_unheld`, default on) keeps stocks
+that NO account holds visible while an account is picked (buy candidates); stocks held only in another account are still hidden. JS: `_fetchAcctRoom`, `_acctCellHtml` in `web/actionable.js`.

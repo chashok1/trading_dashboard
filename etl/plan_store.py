@@ -280,6 +280,69 @@ def plan_page(session, d: date, account: str) -> dict:
 _PC_CACHE: dict = {}
 
 
+def acct_room_page(session, d: date, account: str) -> dict:
+    """Actionable screen, ONE account: per symbol what that account holds, the most this one stock can still be bought (Max $), the room left in
+    the buckets it falls in (Bucket $), and the planned buy still to do. Uses the account's ACTIVE plan; information only. Same maths as the Builder
+    (plan_check.room_for). Rows: stocks held, planned, or with a Buy call today. {state, rows {sym: {...}}, value, cash, spendable}."""
+    problems: list = []
+    row = get_plan_row(session, account)
+    snap = snapshot(session, d, account, problems)
+    holdings = snap["holdings"]
+    value = float(snap["value"] or 0.0)
+    out = {"account": account, "state": "active" if row["active"] else "none", "rows": {}, "problems": problems, "value": value, "cash": snap["cash"]}
+    for sym, h in holdings.items():
+        v = float(h.get("value") or 0.0)
+        if v > 0:
+            out["rows"][sym] = {"held": v, "held_pct": (v / value * 100.0) if value else None}
+    if not row["active"]:
+        return out
+    plan = pc.clean_plan(row["active"])
+    try:
+        all_calls = {r[0]: r[1] for r in session.execute(text("SELECT tos_symbol, final_code FROM drv_actionable WHERE as_of_date = :d"), {"d": d}).fetchall()}
+    except Exception as e:      # table missing on a fresh DB
+        log.warning("acct_room_page: %s", e)
+        session.rollback()
+        all_calls = {}
+    buy_syms = [s for s, c in all_calls.items() if final_call_side(c) == "buy"]
+    picks = [p for p in list_picks(session, account) if p["side"] == "BUY"]
+    # planned buy still to do = the saved amount less what has been bought since the plan was saved (shares added x price)
+    planned = {}
+    for pk in picks:
+        for i, m in enumerate(pk["members"]):
+            h = holdings.get(m) or {}
+            base = plan["pick_base"].get(m)
+            bought = max(0.0, float(h.get("qty") or 0.0) - base) * float(h.get("price") or 0.0) if base is not None else 0.0
+            planned[m] = {"amount": max(0.0, float(pk["amount"] or 0.0) - bought), "group": len(pk["members"]) > 1, "first": i == 0}
+    syms = sorted(set(holdings) | set(buy_syms) | set(planned))
+    info = bd.name_info(session, d, syms, problems) if syms else {}
+    cands = [{"sym": s, "bucket": (holdings.get(s) or {}).get("bucket"), "amt": (planned[s]["amount"] if s in planned and (not planned[s]["group"] or planned[s]["first"]) else 0.0), "pick": False}
+             for s in syms]
+    room = pc.room_for(plan, {"value": value, "cash": snap["cash"], "holdings": holdings}, cands, info, style_groups(),
+                       sizes_for(session, d, account, syms), None, account_default_size(session, d, account))
+    summ = pc.cash_summary(plan, {"value": value, "cash": snap["cash"], "holdings": holdings}, info, style_groups())
+    for s in syms:
+        r = room.get(s)
+        if r is None:
+            continue
+        o = out["rows"].setdefault(s, {})
+        o.update({"stock": r["stock"], "bucket": r["bucket"], "max": r["max"], "binding": r["binding"], "bucket_binding": r["bucket_binding"]})
+        if s in planned:
+            o["planned"] = planned[s]["amount"]
+            o["planned_group"] = planned[s]["group"]
+    # planned SELLS: each class above its plan is sold by the amount saved in the plan (default: the excess), split over its holdings in proportion to their value
+    now = pc.now_lines(holdings, info, snap["cash"], style_groups())
+    for n in pc.sell_needs(plan, now, value):
+        vals = {sym: float(h.get("value") or 0.0) for sym, h in holdings.items() if h.get("bucket") == n["cls"] and float(h.get("value") or 0.0) > 0}
+        amt = plan["sell"].get(n["cls"])
+        amt = n["need"] if amt is None else min(amt, sum(vals.values()))
+        for sym, v in pc.alloc_sell(vals, amt, plan["sell_hold"]).items():
+            if v > 0:
+                out["rows"].setdefault(sym, {})["planned_sell"] = v
+    out["spendable"] = summ["spendable"]
+    out["sells"] = summ["sells"]
+    return out
+
+
 def plan_check_page(session, d: date) -> dict:
     """For the Actionable screen: per symbol, what each ACTIVE plan says about it (information only, never changes a Final
     Call). Per account with an active plan: its sells (holdings in classes above plan), its planned picks / groups, and for

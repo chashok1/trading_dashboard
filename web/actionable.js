@@ -12,6 +12,10 @@ const TOGGLEABLE_COLS = [
   { id: 'pvv',       label: 'PVV' },
   { id: 'live',      label: 'LIVE' },
   { id: 'plan',      label: 'Plan' },
+  { id: 'apl',       label: 'Planned $ (acct)' },
+  { id: 'ah',        label: 'Held $ (acct)' },
+  { id: 'amax',      label: 'Max $ (acct)' },
+  { id: 'abkt',      label: 'Bucket $ (acct)' },
   { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
   { id: 'iv',        label: 'IV' },
@@ -49,6 +53,7 @@ const state = {
     action: '',          // '' | REMOVE | REDUCE | INCREASE | ADD | HOLD
     source: '',
     account: '',
+    show_unheld: true,   // 2026-11-20: with an account picked, also show stocks no account holds (otherwise they are hidden)
     held_only: false,
     side: '',            // 2026-10-19: '' | 'long' | 'short' -- the picked Source's own side (see _srcSide)
     show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
@@ -1832,6 +1837,7 @@ async function loadActionable(opts) {
     await _fetchLiveData();
     _applyLiveToRows();
     await _fetchPlanData();       // 2026-11-14: My plan (Builder); own try/catch inside
+    await _fetchAcctRoom();       // 2026-11-20: the picked account's Held / Max / Bucket / Planned columns (empty without an account)
     _applyPlanToRows();
     // Expose monthly score map for market_bar.js tape chips
     window._macroScoreMap = Object.fromEntries(
@@ -2106,9 +2112,11 @@ function matchesBaseFilters(r) {
     if (state.filters.side && _srcSide(r, state.filters.source) !== state.filters.side) return false;
   }
   if (state.filters.account) {
-    if (!r.held_accounts) return false;
-    const accts = r.held_accounts.split(',').map(a => a.trim());
-    if (!accts.includes(state.filters.account)) return false;
+    const accts = r.held_accounts ? r.held_accounts.split(',').map(a => a.trim()) : [];
+    if (!accts.includes(state.filters.account)) {
+      // 2026-11-20, user: stocks no account holds yet stay visible (they are the buy candidates) unless the "+ unheld" box is cleared
+      if (!(state.filters.show_unheld && !r.held_accounts)) return false;
+    }
   }
   if (state.filters.held_only) {
     if (!r.held_today) return false;
@@ -2697,6 +2705,7 @@ function syncFilterUi() {
     _refreshToolbarTips();
   }
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
+  const su = $('showUnheld'); if (su) su.checked = f.show_unheld !== false;
   const showHidden = $('showHidden');
   if (showHidden) {
     // 2026-10-15, user: unselected (no strikethrough) while Trade / Trade2 / WL is on.
@@ -2769,7 +2778,7 @@ function _updateColFilterChip() {
 
 function clearAllFilters() {
   const f = state.filters;
-  f.action = ''; f.source = ''; f.side = ''; f.account = ''; f.held_only = false;
+  f.action = ''; f.source = ''; f.side = ''; f.account = ''; f.show_unheld = true; f.held_only = false;
   f.show_hidden = false; f.actionable_only = true; f.watch_only = false;
   f.symbol_search = ''; f.conviction = 'any';
   f.bull_prob_min = 0;
@@ -4111,6 +4120,68 @@ const _LIVE_TIER_IDX = { MUST: 0, CONSIDER: 1, BUYIDEA: 2, INFO: 3 };
 const _LIVE_TIER_LABEL = { MUST: 'Do today', CONSIDER: 'Consider', BUYIDEA: 'Buy idea', INFO: 'Info only' };
 state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen: null };
 
+// 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Max $), the room left
+// in its buckets (Bucket $) and the planned buy still to do. Information only. Columns are hidden until an account is picked in the Acct box.
+state.acctRoom = { short: '', data: null };
+function _pickedAccountShort() {
+  if (!state.filters.account) return '';
+  const a = (state.allAccounts || []).find(x => x.account_number === state.filters.account);
+  return (a && a.short_name) || '';
+}
+// The account the plan columns and Plan labels are about: the one picked in Acct, else the only account that has an active plan (so they always appear together)
+function _roomAccountShort() {
+  return _pickedAccountShort();       // 2026-11-20, user: the plan columns belong to an account, so they show only when one is picked
+}
+async function _fetchAcctRoom() {
+  const sn = _roomAccountShort();
+  state.acctRoom = { short: sn, data: null };
+  if (sn) {
+    try { state.acctRoom.data = await fetchJson('/api/builder/acct-room?account=' + encodeURIComponent(sn) + (state.date ? '&date=' + encodeURIComponent(state.date) : '')); }
+    catch (e) { console.warn('account room unavailable:', e); }
+  }
+  const rows = (state.acctRoom.data && state.acctRoom.data.rows) || {};
+  for (const r of (state.allRows || [])) {
+    const x = rows[r.tos_symbol] || {};
+    r._a_held = x.held != null ? x.held : -1; r._a_max = x.stock != null ? x.stock : -1; r._a_bkt = x.bucket != null ? x.bucket : -1; r._a_plan = x.planned_sell > 0 ? -x.planned_sell : (x.planned != null ? x.planned : 0);
+  }
+  _applyAcctColsVisibility();
+  try { _syncTriggerSourcePills(); } catch (e) { /* chips are optional */ }
+}
+function _applyAcctColsVisibility() {
+  let st = document.getElementById('acctColsStyle');
+  if (!st) { st = document.createElement('style'); st.id = 'acctColsStyle'; document.head.appendChild(st); }
+  st.textContent = state.acctRoom.short ? '' : '[data-col="plan"],[data-col="ah"],[data-col="amax"],[data-col="abkt"],[data-col="apl"]{display:none !important;}';
+  // the My plan chip belongs to an account too: hidden until one is picked (and its filter is dropped while hidden)
+  const chip = document.querySelector('[data-flag-pill="plan_only"]');
+  if (chip) chip.style.display = state.acctRoom.short ? '' : 'none';
+  if (!state.acctRoom.short && state.filters.plan_only) { state.filters.plan_only = false; if (chip && chip.classList) chip.classList.remove('active'); }
+}
+function _acctWhy(b) { return b === 'Cash to spend' ? 'no cash' : (b === "The stock's own Max" ? 'own max' : String(b || '').replace(/ favored \(Bull\)/, '') + ' full'); }
+function _acctCellHtml(r, kind) {
+  const d = state.acctRoom && state.acctRoom.data;
+  if (!d) return '<span style="color:#9ca3af">-</span>';
+  const x = (d.rows || {})[r.tos_symbol];
+  const dash = '<span style="color:#9ca3af">-</span>';
+  if (!x) return dash;
+  if (kind === 'ah') return x.held ? '<span title="' + escapeHtml(_planUsd(x.held) + ' held in this account' + (x.held_pct != null ? ' (' + x.held_pct.toFixed(1) + '% of the account)' : '')) + '">' + _planUsd(x.held) + '</span>' : dash;
+  if (d.state === 'none') return dash;
+  if (kind === 'amax') {
+    if (x.stock == null) return dash;
+    return x.stock > 0 ? '<span title="Most you can still buy of this one stock in this account">' + _planUsd(x.stock) + '</span>' : '<span style="color:#b45309" title="This stock is at its own Max in this account">$0</span> <span style="color:#9ca3af;font-size:9px">at max</span>';
+  }
+  if (kind === 'abkt') {
+    if (x.bucket == null) return dash;
+    const tip = escapeHtml('Room left in its buckets: ' + _planUsd(x.bucket) + '. Tightest: ' + (x.bucket_binding || '-') + '.');
+    return x.bucket > 0 ? '<span title="' + tip + '">' + _planUsd(x.bucket) + '</span>' : '<span style="color:#b45309" title="' + tip + '">$0</span> <span style="color:#9ca3af;font-size:9px">' + escapeHtml(_acctWhy(x.bucket_binding)) + '</span>';
+  }
+  if (kind === 'apl') {
+    if (x.planned_sell > 0) return '<span style="color:#9e3636" title="The plan sells this much of this stock (its share of the sale planned for its asset class)">Sell ' + _planUsd(x.planned_sell) + '</span>';
+    if (x.planned != null && x.planned > 0) return '<span style="color:#2f6b45" title="Planned buy still to do in this account\'s active plan' + (x.planned_group ? ' (a buy-one-of group)' : '') + '">Buy ' + _planUsd(x.planned) + '</span>';
+    return dash;
+  }
+  return dash;
+}
+
 // 2026-11-14: My plan (Builder). Per symbol, what each account's ACTIVE plan says: a planned pick / buy-one-of group, a sell (its class
 // is above the plan), or a Buy call that would be over plan or out of cash there. Information only: never changes the Final Call.
 state.plan = { rows: {}, accounts: [] };
@@ -4125,23 +4196,26 @@ async function _fetchPlanData() {
   try { _syncTriggerSourcePills(); } catch (e) { console.warn('plan chip:', e); }
 }
 // The Plan column's value for sort + the header filter: the most important thing any active plan says about the stock.
-const _PLAN_RANK = { 'Over plan': 5, 'Low cash': 4, 'Sell': 3, 'Buy one of': 2, 'Pick': 1, '': 0 };
+const _PLAN_RANK = { 'Over plan': 5, 'Low cash': 4, 'Sell': 3, 'Buy one of': 2, 'Buy': 1, '': 0 };
 function _planStateFor(sym) {
   const it = (state.plan && state.plan.rows[sym]) || [];
   if (!it.length) return '';
-  if (it.some(i => i.kind === 'buy' && i.over && i.over.length)) return 'Over plan';
-  if (it.some(i => i.kind === 'buy')) return 'Low cash';
   if (it.some(i => i.kind === 'sell')) return 'Sell';
   if (it.some(i => i.kind === 'group')) return 'Buy one of';
-  return 'Pick';
+  return 'Buy';
 }
 function _applyPlanToRows() {
   for (const r of (state.allRows || [])) { r._plan_state = _planStateFor(r.tos_symbol); r._plan_rank = _PLAN_RANK[r._plan_state] || 0; }
 }
-function _planItems(sym) { return (state.plan && state.plan.rows[sym]) || []; }
+function _planItems(sym) {
+  const all = (state.plan && state.plan.rows[sym]) || [];
+  const sn = _roomAccountShort();
+  return sn ? all.filter(i => i.account === sn) : all;      // 2026-11-20: with an account picked, only its own plan tags
+}
 function _planSet() {
+  // 2026-11-20, user: the My plan count and filter follow the account (only that account's plan items are counted)
   const out = new Set();
-  Object.keys((state.plan && state.plan.rows) || {}).forEach(s => { if (state.plan.rows[s].some(i => i.kind !== 'buy')) out.add(s); });
+  Object.keys((state.plan && state.plan.rows) || {}).forEach(s => { if (_planItems(s).some(i => i.kind !== 'buy')) out.add(s); });
   return out;
 }
 function _planUsd(n) { return '$' + (n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n)); }
@@ -4150,21 +4224,19 @@ function _planPillsHtml(r) {
   if (!items.length) return '';
   const tip = lines => escapeHtml(lines.filter(Boolean).map(l => '\u2022 ' + l).join('\n')).replace(/\n/g, '&#10;');
   const pill = (bg, fg, text, lines) => `<div style="margin-top:2px;"><span style="display:inline-block;padding:0 6px;border-radius:9px;font-size:10px;font-weight:600;background:${bg};color:${fg};white-space:nowrap;" title="${tip(lines)}">${escapeHtml(text)}</span></div>`;
+  // 2026-11-20, user: the account name only when no account is picked (with one picked, every tag is about it); no "information only" line
+  const who = _roomAccountShort();
+  const inAcct = i => (who ? '' : ' in ' + i.account);
+  const pre = i => (who ? '' : i.account + ' plan: ');
   return items.map(i => {
-    if (i.kind === 'buy') {
-      if (i.over && i.over.length) {
-        const o = i.over.slice().sort((a, b) => b.over - a.over)[0];
-        return pill('#fdf3e3', '#b45309', '\u26a0 Over plan in ' + i.account, [i.account + ' plan: ' + o.line + ' has no room left (over by ' + _planUsd(o.over) + ')', 'Most that fits: ' + _planUsd(i.fits), 'Information only. The Final Call does not change.']);
-      }
-      return pill('#fdf3e3', '#b45309', 'Low cash in ' + i.account, [i.account + ' plan: no cash left to spend above its Cash % and cash floor', 'Information only. The Final Call does not change.']);
-    }
+    if (i.kind === 'buy') return '';      // 2026-11-20, user: the Plan column shows only what the PLAN says. Labels that came from today's Buy calls are gone.
     if (i.kind === 'sell') {
-      return pill('#f4e6e6', '#9e3636', i.all ? 'Plan: sell all in ' + i.account : 'Plan: sell in ' + i.account,
-        [i.account + ' plan: ' + i.cls + (i.all ? ' is planned at 0%' : ' is over its plan by about ' + _planUsd(i.need)), 'You hold ' + _planUsd(i.value) + ' of ' + r.tos_symbol, 'Information only. The Final Call does not change.']);
+      return pill('#f4e6e6', '#9e3636', (i.all ? 'Sell all' : 'Sell') + inAcct(i),
+        [pre(i) + i.cls + (i.all ? ' is planned at 0%' : ' is over its plan by about ' + _planUsd(i.need)), 'You hold ' + _planUsd(i.value) + ' of ' + r.tos_symbol]);
     }
     const grp = i.kind === 'group';
-    return pill('#e3ebfb', '#1d4ed8', grp ? 'Plan: ' + i.account + ' one of ' + i.members.join(' or ') : 'Plan: ' + i.account + ' pick',
-      [i.account + ' plan: ' + (grp ? 'buy any one of ' + i.members.join(', ') : 'planned buy'), 'Amount: ' + _planUsd(i.amount || 0), 'Information only. The Final Call does not change.']);
+    return pill('#e3ebfb', '#1d4ed8', grp ? 'Buy one of ' + i.members.join(' or ') + inAcct(i) : 'Buy' + inAcct(i),
+      [pre(i) + (grp ? 'buy any one of ' + i.members.join(', ') : 'planned buy'), 'Amount: ' + _planUsd(i.amount || 0)]);
   }).join('');
 }
 
@@ -5389,6 +5461,10 @@ function _buildRowEl(r) {
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="live" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_liveCellHtml(r)}</td>
       <td data-col="plan" style="padding:4px 6px; text-align:left;">${_planPillsHtml(r)}</td>
+      <td data-col="apl" class="num" style="padding:4px 6px; white-space:nowrap;">${_acctCellHtml(r, 'apl')}</td>
+      <td data-col="ah" class="num" style="padding:4px 6px; white-space:nowrap;">${_acctCellHtml(r, 'ah')}</td>
+      <td data-col="amax" class="num" style="padding:4px 6px; white-space:nowrap;">${_acctCellHtml(r, 'amax')}</td>
+      <td data-col="abkt" class="num" style="padding:4px 6px; white-space:nowrap;">${_acctCellHtml(r, 'abkt')}</td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
         <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}</div>
@@ -7284,11 +7360,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyClientFilter();
     });
   }
-  $('accountFilter').addEventListener('change', (e) => {
+  $('accountFilter').addEventListener('change', async (e) => {
     // 2026-10-22, user: account is applied on top of the existing filters (no toggle reset).
     state.filters.account = e.target.value;
+    await _fetchAcctRoom();           // 2026-11-20: the account's Held / Max / Bucket / Planned columns
     applyClientFilter();
   });
+  if ($('showUnheld')) $('showUnheld').addEventListener('change', (e) => { state.filters.show_unheld = e.target.checked; applyClientFilter(); });
   $('heldOnly').addEventListener('click', () => {
     state.filters.held_only = !state.filters.held_only;
     $('heldOnly').classList.toggle('active', state.filters.held_only);
@@ -7306,6 +7384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       f.show_hidden = !f.show_hidden;
     }
+    if (f.show_hidden) f.actionable_only = false;     // 2026-11-20, user: Hidden does not switch Actionable on (it would drop the rows Hidden is meant to show)
     syncFilterUi();
     // H column (U4) only renders when show_hidden is on.
     applyColumnVisibility();

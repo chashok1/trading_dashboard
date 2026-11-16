@@ -230,6 +230,14 @@ def get_todo(account: str = Query(...), date: Optional[str] = Query(None)):
     return out
 
 
+@router.get("/api/builder/acct-room")
+def get_acct_room(account: str = Query(...), date: Optional[str] = Query(None)):
+    """Actionable screen, one account: held $, Max $, Bucket $ and planned buy per symbol (see plan_store.acct_room_page)."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        return ps.acct_room_page(s, d, account)
+
+
 @router.get("/api/builder/plan-check")
 def get_plan_check(date: Optional[str] = Query(None)):
     """Actionable screen: what each account's ACTIVE plan says about each symbol (pick, group, sell, over plan). Reads only."""
