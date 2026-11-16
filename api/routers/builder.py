@@ -103,6 +103,8 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 res["room"] = pc.room_for(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
                                           cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), buyers)
                 res["room_calls"] = {k: calls.get(k) for k in syms if calls.get(k)}
+                res["room_meta"] = pc.cash_summary(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
+                                                   info, ps.style_groups())
             except Exception as e:      # never break the preview over the Max $ column
                 res["room"] = {}
                 res["problems"].append("Max $ could not be worked out: %s" % e)

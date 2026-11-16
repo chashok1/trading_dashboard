@@ -693,7 +693,10 @@
     }
     // 2026-11-17, user: the column names show once, on the left block; the Equities block drops its own header row (it keeps one when it is the only block)
     const tbl = (rowsHtml, noHead) => rowsHtml ? (noHead ? head.replace(/<thead>.*<\/thead>/, '') : head) + rowsHtml + '</tbody></table>' : '';
-    return `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
+    // 2026-11-17, user: one line saying where the Max $ money comes from (real cash vs money from selling over-target classes)
+    const rmeta = res.room_meta;
+    const money = rmeta ? `<div class="bld-muted bld-money" title="Max $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
+    return money + `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
   }
 
   // ---------------------------------------------------------------- step 2: your picks, actual mix, factor mix

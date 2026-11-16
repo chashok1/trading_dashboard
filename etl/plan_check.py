@@ -431,6 +431,17 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             "now": now, "now_after": now_after}
 
 
+def cash_summary(plan: dict, account: dict, info: dict, style_groups: Optional[dict] = None) -> dict:
+    """The money behind Max $: real cash, sale money assumed from asset classes over their target, and what may be spent
+    (cash floor and the plan's Cash % applied). Dollars, one set per account."""
+    p = clean_plan(plan)
+    value = float(account.get("value") or 0.0)
+    cash = float(account.get("cash") or 0.0)
+    now = now_lines(account.get("holdings") or {}, info, cash, style_groups or {})
+    sells = sum(n["need"] for n in sell_needs(p, now, value))
+    return {"cash": cash, "sells": sells, "keep": p["cash_keep"], "spendable": cash_to_spend(cash, sells, value, p)}
+
+
 def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: Optional[dict] = None,
              caps: Optional[dict] = None, buyers: Optional[set] = None) -> dict:
     """Max $ per stock for the Builder picks grids (2026-11-17). WARN-ONLY: nothing here blocks anything.
@@ -456,8 +467,9 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
     now = now_lines(holdings, info, cash, sg)
     # 2026-11-17, user: count selling whatever sits above its asset class target as cash you can spend (class level only: which stocks
     # would be sold is not known, so sector / style / beta room is left as it is). Cash floor and the plan's Cash % still apply.
-    sell_cash = sum(n["need"] for n in sell_needs(p, now, value))
-    cash0 = cash_to_spend(cash, sell_cash, value, p)
+    summ = cash_summary(plan, account, info, sg)
+    sell_cash = summ["sells"]
+    cash0 = summ["spendable"]
     used = {"cls": {}, "sector": {}, "style": {}, "beta": {}, "quad": {}}
     lines = {}
 
