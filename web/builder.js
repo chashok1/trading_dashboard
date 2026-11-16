@@ -720,7 +720,13 @@
     const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Max $ = the most you can still buy of this ONE stock: its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Max $</th><th class="n bld-tip" data-tip="Bucket $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The starting Buy $ is the smaller of Max $ and Bucket $. Information only: nothing stops you going over.">Bucket $</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
-      const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
+      const mine = rows.filter(r => r.bucket === b).sort((x, y) => {
+        // 2026-11-19, user: stocks you hold come first (biggest first); a stock you just ticked stays at the bottom, in the order ticked
+        const xh = x.hold > 0, yh = y.hold > 0;
+        if (xh !== yh) return xh ? -1 : 1;
+        if (xh) return y.hold - x.hold;
+        return S.picks.findIndex(q => q.sym === x.sym) - S.picks.findIndex(q => q.sym === y.sym);
+      });
       if (!mine.length) continue;      // 2026-11-18, user: a class shows in the picks grids only once something is held or picked in it (the Asset class grid lists them all)
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
