@@ -38,8 +38,11 @@ Charts and grids sit in one collapsible panel; each section collapses too (remem
 `plan_check.room_for` (pure, tests in `tests/test_plan_check.py`) works out, for every stock in the picks grids (held or picked), **Max $**: the most that
 still fits, counting every OTHER typed Buy $ (its own is taken back out): smallest room among cash to spend, class, sector, styles, beta, Quad and the
 stock's own Max rule; rounded down to $100, never below 0; `binding` names the tightest. WARN-ONLY: the Buy $ box turns red when it is over Max $, nothing is cut.
-A pick with no typed amount, no buy-one-of group and an Actionable **Buy** call gets `start` = what still fits after the picks before it (first come, first
+A pick with no typed amount and no buy-one-of group gets `start` unless it is already held (held names keep their Max $ but never take the starting money before a new pick) (a Buy call is NOT needed: this is planning; picks with a Buy call are served first) = what still fits after the picks before it (first come, first
 served in the order picked); the screen fills Buy $ with it (`autoAmt` in `web/builder.js`) until you type your own. Held names that are not picks only show Max $.
+Two numbers (2026-11-18): **Max $** (`stock`) = the most this ONE stock can still be bought (its amount rule `drv_account_size` less what is held; an Equities name -- ETFs count as equities --
+with no rule uses the account's usual rule, `plan_store.account_default_size`; other classes without a rule have none, shown as a dash) and **Bucket $** (`bucket`) = the room left in cash,
+class, sector, style, beta and Quad after the other planned buys. `max` = the smaller; the starting Buy $ is that smaller number. The names list "Can pick" column shows `max`.
 `POST /api/builder/preview` takes `plan` (the screen's limits and picks, auto amounts sent as 0) and returns `room` and `room_calls`. Typing a limit re-runs the preview.
 The Room column (last column of each chart grid) = limit in dollars minus held; the Covered column = held up to the limit, as a % of it.
 Not yet counted: sells ticked on the To do list (they free room in the To do list, not here). Class names in the picks grids are display-only short forms (`CLS_ABBR`).

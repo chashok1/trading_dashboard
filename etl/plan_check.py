@@ -443,20 +443,24 @@ def cash_summary(plan: dict, account: dict, info: dict, style_groups: Optional[d
 
 
 def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: Optional[dict] = None,
-             caps: Optional[dict] = None, buyers: Optional[set] = None) -> dict:
+             caps: Optional[dict] = None, buyers: Optional[set] = None, default_cap: Optional[dict] = None) -> dict:
     """Max $ per stock for the Builder picks grids (2026-11-17). WARN-ONLY: nothing here blocks anything.
 
     account = {value, cash, holdings {sym: {value, bucket}}}
     cands   = [{sym, bucket, amt, pick}] in the order made. amt = dollars already typed (0 = none), pick = ticked as a pick.
-    buyers  = symbols with a Buy call in Actionable (only these get a starting amount).
+    buyers  = symbols with a Buy call in Actionable (these are served first; a Buy call is NOT needed to get a starting amount).
 
-    Returns {sym: {max, binding, start}}:
-      max     = the most that still fits for this stock ALONE, counting every OTHER planned buy (rounded down to $100,
-                never below 0): the smallest room among cash to spend, class, sector, styles, beta, Quad and the stock's own Max.
-      binding = which of those is tightest.
+    default_cap = the account's usual per-stock rule {min, max, unit}: an Equities name (ETFs count as equities) with no rule of
+                its own uses it. Other classes without a rule have no per-stock limit.
+
+    Returns {sym: {stock, bucket, max, binding, bucket_binding, start}}:
+      stock   = the most this ONE stock can still be bought (its Max rule minus what is held; None = no per-stock rule).
+      bucket  = the room left in the buckets it falls in, counting every OTHER planned buy: smallest of cash to spend, class,
+                sector, styles, beta, Quad (rounded down to $100, never below 0).
+      max     = the smaller of the two; binding = which limit is tightest overall; bucket_binding = the tightest bucket.
       sells   = dollars of over-target asset classes assumed sold and counted as cash to spend (same for every stock).
-      start   = the default Buy $ for a pick with no amount: picks that have a Buy call are walked in the order made and each
-                takes what still fits after the ones before it (first come, first served). None for everything else.
+      start   = the default Buy $ for a pick with no amount: picks are walked (Buy-call stocks first, then the order made) and each
+                takes what still fits after the ones before it (first come, first served). None for stocks that are not picks and for stocks already held.
     """
     caps = caps or {}
     p = clean_plan(plan)
@@ -502,11 +506,13 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         _rm("beta", ln["beta"], p["beta"].get(ln["beta"]) if ln["beta"] else None, BETA_LABEL[ln["beta"]] if ln["beta"] else None)
         for k in ln["quad"]:
             _rm("quad", k, p["quad"].get(k), k + " favored (Bull)")
-        cap = caps.get(c["sym"]) or {}
-        if cap.get("max") is not None:
-            rooms.append(("The stock's own Max", float(cap["max"]) - float((holdings.get(c["sym"]) or {}).get("value") or 0.0)))
         tight = min(rooms, key=lambda x: x[1])
-        return max(0.0, float(int(max(tight[1], 0.0) // 100) * 100)), tight[0]
+        bucket = max(0.0, float(int(max(tight[1], 0.0) // 100) * 100))
+        cap = caps.get(c["sym"]) or ((default_cap or {}) if ln["cls"] == "Equities" else {})
+        stock = None
+        if cap.get("max") is not None:
+            stock = max(0.0, float(int(max(float(cap["max"]) - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 100) * 100))
+        return stock, bucket, tight[0]
 
     typed = {c["sym"]: float(c.get("amt") or 0.0) for c in cands}
     for c in cands:
@@ -518,14 +524,21 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         own = typed[c["sym"]]
         if own > 0:
             _touch(_ln(c), -own)
-        m, b = _room(c, cash0 - spent + own)
+        stk, bkt, bb = _room(c, cash0 - spent + own)
         if own > 0:
             _touch(_ln(c), own)
-        out[c["sym"]] = {"max": m, "binding": b, "start": None, "sells": round(sell_cash)}
+        m = bkt if stk is None else min(stk, bkt)
+        b = "The stock's own Max" if (stk is not None and stk < bkt) else bb
+        out[c["sym"]] = {"stock": stk, "bucket": bkt, "max": m, "binding": b, "bucket_binding": bb, "start": None, "sells": round(sell_cash)}
     left = cash0 - spent
-    for c in cands:                                   # starting amounts: Buy-call picks without an amount, first come first served
-        if c.get("pick") and typed[c["sym"]] <= 0 and buyers and c["sym"] in buyers:
-            m, _b = _room(c, left)
+    # starting amounts: every pick without an amount (this is planning: a Buy call is not needed today), first come first served.
+    # Stocks with a Buy call in Actionable now go first; the rest follow in the order picked.
+    order = [c for c in cands if buyers and c["sym"] in buyers] + [c for c in cands if not (buyers and c["sym"] in buyers)]
+    for c in order:
+        held_v = float((holdings.get(c["sym"]) or {}).get("value") or 0.0)
+        if c.get("pick") and typed[c["sym"]] <= 0 and held_v <= 0:      # stocks you already hold keep their Max $ but get no starting amount: new picks come first
+            stk, bkt, _bb = _room(c, left)
+            m = bkt if stk is None else min(stk, bkt)
             out[c["sym"]]["start"] = m
             if m > 0:
                 _touch(_ln(c), m)

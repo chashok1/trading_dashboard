@@ -222,12 +222,14 @@ def test_room_for_counts_other_typed_amounts_but_not_its_own():
     assert r["AAPL"]["max"] == 10000          # its own $4,000 is not counted against itself
 
 
-def test_room_for_starting_amounts_are_first_come_first_served_and_only_for_buy_calls():
+def test_room_for_starting_amounts_are_first_come_first_served_buy_calls_first():
     c = [{"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "AAPL", "bucket": "Equities", "amt": 0, "pick": True}]
     r = pc.room_for(_room_plan(), _acct(), c, INFO, buyers={"MSFT", "AAPL"})
     assert r["MSFT"]["start"] == 10000 and r["AAPL"]["start"] == 0
-    r2 = pc.room_for(_room_plan(), _acct(), c, INFO, buyers={"AAPL"})
-    assert r2["MSFT"]["start"] is None and r2["AAPL"]["start"] == 10000
+    r2 = pc.room_for(_room_plan(), _acct(), c, INFO, buyers={"AAPL"})            # AAPL has the Buy call, so it is served first
+    assert r2["AAPL"]["start"] == 10000 and r2["MSFT"]["start"] == 0
+    r3 = pc.room_for(_room_plan(), _acct(), c, INFO)                             # no Buy call at all: still planned, in the order picked
+    assert r3["MSFT"]["start"] == 10000 and r3["AAPL"]["start"] == 0
 
 
 def test_room_for_never_negative_and_is_warn_only():
@@ -243,3 +245,25 @@ def test_room_for_counts_selling_over_target_classes_as_cash():
     r = pc.room_for(plan, _acct(), c, info)
     assert r["AGG"]["max"] == 10000 and r["AGG"]["sells"] == 10000          # class room 10,000; cash 12,000 only because of the sale
     assert pc.room_for(_plan(Equities=40, **{"Fixed Income": 40, "Gold": 10}), _acct(), c, info)["AGG"]["sells"] == 0
+
+
+def test_room_for_held_stocks_do_not_take_the_starting_money_first():
+    plan = _room_plan()
+    info = INFO
+    c = [{"sym": "SPY", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}]
+    r = pc.room_for(plan, _acct(), c, info)           # SPY is held in _acct(), MSFT is new
+    assert r["SPY"]["start"] is None and r["MSFT"]["start"] == 10000
+
+
+def test_room_for_splits_stock_limit_from_bucket_room_and_etfs_use_the_usual_limit():
+    plan = _plan(Equities=70, Cash=0, **{"Fixed Income": 28})
+    info = dict(INFO, XLV={"bucket": "Equities", "sector": "Health Care", "beta": 0.9, "styles": []})
+    c = [{"sym": "XLV", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}]
+    caps = {"MSFT": {"min": 3000, "max": 9000, "unit": 1000}}
+    r = pc.room_for(plan, _acct(), c, info, caps=caps, default_cap={"min": 5000, "max": 18000, "unit": 2000})
+    assert r["MSFT"]["stock"] == 9000                       # its own rule
+    assert r["XLV"]["stock"] == 18000                       # an ETF with no rule counts as an equity: the usual limit
+    assert r["XLV"]["bucket"] >= r["XLV"]["stock"] and r["XLV"]["max"] == 18000 and r["XLV"]["binding"] == "The stock's own Max"
+    bonds = pc.room_for(plan, _acct(), [{"sym": "AGG", "bucket": "Fixed Income", "amt": 0, "pick": True}],
+                        dict(INFO, AGG={"bucket": "Fixed Income", "sector": None, "beta": None, "styles": []}), default_cap={"max": 18000})
+    assert bonds["AGG"]["stock"] is None                    # other classes without a rule have no per-stock limit

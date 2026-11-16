@@ -231,6 +231,22 @@ def sizes_for(session, d: date, account: str, syms: list) -> dict:
     return {r[0]: {"min": f(r[1]), "max": f(r[2]), "unit": f(r[3])} for r in rows}
 
 
+def account_default_size(session, d: date, account: str) -> dict:
+    """The account's usual per-stock rule (the most common Min / Max / Unit among its amount rules). A stock or ETF with no rule of its own uses it."""
+    try:
+        rows = session.execute(text("SELECT min_dollar, max_dollar, unit_dollar, COUNT(*) AS n FROM drv_account_size "
+                                    "WHERE as_of_date = :d AND account_short = :a AND max_dollar IS NOT NULL "
+                                    "GROUP BY 1, 2, 3 ORDER BY n DESC, max_dollar DESC LIMIT 1"), {"d": d, "a": account}).fetchall()
+    except Exception as e:      # table missing on a fresh DB
+        log.warning("plan_store.account_default_size: %s", e)
+        session.rollback()
+        return {}
+    if not rows:
+        return {}
+    f = lambda v: float(v) if v is not None else None
+    return {"min": f(rows[0][0]), "max": f(rows[0][1]), "unit": f(rows[0][2])}
+
+
 def calls_for(session, d: date, syms: list) -> dict:
     if not syms:
         return {}

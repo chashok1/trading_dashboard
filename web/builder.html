@@ -27,7 +27,7 @@
     .bld-pill { background: #f3f4f6; border-radius: 10px; padding: 2px 10px; font-size: 11px; }
     .bld-pill.warn { background: var(--mr-warn-bg); color: var(--mr-warn); }
     .bld-grid { display: grid; grid-template-columns: 440px 1fr; gap: 12px; align-items: start; }
-    .bld-grid { grid-template-columns: 875px minmax(760px, 1fr); }
+    .bld-grid { grid-template-columns: 740px minmax(760px, 1fr); }
     .bld-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
     /* right column: [stock picks by asset class] | [charts and grids] side by side */
     /* right column: two separate panels side by side -- [stock picks] | [charts and grids]; the charts panel wraps under the picks when the window is too narrow */
@@ -38,7 +38,7 @@
     .bld-chartbox:has(#cmpPanel[hidden]) { display: none; }
     .bld-toprow { display: grid; grid-template-columns: minmax(250px, 1.15fr) minmax(200px, 1fr); gap: 12px; align-items: start; }
     .bld-toprow .bld-acct, .bld-toprow .bld-card { margin-bottom: 0; }
-    .bld-toprow .bld-acct { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(190px, 1.2fr); gap: 8px 14px; align-items: start; }
+    .bld-toprow .bld-acct { display: grid; grid-template-columns: minmax(110px, .55fr) minmax(190px, 1.45fr); gap: 8px 14px; align-items: start; }
     .bld-acol { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 0; }
     .bld-acol .bld-pill { align-self: flex-start; }
     /* account panel tidy-up: both columns read the same way -- small heading, then the control, then notes; the Plan buttons sit in one even row */
@@ -209,7 +209,7 @@
     .bld-card .bld-t td .bld-btn.sm { padding: 0 8px; }
     .bld-t tbody tr:hover { background: #f6f8ff; }
     .bld-side .bld-t tbody tr:nth-child(even):not(:hover) { background: #fbfbfd; }
-    .bld-side .bld-t td:nth-child(3) { color: var(--text-3); font-size: 11px; }
+    .bld-side .bld-t td:nth-child(4) { color: var(--text-3); font-size: 11px; }
     .bld-side .bld-t td:nth-child(8) { color: var(--text-2); font-size: 11px; }
     .bld-side .bld-t thead th { box-shadow: 0 1px 0 #e5e7ee; z-index: 2; }
     .bld-qp { width: 24px; padding: 1px 0; border-radius: 5px; margin-right: 3px; font-weight: 700; }
@@ -240,17 +240,18 @@
     .bld-sym2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 14px 20px; align-items: start; margin-top: 10px; }
     .bld-sym2 > div { min-width: 0; overflow-x: auto; }
     /* every asset class table (Fixed Income, Currency, Equities...) uses the same column positions, so the columns line up across the two blocks */
-    .bld-sym2 table.bld-symt { table-layout: fixed; width: 100%; min-width: 730px; }
-    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 100px; overflow: hidden; text-overflow: ellipsis; }
+    .bld-sym2 table.bld-symt { table-layout: fixed; width: 100%; min-width: 800px; }
+    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 75px; overflow: hidden; text-overflow: ellipsis; }
     .bld-symt th:nth-child(2), .bld-symt td:nth-child(2) { width: 200px; }
     .bld-symt th:nth-child(3), .bld-symt td:nth-child(3) { width: 72px; }
-    .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { width: 84px; }
-    .bld-symt th:nth-child(5), .bld-symt td:nth-child(5) { width: 58px; }
-    .bld-symt th:nth-child(6), .bld-symt td:nth-child(6) { width: 130px; }
-    .bld-symt th:nth-child(7), .bld-symt td:nth-child(7) { width: 76px; }
+    .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { width: 112px; }
+    .bld-symt th:nth-child(5), .bld-symt td:nth-child(5) { width: 84px; }
+    .bld-symt th:nth-child(6), .bld-symt td:nth-child(6) { width: 58px; }
+    .bld-symt th:nth-child(7), .bld-symt td:nth-child(7) { width: 98px; }
+    .bld-symt th:nth-child(8), .bld-symt td:nth-child(8) { width: 76px; }
     /* input boxes start at the same left edge in every row and every block: the Picks and Buy $ cells are left-aligned */
-    .bld-symt th:nth-child(2), .bld-symt td:nth-child(2), .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { text-align: left; }
-    .bld-symt td:nth-child(2) input, .bld-symt td:nth-child(4) input { box-sizing: border-box; }
+    .bld-symt th:nth-child(2), .bld-symt td:nth-child(2), .bld-symt th:nth-child(5), .bld-symt td:nth-child(5) { text-align: left; }
+    .bld-symt td:nth-child(2) input, .bld-symt td:nth-child(5) input { box-sizing: border-box; }
     .bld-sym2 .bld-t td, .bld-sym2 .bld-t th { white-space: nowrap; }   /* every pick row on one line, whatever the asset class; the block scrolls sideways if it must */
     /* same column widths in every grid so Target / Picks / Portfolio / Gap line up from one grid to the next */
     .bld-cmp3 table.bld-exp { table-layout: fixed; width: 100%; }
@@ -268,12 +269,24 @@
     .bld-cmp3 .bld-exp td:first-child { overflow: hidden; text-overflow: ellipsis; }
     .bld-cmp3 .bld-exp th:first-child { width: 21%; }
     .bld-cmp3 .bld-exp td, .bld-cmp3 .bld-exp th { padding-left: 5px; padding-right: 5px; }
-    .bld-side .bld-t td:nth-child(8) { white-space: normal; }
+    .bld-side .bld-t td:nth-child(9) { white-space: normal; }
+    /* 2026-11-18, user: tighter names list. Fixed column widths (Lsts / Asset / Sector / Quad / Beta / Style), Lsts in a smaller font */
+    .bld-side .bld-t { table-layout: fixed; width: 100%; }
+    .bld-side .bld-t th:nth-child(1), .bld-side .bld-t td:nth-child(1) { width: 26px; }
+    .bld-side .bld-t th:nth-child(2), .bld-side .bld-t td:nth-child(2) { width: 66px; }
+    .bld-side .bld-t th:nth-child(3), .bld-side .bld-t td:nth-child(3) { width: 160px; }
+    .bld-side .bld-t th:nth-child(4), .bld-side .bld-t td:nth-child(4) { width: 44px; font-size: 9px; }
+    .bld-side .bld-t th:nth-child(5), .bld-side .bld-t td:nth-child(5) { width: 44px; }
+    .bld-side .bld-t th:nth-child(6), .bld-side .bld-t td:nth-child(6) { width: 56px; }
+    .bld-side .bld-t th:nth-child(7), .bld-side .bld-t td:nth-child(7) { width: 136px; }
+    .bld-side .bld-t th:nth-child(8), .bld-side .bld-t td:nth-child(8) { width: 46px; }
+    .bld-side .bld-t td { overflow: hidden; text-overflow: ellipsis; }
+    .bld-side .bld-t .bld-qp { width: 29px; margin-right: 1px; }
     /* 2026-10-28, user: the Build new / My model portfolios buttons sit at the top of the left column, level with
        the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
        columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
     @media (min-width: 1001px) {
-      .bld-wrap { display: grid; grid-template-columns: 875px minmax(760px, 1fr); column-gap: 16px; row-gap: 0; align-items: start;
+      .bld-wrap { display: grid; grid-template-columns: 740px minmax(760px, 1fr); column-gap: 16px; row-gap: 0; align-items: start;
         /* rows: problems, banner, buttons, left-column cards, disclaimer. The tall Names/Picks cards span rows 3-4; the 1fr
            row 4 soaks up their extra height so the buttons' row stays short and Account sits right under the buttons. */
         grid-template-rows: auto auto auto 1fr auto; }
@@ -349,6 +362,8 @@
     .bld-cx.bld-cx-l { right: auto; left: 8px; top: 4px; }
     .bld-toprow .bld-acct { padding-top: 5px; }
     .bld-picks .bld-sym2 { margin-top: 0; }
+    body.builder-page .bld-clr { float: right; height: 16px; line-height: 14px; padding: 0 6px; font-size: 9px; font-weight: 600; text-transform: none; letter-spacing: 0; background: #fff; color: var(--text-2); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+    body.builder-page .bld-clr:hover { color: var(--text-1); border-color: #aeb6c8; }
     .bld-money { font-size: 10px; margin: 2px 0 8px; }
     .bld-money b { color: var(--text-1); font-weight: 600; }
     .bld-card.bld-chartbox { padding-top: 5px; }
@@ -382,7 +397,7 @@
         <div class="bld-left">
         <div class="bld-toprow">
           <div class="bld-acct">
-            <div class="bld-acol"><span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><b>Account</b><span class="bld-muted" id="acctSnap" style="font-size:10px"></span></span>
+            <div class="bld-acol"><span style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="bld-muted" id="acctSnap" style="font-size:10px"></span></span>
             <select id="acctSel" aria-label="account"></select>
             <span class="bld-pill" id="acctType"></span>
 </div>
@@ -417,7 +432,7 @@
             <span class="bld-muted" id="srcNamesHint"></span>
             <button type="button" class="bld-copy" data-copy="shown" title="Copy the symbols shown in this list (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           </div>
-          <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th>Lists</th><th>Asset class</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
+          <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th class="bld-tip" data-tip="Can you pick it, and is there room to buy it? A dollar amount = the most you can still add under your limits. Full = a limit has no room left (you can still pick it: it is a warning only). No class / No price = it cannot be picked yet.">Can pick</th><th title="Which Hedgeye lists the name is on">Lsts</th><th title="Asset class">Asset</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
         </aside>
           <!-- 2026-11-14: To do list from the ACTIVE plan (sells for classes above plan, planned buys, what is left) -->
           <div class="bld-card" id="todoCard">
@@ -441,7 +456,7 @@
           <div class="bld-card bld-picks"><div id="symTable"></div></div>
           <div class="bld-card bld-chartbox">
             <details id="cmpPanel" open hidden>
-              <summary class="bld-psum"><b>Charts and grids</b> <span class="bld-muted">Asset class, Risk, Style, Quad, Sectors</span><span id="presetSlot" style="display:flex;align-items:center;gap:6px;margin-left:12px"></span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
+              <summary class="bld-psum"><span class="bld-muted" title="Charts and grids: Asset class, Risk, Quad, Sectors, Style (click to open or close)"></span><span id="presetSlot" style="display:flex;align-items:center;gap:6px;margin-left:12px"></span><span class="bld-muted" id="picksCount" style="margin-left:auto"></span><button type="button" class="bld-copy" data-copy="picks" title="Copy all picked symbols (comma separated)" hidden><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></summary>
               <div id="cmpTable"></div>
             </details>
           </div>
@@ -457,7 +472,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261118h"></script>
+  <script src="/static/builder.js?v=20261119j"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

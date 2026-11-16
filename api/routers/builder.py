@@ -94,6 +94,17 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 picked = {str(x["sym"]).upper() for x in plan_picks}
                 cands = [{"sym": str(x["sym"]).upper(), "bucket": x.get("bucket"), "amt": float(x.get("amt") or 0.0), "pick": True} for x in plan_picks]
                 cands += [{"sym": k, "bucket": h.get("bucket"), "amt": 0.0, "pick": False} for k, h in acct["holdings"].items() if k not in picked and h.get("value")]
+                # 2026-11-18: every name in the names list also gets a Max $ (info comes from the screen, no extra lookups)
+                known = {c["sym"] for c in cands}
+                for nm in (body.get("names") or [])[:800]:
+                    sym = str(nm.get("sym") or "").upper()
+                    if not sym or sym in known:
+                        continue
+                    known.add(sym)
+                    if sym not in info:
+                        info[sym] = {"bucket": nm.get("bucket"), "sector": nm.get("sector"), "beta": nm.get("beta"),
+                                     "styles": nm.get("styles") or [], "quad": nm.get("quad") or []}
+                    cands.append({"sym": sym, "bucket": nm.get("bucket"), "amt": 0.0, "pick": False})
                 syms = [c["sym"] for c in cands]
                 missing = [x for x in syms if x not in info]
                 if missing:
@@ -101,7 +112,9 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 calls = ps.calls_for(s, d, syms)
                 buyers = {k for k, v in calls.items() if final_call_side(v) == "buy"}
                 res["room"] = pc.room_for(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
-                                          cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), buyers)
+                                          cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), buyers,
+                                          ps.account_default_size(s, d, account))
+                res["room_default"] = ps.account_default_size(s, d, account)
                 res["room_calls"] = {k: calls.get(k) for k in syms if calls.get(k)}
                 res["room_meta"] = pc.cash_summary(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
                                                    info, ps.style_groups())
