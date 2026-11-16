@@ -47,6 +47,12 @@ class, sector, style, beta and Quad after the other planned buys. `max` = the sm
 The Room column (last column of each chart grid) = limit in dollars minus held; the Covered column = held up to the limit, as a % of it.
 Not yet counted: sells ticked on the To do list (they free room in the To do list, not here). Class names in the picks grids are display-only short forms (`CLS_ABBR`).
 
+## What a pick is worth (2026-11-19)
+In the hand-picked build (`manual`) a pick without a typed % is sized as **what the account holds of it + its planned Buy $** (`amt`): held stocks are never scaled when a class target
+goes up, so a bigger target leaves room for new stocks. A typed % still overrides it (that % of the class target dollars). "Allocate my holdings" / "Start from my holdings" only tick the
+held stocks (no % shares are written). A class with a 0% target still shows its held picks. The Picks column and the class totals are therefore held + planned buys.
+Note: `etl/` is not hot-reloaded by uvicorn (`--reload-dir api`): touch `api/routers/builder.py` or restart after an `etl/` edit.
+
 ## Files
 | Piece | File |
 |---|---|

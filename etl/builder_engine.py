@@ -217,8 +217,8 @@ def build_positions(ctx: dict, req: dict) -> dict:
     for bucket in BUCKETS:
         pct = mix.get(bucket, 0.0)
         kept_d = kept_by_bucket.get(bucket, 0.0)
-        if pct <= 0 and kept_d <= 0:
-            continue
+        if pct <= 0 and kept_d <= 0 and not (manual and any(x.get("bucket") == bucket for x in manual_picks)):
+            continue          # (a hand-picked class with a 0% target still shows its held picks, so you can see what you hold there)
         bdollars = max(pct / 100.0 * amount, kept_d)
         cfg = (req.get("buckets") or {}).get(bucket) or {}
         info = {"dollars": bdollars, "pct": pct, "kept_dollars": kept_d, "stance": stances.get(bucket),
@@ -228,11 +228,6 @@ def build_positions(ctx: dict, req: dict) -> dict:
             info["split"] = "manual"
             buy = max(0.0, bdollars - kept_d)
             mine = [x for x in manual_picks if x.get("bucket") == bucket and x["sym"] not in kept_set]
-            if buy <= 0 or not mine:
-                if buy > 0:
-                    cash_extra += buy
-                    info["notes"].append("No stocks picked yet: this share stays in Cash.")
-                continue
             ok = []
             for x in mine:
                 f = funds.get(x["sym"])
@@ -241,22 +236,19 @@ def build_positions(ctx: dict, req: dict) -> dict:
                                            "reason": "not available today", "replaced_by": None})
                 else:
                     ok.append(x)
-            explicit = {x["sym"]: max(0.0, float(x["pct"])) / 100.0 for x in ok if x.get("pct") is not None}
-            auto = [x["sym"] for x in ok if x.get("pct") is None]
-            ex_sum = sum(explicit.values())
-            if ex_sum > 1.0 + 1e-9:     # allowed: the picks simply put more money in the class than its target (shown red)
-                info["notes"].append("Your %s percentages add to %.0f%%: more than the class has, so it goes over target." % (bucket, ex_sum * 100.0))
-            w = dict(explicit)
-            for sym in auto:
-                w[sym] = max(0.0, 1.0 - ex_sum) / len(auto)
-            used = sum(w.values())
-            if used < 0.999:
-                cash_extra += buy * (1.0 - used)
-                info["notes"].append("%.0f%% of %s is not given to any stock: it stays in Cash." % ((1.0 - used) * 100.0, bucket))
-            for sym, wt in w.items():
+            # 2026-11-19, user: a pick is sized by what you HOLD plus the Buy $ you planned, so a bigger class target leaves room
+            # for new stocks and never scales the stocks you already own. A % you type overrides it (that % of the class target).
+            for x in ok:
+                sym = x["sym"]
                 f = funds[sym]
-                add_pick(sym, buy * wt, bucket, f.get("area") or bucket, "Picked by you",
-                         ["Picked by you", "%s of %s" % (_pct(wt, 1), bucket)] + _src_line(f), "manual")
+                held_v = float((holdings.get(sym) or {}).get("value") or 0.0)
+                if x.get("pct") is not None:
+                    dollars = buy * max(0.0, float(x["pct"])) / 100.0
+                    detail = ["Picked by you", "%s of %s" % (_pct(max(0.0, float(x["pct"])) / 100.0, 1), bucket)]
+                else:
+                    dollars = held_v + max(0.0, float(x.get("amt") or 0.0))
+                    detail = ["Picked by you", "holds %s, plans to buy %s" % (_usd(held_v), _usd(max(0.0, float(x.get("amt") or 0.0))))]
+                add_pick(sym, dollars, bucket, f.get("area") or bucket, "Picked by you", detail + _src_line(f), "manual")
             continue
         cands = [dict(sym=s, **{k: v for k, v in f.items() if k != "sym"}) for s, f in funds.items()
                  if f.get("bucket") == bucket and f.get("eligible") and s not in kept_set]

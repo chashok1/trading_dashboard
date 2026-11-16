@@ -241,7 +241,7 @@
     .bld-sym2 > div { min-width: 0; overflow-x: auto; }
     /* every asset class table (Fixed Income, Currency, Equities...) uses the same column positions, so the columns line up across the two blocks */
     .bld-sym2 table.bld-symt { table-layout: fixed; width: 100%; min-width: 800px; }
-    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 75px; overflow: hidden; text-overflow: ellipsis; }
+    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 96px; overflow: hidden; text-overflow: ellipsis; }
     .bld-symt th:nth-child(2), .bld-symt td:nth-child(2) { width: 200px; }
     .bld-symt th:nth-child(3), .bld-symt td:nth-child(3) { width: 72px; }
     .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { width: 112px; }
@@ -370,7 +370,8 @@
     .bld-chartbox .bld-psum { padding: 0 0 10px; }
     .bld-picks .bld-symt thead th { padding-top: 2px; }
     .bld-acct .bld-acol:first-child > span:first-child { padding-left: 18px; }
-    .bld-picks .bld-symt thead th:first-child { padding-left: 22px; }
+    /* 2026-11-19, user: header labels centred over their columns; the collapse button sits at the far left so the Symbol label needs no extra left padding */
+    .bld-picks .bld-symt thead th { text-align: center; padding-left: 3px; padding-right: 3px; }
     .cx-collapsed.cx-left::before { padding-left: 26px; }
     .cx-collapsed > *:not(.bld-cx) { display: none !important; }
     .cx-collapsed::before { content: attr(data-ctitle); display: block; font-size: 11px; font-weight: 700; color: var(--text-2); padding: 2px 24px 2px 2px; letter-spacing: .03em; }
@@ -472,7 +473,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261119j"></script>
+  <script src="/static/builder.js?v=20261119p"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

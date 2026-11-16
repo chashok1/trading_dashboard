@@ -56,7 +56,7 @@
   function buildReq() {
     // hand-picked build: the server uses exactly these names, each in its asset class, with the % typed (null = share equally)
     const req = { account: S.acct || 'ALL', horizon: S.horizon, preset: S.preset, use_risk_dial: S.useDial, warnings: S.warn,
-      manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct })) };
+      manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0 })) };
     if (S.preset === 'custom') req.mix = S.mix;
     if (S.amount) req.amount = S.amount;
     if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Max $ per stock from it (warn only)
@@ -197,7 +197,7 @@
       }
       const tot = {};
       S.picks.forEach(p => { if (hold[p.sym] > 0) tot[p.bucket] = (tot[p.bucket] || 0) + hold[p.sym]; });
-      S.picks.forEach(p => { p.pct = hold[p.sym] > 0 ? Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100 : null; });
+      S.picks.forEach(p => { if (hold[p.sym] > 0) p.pct = null; });      // held stocks keep what they hold: no % share
       S.fillGapNext = !auto;
       // opening an account with no saved plan starts the same way (limits = holdings, so the bars are green); it never
       // overwrites limits you already typed and does not count as an unsaved change
@@ -271,10 +271,10 @@
   const whyShort = b => b === 'Cash to spend' ? 'no cash' : (b === "The stock's own Max" ? 'own max' : (CLS_ABBR[b] ? CLS_ABBR[b] + ' full' : String(b || '').replace(/ favored \(Bull\)/, '') + ' full'));
   // 2026-11-18, user: say why a pick got no shares. Two causes: the class has no target money, or one share costs more than the pick's slice.
   function noBuyWhy(sym, b, fin, amt) {
-    const n = S.nameCache[sym] || {}, tgt = fin[b] || 0;
-    if (!(tgt > 0)) return (CLS_ABBR[b] || b) + ' target is 0%';
+    const n = S.nameCache[sym] || {}, pk = picked(sym) || {};
     if (n.price == null) return 'no price today';
-    return 'one share is $' + Math.round(n.price).toLocaleString() + ', more than its slice of ' + (CLS_ABBR[b] || b);
+    if (pk.amt > 0) return 'Buy $ is less than one share ($' + Math.round(n.price).toLocaleString() + ')';
+    return 'no Buy $ yet';
   }
   // 2026-11-18, user: short names in the names list (hover shows the full name). Display only.
   const SEC_ABBR = { 'Communication Services': 'Comm', 'Consumer Discretionary': 'Disc', 'Consumer Staples': 'Stap', 'Energy': 'Energy', 'Financials': 'Fin',
@@ -360,8 +360,7 @@
     });
     const tot = {};
     S.picks.forEach(p => { if (hold[p.sym] > 0) tot[p.bucket] = (tot[p.bucket] || 0) + hold[p.sym]; });
-    S.picks.forEach(p => { if (hold[p.sym] > 0) p.pct = Math.round(hold[p.sym] / tot[p.bucket] * 10000) / 100; });
-    const n = Object.keys(hold).length;
+    const n = Object.keys(hold).length;         // 2026-11-19: no % shares are written any more: a held stock simply keeps what it holds
     const hint = $('srcNamesHint');
     if (hint) hint.textContent = n ? 'Allocated ' + n + ' held stocks across ' + Object.keys(tot).length + ' asset classes (' + added + ' added to picks).' : 'No held stocks fall in an asset class with a target.';
     if (n) planDirty();
@@ -371,7 +370,7 @@
   function setPick(sym, on) {
     const n = S.nameCache[sym];
     const b = bucketOf(n);
-    if (on && n && b && n.usable && !picked(sym)) S.picks.push({ sym, bucket: b, pct: null, amt: null, grp: '' });
+    if (on && n && b && n.usable && !picked(sym)) S.picks.push({ sym, bucket: b, pct: null, amt: null, grp: '' });   // existing picks are never touched: a new stock is added on top
     if (!on) S.picks = S.picks.filter(p => p.sym !== sym);
   }
 
@@ -731,7 +730,7 @@
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
           ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
-            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">not buyable: ' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>'}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
+            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Set a Buy $ to plan a purchase of this stock">no Buy $ yet</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
@@ -811,11 +810,13 @@
       if (seq !== S.reqSeq) return;
       S.preview = res;
       S.room = res.room || {};
+      let refill = false;
       S.picks.forEach(p => {                          // fill the starting Buy $ of picks you have not typed an amount for
         if (!autoAmt(p)) return;
         const st = (S.room[p.sym] || {}).start;
-        if (st > 0) { p.amt = st; p.autoAmt = true; } else if (p.autoAmt) { p.amt = null; p.autoAmt = false; }
+        if (st > 0 && p.amt !== st) { p.amt = st; p.autoAmt = true; refill = true; } else if (!(st > 0) && p.autoAmt) { p.amt = null; p.autoAmt = false; refill = true; }
       });
+      if (refill) schedule(0);        // the amounts changed: the grids must be worked out again with them
       render(res);
       if (S.srcNames.length) {                         // the room for the names list just arrived: redraw it (keeping its scroll place)
         const sc = document.querySelector('.bld-side-scroll'), top = sc ? sc.scrollTop : 0;
