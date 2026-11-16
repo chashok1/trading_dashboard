@@ -280,6 +280,47 @@ def plan_page(session, d: date, account: str) -> dict:
 _PC_CACHE: dict = {}
 
 
+def done_rows(session, d: date, account: str) -> list:
+    """Today's Done marks for an account (empty if the table does not exist yet: run `python -m db.init_db`)."""
+    try:
+        rs = session.execute(text("SELECT tos_symbol, side, amount_usd, qty_at_done FROM user_plan_done WHERE account_short = :a AND as_of_date = :d ORDER BY id"),
+                             {"a": account, "d": d}).fetchall()
+    except Exception as e:      # table not created yet
+        log.warning("plan_store.done_rows: %s", e)
+        session.rollback()
+        return []
+    return [{"sym": r[0], "side": r[1], "amount": float(r[2] or 0.0), "qty_at_done": float(r[3] or 0.0)} for r in rs]
+
+
+def record_done(session, d: date, account: str, sym: str, side: str, amount: float) -> dict:
+    """The user marked a planned buy / sell Done for `amount` dollars (maybe part of it). Remembers the shares held now."""
+    sym = str(sym or "").upper()
+    side = "SELL" if str(side).upper() == "SELL" else "BUY"
+    if amount is None or float(amount) <= 0:
+        raise PlanError("Give the amount that was done.")
+    snap = snapshot(session, d, account, [])
+    q0 = float((snap["holdings"].get(sym) or {}).get("qty") or 0.0)
+    try:
+        session.execute(text("INSERT INTO user_plan_done (account_short, tos_symbol, as_of_date, side, amount_usd, qty_at_done) "
+                             "VALUES (:a, :s, :d, :sd, :amt, :q)"), {"a": account, "s": sym, "d": d, "sd": side, "amt": float(amount), "q": q0})
+        session.commit()
+    except Exception as e:      # table not created yet
+        session.rollback()
+        raise PlanError("The Done table is missing: run  python -m db.init_db  once. (%s)" % str(e).splitlines()[0])
+    _PC_CACHE.clear()
+    return {"ok": True, "sym": sym, "side": side, "amount": float(amount)}
+
+
+def clear_done(session, d: date, account: str, sym: str) -> None:
+    try:
+        session.execute(text("DELETE FROM user_plan_done WHERE account_short = :a AND as_of_date = :d AND tos_symbol = :s"), {"a": account, "d": d, "s": str(sym).upper()})
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        log.warning("plan_store.clear_done: %s", e)
+    _PC_CACHE.clear()
+
+
 def acct_room_page(session, d: date, account: str) -> dict:
     """Actionable screen, ONE account: per symbol what that account holds, the most this one stock can still be bought (Max $), the room left in
     the buckets it falls in (Bucket $), and the planned buy still to do. Uses the account's ACTIVE plan; information only. Same maths as the Builder
@@ -306,16 +347,22 @@ def acct_room_page(session, d: date, account: str) -> dict:
     buy_syms = [s for s, c in all_calls.items() if final_call_side(c) == "buy"]
     picks = [p for p in list_picks(session, account) if p["side"] == "BUY"]
     # planned buy still to do = the saved amount less what has been bought since the plan was saved (shares added x price)
+    pend = pc.done_pending(done_rows(session, d, account), holdings)          # marked Done today, not in the positions file yet
     planned = {}
     for pk in picks:
         for i, m in enumerate(pk["members"]):
             h = holdings.get(m) or {}
             base = plan["pick_base"].get(m)
             bought = max(0.0, float(h.get("qty") or 0.0) - base) * float(h.get("price") or 0.0) if base is not None else 0.0
-            planned[m] = {"amount": max(0.0, float(pk["amount"] or 0.0) - bought), "group": len(pk["members"]) > 1, "first": i == 0}
+            left = max(0.0, float(pk["amount"] or 0.0) - bought)
+            dn = (pend.get(m) or {}).get("BUY", 0.0)
+            planned[m] = {"amount": max(0.0, left - dn), "group": len(pk["members"]) > 1, "first": i == 0}
+    for m, v in pend.items():                                                  # a stock bought today that was not planned also uses room
+        if v.get("BUY", 0.0) > 0:
+            planned.setdefault(m, {"amount": 0.0, "group": False, "first": True})
     syms = sorted(set(holdings) | set(buy_syms) | set(planned))
     info = bd.name_info(session, d, syms, problems) if syms else {}
-    cands = [{"sym": s, "bucket": (holdings.get(s) or {}).get("bucket"), "amt": (planned[s]["amount"] if s in planned and (not planned[s]["group"] or planned[s]["first"]) else 0.0), "pick": False}
+    cands = [{"sym": s, "bucket": (holdings.get(s) or {}).get("bucket"), "amt": ((planned[s]["amount"] + (pend.get(s) or {}).get("BUY", 0.0)) if s in planned and (not planned[s]["group"] or planned[s]["first"]) else 0.0), "pick": False}
              for s in syms]
     room = pc.room_for(plan, {"value": value, "cash": snap["cash"], "holdings": holdings}, cands, info, style_groups(),
                        sizes_for(session, d, account, syms), None, account_default_size(session, d, account))
@@ -329,6 +376,8 @@ def acct_room_page(session, d: date, account: str) -> dict:
         if s in planned:
             o["planned"] = planned[s]["amount"]
             o["planned_group"] = planned[s]["group"]
+        if (pend.get(s) or {}).get("BUY", 0.0) > 0:
+            o["done_buy"] = pend[s]["BUY"]
     # planned SELLS: each class above its plan is sold by the amount saved in the plan (default: the excess), split over its holdings in proportion to their value
     now = pc.now_lines(holdings, info, snap["cash"], style_groups())
     for n in pc.sell_needs(plan, now, value):
@@ -336,8 +385,11 @@ def acct_room_page(session, d: date, account: str) -> dict:
         amt = plan["sell"].get(n["cls"])
         amt = n["need"] if amt is None else min(amt, sum(vals.values()))
         for sym, v in pc.alloc_sell(vals, amt, plan["sell_hold"]).items():
-            if v > 0:
-                out["rows"].setdefault(sym, {})["planned_sell"] = v
+            dn = (pend.get(sym) or {}).get("SELL", 0.0)
+            if v - dn > 0.5:
+                out["rows"].setdefault(sym, {})["planned_sell"] = v - dn
+            if dn > 0:
+                out["rows"].setdefault(sym, {})["done_sell"] = dn
     out["spendable"] = summ["spendable"]
     out["sells"] = summ["sells"]
     return out
@@ -503,6 +555,10 @@ def todo_page(session, d: date, account: str) -> dict:
     syms = sorted(set(snap["holdings"].keys()) | {m for pk in picks for m in pk["members"]})
     info = bd.name_info(session, d, syms, problems) if syms else {}
     calls = calls_for(session, d, syms)
+    pend = pc.done_pending(done_rows(session, d, account), snap["holdings"])
+    for pk in picks:                              # a buy marked Done today comes off the to-do amount
+        if pk["side"] == "BUY" and len(pk["members"]) == 1:
+            pk["amount"] = max(0.0, float(pk["amount"] or 0.0) - (pend.get(pk["members"][0]) or {}).get("BUY", 0.0))
     out = pc.todo(row["active"], {"value": snap["value"], "cash": snap["cash"], "holdings": snap["holdings"]},
                   picks, calls, info, style_groups(), final_call_side, sizes_for(session, d, account, syms), assume_sells=True, warn_only=True)
     out.update({"account": account, "state": "active", "active_at": row["active_at"], "plan": row["active"],

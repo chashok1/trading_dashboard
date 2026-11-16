@@ -4175,9 +4175,11 @@ function _acctCellHtml(r, kind) {
     return x.bucket > 0 ? '<span title="' + tip + '">' + _planUsd(x.bucket) + '</span>' : '<span style="color:#b45309" title="' + tip + '">$0</span> <span style="color:#9ca3af;font-size:9px">' + escapeHtml(_acctWhy(x.bucket_binding)) + '</span>';
   }
   if (kind === 'apl') {
-    if (x.planned_sell > 0) return '<span style="color:#9e3636" title="The plan sells this much of this stock (its share of the sale planned for its asset class)">Sell ' + _planUsd(x.planned_sell) + '</span>';
-    if (x.planned != null && x.planned > 0) return '<span style="color:#2f6b45" title="Planned buy still to do in this account\'s active plan' + (x.planned_group ? ' (a buy-one-of group)' : '') + '">Buy ' + _planUsd(x.planned) + '</span>';
-    return dash;
+    const done = (v, word) => v > 0 ? ' <span style="color:#9ca3af;font-size:9px" title="Marked Done today for ' + _planUsd(v) + ' (' + word + '); it clears when the positions file shows it">done ' + _planUsd(v) + '</span>' : '';
+    const doneTxt = done(x.done_buy, 'bought') + done(x.done_sell, 'sold');
+    if (x.planned_sell > 0) return '<span style="color:#9e3636" title="The plan sells this much of this stock (its share of the sale planned for its asset class)">Sell ' + _planUsd(x.planned_sell) + '</span>' + doneTxt;
+    if (x.planned != null && x.planned > 0) return '<span style="color:#2f6b45" title="Planned buy still to do in this account\'s active plan' + (x.planned_group ? ' (a buy-one-of group)' : '') + '">Buy ' + _planUsd(x.planned) + '</span>' + doneTxt;
+    return doneTxt ? doneTxt.trim() : dash;
   }
   return dash;
 }
@@ -5539,8 +5541,31 @@ function renderBulkBar() {
 }
 
 // Inline action: call the same endpoint as the modal Save/Dismiss.
+// 2026-11-20, user: Done on a stock the picked account's plan buys or sells asks how much was done (pre-filled with what is left) and records it, so the plan counts it
+// today even though the positions file only loads after hours. Cancel leaves everything as it was.
+async function _recordPlanDone(sym, ask) {
+  const sn = _roomAccountShort();
+  const x = sn && state.acctRoom && state.acctRoom.data && (state.acctRoom.data.rows || {})[sym];
+  if (!x) return true;
+  const side = x.planned > 0 ? 'BUY' : (x.planned_sell > 0 ? 'SELL' : '');
+  if (!side) return true;
+  const left = side === 'BUY' ? x.planned : x.planned_sell;
+  let amt = left;
+  if (ask) {
+    const v = window.prompt(sym + ': how much did you ' + (side === 'BUY' ? 'buy' : 'sell') + ' (in dollars)? The plan has $' + Math.round(left).toLocaleString() + ' left.', String(Math.round(left)));
+    if (v === null) return false;
+    amt = Number(String(v).replace(/[$,\s]/g, ''));
+    if (!(amt > 0)) return false;
+  }
+  try {
+    await fetchJson('/api/builder/done' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''), { method: 'POST', body: JSON.stringify({ account: sn, symbol: sym, side, amount: amt }) });
+    await _fetchAcctRoom();
+  } catch (e) { showStatus('Could not record the amount: ' + e.message, 'error'); return false; }
+  return true;
+}
 async function inlineAction(sym, action) {
   if (!sym || !state.date) return;
+  if (String(action || '').toUpperCase() === 'DONE' && !(await _recordPlanDone(sym, true))) return;
   const row = state.allRows.find(r => r.tos_symbol === sym);
   const asOf = row ? row.as_of_date : state.date;
   // user_action must be the legacy enum (DONE/SKIPPED/SNOOZED/OVERRIDDEN).
@@ -5571,6 +5596,7 @@ async function inlineAction(sym, action) {
 async function bulkAction(action) {
   const syms = Array.from(state.selected);
   if (!syms.length) return;
+  if (String(action || '').toUpperCase() === 'DONE') { for (const sy of syms) await _recordPlanDone(sy, false); }   // several at once: the whole amount left for each
   const isLegacyAction = ['DONE','SKIPPED','SNOOZED','OVERRIDDEN'].includes((action||'').toUpperCase());
   const userAction = isLegacyAction ? action.toUpperCase() : 'DONE';
   const actionCode = isLegacyAction ? null : action;

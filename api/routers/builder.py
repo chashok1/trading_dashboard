@@ -238,6 +238,22 @@ def get_acct_room(account: str = Query(...), date: Optional[str] = Query(None)):
         return ps.acct_room_page(s, d, account)
 
 
+@router.post("/api/builder/done")
+def post_done(body: dict = Body(...), date: Optional[str] = Query(None)):
+    """Actionable Done with an amount: {account, symbol, side BUY|SELL, amount}. Counts today only, until the positions file shows it."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        return _plan_call(ps.record_done, s, d, body.get("account"), body.get("symbol"), body.get("side"), body.get("amount"))
+
+
+@router.delete("/api/builder/done")
+def delete_done(account: str = Query(...), symbol: str = Query(...), date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        ps.clear_done(s, d, account, symbol)
+    return {"ok": True}
+
+
 @router.get("/api/builder/plan-check")
 def get_plan_check(date: Optional[str] = Query(None)):
     """Actionable screen: what each account's ACTIVE plan says about each symbol (pick, group, sell, over plan). Reads only."""

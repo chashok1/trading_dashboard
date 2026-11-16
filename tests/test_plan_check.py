@@ -298,3 +298,14 @@ def test_todo_uses_the_typed_sale_amount_and_saves_it_in_the_plan():
     assert r["sell_cash"] == 4000
     assert r["sells"][0]["amount"] == 4000 and r["sells"][0]["holdings"][0]["sell"] == 4000
     assert pc.clean_plan(plan)["sell"] == {"Equities": 4000.0}
+
+
+def test_done_pending_counts_only_what_the_positions_file_does_not_show_yet():
+    h = {"DGX": {"qty": 0, "price": 255.0}, "KO": {"qty": 40, "price": 60.0}}
+    rows = [{"sym": "DGX", "side": "BUY", "amount": 10000.0, "qty_at_done": 0.0},
+            {"sym": "KO", "side": "SELL", "amount": 3000.0, "qty_at_done": 90.0}]
+    p = pc.done_pending(rows, h)
+    assert p["DGX"]["BUY"] == 10000.0                                   # file still shows no DGX: all of it is pending
+    assert p["KO"]["SELL"] == 0.0                                       # shares fell 90 -> 40: 50 x $60 = $3,000 already in the file
+    h2 = {"DGX": {"qty": 20, "price": 255.0}}                           # file now shows 20 shares = $5,100 of the $10,000
+    assert pc.done_pending(rows[:1], h2)["DGX"]["BUY"] == 4900.0

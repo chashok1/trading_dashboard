@@ -9659,6 +9659,20 @@ CREATE TABLE IF NOT EXISTS user_plan_pick (
 );
 CREATE INDEX IF NOT EXISTS ix_user_plan_pick_acct ON user_plan_pick (account_short, side);
 
+-- 2026-11-20: "Done" on the Actionable screen with an amount: a buy or sell the user made today that the positions file (loaded after hours) does not show yet.
+-- qty_at_done = shares held when it was marked, so the file's later change can be told apart from it. Counts only on its own day.
+CREATE TABLE IF NOT EXISTS user_plan_done (
+    id            BIGSERIAL PRIMARY KEY,
+    account_short TEXT NOT NULL,
+    tos_symbol    TEXT NOT NULL,
+    as_of_date    DATE NOT NULL,
+    side          TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    amount_usd    NUMERIC NOT NULL,
+    qty_at_done   NUMERIC,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_user_plan_done_acct ON user_plan_done (account_short, as_of_date);
+
 -- The user's own stocks. moved_on = the day Hedgeye listed it (then it counts as a Hedgeye name, not here).
 CREATE TABLE IF NOT EXISTS user_my_stock (
     tos_symbol TEXT PRIMARY KEY,

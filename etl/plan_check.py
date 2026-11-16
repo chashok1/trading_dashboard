@@ -223,6 +223,25 @@ def alloc_sell(values: dict, amount: float, overrides: Optional[dict] = None) ->
     return out
 
 
+def done_pending(rows: list, holdings: dict) -> dict:
+    """What was marked Done today and the positions file does not show yet. rows = [{sym, side, amount, qty_at_done}], holdings {sym: {qty, price}}.
+    A buy is reflected by the file once the shares rose above qty_at_done (x price); a sell once they fell below it. Returns {sym: {"BUY": d, "SELL": d}}."""
+    out: dict = {}
+    for r in rows:
+        sym = str(r.get("sym") or "").upper()
+        side = r.get("side")
+        if not sym or side not in ("BUY", "SELL"):
+            continue
+        h = holdings.get(sym) or {}
+        qty, price = float(h.get("qty") or 0.0), float(h.get("price") or 0.0)
+        q0 = float(r.get("qty_at_done") or 0.0)
+        moved = (max(0.0, qty - q0) if side == "BUY" else max(0.0, q0 - qty)) * price
+        pend = max(0.0, float(r.get("amount") or 0.0) - moved)
+        d = out.setdefault(sym, {"BUY": 0.0, "SELL": 0.0})
+        d[side] += pend
+    return out
+
+
 def sell_needs(plan: dict, now: dict, value: float) -> list:
     """Classes held above their plan %, in dollars. A class planned at 0 and still held = 'sell all'."""
     p = clean_plan(plan)

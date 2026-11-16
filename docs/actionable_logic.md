@@ -957,3 +957,10 @@ style / beta after the planned buys; a $0 shows which bucket is full) and **Plan
 `GET /api/builder/acct-room?account=<short_name>&date=` -> `etl/plan_store.py::acct_room_page` (same maths as the Builder, `etl/plan_check.py::room_for`); rows = held, planned or Buy-call stocks.
 Information only: never changes the Final Call. The Plan column shows only the picked account's tags (`_planItems`). The **+ unheld** checkbox (`state.filters.show_unheld`, default on) keeps stocks
 that NO account holds visible while an account is picked (buy candidates); stocks held only in another account are still hidden. JS: `_fetchAcctRoom`, `_acctCellHtml` in `web/actionable.js`.
+
+## Done with an amount (2026-11-20)
+Pressing **Done** on a stock the picked account's plan buys or sells asks "how much did you buy/sell?" (pre-filled with what is left; Cancel aborts) and records it in `user_plan_done`
+(`account_short, tos_symbol, as_of_date, side BUY|SELL, amount_usd, qty_at_done`; created by `python -m db.init_db`, the screen and API tolerate the table being missing). Several stocks at once (bulk
+Done) record the whole amount left for each. Because the positions file loads only after hours, a Done counts for its own day until the file shows it: `plan_check.done_pending` compares the shares now with
+`qty_at_done`. Effects: the Planned $ cell shows "Buy $X ... done $Y" (planned less done), the done amount still counts against the room (Max $ / Bucket $), the Builder's To do buy amounts shrink by it.
+API: `POST /api/builder/done {account, symbol, side, amount}`, `DELETE /api/builder/done?account=&symbol=`. The existing Done (row parked in "Actioned today", `user_action_log`) is unchanged and still runs.
