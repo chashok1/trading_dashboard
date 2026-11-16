@@ -267,3 +267,34 @@ def test_room_for_splits_stock_limit_from_bucket_room_and_etfs_use_the_usual_lim
     bonds = pc.room_for(plan, _acct(), [{"sym": "AGG", "bucket": "Fixed Income", "amt": 0, "pick": True}],
                         dict(INFO, AGG={"bucket": "Fixed Income", "sector": None, "beta": None, "styles": []}), default_cap={"max": 18000})
     assert bonds["AGG"]["stock"] is None                    # other classes without a rule have no per-stock limit
+
+
+def test_todo_read_only_mode_assumes_sells_and_only_warns():
+    plan = _plan(Equities=30, **{"Fixed Income": 40, "Gold": 10})            # equities held 40,000 vs 30,000: 10,000 over
+    picks = [{"id": 1, "side": "BUY", "members": ["AAPL"], "amount": 50000.0, "ticked": False}]
+    acct = _acct()
+    cut = pc.todo(plan, acct, picks, {}, INFO, buy_side=SIDE)                # old behaviour: cut to cash
+    assert cut["buys"][0]["allowed"] < 50000
+    ro = pc.todo(plan, acct, picks, {}, INFO, buy_side=SIDE, assume_sells=True, warn_only=True)
+    assert ro["sell_cash"] == 10000                                         # the over-target equities count as sold, nothing ticked
+    b = ro["buys"][0]
+    assert b["allowed"] == 50000 and b["result"] == "OVER_PLAN"            # the amount stands; it is flagged, not cut
+
+
+def test_alloc_sell_is_proportional_and_overrides_stand():
+    vals = {"A": 60000.0, "B": 30000.0, "C": 10000.0}
+    even = pc.alloc_sell(vals, 50000.0)
+    assert even == {"A": 30000.0, "B": 15000.0, "C": 5000.0}               # every holding cut by the same half
+    ov = pc.alloc_sell(vals, 50000.0, {"A": 10000.0})                       # A typed over: the rest share what is left
+    assert ov["A"] == 10000.0 and ov["B"] + ov["C"] == 40000.0 and ov["B"] == 30000.0
+    assert sum(pc.alloc_sell(vals, 999999.0).values()) == 100000.0           # never more than is held
+    assert sum(pc.alloc_sell({"X": 333.0, "Y": 333.0, "Z": 334.0}, 500.0).values()) == 500.0   # rounding leaves no dollar behind
+
+
+def test_todo_uses_the_typed_sale_amount_and_saves_it_in_the_plan():
+    plan = _plan(Equities=30, **{"Fixed Income": 40, "Gold": 10})            # equities over by 10,000
+    plan["sell"] = {"Equities": 4000}
+    r = pc.todo(plan, _acct(), [], {}, INFO, buy_side=SIDE, assume_sells=True, warn_only=True)
+    assert r["sell_cash"] == 4000
+    assert r["sells"][0]["amount"] == 4000 and r["sells"][0]["holdings"][0]["sell"] == 4000
+    assert pc.clean_plan(plan)["sell"] == {"Equities": 4000.0}

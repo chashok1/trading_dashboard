@@ -441,7 +441,7 @@ def todo_page(session, d: date, account: str) -> dict:
     info = bd.name_info(session, d, syms, problems) if syms else {}
     calls = calls_for(session, d, syms)
     out = pc.todo(row["active"], {"value": snap["value"], "cash": snap["cash"], "holdings": snap["holdings"]},
-                  picks, calls, info, style_groups(), final_call_side, sizes_for(session, d, account, syms))
+                  picks, calls, info, style_groups(), final_call_side, sizes_for(session, d, account, syms), assume_sells=True, warn_only=True)
     out.update({"account": account, "state": "active", "active_at": row["active_at"], "plan": row["active"],
                 "snap_date": snap["snap_date"].isoformat() if snap["snap_date"] else None, "stale": snap["stale"],
                 "problems": problems})

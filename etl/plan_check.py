@@ -62,7 +62,12 @@ def clean_plan(plan: Optional[dict]) -> dict:
            "style": {k: _f(v) for k, v in (plan.get("style") or {}).items()},
            "quad": {k: _f((plan.get("quad") or {}).get(k)) for k in ("Q1", "Q2", "Q3", "Q4")},
            "my_stocks": _f(plan.get("my_stocks")),
-           "cash_keep": _f(plan.get("cash_keep"))}
+           "cash_keep": _f(plan.get("cash_keep")),
+           # 2026-11-20: dollars to sell per asset class, and per holding when typed over (saved with the plan)
+           "sell": {k: v for k, v in ((k, _f(v)) for k, v in (plan.get("sell") or {}).items()) if v is not None and v >= 0},
+           "sell_hold": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("sell_hold") or {}).items()) if v is not None and v >= 0},
+           # 2026-11-20: shares held of each planned buy when the plan was saved, so later purchases come off the planned amount
+           "pick_base": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("pick_base") or {}).items()) if v is not None and v >= 0}}
     if out["cash_keep"] is None:
         out["cash_keep"] = DEFAULT_CASH_KEEP
     picks = []
@@ -194,6 +199,30 @@ def _lines_of(sym: str, h_bucket: Optional[str], info: dict, style_groups: dict)
     return out
 
 
+def alloc_sell(values: dict, amount: float, overrides: Optional[dict] = None) -> dict:
+    """Split a sale of `amount` dollars over holdings {sym: value}: every holding is cut in the same proportion to its value.
+    A holding in `overrides` ({sym: dollars}) takes exactly that (never more than it holds) and the others share what is left.
+    Whole dollars; the rounding remainder goes to the largest holding that is not overridden. Returns {sym: dollars to sell}."""
+    values = {k: max(0.0, float(v or 0.0)) for k, v in values.items()}
+    ov = {k: min(max(0.0, float(v)), values[k]) for k, v in (overrides or {}).items() if k in values}
+    total = sum(values.values())
+    amount = min(max(0.0, float(amount or 0.0)), total)
+    fixed = sum(ov.values())
+    rest = max(0.0, amount - fixed)
+    free = {k: v for k, v in values.items() if k not in ov}
+    base = sum(free.values())
+    out = {k: float(round(v)) for k, v in ov.items()}
+    if base > 0 and rest > 0:
+        for k, v in free.items():
+            out[k] = float(round(rest * v / base))
+        diff = round(rest) - sum(out[k] for k in free)
+        big = max(free, key=lambda k: free[k])
+        out[big] = min(free[big], max(0.0, out[big] + diff))
+    for k in free:
+        out.setdefault(k, 0.0)
+    return out
+
+
 def sell_needs(plan: dict, now: dict, value: float) -> list:
     """Classes held above their plan %, in dollars. A class planned at 0 and still held = 'sell all'."""
     p = clean_plan(plan)
@@ -239,13 +268,15 @@ def _line_rows(p: dict, value: float, now: dict, used: dict) -> list:
 
 
 def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_groups: Optional[dict] = None,
-         buy_side=lambda code: "neutral", caps: Optional[dict] = None) -> dict:
+         buy_side=lambda code: "neutral", caps: Optional[dict] = None, assume_sells: bool = False, warn_only: bool = False) -> dict:
     """The To do tab for one account.
 
     account = {value, cash, holdings {sym: {value, bucket, qty, price}}}
     picks   = [{id, side 'BUY'|'SELL', members [sym], amount, ticked}] in the order made
     calls   = {sym: Actionable final_code}; buy_side(code) -> 'buy' | 'sell' | 'neutral'
     caps    = {sym: {min, max, unit}} dollars from the existing amount rules (drv_account_size); optional.
+    assume_sells = (2026-11-19, read-only To do list) count the excess of every class above its plan as sold: no ticks needed.
+    warn_only    = a buy is never cut or blocked for lack of cash: the planned amount stands and the result says it is over.
 
     A planned buy counts as soon as it has an amount (a Buy call is NOT needed: this is planning). Each buy also reports
     max_add (the most that still fits: the smallest room among its class, sector, styles, beta, the cash and the stock's own
@@ -279,8 +310,19 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             v = float(h["value"])
             if on:
                 tot += v
-            rows.append({"sym": sym, "value": v, "call": calls.get(sym), "side": buy_side(calls.get(sym)), "ticked": on,
+            rows.append({"sym": sym, "value": v, "qty": float(h.get("qty") or 0.0) or None, "call": calls.get(sym), "side": buy_side(calls.get(sym)), "ticked": on,
                          "pick_id": ticked_sell[sym]["id"] if on else None})
+        if assume_sells:
+            amt = p["sell"].get(n["cls"])
+            amt = n["need"] if amt is None else min(amt, sum(r["value"] for r in rows))
+            split = alloc_sell({r["sym"]: r["value"] for r in rows}, amt, p["sell_hold"])
+            for r in rows:
+                hh = holdings.get(r["sym"]) or {}
+                r["sell"] = split.get(r["sym"], 0.0)
+                q = float(hh.get("qty") or 0.0)
+                r["shares"] = round(q * r["sell"] / r["value"], 1) if q and r["value"] else None
+            tot = sum(split.values())
+            n = dict(n, amount=amt, default=n["need"])
         sell_cash += tot
         sold_by_cls[n["cls"]] = tot
         sells.append(dict(n, holdings=rows, ticked_total=tot, left=max(0.0, n["need"] - tot)))
@@ -303,6 +345,9 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             now_after["beta"][ln["beta"]] = now_after["beta"].get(ln["beta"], 0.0) - v
         for k in ln["quad"]:
             now_after["quad"][k] = now_after["quad"].get(k, 0.0) - v
+    if assume_sells:                                  # class level: the sold dollars leave their class
+        for c, v in sold_by_cls.items():
+            now_after["cls"][c] = now_after["cls"].get(c, 0.0) - v
     now_after["cls"]["Cash"] = cash + sell_cash
 
     # ---- buys, walked in the order made. Money limits block / shrink; % lines only warn.
@@ -365,10 +410,13 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             start = cap.get("unit") if held_v > 0 else cap.get("min")
             if start:
                 item["suggest"] = min(float(start), item["max_add"])
-        allowed = min(ask, left_cash)
+        allowed = ask if warn_only else min(ask, left_cash)
         allowed = float(int(allowed // 100) * 100) if allowed >= 100 else 0.0
         item["allowed"] = allowed
-        if allowed <= 0:
+        if warn_only and allowed > left_cash + 0.5:
+            item["result"] = "OVER_PLAN"
+            item["why"] = "More than the cash that can be spent here by $%s (warning only)." % format(int(allowed - max(left_cash, 0.0)), ",")
+        elif allowed <= 0:
             item["result"] = "BLOCKED"
             item["why"] = "No cash left to spend in this account. Tick a sell, lower another pick, or change the plan."
         elif allowed < ask:

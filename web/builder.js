@@ -37,7 +37,7 @@
   const S = {
     date: null, accounts: [], acct: '', horizon: '3M', preset: 'current', seeded: null, mix: null, amount: null, useDial: false,
     srcNames: [], outlooks: {}, nameCache: {}, picks: [], assign: {}, targets: {}, gapIdx: null, namesSeq: 0, sources: [], srcList: [], warn: {}, presets: {}, preview: null,
-    reqSeq: 0, timer: null, detail: null, chart: null,
+    reqSeq: 0, timer: null, detail: null, chart: null, sell: {}, sellHold: {}, pickBase: {},
   };
 
   async function api(url, opts) {
@@ -113,7 +113,7 @@
     // the saved plan (if any) loads first and marks the targets as seeded so holdings never overwrite them.
     $('acctSel').onchange = () => {
       if (PL.dirty && !window.confirm('You have unsaved changes for ' + S.acct + '. Switch account and lose them?')) { $('acctSel').value = S.acct; return; }
-      S.acct = $('acctSel').value; S.amount = null; S.targets = {}; S.seeded = null; S.guideFor = null; S.preset = 'current'; S.mix = null;
+      S.acct = $('acctSel').value; S.amount = null; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.guideFor = null; S.preset = 'current'; S.mix = null;
       S.picks = []; S.fillGapNext = false; S.matchNext = false; PL.dirty = false;
       loadSourceNames(); planLoad(); schedule(0);
     };
@@ -367,6 +367,31 @@
     renderSourceNames(); schedule(0);
   }
 
+  // 2026-11-19, user: every plan starts with what you hold. After a delete the held stocks are ticked again (they sit on the right, so the left boxes are locked)
+  // 2026-11-20, user: shares bought since the plan was saved come off the planned Buy $; once it is all bought the stock leaves the plan (it stays on the right as a holding)
+  function applyBought(res) {
+    const hold = {}; (((res || {}).account || {}).holdings || []).forEach(h => { hold[h.sym] = h; });
+    const done = [];
+    S.picks.forEach(p => {
+      if (!(p.amtSaved > 0) || S.pickBase[p.sym] == null) return;
+      const h = hold[p.sym] || {}, price = h.price || 0, bought = Math.max(0, (h.qty || 0) - S.pickBase[p.sym]) * price;
+      const rem = p.amtSaved - bought;
+      if (bought > 0 && price && rem < price) done.push(p.sym);
+      else p.amt = bought > 0 ? Math.round(rem) : p.amtSaved;
+    });
+    if (done.length) {
+      S.picks = S.picks.filter(p => !done.includes(p.sym));
+      done.forEach(k => { delete S.pickBase[k]; });
+      const hint = $('srcNamesHint'); if (hint) hint.textContent = done.join(', ') + (done.length === 1 ? ' is' : ' are') + ' bought: removed from the plan\'s buys (still held on the right).';
+      renderSourceNames();
+    }
+  }
+  function tickHeldPicks() {
+    const held = (S.preview && S.preview.account && S.preview.account.holdings) || [];
+    held.forEach(h => {
+      if (h.value > 0 && h.bucket && h.bucket !== 'Cash' && BUCKETS.includes(h.bucket) && !picked(h.sym)) S.picks.push({ sym: h.sym, bucket: h.bucket, pct: null, amt: null, grp: '' });
+    });
+  }
   function setPick(sym, on) {
     const n = S.nameCache[sym];
     const b = bucketOf(n);
@@ -390,6 +415,7 @@
   }
 
   function renderSourceNames() {
+    const heldSyms = new Set(((S.preview && S.preview.account && S.preview.account.holdings) || []).filter(h => h.value > 0).map(h => h.sym));
     markActiveFilters();
     const all = S.srcNames || [];
     const rows = shownNames();
@@ -400,7 +426,8 @@
       const b = bucketOf(n), on = !!picked(n.sym);
       const cls = b ? esc(b) : `<select data-assign="${esc(n.sym)}"><option value="">Choose...</option>${BUCKETS.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
       const st = (n.styles || []).map(t => { const f = STYLE_TO_FACTOR[String(t).toLowerCase()]; const sh = STY_ABBR[String(t).toLowerCase()] || t; return f ? ftag('factor', f, esc(sh), t + '. Filter: ' + ((FACTORS.find(x => x[0] === f) || [])[1] || f) + ' (a group of related tags)') : `<span title="${esc(t)}">${esc(sh)}</span>`; }).join(', ') || '<span class="bld-muted">-</span>';
-      return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${!b ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : 'Add to picks'}"></td>` +
+      const heldNow = on;      // on = already in the picks on the right (held or not)      // 2026-11-19, user: a stock you already hold is already on the right: its box is ticked and locked
+      return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${(!b || heldNow) ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : (heldNow ? (heldSyms.has(n.sym) ? 'You hold this stock: it is already in the picks on the right (use the x there to remove it)' : 'Already in the picks on the right (use the x there to remove it)') : 'Add to picks')}"></td>` +
         `<td>${symHtml(n.sym)}</td>${canPickTd(n, b)}<td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(CLS_ABBR[b] || b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(SEC_ABBR[n.sector] || n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
         `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td></tr>`;
     }).join('') || '<tr><td colspan="10" class="bld-muted">No names match.</td></tr>';
@@ -742,7 +769,7 @@
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
         const gl = r.pk && r.pk.grp ? r.pk.grp : '', gcol = gl ? GRP_COL[gl.charCodeAt(0) - 65] : '';
         const rm = (S.room || {})[r.sym];
-        const callTxt = ((res.room_calls || {})[r.sym]) ? ' Actionable call: ' + (res.room_calls || {})[r.sym] + '.' : '';
+        const callTxt = '';
         const maxTd = !rm ? '<td></td>' : (rm.stock == null ? '<td class="n bld-muted" title="No per-stock limit for this class">-</td>'
           : `<td class="n bld-tip" data-tip="${esc('Most you can still buy of this one stock: ' + usd(rm.stock) + '. (Its Max rule less what you hold; an ETF with no rule uses your usual stock limit.)')}">${rm.stock > 0 ? usd(rm.stock) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">at max</span>'}</td>`);
         const bktTd = !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>'}</td>`;
@@ -780,7 +807,7 @@
     $('symTable').querySelectorAll('[data-amt]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.amt); if (!p) return;
       p.amt = i.value === '' ? null : Math.max(0, parseFloat(i.value) || 0);
-      p.amtUser = true; p.autoAmt = false;
+      p.amtUser = true; p.autoAmt = false; p.amtSaved = null; delete S.pickBase[p.sym];
       if (p.grp) S.picks.forEach(q => { if (q.grp === p.grp) q.amt = p.amt; });
       planDirty(); renderPicks(res);
     });
@@ -815,6 +842,7 @@
       const res = await post('/api/builder/preview', buildReq());
       if (seq !== S.reqSeq) return;
       S.preview = res;
+      applyBought(res);
       S.room = res.room || {};
       let refill = false;
       S.picks.forEach(p => {                          // fill the starting Buy $ of picks you have not typed an amount for
@@ -824,6 +852,7 @@
       });
       if (refill) schedule(0);        // the amounts changed: the grids must be worked out again with them
       render(res);
+      if (TD.data && TD.data.state !== 'none' && $('tdBuys')) todoRender();   // the To do list follows the picks on screen
       if (S.srcNames.length) {                         // the room for the names list just arrived: redraw it (keeping its scroll place)
         const sc = document.querySelector('.bld-side-scroll'), top = sc ? sc.scrollTop : 0;
         renderSourceNames();
@@ -923,6 +952,10 @@
       if (k.startsWith('sector:')) { if (isEquitySector(k.slice(7))) plan.sector[k.slice(7)] = S.targets[k]; }
       else if (k.startsWith('style:')) plan.style[k.slice(6)] = S.targets[k];
     });
+    plan.sell = Object.assign({}, S.sell); plan.sell_hold = Object.assign({}, S.sellHold);
+    plan.pick_base = {};                                   // shares held now of every planned buy: later purchases come off its amount
+    const hq = {}; (((S.preview || {}).account || {}).holdings || []).forEach(h => { hq[h.sym] = h.qty || 0; });
+    S.picks.forEach(p => { if (p.amt > 0) plan.pick_base[p.sym] = hq[p.sym] || 0; });   // the sale amounts typed in the To do list
     if (!('none' in plan.style)) plan.style.none = null;   // always present, so a blank 'No style tag' box is remembered as 'no limit'
     return plan;
   }
@@ -941,7 +974,8 @@
     Object.keys(p.sector || {}).forEach(k => { if (p.sector[k] != null) S.targets['sector:' + k] = p.sector[k]; });
     Object.keys(p.style || {}).forEach(k => { if (p.style[k] != null) S.targets['style:' + k] = p.style[k]; });
     if (Array.isArray(p.sources) && p.sources.length) { S.sources = p.sources.slice(); renderSources(); loadSourceNames(); }
-    if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '', amtUser: true })); renderSourceNames(); }
+    S.sell = Object.assign({}, p.sell || {}); S.sellHold = Object.assign({}, p.sell_hold || {}); S.pickBase = Object.assign({}, p.pick_base || {});
+    if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '', amtUser: !!x.amt, amtSaved: x.amt || null })); renderSourceNames(); }
     schedule(0);
   }
   // The account's saved versions go in the Plan box; the checked one (tick) opens first, else the newest.
@@ -981,12 +1015,16 @@
   const planNeedAcct = () => { if (!S.acct || S.acct === 'ALL') { planNote('Choose one account first. A plan belongs to one account.', true); return true; } return false; };
   // Keep the screen as plan `name`. Saving the ACTIVE plan also refreshes what the To do list reads; any other plan is only kept.
   async function planStore(name) {
+    const pl = planFromState();
+    const rebase = () => { S.pickBase = Object.assign({}, pl.pick_base); S.picks.forEach(p => { p.amtSaved = p.amt > 0 ? p.amt : null; }); };   // what is saved now is the new starting point
     if (name === PL.checked || !PL.checked) {   // the active plan, or the account's first plan (nothing active yet): saving also makes it active
-      const r = await planSend('/api/builder/plan/save-check', { account: S.acct, name, plan: planFromState(), date: S.date });
+      const r = await planSend('/api/builder/plan/save-check', { account: S.acct, name, plan: pl, date: S.date });
+      rebase();
       await planAfterSave(r.name, r.checking);
       return r;
     }
-    const r = await planSend('/api/builder/plan/save-as', { account: S.acct, name, plan: planFromState() });
+    const r = await planSend('/api/builder/plan/save-as', { account: S.acct, name, plan: pl });
+    rebase();
     await planAfterSave(r.name, false);
     return r;
   }
@@ -1016,12 +1054,12 @@
   }
   async function planDelete() {
     if (!S.acct || S.acct === 'ALL') return;
-    if (!PL.name) { S.picks = []; S.targets = {}; S.mix = null; S.preset = 'current'; PL.dirty = false; planPill(); renderSourceNames(); schedule(0); return; }
+    if (!PL.name) { S.picks = []; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.mix = null; S.preset = 'current'; PL.dirty = false; tickHeldPicks(); planPill(); renderSourceNames(); schedule(0); return; }
     if (!window.confirm('Delete the saved plan "' + PL.name + '" for ' + S.acct + '?' + (PL.name === PL.checked ? ' It is the active plan, so the To do list and its planned buys stop. ' : ' ') + 'Your My stocks list is kept.')) return;
     try {
       await planSend('/api/builder/plan?account=' + encodeURIComponent(S.acct) + '&name=' + encodeURIComponent(PL.name), {}, 'DELETE');
-      S.picks = []; S.targets = {}; S.seeded = null; S.mix = null; S.preset = 'current'; PL.name = null;
-      await planLoad(); renderSourceNames(); schedule(0);
+      S.picks = []; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.mix = null; S.preset = 'current'; PL.name = null;
+      await planLoad(); tickHeldPicks(); renderSourceNames(); schedule(0);
       planNote('Plan deleted for ' + esc(S.acct) + '.');
       } catch (e) { planNote(esc(e.message), true); }
   }
@@ -1045,43 +1083,99 @@
     } catch (e) { if (seq === TD.seq) tdMsg('Could not load the to-do list: ' + e.message, true); }
     $('tdBody').classList.remove('td-dim');
   }
+  // 2026-11-19, user: a summary at the top of the To do list: what is in it, what is left to do, and which chosen stocks are not in it yet
+  function tdSummaryHtml(t) {
+    const buys = (t.buys || []).filter(x => (x.amount || 0) > 0);
+    const buyTot = buys.reduce((a, x) => a + (x.amount || 0), 0);
+    const sells = (t.sells || []).filter(x => (x.left || 0) > 0 || x.all);
+    const inList = new Set((t.buys || []).flatMap(x => x.members || []));
+    const held = new Set(((S.preview && S.preview.account && S.preview.account.holdings) || []).filter(h => h.value > 0).map(h => h.sym));
+    const noAmt = S.picks.filter(p => !(p.amt > 0) && !held.has(p.sym)).map(p => p.sym);            // chosen, not held, no Buy $: cannot be a buy
+    const unsaved = S.picks.filter(p => p.amt > 0 && !inList.has(p.sym)).map(p => p.sym);          // has a Buy $ but is not in the saved plan yet
+    const li = [];
+    li.push(buys.length ? `<li><b>Buys:</b> ${buys.length} planned, ${usd(buyTot)} in all (${buys.slice(0, 3).map(x => esc(x.members.join(' or ')) + ' ' + usd(x.amount)).join(', ')}${buys.length > 3 ? ', ...' : ''}). Carry them out on the Actionable screen.</li>` : '<li><b>Buys:</b> none planned yet.</li>');
+    li.push(sells.length ? `<li><b>Sells:</b> ${sells.map(x => esc(x.cls) + (x.all ? ' (plan 0%: sell all ' + usd(x.held) + ')' : ' is ' + usd(x.need) + ' over its target')).join('; ')}. They are counted as sold for the cash below.</li>` : '<li><b>Sells:</b> nothing is over its plan.</li>');
+    if (unsaved.length) li.push(`<li class="bld-warn"><b>Not saved yet:</b> ${unsaved.slice(0, 8).map(esc).join(', ')}${unsaved.length > 8 ? ' ...' : ''} ${unsaved.length === 1 ? 'has' : 'have'} a Buy $ but ${unsaved.length === 1 ? 'is' : 'are'} not in this list. Press Save to add ${unsaved.length === 1 ? 'it' : 'them'}.</li>`);
+    if (noAmt.length) li.push(`<li class="bld-muted"><b>Chosen but not in the list:</b> ${noAmt.slice(0, 8).map(esc).join(', ')}${noAmt.length > 8 ? ' ...' : ''} ${noAmt.length === 1 ? 'has' : 'have'} no Buy $. Type one to plan the purchase.</li>`);
+    return '<b>What to do</b><ul>' + li.join('') + '</ul>';
+  }
   function todoRender() {
     const t = TD.data;
     $('tdEmpty').hidden = t.state !== 'none'; $('tdBody').hidden = t.state === 'none';
     $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (PL.dirty ? ' · your unsaved changes are not in this list' : '');
     if (t.state === 'none') return;
+    $('tdSummary').innerHTML = tdSummaryHtml(t);
 
     // sells
-    $('tdSells').innerHTML = (t.sells || []).length ? t.sells.map(s => `<div style="margin-bottom:8px"><div class="bld-line"><b>${esc(s.cls)}</b>` +
-      tdPill('sell', s.all ? 'Plan 0%: sell all ' + usd(s.held) : 'Over plan by about ' + usd(s.need)) +
-      `<span class="bld-muted" style="margin-left:auto">Ticked ${usd(s.ticked_total)} of ${usd(s.need)}</span></div>` +
-      '<table class="bld-t"><thead><tr><th></th><th>Holding</th><th class="n">Value</th><th>Actionable</th></tr></thead><tbody>' +
-      s.holdings.map(h => `<tr><td><input type="checkbox" data-tdsell="${esc(h.sym)}" data-pid="${h.pick_id || ''}" data-val="${h.value}"${h.ticked ? ' checked' : ''} aria-label="Sell ${esc(h.sym)}"></td><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td>${tdPill(h.side === 'sell' ? 'sell' : h.side === 'buy' ? 'buy' : '', tdCall(h.call))}</td></tr>`).join('') +
-      '</tbody></table></div>').join('') : '<div class="bld-muted">Nothing is over its plan. No sells needed.</div>';
-    $('tdSells').querySelectorAll('[data-tdsell]').forEach(e => e.onchange = async () => {
-      try {
-        if (e.checked) await planSend('/api/builder/pick', { account: S.acct, side: 'SELL', members: [e.dataset.tdsell], amount: Number(e.dataset.val), ticked: true });
-        else if (e.dataset.pid) await planSend('/api/builder/pick/' + e.dataset.pid, {}, 'DELETE');
-        await todoLoad();
-      } catch (x) { tdMsg(x.message, true); }
+    // 2026-11-20, user: type the amount to sell per class; it is split over the holdings in proportion to their value (type over any holding and the
+    // others share the rest). Saved with the plan (Save), shown here at once.
+    const allocSell = (vals, amount, ov) => {
+      const keys = Object.keys(vals), total = keys.reduce((a, k) => a + vals[k], 0);
+      amount = Math.min(Math.max(0, amount || 0), total);
+      const fixed = {}; let fx = 0;
+      keys.forEach(k => { if (ov && ov[k] != null) { fixed[k] = Math.min(Math.max(0, ov[k]), vals[k]); fx += fixed[k]; } });
+      const free = keys.filter(k => fixed[k] == null), base = free.reduce((a, k) => a + vals[k], 0), rest = Math.max(0, amount - fx);
+      const out = {}; keys.forEach(k => { out[k] = fixed[k] != null ? Math.round(fixed[k]) : 0; });
+      if (base > 0 && rest > 0) {
+        free.forEach(k => { out[k] = Math.round(rest * vals[k] / base); });
+        const diff = Math.round(rest) - free.reduce((a, k) => a + out[k], 0), big = free.slice().sort((a, b) => vals[b] - vals[a])[0];
+        out[big] = Math.min(vals[big], Math.max(0, out[big] + diff));
+      }
+      return out;
+    };
+    $('tdSells').innerHTML = (t.sells || []).length ? t.sells.map(sl => {
+      const vals = {}; sl.holdings.forEach(h => { vals[h.sym] = h.value; });
+      const held = Object.values(vals).reduce((a, v) => a + v, 0);
+      const def = sl.default != null ? sl.default : sl.need;
+      const amt = S.sell[sl.cls] != null ? Math.min(S.sell[sl.cls], held) : def;
+      const split = allocSell(vals, amt, S.sellHold);
+      const tot = Object.values(split).reduce((a, v) => a + v, 0);
+      return `<div style="margin-bottom:10px"><div class="bld-line"><b>${esc(sl.cls)}</b>` +
+        tdPill('sell', sl.all ? 'Plan 0%: sell all ' + usd(sl.held) : 'Over plan by about ' + usd(def)) +
+        `<span style="margin-left:auto">Amount to sell <input type="number" min="0" step="1000" data-tdcls="${esc(sl.cls)}" value="${Math.round(amt)}" style="width:92px" title="Defaults to how far the class is over its plan. Split over the holdings below in proportion to their value."></span></div>` +
+        '<table class="bld-t"><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Sell $</th><th class="n">Shares</th><th class="n">Left</th></tr></thead><tbody>' +
+        sl.holdings.map(h => {
+          const sv = split[h.sym] || 0, qty = h.qty || null, sh = qty && h.value ? Math.round(qty * sv / h.value * 10) / 10 : null;
+          return `<tr><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td class="n"><input type="number" min="0" step="500" data-tdhold="${esc(h.sym)}" value="${Math.round(sv)}" style="width:80px"${S.sellHold[h.sym] != null ? ' class="tgt-over" title="You typed this amount: the other holdings share the rest"' : ''}></td><td class="n">${sh == null ? '-' : sh}</td><td class="n">${usd(h.value - sv)}</td></tr>`;
+        }).join('') +
+        `<tr><td><b>Total</b></td><td class="n">${usd(held)}</td><td class="n"><b>${usd(tot)}</b></td><td></td><td class="n">${usd(held - tot)}</td></tr></tbody></table></div>`;
+    }).join('') : '<div class="bld-muted">Nothing is over its plan. No sells needed.</div>';
+    $('tdSells').querySelectorAll('[data-tdcls]').forEach(e => e.onchange = () => {
+      S.sell[e.dataset.tdcls] = Math.max(0, Number(e.value) || 0);
+      Object.keys(S.sellHold).forEach(k => { delete S.sellHold[k]; });       // a new class amount re-splits everything
+      planDirty(); todoRender();
+    });
+    $('tdSells').querySelectorAll('[data-tdhold]').forEach(e => e.onchange = () => {
+      S.sellHold[e.dataset.tdhold] = Math.max(0, Number(e.value) || 0);
+      planDirty(); todoRender();
     });
 
     // buys
     const RES = { OK: ['ok', 'OK'], OVER_PLAN: ['warn', 'Over plan'], SHRUNK: ['warn', 'Cut'], BLOCKED: ['bad', 'Blocked'], WAITING: ['', 'Waiting'], READY: ['buy', 'Has a Buy'] };
-    let b = '<thead><tr><th></th><th>Pick</th><th>Actionable today</th><th class="n">Amount</th><th class="n">Allowed</th><th>Result</th></tr></thead><tbody>';
-    (t.buys || []).forEach(x => {
-      const names = x.members.map(m => `<b>${esc(m)}</b>`).join(x.members.length > 1 ? ' <span class="bld-muted">or</span> ' : '');
-      const calls = x.members.map(m => esc(m) + ': ' + esc(tdCall(x.calls[m]))).join(' · ');
-      const r = RES[x.result] || ['', x.result];
-      b += `<tr><td><input type="checkbox" data-tdbuy="${x.id}"${x.ticked ? ' checked' : ''}${x.result === 'WAITING' ? ' disabled' : ''} aria-label="Count this pick"></td><td>${names}<div class="bld-muted">${calls}</div></td><td>` +
-        (x.buy_member ? tdPill('buy', 'Buy: ' + x.buy_member) : tdPill('', 'None yet')) + `</td><td class="n"><input type="number" min="0" step="500" data-tdamt="${x.id}" value="${x.amount || ''}" placeholder="$0" style="width:78px"></td><td class="n">${x.allowed ? usd(x.allowed) : '-'}</td><td>${tdPill(r[0], r[1])} <span class="bld-muted">${esc(x.why)}</span></td></tr>`;
+    // 2026-11-20, user: just Pick, Amount and a small flag. The flag is empty when all is well; it says "Not saved yet" or warns.
+    let b = '<thead><tr><th>Pick</th><th class="n">Amount</th><th>Flag</th></tr></thead><tbody>';
+    const saved = {};
+    (t.buys || []).forEach(x => x.members.forEach(m => { saved[m] = x; }));
+    const onScreen = S.picks.filter(p => p.amt > 0);
+    const seen = new Set();
+    let rows = 0;
+    const flagOf = x => (x && x.result && x.result !== 'OK' && x.result !== 'WAITING' && x.result !== 'READY') ? tdPill('warn', (RES[x.result] || ['', x.result])[1]) + (x.why ? ' <span class="bld-muted">' + esc(x.why) + '</span>' : '') : '';
+    onScreen.forEach(p => {
+      const x = saved[p.sym];
+      seen.add(p.sym);
+      rows++;
+      const stale = !x || Math.abs((x.amount || 0) - p.amt) > 0.5;
+      const flag = stale ? tdPill('warn', 'Not saved yet') + (x ? ' <span class="bld-muted">the saved amount is ' + usd(x.amount || 0) + '</span>' : ' <span class="bld-muted">press Save to put it in the plan</span>') : flagOf(x);
+      b += `<tr><td><b>${esc(p.sym)}</b></td><td class="n">${usd(p.amt)}</td><td>${flag}</td></tr>`;
     });
-    if (!(t.buys || []).length) b += '<tr><td colspan="6" class="bld-muted">No planned buys yet. Type a Buy $ on a pick, then press Save plan.</td></tr>';
+    (t.buys || []).forEach(x => {                      // saved buys that are no longer picked on the screen
+      if (x.members.some(m => seen.has(m))) return;
+      rows++;
+      const names = x.members.map(m => `<b>${esc(m)}</b>`).join(x.members.length > 1 ? ' <span class="bld-muted">or</span> ' : '');
+      b += `<tr><td>${names}</td><td class="n">${x.amount ? usd(x.amount) : '-'}</td><td>${tdPill('', 'Saved only')} <span class="bld-muted">in the saved plan, not picked on the screen</span>${flagOf(x) ? ' ' + flagOf(x) : ''}</td></tr>`;
+    });
+    if (!rows) b += '<tr><td colspan="3" class="bld-muted">No planned buys yet. Type a Buy $ on a pick; it appears here at once and is saved when you press Save.</td></tr>';
     $('tdBuys').innerHTML = b + '</tbody>';
-    const patch = async (id, body) => { try { await planSend('/api/builder/pick/' + id, body, 'PATCH'); await todoLoad(); } catch (x) { tdMsg(x.message, true); } };
-    $('tdBuys').querySelectorAll('[data-tdbuy]').forEach(e => e.onchange = () => patch(e.dataset.tdbuy, { ticked: e.checked }));
-    $('tdBuys').querySelectorAll('[data-tdamt]').forEach(e => e.onchange = () => patch(e.dataset.tdamt, { amount: Math.max(0, Number(e.value) || 0) }));
-
     // what is left
     const bar = (now, used, plan, hard) => {
       const after = now + used, w = plan > 0 ? Math.min(after / plan * 100, 100) : (after > 0 ? 100 : 0), nw = plan > 0 ? Math.min(now / plan * 100, 100) : (now > 0 ? 100 : 0);
@@ -1099,7 +1193,7 @@
     const hard = t.cash_left <= 0;
     L += `<div><div class="bld-line"><b>Cash you can spend</b><span style="margin-left:auto;color:${hard ? '#9e3636' : '#16a34a'}">${usd(t.cash_left)} left</span></div>` +
       `<div class="td-bar"><i class="${hard ? 'h' : ''}" style="width:${t.cash_to_spend > 0 ? Math.min((t.cash_to_spend - t.cash_left) / t.cash_to_spend * 100, 100) : 100}%"></i></div>` +
-      `<div class="bld-muted">Cash ${usd(t.cash)}${t.sell_cash ? ' + ' + usd(t.sell_cash) + ' expected from sells (not in your broker file yet)' : ''}. Keeps the plan's Cash % and ${usd(t.cash_keep)}. A money limit: it blocks.</div></div>`;
+      `<div class="bld-muted">Cash ${usd(t.cash)}${t.sell_cash ? ' + ' + usd(t.sell_cash) + ' counted from selling over-target classes' : ''}. Keeps the plan's Cash % and ${usd(t.cash_keep)}. A warning only: nothing is cut.</div></div>`;
     // two columns: Asset class (with Cash) on the left, Sectors on the right; the other optional lines (style, beta, Quad) stay below as before
     const optRow = r => { const left = lf(r.left), over = left < -1; return `<div><div class="bld-line"><span>${esc(r.label)}</span><span style="margin-left:auto;color:${over ? '#b45309' : '#16a34a'}">${over ? 'over by ' + usd(-left) : usd(left) + ' left'}</span></div>${bar(r.now, r.used, r.plan, false)}</div>`; };
     const sectors = (t.lines || []).filter(r => r.kind === 'sector');

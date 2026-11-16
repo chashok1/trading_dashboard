@@ -68,6 +68,9 @@
     .td-bar b { position: absolute; left: 0; bottom: 0; height: 3px; background: #7f90a8; z-index: 1; }
     .td-msg { padding: 7px 10px; border-radius: 6px; background: #e4efe7; color: #2f6b45; margin-top: 8px; } .td-msg.w { background: #fdf3e3; color: #b45309; }
     .td-dim { opacity: .5; pointer-events: none; }
+    .td-sum { background: #f4f7ff; border: 1px solid #dbe3f7; border-radius: 6px; padding: 7px 10px; margin: 6px 0 4px; font-size: 11px; }
+    .td-sum ul { margin: 3px 0 0; padding-left: 16px; }
+    .td-sum li { margin: 2px 0; }
     .bld-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
     .bld-card h3 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
     .bld-step { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 10px; line-height: 18px; margin-right: 6px; }
@@ -403,7 +406,7 @@
             <span class="bld-pill" id="acctType"></span>
 </div>
             <div class="bld-acol">
-            <span class="bld-line" style="flex-wrap:wrap"><b style="min-width:0">Plan</b><span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
+            <span class="bld-line" style="flex-wrap:wrap"><span class="bld-pill" id="planPill" title="The plan used by the To do list for this account (the active plan). Choose another saved plan in the Plan box and press Activate to switch."></span><select id="planVer" aria-label="saved plans" title="Your saved plans for this account. The tick marks the active one. Choosing one loads it on the screen; press Activate to use it."></select><button class="bld-btn sm alt" id="planSave" title="Save the changes to this plan">Save</button><button class="bld-btn sm alt" id="planSaveAs" title="Save a copy under a new name">Save as&hellip;</button><button class="bld-btn sm" id="planActivate" title="Make this the active plan. The To do list uses the active plan.">Activate</button><button class="bld-btn sm alt" id="planDelete" title="Delete this saved plan">Delete</button></span>
             <div class="bld-muted" id="planMsg" hidden></div>
             </div>
           </div>
@@ -440,8 +443,9 @@
             <div class="bld-line" style="justify-content:space-between"><h3 style="margin:0">To do <span class="bld-muted" id="tdSub" style="font-weight:400"></span></h3></div>
             <div id="tdEmpty" class="bld-muted" style="margin-top:6px" hidden>Save a plan for this account and your to-do list appears here.</div>
             <div id="tdBody">
+              <div class="td-sum" id="tdSummary"></div>
               <div class="td-h">Sell <span class="bld-muted">classes above their plan %</span></div><div id="tdSells"></div>
-              <div class="td-h">Buy <span class="bld-muted">your planned picks; counts only when Actionable says Buy</span></div>
+              <div class="td-h">Buy <span class="bld-muted">your planned buys</span></div>
               <div style="overflow-x:auto"><table class="bld-t" id="tdBuys"></table></div>
               <div class="td-h">What is left <span class="bld-muted">this account only</span></div>
               <div id="tdLeft" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px"></div>
@@ -473,7 +477,7 @@
 
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261119s"></script>
+  <script src="/static/builder.js?v=20261120e"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

@@ -59,7 +59,7 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
         stale = _stale(d)
         res["account"] = {"name": account, "type": acct["type"], "value": acct["value"], "snap_date": acct["snap_date"],
                           "positions_stale": acct["stale"], "kept": ctx["kept"],
-                          "holdings": [{"sym": k, "value": h["value"], "bucket": h["bucket"], "area": h["area"],
+                          "holdings": [{"sym": k, "value": h["value"], "qty": h.get("qty"), "price": h.get("price"), "bucket": h["bucket"], "area": h["area"],
                                         "kept": k in set(ctx["kept"])} for k, h in sorted(acct["holdings"].items(), key=lambda kv: -kv[1]["value"])]}
         res["as_of"] = d.isoformat()
         res["data_stale"] = stale
@@ -89,7 +89,6 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
         if account != "ALL" and body.get("plan"):
             try:
                 from etl import plan_check as pc
-                from etl.derive_model_portfolio import final_call_side
                 plan_picks = [x for x in (body["plan"].get("picks") or []) if x.get("sym")]
                 picked = {str(x["sym"]).upper() for x in plan_picks}
                 cands = [{"sym": str(x["sym"]).upper(), "bucket": x.get("bucket"), "amt": float(x.get("amt") or 0.0), "pick": True} for x in plan_picks]
@@ -109,13 +108,10 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 missing = [x for x in syms if x not in info]
                 if missing:
                     info.update(bd.name_info(s, d, missing, ctx["problems"]))
-                calls = ps.calls_for(s, d, syms)
-                buyers = {k for k, v in calls.items() if final_call_side(v) == "buy"}
                 res["room"] = pc.room_for(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
-                                          cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), buyers,
+                                          cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), None,
                                           ps.account_default_size(s, d, account))
                 res["room_default"] = ps.account_default_size(s, d, account)
-                res["room_calls"] = {k: calls.get(k) for k in syms if calls.get(k)}
                 res["room_meta"] = pc.cash_summary(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
                                                    info, ps.style_groups())
             except Exception as e:      # never break the preview over the Max $ column

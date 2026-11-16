@@ -53,6 +53,11 @@ goes up, so a bigger target leaves room for new stocks. A typed % still override
 held stocks (no % shares are written). A class with a 0% target still shows its held picks. The Picks column and the class totals are therefore held + planned buys.
 Note: `etl/` is not hot-reloaded by uvicorn (`--reload-dir api`): touch `api/routers/builder.py` or restart after an `etl/` edit.
 
+## To do list is read-only (2026-11-19)
+No checkboxes and no Actionable columns in the Builder's To do list. `plan_check.todo(..., assume_sells=True, warn_only=True)` (used by `plan_store.todo_page`): the excess of every class above
+its plan counts as sold (no ticks), and a buy is never cut or blocked for cash: the planned amount stands and the result says "Over plan" (warning). The old behaviour (ticked sells, cut / blocked)
+is still the default of `todo()` for the tests. Carrying buys and sells out and ticking them done belongs on the Actionable screen (not built yet). A summary box ("What to do") sits at the top.
+
 ## Files
 | Piece | File |
 |---|---|
