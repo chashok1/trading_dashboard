@@ -4175,11 +4175,13 @@ function _acctCellHtml(r, kind) {
     return x.bucket > 0 ? '<span title="' + tip + '">' + _planUsd(x.bucket) + '</span>' : '<span style="color:#b45309" title="' + tip + '">$0</span> <span style="color:#9ca3af;font-size:9px">' + escapeHtml(_acctWhy(x.bucket_binding)) + '</span>';
   }
   if (kind === 'apl') {
+    const sym = escapeHtml(r.tos_symbol);
     const done = (v, word) => v > 0 ? ' <span style="color:#9ca3af;font-size:9px" title="Marked Done today for ' + _planUsd(v) + ' (' + word + '); it clears when the positions file shows it">done ' + _planUsd(v) + '</span>' : '';
     const doneTxt = done(x.done_buy, 'bought') + done(x.done_sell, 'sold');
-    if (x.planned_sell > 0) return '<span style="color:#9e3636" title="The plan sells this much of this stock (its share of the sale planned for its asset class)">Sell ' + _planUsd(x.planned_sell) + '</span>' + doneTxt;
-    if (x.planned != null && x.planned > 0) return '<span style="color:#2f6b45" title="Planned buy still to do in this account\'s active plan' + (x.planned_group ? ' (a buy-one-of group)' : '') + '">Buy ' + _planUsd(x.planned) + '</span>' + doneTxt;
-    return doneTxt ? doneTxt.trim() : dash;
+    const undo = (x.done_buy > 0 || x.done_sell > 0) ? ' <a href="#" data-planundo="' + sym + '" style="font-size:9px;color:#9ca3af" title="Remove today\'s Done amounts for this stock">undo</a>' : '';
+    if (x.planned_sell > 0) return '<span style="color:#9e3636" title="The plan sells this much of this stock (its share of the sale planned for its asset class)">Sell ' + _planUsd(x.planned_sell) + '</span>' + doneTxt + undo;
+    if (x.planned != null && x.planned > 0) return '<span style="color:#2f6b45" title="Planned buy still to do in this account\'s active plan' + (x.planned_group ? ' (a buy-one-of group)' : '') + '">Buy ' + _planUsd(x.planned) + '</span>' + doneTxt + undo;
+    return doneTxt ? doneTxt.trim() + undo : dash;
   }
   return dash;
 }
@@ -5396,7 +5398,7 @@ function _buildRowEl(r) {
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
       <td data-col="bulk" style="padding:4px 4px; text-align:center; line-height:1.5;">
-        <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
+        <button type="button" class="row-act-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Done / Skip / Snooze this stock, with an amount if it is part of a planned buy or sell">&#10003;</button>
         <div>${r.conviction_hold
           ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction ${r.conviction_direction === 'AVOID' ? 'avoid' : 'hold'} — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">${r.conviction_direction === 'AVOID' ? '🚫' : '🔭'}</span>`
           : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}</div>
@@ -5514,7 +5516,7 @@ function _buildRowEl(r) {
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
     `;
     tr.onclick = (e) => {
-      if (e.target.closest('.row-check') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
+      if (e.target.closest('.row-check') || e.target.closest('.row-act-btn') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
       const rulesCell = e.target.closest('.rules-link-cell');
       if (rulesCell) {
         window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
@@ -5543,15 +5545,16 @@ function renderBulkBar() {
 // Inline action: call the same endpoint as the modal Save/Dismiss.
 // 2026-11-20, user: Done on a stock the picked account's plan buys or sells asks how much was done (pre-filled with what is left) and records it, so the plan counts it
 // today even though the positions file only loads after hours. Cancel leaves everything as it was.
-async function _recordPlanDone(sym, ask) {
+async function _recordPlanDone(sym, ask, amtOverride) {
   const sn = _roomAccountShort();
   const x = sn && state.acctRoom && state.acctRoom.data && (state.acctRoom.data.rows || {})[sym];
   if (!x) return true;
   const side = x.planned > 0 ? 'BUY' : (x.planned_sell > 0 ? 'SELL' : '');
   if (!side) return true;
   const left = side === 'BUY' ? x.planned : x.planned_sell;
-  let amt = left;
-  if (ask) {
+  let amt = amtOverride != null ? amtOverride : left;
+  if (amtOverride != null && !(amt > 0)) return true;
+  if (ask && amtOverride == null) {
     const v = window.prompt(sym + ': how much did you ' + (side === 'BUY' ? 'buy' : 'sell') + ' (in dollars)? The plan has $' + Math.round(left).toLocaleString() + ' left.', String(Math.round(left)));
     if (v === null) return false;
     amt = Number(String(v).replace(/[$,\s]/g, ''));
@@ -5563,9 +5566,73 @@ async function _recordPlanDone(sym, ask) {
   } catch (e) { showStatus('Could not record the amount: ' + e.message, 'error'); return false; }
   return true;
 }
-async function inlineAction(sym, action) {
+// 2026-11-20, user: one button per row (replaces the checkbox) opens a popup for THAT stock: Done (with the amount, if the plan buys or sells it), Skip or Snooze.
+function _openRowActPopup(sym) {
+  const row = state.allRows.find(r => r.tos_symbol === sym);
+  if (!row) return;
+  const old = document.getElementById('rowActPop'); if (old) old.remove();
+  const picked = _roomAccountShort();
+  const accts = Array.from(new Set((state.allAccounts || []).map(a => a.short_name).filter(Boolean)));
+  const defAcct = picked || ((state.plan && state.plan.accounts && state.plan.accounts[0] && state.plan.accounts[0].account) || accts[0] || '');
+  const x = picked && state.acctRoom && state.acctRoom.data && (state.acctRoom.data.rows || {})[sym];
+  const planned = x ? (x.planned > 0 ? 'BUY' : (x.planned_sell > 0 ? 'SELL' : '')) : '';
+  const sellish = ['REMOVE', 'REDUCE'].includes(String(row.consolidated_action || '').toUpperCase());
+  const side0 = planned || (sellish ? 'SELL' : 'BUY');
+  const amt0 = planned ? (planned === 'BUY' ? x.planned : x.planned_sell) : (Number(row._amt) || 0);
+  const ov = document.createElement('div');
+  ov.id = 'rowActPop';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  const sel = 'padding:2px 4px;font-size:12px;';
+  const planLine = planned
+    ? '<div style="margin:6px 0 4px;font-size:12px;">Plan (' + escapeHtml(picked) + '): <b>' + (planned === 'BUY' ? 'Buy' : 'Sell') + ' ' + _planUsd(amt0) + '</b> still to do.</div>'
+    : '<div style="margin:6px 0 4px;font-size:12px;color:#6b7280;">Nothing is planned for this stock' + (picked ? ' in ' + escapeHtml(picked) : '') + '. You can still record what you did.</div>';
+  ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:14px 16px;min-width:340px;max-width:440px;box-shadow:0 10px 30px rgba(0,0,0,.25);">'
+    + '<div style="font-size:14px;font-weight:700;">' + escapeHtml(sym) + ' <span style="font-weight:400;color:#6b7280;font-size:12px;">' + escapeHtml(row.consolidated_action || '') + '</span></div>'
+    + planLine
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:12px;">'
+    + (picked ? '' : '<select id="rapAcct" style="' + sel + '">' + accts.map(a => '<option value="' + escapeHtml(a) + '"' + (a === defAcct ? ' selected' : '') + '>' + escapeHtml(a) + '</option>').join('') + '</select>')
+    + (planned ? '<b>' + (planned === 'BUY' ? 'Bought' : 'Sold') + '</b>' : '<select id="rapSide" style="' + sel + '"><option value="BUY"' + (side0 === 'BUY' ? ' selected' : '') + '>Bought</option><option value="SELL"' + (side0 === 'SELL' ? ' selected' : '') + '>Sold</option></select>')
+    + ' $ <input type="number" id="rapAmt" min="0" step="100" value="' + (amt0 > 0 ? Math.round(amt0) : '') + '" placeholder="amount" style="width:110px;padding:2px 4px;"> <span style="color:#6b7280;font-size:11px;">a part is fine</span></div>'
+    + '<label style="font-size:12px;display:block;margin:6px 0;">Snooze until <input type="date" id="rapSnz" style="padding:2px 4px;"> <span style="color:#6b7280;font-size:11px;">(blank = no resume date)</span></label>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;"><button class="btn-done" id="rapDone" type="button" style="padding:5px 14px;">&#10003; Done</button><button class="btn-skip" id="rapSkip" type="button" style="padding:5px 14px;">&#10007; Skip</button><button class="btn-snz" id="rapSnzBtn" type="button" style="padding:5px 14px;">Snooze</button><button class="btn-dismiss" id="rapCancel" type="button" style="margin-left:auto;padding:5px 14px;">Cancel</button></div></div>';
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
+  document.getElementById('rapCancel').onclick = close;
+  document.getElementById('rapDone').onclick = async () => {
+    const amt = Number(document.getElementById('rapAmt').value);
+    const acct = picked || (document.getElementById('rapAcct') ? document.getElementById('rapAcct').value : '');
+    const side = planned || (document.getElementById('rapSide') ? document.getElementById('rapSide').value : 'BUY');
+    close();
+    if (amt > 0 && acct) {                                   // the amount (a part is fine) goes against that account's plan for today
+      try {
+        await fetchJson('/api/builder/done' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''), { method: 'POST', body: JSON.stringify({ account: acct, symbol: sym, side, amount: amt }) });
+        if (acct === picked) await _fetchAcctRoom();
+      } catch (e) { showStatus('Could not record the amount: ' + e.message, 'error'); return; }
+    }
+    await inlineAction(sym, row._fc_code || 'DONE', { noAsk: true });
+  };
+  document.getElementById('rapSkip').onclick = async () => { close(); await inlineAction(sym, 'SKIPPED', { noAsk: true }); };
+  document.getElementById('rapSnzBtn').onclick = async () => { const d = document.getElementById('rapSnz').value || null; close(); await inlineAction(sym, 'SNOOZED', { noAsk: true, snoozeUntil: d }); };
+}
+async function _undoPlanDone(sym) {
+  const sn = _roomAccountShort();
+  if (!sn) return;
+  try {
+    await fetchJson('/api/builder/done?account=' + encodeURIComponent(sn) + '&symbol=' + encodeURIComponent(sym) + (state.date ? '&date=' + encodeURIComponent(state.date) : ''), { method: 'DELETE' });
+    await _fetchAcctRoom();
+    renderGrid();
+  } catch (e) { showStatus('Could not undo: ' + e.message, 'error'); }
+}
+document.addEventListener('click', async (e) => {
+  const u = e.target.closest && e.target.closest('[data-planundo]');
+  if (u) { e.preventDefault(); e.stopPropagation(); await _undoPlanDone(u.dataset.planundo); }
+});
+async function inlineAction(sym, action, opts) {
   if (!sym || !state.date) return;
-  if (String(action || '').toUpperCase() === 'DONE' && !(await _recordPlanDone(sym, true))) return;
+  opts = opts || {};
+  if (!opts.noAsk && !['SKIPPED', 'SNOOZED', 'OVERRIDDEN'].includes(String(action || '').toUpperCase()) && !(await _recordPlanDone(sym, true))) return;   // Done passes the Final Call code: any action that is not skip / snooze / override is a Done
   const row = state.allRows.find(r => r.tos_symbol === sym);
   const asOf = row ? row.as_of_date : state.date;
   // user_action must be the legacy enum (DONE/SKIPPED/SNOOZED/OVERRIDDEN).
@@ -5575,6 +5642,7 @@ async function inlineAction(sym, action) {
   const actionCode = isLegacyAction ? null : action;
   const payload = { as_of_date: asOf, user_action: userAction,
                     action_code: actionCode, user_notes: 'inline' };
+  if (opts.snoozeUntil) payload.snooze_until = opts.snoozeUntil;
   try {
     await fetchJson('/api/actionable/' + encodeURIComponent(sym) + '/action', {
       method: 'POST', body: JSON.stringify(payload),
@@ -5594,9 +5662,15 @@ async function inlineAction(sym, action) {
 // loop — N POSTs). Server loops the same forensic-snapshot insert in one
 // transaction (POST /api/actionable/bulk-action).
 async function bulkAction(action) {
-  const syms = Array.from(state.selected);
+  let syms = Array.from(state.selected);
   if (!syms.length) return;
-  if (String(action || '').toUpperCase() === 'DONE') { for (const sy of syms) await _recordPlanDone(sy, false); }   // several at once: the whole amount left for each
+  if (!['SKIPPED', 'SNOOZED', 'OVERRIDDEN'].includes(String(action || '').toUpperCase())) {
+    // 2026-11-20, user: the existing Done carries the amount: each ticked row that has a planned buy / sell asks for its own amount (Cancel leaves that row out)
+    const keep = [];
+    for (const sy of syms) { if (await _recordPlanDone(sy, true)) keep.push(sy); }
+    syms = keep;
+    if (!syms.length) { state.selected.clear(); renderBulkBar(); renderGrid(); return; }
+  }
   const isLegacyAction = ['DONE','SKIPPED','SNOOZED','OVERRIDDEN'].includes((action||'').toUpperCase());
   const userAction = isLegacyAction ? action.toUpperCase() : 'DONE';
   const actionCode = isLegacyAction ? null : action;
@@ -7307,6 +7381,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // the checkbox [+ bulk action buttons] for now." inlineAction() itself is
   // kept — Focus Mode (focusAdvance) still calls it.
   $('actBody').addEventListener('click', (e) => {
+    const rab = e.target.closest('.row-act-btn');
+    if (rab) { e.stopPropagation(); _openRowActPopup(rab.dataset.sym); return; }
     const chk = e.target.closest('.row-check');
     if (chk) {
       e.stopPropagation();
