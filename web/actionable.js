@@ -107,7 +107,6 @@ const state = {
   quadData: null,           // cached from /api/dashboard/quads (period dates for dtb)
   allAccounts: [],          // [{account_number, display_name, short_name, custom_name}] from /api/actionable/accounts
   // Pass 3: bulk select
-  selected: new Set(),
   // Pass 3: focus mode
   focusIdx: 0,
   // TASK_105: column visibility (set of hidden column ids, incl. 'h' when
@@ -2244,17 +2243,6 @@ function applyClientFilter(opts) {
     }
     return true;
   });
-  // Reset selection on filter change.
-  if (preserveSelection) {
-    // Auto-refresh: keep the user's selection, dropping symbols no longer present.
-    const symSet = new Set(state.rows.map(r => r.tos_symbol));
-    for (const s of Array.from(state.selected)) {
-      if (!symSet.has(s)) state.selected.delete(s);
-    }
-  } else {
-    state.selected.clear();
-  }
-  renderBulkBar();
   renderAssetClassSummary();
   renderSectorSummary();
   renderStyleSummary();
@@ -5153,12 +5141,6 @@ function renderGrid() {
     }
   }
 
-  // Sync select-all checkbox
-  const allChk = $('bulkSelectAll');
-  if (allChk) {
-    allChk.checked = state.selected.size > 0 && state.selected.size >= visibleRows.length;
-    allChk.indeterminate = state.selected.size > 0 && state.selected.size < visibleRows.length;
-  }
 }
 
 // Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
@@ -5300,7 +5282,6 @@ function _buildRowEl(r) {
     tr.dataset.sym = r.tos_symbol;
 
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
-    const isChecked = state.selected.has(r.tos_symbol);
 
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
     const rrRaw = r.rr_action || '';
@@ -5516,7 +5497,7 @@ function _buildRowEl(r) {
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
     `;
     tr.onclick = (e) => {
-      if (e.target.closest('.row-check') || e.target.closest('.row-act-btn') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
+      if (e.target.closest('.row-act-btn') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
       const rulesCell = e.target.closest('.rules-link-cell');
       if (rulesCell) {
         window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
@@ -5528,19 +5509,6 @@ function _buildRowEl(r) {
 }
 
 // escapeHtml is provided by _common.js (window.escapeHtml).
-
-// ── Pass 3: Bulk bar ───────────────────────────────────────────────────────
-function renderBulkBar() {
-  const bar = $('bulkBar');
-  if (!bar) return;
-  const n = state.selected.size;
-  if (n > 0) {
-    bar.classList.add('visible');
-    $('bulkCount').textContent = `${n} selected`;
-  } else {
-    bar.classList.remove('visible');
-  }
-}
 
 // Inline action: call the same endpoint as the modal Save/Dismiss.
 // 2026-11-20, user: Done on a stock the picked account's plan buys or sells asks how much was done (pre-filled with what is left) and records it, so the plan counts it
@@ -5656,48 +5624,6 @@ async function inlineAction(sym, action, opts) {
   } catch (e) {
     showStatus(`${action} failed: ${e.message}`, 'error');
   }
-}
-
-// F1: one round-trip for bulk-selected rows (was a sequential inlineAction
-// loop — N POSTs). Server loops the same forensic-snapshot insert in one
-// transaction (POST /api/actionable/bulk-action).
-async function bulkAction(action) {
-  let syms = Array.from(state.selected);
-  if (!syms.length) return;
-  if (!['SKIPPED', 'SNOOZED', 'OVERRIDDEN'].includes(String(action || '').toUpperCase())) {
-    // 2026-11-20, user: the existing Done carries the amount: each ticked row that has a planned buy / sell asks for its own amount (Cancel leaves that row out)
-    const keep = [];
-    for (const sy of syms) { if (await _recordPlanDone(sy, true)) keep.push(sy); }
-    syms = keep;
-    if (!syms.length) { state.selected.clear(); renderBulkBar(); renderGrid(); return; }
-  }
-  const isLegacyAction = ['DONE','SKIPPED','SNOOZED','OVERRIDDEN'].includes((action||'').toUpperCase());
-  const userAction = isLegacyAction ? action.toUpperCase() : 'DONE';
-  const actionCode = isLegacyAction ? null : action;
-  const payload = {
-    symbols: syms, as_of_date: state.date, user_action: userAction,
-    action_code: actionCode, user_notes: 'bulk',
-  };
-  try {
-    const resp = await fetchJson('/api/actionable/bulk-action', {
-      method: 'POST', body: JSON.stringify(payload),
-    });
-    let okCount = 0;
-    for (const r of (resp.results || [])) {
-      if (r.error) continue;
-      okCount++;
-      const row = state.allRows.find(rr => rr.tos_symbol === r.symbol);
-      if (row) { row._rowActed = true; if (userAction === 'DONE') { row.last_user_action = 'DONE'; row.done_today = true; } }
-      const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(r.symbol)}"]`);
-      if (tr) tr.classList.add('row-acted');
-    }
-    showStatus(`${action}: ${okCount} of ${syms.length} symbol(s)`, 'success', 2500);
-  } catch (e) {
-    showStatus(`${action} failed: ${e.message}`, 'error');
-  }
-  state.selected.clear();
-  renderBulkBar();
-  renderGrid();
 }
 
 // ── Pass 3: Focus mode ─────────────────────────────────────────────────────
@@ -7383,35 +7309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('actBody').addEventListener('click', (e) => {
     const rab = e.target.closest('.row-act-btn');
     if (rab) { e.stopPropagation(); _openRowActPopup(rab.dataset.sym); return; }
-    const chk = e.target.closest('.row-check');
-    if (chk) {
-      e.stopPropagation();
-      const sym = chk.dataset.sym;
-      if (chk.checked) state.selected.add(sym); else state.selected.delete(sym);
-      renderBulkBar();
-      const allChk = $('bulkSelectAll');
-      if (allChk) {
-        const vis = Array.from(document.querySelectorAll('.row-check'));
-        allChk.checked = vis.length > 0 && vis.every(c => c.checked);
-        allChk.indeterminate = state.selected.size > 0 && !allChk.checked;
-      }
-      return;
-    }
   });
-
-  // Bulk select-all
-  $('bulkSelectAll').addEventListener('change', (e) => {
-    const vis = Array.from(document.querySelectorAll('.row-check'));
-    if (e.target.checked) vis.forEach(c => { state.selected.add(c.dataset.sym); c.checked = true; });
-    else { state.selected.clear(); vis.forEach(c => { c.checked = false; }); }
-    renderBulkBar();
-  });
-
-  // Bulk action buttons
-  $('bulkDoneBtn').addEventListener('click', () => bulkAction('DONE'));
-  $('bulkSkipBtn').addEventListener('click', () => bulkAction('SKIPPED'));
-  $('bulkSnzBtn').addEventListener('click',  () => bulkAction('SNOOZED'));
-  $('bulkClearBtn').addEventListener('click', () => { state.selected.clear(); renderBulkBar(); renderGrid(); });
 
   // Focus mode
   $('focusModeBtn').addEventListener('click', openFocusMode);

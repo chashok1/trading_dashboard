@@ -2477,6 +2477,27 @@ function _actpopSummaryLineHtml(row, c) {
   return { html, aligned };
 }
 
+// 2026-11-20, user: the picked account's numbers for this stock, so the room is visible without leaving the popup. Same figures as the Actionable columns.
+function _actpopAcctLineHtml(row) {
+  try {
+    const sn = (typeof _roomAccountShort === 'function') ? _roomAccountShort() : '';
+    const d = sn && state.acctRoom && state.acctRoom.data;
+    const x = d && (d.rows || {})[row.tos_symbol];
+    if (!x) return '';
+    const u = v => _planUsd(v);
+    const bits = [];
+    bits.push('Held <b>' + (x.held ? u(x.held) : '$0') + '</b>');
+    if (d.state === 'active') {
+      if (x.stock != null) bits.push('Max <b>' + (x.stock > 0 ? u(x.stock) : '$0 (at max)') + '</b>');
+      if (x.bucket != null) bits.push('Bucket <b>' + (x.bucket > 0 ? u(x.bucket) : '$0') + '</b>' + (x.bucket > 0 ? '' : ' <span style="color:#b45309">' + escapeHtml(_acctWhy(x.bucket_binding)) + '</span>'));
+      if (x.planned_sell > 0) bits.push('Plan: <b style="color:#9e3636">Sell ' + u(x.planned_sell) + '</b>');
+      else if (x.planned > 0) bits.push('Plan: <b style="color:#2f6b45">Buy ' + u(x.planned) + '</b>');
+      if (x.done_buy > 0 || x.done_sell > 0) bits.push('<span style="color:#6b7280">done ' + u((x.done_buy || 0) + (x.done_sell || 0)) + ' today</span>');
+    }
+    return '<div class="actpop-neutral" style="font-size:11px;" title="Information only. Same numbers as the account columns on the grid.">' + escapeHtml(sn) + ': ' + bits.join(' &middot; ') + '</div>';
+  } catch (e) { return ''; }
+}
+
 function _actpopWhyCardHtml(row) {
   const c = row && row.why_card;
   if (!c || !Array.isArray(c.steps)) return '';
@@ -2724,6 +2745,7 @@ function _buildActionPopHtmlV2(row) {
   }
 
   h += _actpopIndicatorsLineHtml(row);   // 2026-10-21, user: IV / MACD / MACDH / RSI as on the grid, one line above "Why"
+  h += _actpopAcctLineHtml(row);        // 2026-11-20: the picked account's Held / Max / Bucket / Planned for this stock (empty without an account)
   h += _actpopWhyCardHtml(row);
   h += _actpopDriverBullets(row, side);
   h += tug.html;

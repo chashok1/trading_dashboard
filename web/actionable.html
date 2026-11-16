@@ -971,12 +971,6 @@
     tr.row-acted { opacity: 0.45; }
 
     /* ── Pass 3: Bulk bar ────────────────────────────────────────────────── */
-    .bulk-bar {
-      display: none; align-items: center; gap: 8px; padding: 6px 12px;
-      background: #eef2fb; border: 1px solid #c5d4f0; border-radius: 6px; margin-bottom: 6px; font-size: 12px;
-    }
-    .bulk-bar.visible { display: flex; }
-    .bulk-bar strong { margin-right: 4px; }
 
     /* ── Pass 3: Focus mode overlay ──────────────────────────────────────── */
     .focus-backdrop {
@@ -1428,20 +1422,13 @@
         <button class="btn" id="staleRederiveBtn" type="button" style="white-space:nowrap;">Re-derive now</button>
       </div>
 
-      <div class="bulk-bar" id="bulkBar">
-        <strong id="bulkCount">0 selected</strong>
-        <button class="btn-done" id="bulkDoneBtn" title="Log DONE for every checked row — records that you acted, visible in that row's History table. Doesn't place any trade, and isn't the official performance track record (that's inferred from your CS/F position uploads — see the Performance screen).">&#10003; Done</button>
-        <button class="btn-skip" id="bulkSkipBtn" title="Log SKIPPED for every checked row — 'I saw this, chose not to act.' Drops these rows out of the default actionable view for today.">&#10007; Skip</button>
-        <button class="btn-snz"  id="bulkSnzBtn" title="Log SNOOZED for every checked row — hides them from the actionable view indefinitely (no resume date is set here). Toggle 'Show Hidden' to see them again, or open a row and log a new action to clear it.">&#128164; Snooze</button>
-        <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;" title="Uncheck every selected row without logging anything.">Clear</button>
-      </div>
 
       <div class="act-content-row">
       <div class="act-table-wrap">
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
-              <th data-col="bulk" style="width:30px;min-width:30px;" title="Rows below show: the ✓ button (Done / Skip / Snooze this stock, with an amount), 🔭 long-term conviction note, 🔔 watch."><input type="checkbox" id="bulkSelectAll" title="Select all" style="display:none"></th>
+              <th data-col="bulk" style="width:30px;min-width:30px;" title="Rows below show: the ✓ button (Done / Skip / Snooze this stock, with an amount), 🔭 long-term conviction note, 🔔 watch."></th>
               <th data-col="h" style="width:18px;min-width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
               <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" data-label="POS$ / AMT$" title="Top: current position $ held. Below: action amount $. Sorts by AMT$." style="width:68px;min-width:68px;">POS$ / AMT$</th>
               <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:112px;min-width:112px;">%CHG</th>
@@ -1695,8 +1682,8 @@
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
   <script src="/static/technical_graphs.js?v=20261025a"></script>
-  <script src="/static/actionable_pops.js?v=20261113d"></script>
-  <script src="/static/actionable.js?v=20261120s"></script>
+  <script src="/static/actionable_pops.js?v=20261120a"></script>
+  <script src="/static/actionable.js?v=20261120t"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261107a" defer></script>
   <script src="/static/today_strip.js?v=20261113y" defer></script>
