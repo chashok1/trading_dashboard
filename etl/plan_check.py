@@ -443,6 +443,7 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
       max     = the most that still fits for this stock ALONE, counting every OTHER planned buy (rounded down to $100,
                 never below 0): the smallest room among cash to spend, class, sector, styles, beta, Quad and the stock's own Max.
       binding = which of those is tightest.
+      sells   = dollars of over-target asset classes assumed sold and counted as cash to spend (same for every stock).
       start   = the default Buy $ for a pick with no amount: picks that have a Buy call are walked in the order made and each
                 takes what still fits after the ones before it (first come, first served). None for everything else.
     """
@@ -453,7 +454,10 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
     cash = float(account.get("cash") or 0.0)
     holdings = account.get("holdings") or {}
     now = now_lines(holdings, info, cash, sg)
-    cash0 = cash_to_spend(cash, 0.0, value, p)
+    # 2026-11-17, user: count selling whatever sits above its asset class target as cash you can spend (class level only: which stocks
+    # would be sold is not known, so sector / style / beta room is left as it is). Cash floor and the plan's Cash % still apply.
+    sell_cash = sum(n["need"] for n in sell_needs(p, now, value))
+    cash0 = cash_to_spend(cash, sell_cash, value, p)
     used = {"cls": {}, "sector": {}, "style": {}, "beta": {}, "quad": {}}
     lines = {}
 
@@ -505,7 +509,7 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         m, b = _room(c, cash0 - spent + own)
         if own > 0:
             _touch(_ln(c), own)
-        out[c["sym"]] = {"max": m, "binding": b, "start": None}
+        out[c["sym"]] = {"max": m, "binding": b, "start": None, "sells": round(sell_cash)}
     left = cash0 - spent
     for c in cands:                                   # starting amounts: Buy-call picks without an amount, first come first served
         if c.get("pick") and typed[c["sym"]] <= 0 and buyers and c["sym"] in buyers:

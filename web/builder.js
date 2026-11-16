@@ -681,7 +681,7 @@
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
         const gl = r.pk && r.pk.grp ? r.pk.grp : '', gcol = gl ? GRP_COL[gl.charCodeAt(0) - 65] : '';
         const rm = (S.room || {})[r.sym];
-        const maxTd = rm ? `<td class="n bld-tip" data-tip="${esc('Most you can still add: ' + usd(rm.max) + '. Tightest limit: ' + rm.binding + (((res.room_calls || {})[r.sym]) ? '. Actionable call: ' + (res.room_calls || {})[r.sym] : ''))}">${rm.max > 0 ? usd(rm.max) : '<span class="bld-muted">$0</span>'}</td>` : '<td></td>';
+        const maxTd = rm ? `<td class="n bld-tip" data-tip="${esc('Most you can still add: ' + usd(rm.max) + '. Tightest limit: ' + rm.binding + (rm.sells > 0 ? '. Counts ' + usd(rm.sells) + ' from selling asset classes that are over their target.' : '') + (((res.room_calls || {})[r.sym]) ? '. Actionable call: ' + (res.room_calls || {})[r.sym] : ''))}">${rm.max > 0 ? usd(rm.max) : '<span class="bld-muted">$0</span>'}</td>` : '<td></td>';
         const amtCells = r.pk
           ? `<td class="n"><input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="$" style="width:74px"${rm && r.pk.amt > rm.max + 0.5 ? ' class="tgt-over" title="Over the room left (' + usd(rm.max) + ', tightest: ' + esc(rm.binding) + '). This is a warning only."' : (r.pk.autoAmt ? ' title="Filled in for you: the most that fits. Type your own amount to replace it."' : ' title="Dollars to buy"')}></td>` +
             `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select></td>`

@@ -234,3 +234,12 @@ def test_room_for_never_negative_and_is_warn_only():
     c = [{"sym": "MSFT", "bucket": "Equities", "amt": 50000, "pick": True}]
     r = pc.room_for(_room_plan(), _acct(), c, INFO)
     assert r["MSFT"]["max"] >= 0
+
+
+def test_room_for_counts_selling_over_target_classes_as_cash():
+    plan = _plan(Equities=30, **{"Fixed Income": 40, "Gold": 10})          # equities held 40,000 vs 30,000 target: 10,000 would be sold
+    info = dict(INFO, AGG={"bucket": "Fixed Income", "sector": None, "beta": None, "styles": []})
+    c = [{"sym": "AGG", "bucket": "Fixed Income", "amt": 0, "pick": True}]
+    r = pc.room_for(plan, _acct(), c, info)
+    assert r["AGG"]["max"] == 10000 and r["AGG"]["sells"] == 10000          # class room 10,000; cash 12,000 only because of the sale
+    assert pc.room_for(_plan(Equities=40, **{"Fixed Income": 40, "Gold": 10}), _acct(), c, info)["AGG"]["sells"] == 0
