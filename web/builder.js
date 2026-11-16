@@ -264,6 +264,7 @@
 
   // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
   const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const EQUITY_SECTORS = ['Communication Services', 'Consumer Discretionary', 'Consumer Staples', 'Energy', 'Financials', 'Health Care', 'Industrials', 'Information Technology', 'Materials', 'Real Estate', 'Utilities'];   // the 11 sectors the data uses
   const CLS_ABBR = { 'Equities': 'Eqts', 'Fixed Income': 'F.Inc', 'Currency': 'Curr', 'Gold': 'Gold', 'Commodities': 'Cmdty', 'Crypto': 'Crypto', 'Unmapped': 'Unmpd' };   // display only
   const copyBtn = (kind, syms, tip) => `<button type="button" class="bld-copy" data-copy="${kind}"${syms ? ` data-syms="${esc(syms.join(','))}"` : ''} title="${esc(tip)}">${COPY_SVG}</button>`;
   async function copyText(text) {
@@ -391,9 +392,7 @@
 
   // the asset classes shown in the comparison: any with a target, picked money or held money
   function mixBuckets(res) {
-    const fin = res.mix_final || {}, cur = res.mix_current || {}, amt = res.amount || 1;
-    return BUCKETS.filter(b => (fin[b] || 0) > 0.04 || (cur[b] || 0) > 0.04 ||
-      (res.positions || []).some(p => p.bucket === b && p.value / amt > 0.0004));
+    return BUCKETS.slice();      // 2026-11-17, user: every asset class always has a row, so a target can be typed for any of them (Gold, Crypto...)
   }
 
   // bars above each grid: one row per line of the grid. Bar = picks (green within 5 pts of the target, amber short, red over),
@@ -517,12 +516,20 @@
     const sv = k => Math.max((P.sector || {})[k] || 0, (H.sector || {})[k] || 0, tgtOf('sector:' + k) || 0);
     const allSec = new Set(Object.keys(P.sector || {}).concat(Object.keys(H.sector || {})));
     Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => allSec.add(k.slice(7)));
+    EQUITY_SECTORS.forEach(k => allSec.add(k));      // 2026-11-17, user: all 11 sectors always have a row, so a limit can be typed for any of them
     Object.values(S.nameCache).forEach(n => { if (n.bucket === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) allSec.add(n.sector); });
     [...allSec].filter(s => s === 'Equities' || !BUCKETS.includes(s)).sort((a, b) => sv(b) - sv(a) || a.localeCompare(b))   // Fixed Income / Gold / Currency are in the Asset class grid; 'Equities' here = equities with no sector
       .forEach(s => { t += R(s === 'Equities' ? 'No sector' : esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, s === 'Equities' ? 'Equities with no sector assigned (not a filter: Equities is in the Asset class grid)' : null, 'sector:' + s, undefined, s === 'Equities' ? undefined : ['sector', s]); });
     t += sec('Style');
+    // 2026-11-18, user: say what each style row means. A name can carry several tags, so it can sit in more than one row (rows can add to over 100%).
+    const STYLE_HELP = {
+      defensive: 'Defensive: stocks tagged Defensives, Low Beta or Dividend. They tend to fall less when the market drops: steady businesses and dividend payers.',
+      offensive: 'Offensive: stocks tagged Cyclical, High Beta or Small Caps. They tend to move more than the market: they gain more in rallies and lose more in selloffs.',
+      value: 'Value: stocks tagged Value. Priced cheaply compared with what the business earns or owns.',
+      growth: 'Growth: stocks tagged Secular. Businesses growing steadily whatever the economy does (long-term themes).',
+      mid: 'Mid: stocks tagged Mid Caps. Medium-sized companies, between large and small.' };
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
-      .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, null, 'style:' + f[0], undefined, ['factor', f[0]]); });
+      .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, STYLE_HELP[f[0]] + '\nA stock can carry several tags, so it can count in more than one row and the rows can add to over 100%.', 'style:' + f[0], undefined, ['factor', f[0]]); });
     t += R('No style tag', hasPick ? P.nostyle : null, hasHeld ? H.nostyle : null, 'Names that carry none of the style groups above.', 'style:none');
     // 2026-10-28, user: show the sections in three columns. Cut the rows at each section break, one small table per section.
     const parts = t.split(/\u0001([^\u0002]*)\u0002/);          // ['', title1, rows1, title2, rows2, ...]
@@ -666,11 +673,11 @@
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
-      if (!mine.length) continue;
+      if (!mine.length && b === 'Unmapped') continue;      // 2026-11-17, user: every asset class gets its header, even with nothing in it yet
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
