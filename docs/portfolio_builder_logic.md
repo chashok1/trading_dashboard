@@ -34,6 +34,16 @@ target is within half a share of its holding keeps the held shares and value, so
 `exposure()` in `etl/builder_data.py` gives % of the account per sector / style / Quad / beta (plus Middle beta, No beta known, No style tag rows). Beta and style lines count **equities only**, the same as `plan_check`; "No sector" is a guide (not saved, not checked).
 Charts and grids sit in one collapsible panel; each section collapses too (remembered in the browser).
 
+## Max $ and the starting Buy $ (2026-11-17)
+`plan_check.room_for` (pure, tests in `tests/test_plan_check.py`) works out, for every stock in the picks grids (held or picked), **Max $**: the most that
+still fits, counting every OTHER typed Buy $ (its own is taken back out): smallest room among cash to spend, class, sector, styles, beta, Quad and the
+stock's own Max rule; rounded down to $100, never below 0; `binding` names the tightest. WARN-ONLY: the Buy $ box turns red when it is over Max $, nothing is cut.
+A pick with no typed amount, no buy-one-of group and an Actionable **Buy** call gets `start` = what still fits after the picks before it (first come, first
+served in the order picked); the screen fills Buy $ with it (`autoAmt` in `web/builder.js`) until you type your own. Held names that are not picks only show Max $.
+`POST /api/builder/preview` takes `plan` (the screen's limits and picks, auto amounts sent as 0) and returns `room` and `room_calls`. Typing a limit re-runs the preview.
+The Room column (last column of each chart grid) = limit in dollars minus held; the Covered column = held up to the limit, as a % of it.
+Not yet counted: sells ticked on the To do list (they free room in the To do list, not here). Class names in the picks grids are display-only short forms (`CLS_ABBR`).
+
 ## Files
 | Piece | File |
 |---|---|

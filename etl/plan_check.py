@@ -429,3 +429,89 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
     return {"value": value, "cash": cash, "cash_keep": p["cash_keep"], "cash_to_spend": spend0, "cash_left": left_cash,
             "sell_cash": sell_cash, "bought": bought, "sells": sells, "buys": buys, "lines": rows, "notes": notes,
             "now": now, "now_after": now_after}
+
+
+def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: Optional[dict] = None,
+             caps: Optional[dict] = None, buyers: Optional[set] = None) -> dict:
+    """Max $ per stock for the Builder picks grids (2026-11-17). WARN-ONLY: nothing here blocks anything.
+
+    account = {value, cash, holdings {sym: {value, bucket}}}
+    cands   = [{sym, bucket, amt, pick}] in the order made. amt = dollars already typed (0 = none), pick = ticked as a pick.
+    buyers  = symbols with a Buy call in Actionable (only these get a starting amount).
+
+    Returns {sym: {max, binding, start}}:
+      max     = the most that still fits for this stock ALONE, counting every OTHER planned buy (rounded down to $100,
+                never below 0): the smallest room among cash to spend, class, sector, styles, beta, Quad and the stock's own Max.
+      binding = which of those is tightest.
+      start   = the default Buy $ for a pick with no amount: picks that have a Buy call are walked in the order made and each
+                takes what still fits after the ones before it (first come, first served). None for everything else.
+    """
+    caps = caps or {}
+    p = clean_plan(plan)
+    sg = style_groups or {}
+    value = float(account.get("value") or 0.0)
+    cash = float(account.get("cash") or 0.0)
+    holdings = account.get("holdings") or {}
+    now = now_lines(holdings, info, cash, sg)
+    cash0 = cash_to_spend(cash, 0.0, value, p)
+    used = {"cls": {}, "sector": {}, "style": {}, "beta": {}, "quad": {}}
+    lines = {}
+
+    def _ln(c):
+        sym = c["sym"]
+        if sym not in lines:
+            lines[sym] = _lines_of(sym, c.get("bucket") or (holdings.get(sym) or {}).get("bucket"), info, sg)
+        return lines[sym]
+
+    def _touch(ln, amt):
+        for kind, key in (("cls", ln["cls"]), ("sector", ln["sector"]), ("beta", ln["beta"])):
+            if key:
+                used[kind][key] = used[kind].get(key, 0.0) + amt
+        for k in ln["style"]:
+            used["style"][k] = used["style"].get(k, 0.0) + amt
+        for k in ln["quad"]:
+            used["quad"][k] = used["quad"].get(k, 0.0) + amt
+
+    def _room(c, left_cash):
+        ln = _ln(c)
+        rooms = [("Cash to spend", left_cash)]
+
+        def _rm(kind, key, pct, label=None):
+            if key and pct is not None:
+                rooms.append((label or key, pct / 100.0 * value - now[kind].get(key, 0.0) - used[kind].get(key, 0.0)))
+        _rm("cls", ln["cls"], p["cls"].get(ln["cls"]) if ln["cls"] else None)
+        _rm("sector", ln["sector"], p["sector"].get(ln["sector"]) if ln["sector"] else None)
+        for k in ln["style"]:
+            _rm("style", k, p["style"].get(k))
+        _rm("beta", ln["beta"], p["beta"].get(ln["beta"]) if ln["beta"] else None, BETA_LABEL[ln["beta"]] if ln["beta"] else None)
+        for k in ln["quad"]:
+            _rm("quad", k, p["quad"].get(k), k + " favored (Bull)")
+        cap = caps.get(c["sym"]) or {}
+        if cap.get("max") is not None:
+            rooms.append(("The stock's own Max", float(cap["max"]) - float((holdings.get(c["sym"]) or {}).get("value") or 0.0)))
+        tight = min(rooms, key=lambda x: x[1])
+        return max(0.0, float(int(max(tight[1], 0.0) // 100) * 100)), tight[0]
+
+    typed = {c["sym"]: float(c.get("amt") or 0.0) for c in cands}
+    for c in cands:
+        if typed[c["sym"]] > 0:
+            _touch(_ln(c), typed[c["sym"]])
+    spent = sum(typed.values())
+    out = {}
+    for c in cands:                                   # ceiling for each stock alone: take its own typed amount back out first
+        own = typed[c["sym"]]
+        if own > 0:
+            _touch(_ln(c), -own)
+        m, b = _room(c, cash0 - spent + own)
+        if own > 0:
+            _touch(_ln(c), own)
+        out[c["sym"]] = {"max": m, "binding": b, "start": None}
+    left = cash0 - spent
+    for c in cands:                                   # starting amounts: Buy-call picks without an amount, first come first served
+        if c.get("pick") and typed[c["sym"]] <= 0 and buyers and c["sym"] in buyers:
+            m, _b = _room(c, left)
+            out[c["sym"]]["start"] = m
+            if m > 0:
+                _touch(_ln(c), m)
+                left -= m
+    return out

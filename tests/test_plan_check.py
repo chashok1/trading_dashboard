@@ -200,3 +200,37 @@ def test_rounding_dollars_over_a_limit_taken_from_holdings_is_not_a_warning_note
     assert not any("over its plan" in n for n in t["notes"])
     big = pc.todo({"cls": {"Equities": 100}, "sector": {"Utilities": 0.5}}, {"value": 451063.5, "cash": 0.0, "holdings": hold}, [], {}, info, {}, lambda c: "neutral")
     assert any("over its plan" in n for n in big["notes"])
+
+
+def _room_plan():
+    p = _plan(Equities=60, Cash=8)
+    p["sector"] = {"Technology": 10}
+    return p
+
+
+def test_room_for_alone_ceiling_is_the_tightest_limit():
+    c = [{"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "AAPL", "bucket": "Equities", "amt": 0, "pick": True}]
+    r = pc.room_for(_room_plan(), _acct(), c, INFO)
+    assert r["MSFT"]["max"] == 10000 and r["MSFT"]["binding"] == "Technology"
+    assert r["AAPL"]["max"] == 10000
+
+
+def test_room_for_counts_other_typed_amounts_but_not_its_own():
+    c = [{"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "AAPL", "bucket": "Equities", "amt": 4000, "pick": True}]
+    r = pc.room_for(_room_plan(), _acct(), c, INFO)
+    assert r["MSFT"]["max"] == 6000
+    assert r["AAPL"]["max"] == 10000          # its own $4,000 is not counted against itself
+
+
+def test_room_for_starting_amounts_are_first_come_first_served_and_only_for_buy_calls():
+    c = [{"sym": "MSFT", "bucket": "Equities", "amt": 0, "pick": True}, {"sym": "AAPL", "bucket": "Equities", "amt": 0, "pick": True}]
+    r = pc.room_for(_room_plan(), _acct(), c, INFO, buyers={"MSFT", "AAPL"})
+    assert r["MSFT"]["start"] == 10000 and r["AAPL"]["start"] == 0
+    r2 = pc.room_for(_room_plan(), _acct(), c, INFO, buyers={"AAPL"})
+    assert r2["MSFT"]["start"] is None and r2["AAPL"]["start"] == 10000
+
+
+def test_room_for_never_negative_and_is_warn_only():
+    c = [{"sym": "MSFT", "bucket": "Equities", "amt": 50000, "pick": True}]
+    r = pc.room_for(_room_plan(), _acct(), c, INFO)
+    assert r["MSFT"]["max"] >= 0

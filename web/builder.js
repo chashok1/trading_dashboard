@@ -51,12 +51,19 @@
   const withDate = u => u + (dq() ? (u.includes('?') ? '&' : '?') + dq() : '');
   const post = (u, body, method) => api(withDate(u), { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  // 2026-11-17: a pick's Buy $ is filled for you (its Max $ share, first come first served, Buy-call stocks only) until you type your own
+  const autoAmt = p => !p.amtUser && !p.grp && (!p.amt || p.autoAmt);
   function buildReq() {
     // hand-picked build: the server uses exactly these names, each in its asset class, with the % typed (null = share equally)
     const req = { account: S.acct || 'ALL', horizon: S.horizon, preset: S.preset, use_risk_dial: S.useDial, warnings: S.warn,
       manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct })) };
     if (S.preset === 'custom') req.mix = S.mix;
     if (S.amount) req.amount = S.amount;
+    if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Max $ per stock from it (warn only)
+      const pl = planFromState();
+      pl.picks = S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: autoAmt(p) ? 0 : (p.amt || 0), grp: p.grp || '' }));
+      req.plan = pl;
+    }
     return req;
   }
 
@@ -257,6 +264,7 @@
 
   // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
   const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CLS_ABBR = { 'Equities': 'Eqts', 'Fixed Income': 'F.Inc', 'Currency': 'Curr', 'Gold': 'Gold', 'Commodities': 'Cmdty', 'Crypto': 'Crypto', 'Unmapped': 'Unmpd' };   // display only
   const copyBtn = (kind, syms, tip) => `<button type="button" class="bld-copy" data-copy="${kind}"${syms ? ` data-syms="${esc(syms.join(','))}"` : ''} title="${esc(tip)}">${COPY_SVG}</button>`;
   async function copyText(text) {
     try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) { /* fall back below */ }
@@ -436,8 +444,15 @@
     // 2026-11-14, user: in the Asset class grid, say in dollars what the account must do to reach the target (the account's own value).
     // Target vs what it holds now: Sell all / Sell $X / Room to buy $X / On plan. Information only; nothing trades.
     const planTd = (asset, tv, hv) => {
+      if (!asset) {                                    // 2026-11-17: the other grids say it too -- room left under the limit, or over it, in dollars
+        if (tv == null || !(tv > 0) || !hasHeld || hv == null) return '<td></td>';
+        const g = (tv - hv) / 100 * amt;
+        if (g < -500) return `<td class="n bld-dn" title="Held is over this limit">Over ${usd(-g)}</td>`;
+        if (g > 500) return `<td class="n bld-up" title="Room left under this limit">Room ${usd(g)}</td>`;
+        return '<td class="n bld-muted">On plan</td>';
+      }
       if (curKey !== 'Asset class') return '<td></td>';
-      if (!asset || tv == null || !hasHeld) return '<td></td>';
+      if (tv == null || !hasHeld) return '<td></td>';
       const gap = (tv - (hv || 0)) / 100 * amt;
       if (tv === 0 && (hv || 0) * amt / 100 > 500) return `<td class="n bld-dn"><b>Sell all ${usd((hv || 0) * amt / 100)}</b></td>`;
       if (gap < -500) return `<td class="n bld-dn">Sell ${usd(-gap)}</td>`;
@@ -472,7 +487,7 @@
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${barTd}${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
-        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${coverTd(hv, eff, flt)}${planTd(asset, asset && Object.keys(chosen).length ? (chosen[asset] || 0) : null, hv)}</tr>`;
+        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${coverTd(hv, eff, flt)}${planTd(asset, asset ? (Object.keys(chosen).length ? (chosen[asset] || 0) : null) : (key ? tv : null), hv)}</tr>`;
     };
     const generalTip = 'Asset class rows are % of the account. Everything below is also % of the account (the same basis the plan check uses). Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
     let t = '';
@@ -516,7 +531,7 @@
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = !!S.collapsed[skey];
       tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}</th><th class="bld-bar-h" title="Bar = picks (green on target, amber short, red over), thin grey = portfolio, black line = target">Chart</th>` +
-        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th><th class="n bld-tip" data-tip="How much of the Target your held stocks already fill, and how many stocks that is. 100% = the target is fully covered by what you hold.">Covered</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th></th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th><th class="n bld-tip" data-tip="How much of the Target your held stocks already fill, and how many stocks that is. 100% = the target is fully covered by what you hold.">Covered</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th class="n bld-tip" data-tip="Room left under the limit, in dollars (or how far held is over it).">Room</th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
@@ -550,6 +565,7 @@
       planDirty();
       host.innerHTML = compareTable(S.preview);
       bindCmp();
+      schedule();                         // Max $ depends on the limits
     });
     // the whole charts-and-grids panel: shown only when there is something to show; open/closed is remembered in this browser
     const panel = $('cmpPanel');
@@ -646,7 +662,7 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="The most you can still add of this stock before a limit is reached (the smallest room among cash, its asset class, sector, style and beta). Hover a number to see which limit is tightest. Information only: nothing stops you going over.">Max $</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => Math.max(y.hold, y.model) - Math.max(x.hold, x.model));
@@ -654,7 +670,7 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td>${esc(b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols')}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
@@ -664,11 +680,13 @@
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
         const gl = r.pk && r.pk.grp ? r.pk.grp : '', gcol = gl ? GRP_COL[gl.charCodeAt(0) - 65] : '';
+        const rm = (S.room || {})[r.sym];
+        const maxTd = rm ? `<td class="n bld-tip" data-tip="${esc('Most you can still add: ' + usd(rm.max) + '. Tightest limit: ' + rm.binding + (((res.room_calls || {})[r.sym]) ? '. Actionable call: ' + (res.room_calls || {})[r.sym] : ''))}">${rm.max > 0 ? usd(rm.max) : '<span class="bld-muted">$0</span>'}</td>` : '<td></td>';
         const amtCells = r.pk
-          ? `<td class="n"><input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="$" style="width:74px" title="Dollars to buy"></td>` +
+          ? `<td class="n"><input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="$" style="width:74px"${rm && r.pk.amt > rm.max + 0.5 ? ' class="tgt-over" title="Over the room left (' + usd(rm.max) + ', tightest: ' + esc(rm.binding) + '). This is a warning only."' : (r.pk.autoAmt ? ' title="Filled in for you: the most that fits. Type your own amount to replace it."' : ' title="Dollars to buy"')}></td>` +
             `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select></td>`
           : '<td></td><td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
           `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`;
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
@@ -695,6 +713,7 @@
     $('symTable').querySelectorAll('[data-amt]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.amt); if (!p) return;
       p.amt = i.value === '' ? null : Math.max(0, parseFloat(i.value) || 0);
+      p.amtUser = true; p.autoAmt = false;
       if (p.grp) S.picks.forEach(q => { if (q.grp === p.grp) q.amt = p.amt; });
       planDirty(); renderPicks(res);
     });
@@ -729,6 +748,12 @@
       const res = await post('/api/builder/preview', buildReq());
       if (seq !== S.reqSeq) return;
       S.preview = res;
+      S.room = res.room || {};
+      S.picks.forEach(p => {                          // fill the starting Buy $ of picks you have not typed an amount for
+        if (!autoAmt(p)) return;
+        const st = (S.room[p.sym] || {}).start;
+        if (st > 0) { p.amt = st; p.autoAmt = true; } else if (p.autoAmt) { p.amt = null; p.autoAmt = false; }
+      });
       render(res);
       if (S.fillGapNext) { S.fillGapNext = false; fillBuyGaps(res); }
       if (S.allocNext) { S.allocNext = false; allocateHoldings(); }   // a preset was just chosen: its targets are now in, so lay the held stocks over them
@@ -842,7 +867,7 @@
     Object.keys(p.sector || {}).forEach(k => { if (p.sector[k] != null) S.targets['sector:' + k] = p.sector[k]; });
     Object.keys(p.style || {}).forEach(k => { if (p.style[k] != null) S.targets['style:' + k] = p.style[k]; });
     if (Array.isArray(p.sources) && p.sources.length) { S.sources = p.sources.slice(); renderSources(); loadSourceNames(); }
-    if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '' })); renderSourceNames(); }
+    if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '', amtUser: true })); renderSourceNames(); }
     schedule(0);
   }
   // The account's saved versions go in the Plan box; the checked one (tick) opens first, else the newest.

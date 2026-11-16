@@ -85,6 +85,27 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
         # percent of the WHOLE account (one basis, same as the plan check); no base for the whole-book preview
         base = float(acct.get("value") or 0.0) if account != "ALL" else None
         res["exposure"] = {"picked": bd.exposure(pvals, info, float(res.get("amount") or 0.0) or base), "held": bd.exposure(hvals, info, base)}
+        # 2026-11-17: Max $ per stock (room left under every limit, warn-only) and a starting Buy $ for picks with a Buy call
+        if account != "ALL" and body.get("plan"):
+            try:
+                from etl import plan_check as pc
+                from etl.derive_model_portfolio import final_call_side
+                plan_picks = [x for x in (body["plan"].get("picks") or []) if x.get("sym")]
+                picked = {str(x["sym"]).upper() for x in plan_picks}
+                cands = [{"sym": str(x["sym"]).upper(), "bucket": x.get("bucket"), "amt": float(x.get("amt") or 0.0), "pick": True} for x in plan_picks]
+                cands += [{"sym": k, "bucket": h.get("bucket"), "amt": 0.0, "pick": False} for k, h in acct["holdings"].items() if k not in picked and h.get("value")]
+                syms = [c["sym"] for c in cands]
+                missing = [x for x in syms if x not in info]
+                if missing:
+                    info.update(bd.name_info(s, d, missing, ctx["problems"]))
+                calls = ps.calls_for(s, d, syms)
+                buyers = {k for k, v in calls.items() if final_call_side(v) == "buy"}
+                res["room"] = pc.room_for(body["plan"], {"value": acct["value"], "cash": acct.get("cash") or 0.0, "holdings": acct["holdings"]},
+                                          cands, info, ps.style_groups(), ps.sizes_for(s, d, account, syms), buyers)
+                res["room_calls"] = {k: calls.get(k) for k in syms if calls.get(k)}
+            except Exception as e:      # never break the preview over the Max $ column
+                res["room"] = {}
+                res["problems"].append("Max $ could not be worked out: %s" % e)
     return res
 
 
