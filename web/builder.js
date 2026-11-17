@@ -20,13 +20,15 @@
     SA: 'Sell All', SS: 'Sell Some', STM: 'Sell/Trim', REDUCE: 'Reduce', SO: 'Sell (Over Max)', SW: 'Sell Watch', SWW: 'Sell Watch', REMOVE: 'Remove', HOLD: 'Hold' };
   // factor filters on the names list; style tags as the Builder already uses them (Defensives, Low Beta ...)
   const FACTORS = [['', 'All factors'], ['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid'],
-    ['lowbeta', 'Low beta'], ['highbeta', 'High beta'], ['uptrend', 'Above trend'], ['mom', 'Positive momentum']];
+    ['lowbeta', 'Low beta'], ['highbeta', 'High beta'], ['nobeta', 'No beta known'], ['nostyle', 'No style tag'], ['uptrend', 'Above trend'], ['mom', 'Positive momentum']];
   const FACTOR_TIP = 'Defensive = Defensives, Low Beta or Dividend tag. Offensive = Cyclical, High Beta or Small Caps. Value = Value. Growth = Secular. Mid = Mid Caps. Low beta = measured beta 0.8 or under. High beta = over 1.2.';
   const STYLE_TAGS = { defensive: ['defensives', 'low beta', 'dividend'], offensive: ['cyclical', 'high beta', 'small caps'], value: ['value'], growth: ['secular'], mid: ['mid caps'] };
   const hasStyle = (n, k) => (n.styles || []).some(t => STYLE_TAGS[k].includes(String(t).toLowerCase()));
   function factorOk(n, k) {
     if (!k) return true;
     if (STYLE_TAGS[k]) return hasStyle(n, k);
+    if (k === 'nobeta') return n.beta == null;
+    if (k === 'nostyle') return !(n.styles || []).some(t => Object.values(STYLE_TAGS).some(g => g.includes(String(t).toLowerCase())));
     if (k === 'lowbeta') return n.beta != null && n.beta <= 0.8;
     if (k === 'highbeta') return n.beta != null && n.beta > 1.2;
     if (k === 'uptrend') return n.above_trend === true;
@@ -51,7 +53,7 @@
   const withDate = u => u + (dq() ? (u.includes('?') ? '&' : '?') + dq() : '');
   const post = (u, body, method) => api(withDate(u), { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-  // 2026-11-17: a pick's Buy $ is filled for you (its Stock Room $ share, first come first served, Buy-call stocks first; a Buy call is not needed, this is planning) until you type your own
+  // 2026-11-17: a pick's Buy $ is filled for you (its Stk Room $ share, first come first served, Buy-call stocks first; a Buy call is not needed, this is planning) until you type your own
   const autoAmt = p => !p.amtUser && !p.grp && (!p.amt || p.autoAmt);
   function buildReq() {
     // hand-picked build: the server uses exactly these names, each in its asset class, with the % typed (null = share equally)
@@ -59,7 +61,7 @@
       manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0 })) };
     if (S.preset === 'custom') req.mix = S.mix;
     if (S.amount) req.amount = S.amount;
-    if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Stock Room $ per stock from it (warn only)
+    if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Stk Room $ per stock from it (warn only)
       const pl = planFromState();
       pl.picks = S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: autoAmt(p) ? 0 : (p.amt || 0), grp: p.grp || '' }));
       req.plan = pl;
@@ -180,6 +182,7 @@
     $('srcfFactor').innerHTML = FACTORS.map(f => `<option value="${f[0]}">${esc(f[1])}</option>`).join('');
     $('srcfFactor').title = FACTOR_TIP;
     $('srcfText').oninput = renderSourceNames;
+    $('srcfHidePicked').onchange = renderSourceNames;
     $('selShown').onclick = selectShown;
     $('srcNamesRows').addEventListener('click', e => { const t = e.target.closest('[data-ftype]'); if (t) toggleFilter(t.dataset.ftype, t.dataset.fval); });
     // Start from my holdings (one direct function, no hidden flags). A click ticks every stock the account holds (your other
@@ -233,8 +236,8 @@
     }
     const keep = [$('srcfSource').value, $('srcfClass').value, $('srcfSector').value, $('srcfIndustry').value];
     const sectors = [...new Set(S.srcNames.filter(n => n.bucket === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)).map(n => n.sector))].sort();
-    $('srcfSector').innerHTML = '<option value="">All sectors</option>' + sectors.map(s => `<option>${esc(s)}</option>`).join('');
-    if (sectors.includes(keep[2])) $('srcfSector').value = keep[2];
+    $('srcfSector').innerHTML = '<option value="">All sectors</option><option value="__none">No sector</option>' + sectors.map(s => `<option>${esc(s)}</option>`).join('');
+    if (sectors.includes(keep[2]) || keep[2] === '__none') $('srcfSector').value = keep[2];
     fillIndustries(keep[3]);
     $('srcfSource').innerHTML = '<option value="">All lists</option>' + S.sources.map(c => `<option>${esc(c)}</option>`).join('');
     $('srcfClass').innerHTML = '<option value="">All asset classes</option>' + BUCKETS.map(c => `<option>${esc(c)}</option>`).join('') + '<option value="__missing">No class yet</option>';
@@ -250,7 +253,7 @@
   // industries of the names in the chosen sector (all equity industries when no sector is chosen)
   function fillIndustries(want) {
     const sc = $('srcfSector').value;
-    const inds = [...new Set((S.srcNames || []).filter(n => n.industry && (!sc || (n.bucket === 'Equities' && n.sector === sc))).map(n => n.industry))].sort();
+    const inds = [...new Set((S.srcNames || []).filter(n => n.industry && (!sc || (n.bucket === 'Equities' && (sc === '__none' ? noSector(n) : n.sector === sc)))).map(n => n.industry))].sort();
     $('srcfIndustry').innerHTML = '<option value="">All industries</option>' + inds.map(s => `<option>${esc(s)}</option>`).join('');
     if (want && inds.includes(want)) $('srcfIndustry').value = want;
   }
@@ -267,7 +270,7 @@
   // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
   const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const EQUITY_SECTORS = ['Communication Services', 'Consumer Discretionary', 'Consumer Staples', 'Energy', 'Financials', 'Health Care', 'Industrials', 'Information Technology', 'Materials', 'Real Estate', 'Utilities'];   // the 11 sectors the data uses
-  // 2026-11-18, user: when Stock Room $ is $0, say WHY in the cell (the tightest limit), so nobody has to hover
+  // 2026-11-18, user: when Stk Room $ is $0, say WHY in the cell (the tightest limit), so nobody has to hover
   const whyShort = b => b === 'Cash to spend' ? 'no cash' : (b === "The stock's own Max" ? 'own max' : (CLS_ABBR[b] ? CLS_ABBR[b] + ' full' : String(b || '').replace(/ favored \(Bull\)/, '') + ' full'));
   // 2026-11-18, user: say why a pick got no shares. Two causes: the class has no target money, or one share costs more than the pick's slice.
   function noBuyWhy(sym, b, fin, amt) {
@@ -331,16 +334,19 @@
     renderSourceNames();
   }
 
+  const noSector = n => !n.sector || ['Unmapped', 'Other'].includes(n.sector);   // an equity with no real sector: the 'No sector' row
   function shownNames() {
     const all = S.srcNames || [];
     const sc = $('srcfSector').value, ind = $('srcfIndustry').value;
     const fs =$('srcfSource').value, fc = $('srcfClass').value, ff = $('srcfFactor').value, tx = $('srcfText').value.trim().toUpperCase();
     const qsel = [...$('srcfQuad').querySelectorAll('input:checked')].map(i => parseInt(i.value, 10));
+    const hidePicked = !!($('srcfHidePicked') && $('srcfHidePicked').checked);
     return all.filter(n => (!fs || n.sources.includes(fs)) &&
       (!qsel.length || qsel.some(i => (n.quad || [])[i] === 'bull')) &&
-      (!sc || (bucketOf(n) === 'Equities' && n.sector === sc)) && (!ind || n.industry === ind) &&
+      (!sc || (bucketOf(n) === 'Equities' && (sc === '__none' ? noSector(n) : n.sector === sc))) && (!ind || n.industry === ind) &&
       (!fc || (fc === '__missing' ? !bucketOf(n) : bucketOf(n) === fc)) && factorOk(n, ff) &&
-      (!tx || n.sym.toUpperCase().includes(tx)));
+      (!tx || n.sym.toUpperCase().includes(tx)) &&
+      (!hidePicked || !picked(n.sym)));
   }
 
   // 2026-11-17, user: "Allocate my holdings". Ticks the stocks the account holds (only in asset classes that have a target, or all of
@@ -395,7 +401,22 @@
   function setPick(sym, on) {
     const n = S.nameCache[sym];
     const b = bucketOf(n);
-    if (on && n && b && n.usable && !picked(sym)) S.picks.push({ sym, bucket: b, pct: null, amt: null, grp: '' });   // existing picks are never touched: a new stock is added on top
+    if (on && n && b && n.usable && !picked(sym)) {   // existing picks are never touched: a new stock is added on top
+      // if the class adds up to less than 100%, the new stock starts with what is left, but never more than its own room allows
+      let pc = null;
+      const bk = S.preview && S.preview.buckets && S.preview.buckets[b], tgt = bk && bk.pct > 0 ? bk.dollars : 0;
+      const holdNow = ((S.preview && S.preview.account && S.preview.account.holdings) || []).some(h => h.sym === sym && h.value > 0);
+      const rm = (S.room || {})[sym];
+      S.clsTotal = S.clsTotal || {};
+      const tot = S.clsTotal[b] || 0;
+      if (tgt > 0 && !holdNow && tot < 99.95) {
+        let v = 100 - tot;
+        if (rm && rm.max != null) v = Math.min(v, rm.max / tgt * 100);
+        v = Math.floor(v * 10) / 10;
+        if (v >= 0.1) { pc = v; S.clsTotal[b] = tot + v; }
+      }
+      S.picks.push({ sym, bucket: b, pct: pc, amt: null, grp: '' });
+    }   // existing picks are never touched: a new stock is added on top
     if (!on) S.picks = S.picks.filter(p => p.sym !== sym);
   }
 
@@ -404,7 +425,7 @@
     renderSourceNames(); schedule(0);
   }
 
-  // 2026-11-18, user: can this name be picked, and is there room to buy it? (same Stock Room $ as the picks grid; warn-only, you can still pick it)
+  // 2026-11-18, user: can this name be picked, and is there room to buy it? (same Stk Room $ as the picks grid; warn-only, you can still pick it)
   function canPickTd(n, b) {
     if (!b) return '<td class="bld-muted" title="Choose an asset class first (use the Asset class filter or the name\'s class)">No class</td>';
     if (n.price == null) return '<td class="bld-muted" title="No price today, so it cannot be turned into shares">No price</td>';
@@ -462,7 +483,7 @@
       const col = pv == null ? '#c3c2b7' : (tv != null && tv > 0 ? (pv > tv + 5 ? '#dc2626' : (pv < tv - 5 ? '#d97706' : '#16a34a')) : (r.col || '#b8bcc8'));
       return '<td class="bld-bar"><div class="bld-viz"><div class="vrow">' +
         `<div class="vtrack2">${pv != null ? `<div class="vfill" style="width:${w(pv)}%;background:${col}"></div>` : ''}${r.hv != null ? `<div class="vhold" style="width:${w(r.hv)}%"></div>` : ''}` +
-        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(0)}%"></div>` : ''}</div></div></div></td>`;
+        `${tv != null && tv > 0 ? `<div class="vtick" style="left:${w(tv)}%" title="Target ${tv.toFixed(1)}%"></div>` : ''}</div></div></div></td>`;
     });
   }
 
@@ -473,10 +494,10 @@
     const hasPick = (P.total || 0) > 0, hasHeld = (H.total || 0) > 0;
     if (!hasPick && !hasHeld && !S.picks.length) return '';
     const dash = '<span class="bld-muted">-</span>';
-    const f0 = v => v.toFixed(0) + '%';
+    const f0 = v => v.toFixed(1) + '%';
     const bd = (q, w) => ((q || {})[w] || 0);
     const gapTd = (g, dec) => (g == null || !hasPick || !hasHeld) ? '<td></td>'
-      : `<td class="n ${Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn')}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 0)}${dec ? '' : ' pts'}</td>`;
+      : `<td class="n ${Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn')}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 1)}${dec ? '' : ' pts'}</td>`;
     // a section break: the rows after it become their own small table (laid out in three columns, see the end of this function)
     let curKey = '';
     const vizRows = {};
@@ -488,9 +509,13 @@
       if (pv == null || ref == null || !hasPick || !haveRef) return '<td></td>';
       const g = pv - ref;
       const c = judged ? judge(pv, ref, dec) : (Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn'));
-      return `<td class="n ${c}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 0)}${dec ? '' : ' pts'}</td>`;
+      if (judged && !dec) {   // against a target: say it in words ("Short 20.0 pts" = 20 points of the account below the target)
+        const a = Math.abs(g);
+        return `<td class="n ${c}" title="Picks ${pv.toFixed(1)}% vs Target ${ref.toFixed(1)}% = ${a.toFixed(1)} points of the account">${a < 0.05 ? 'On target' : (g < 0 ? 'Short ' : 'Over ') + a.toFixed(1) + ' pts'}</td>`;
+      }
+      return `<td class="n ${c}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 1)}${dec ? '' : ' pts'}</td>`;
     };
-    const tgtCell = (attr, tv, dec) => `<td class="n"><input type="number" min="0" step="${dec ? 0.05 : 1}" ${attr} value="${tv == null ? '' : tv}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}"></td>`;
+    const tgtCell = (attr, tv, dec) => `<td class="n" style="white-space:nowrap"><input type="number" min="0" step="${dec ? 0.05 : 0.1}" ${attr} value="${tv == null ? '' : Number(tv).toFixed(1)}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}">${tv != null && tv > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tv / 100 * amt))} of the account">$${Math.round(tv / 100 * amt / 1000)}K</span>` : ''}</td>`;
     // 2026-11-14, user: in the Asset class grid, say in dollars what the account must do to reach the target (the account's own value).
     // Target vs what it holds now: Sell all / Sell $X / Room to buy $X / On plan. Information only; nothing trades.
     const planTd = (asset, tv, hv) => {
@@ -498,7 +523,7 @@
         if (tv == null || !(tv > 0) || !hasHeld || hv == null) return '<td></td>';
         const g = (tv - hv) / 100 * amt;
         if (g < -500) return `<td class="n bld-dn" title="Held is over this limit">Over ${usd(-g)}</td>`;
-        if (g > 500) return `<td class="n bld-up" title="Room left under this limit">Stock Room ${usd(g)}</td>`;
+        if (g > 500) return `<td class="n bld-up" title="Room left under this limit">Stk Room ${usd(g)}</td>`;
         return '<td class="n bld-muted">On plan</td>';
       }
       if (curKey !== 'Asset class') return '<td></td>';
@@ -506,7 +531,7 @@
       const gap = (tv - (hv || 0)) / 100 * amt;
       if (tv === 0 && (hv || 0) * amt / 100 > 500) return `<td class="n bld-dn"><b>Sell all ${usd((hv || 0) * amt / 100)}</b></td>`;
       if (gap < -500) return `<td class="n bld-dn">Sell ${usd(-gap)}</td>`;
-      if (gap > 500) return `<td class="n bld-up">Stock Room ${usd(gap)}</td>`;
+      if (gap > 500) return `<td class="n bld-up">Stk Room ${usd(gap)}</td>`;
       return '<td class="n bld-muted">On plan</td>';
     };
     // 2026-11-17, user: "Covered" = how much of the target the stocks you already hold fill (held up to the target, as % of the target),
@@ -525,19 +550,19 @@
     const coverTd = (hv, eff, flt) => {
       if (eff == null || !(eff > 0) || !hasHeld || hv == null) return '<td></td>';
       const c = Math.min(hv, eff) / eff * 100, n = flt ? heldIn(flt) : null;
-      return `<td class="n bld-tip" data-tip="Your held stocks fill ${c.toFixed(0)}% of this target${n != null ? ' (' + n + ' stock' + (n === 1 ? '' : 's') + ')' : ''}. Held ${hv.toFixed(0)}% of the account, target ${eff.toFixed(0)}%."><b class="${c >= 95 ? 'bld-up' : 'bld-warn'}">${c.toFixed(0)}%</b>${n != null && n > 0 ? ' <span class="bld-muted">' + n + '</span>' : ''}</td>`;
+      return `<td class="n bld-tip" data-tip="Your held stocks fill ${c.toFixed(1)}% of this target${n != null ? ' (' + n + ' stock' + (n === 1 ? '' : 's') + ')' : ''}. Held ${hv.toFixed(1)}% of the account, target ${eff.toFixed(1)}%."><b class="${c >= 95 ? 'bld-up' : 'bld-warn'}">${c.toFixed(1)}%</b>${n != null && n > 0 ? ' <span class="bld-muted">' + n + '</span>' : ''}</td>`;
     };
     // One row. pv / hv = percent picked / held (null = nothing there). key = target key (null: no target cell);
     // asset = asset class name (its target is the mix you chose; judged against the mix after the Risk Dial).
     const R = (label, pv, hv, tip, key, asset, flt, tvx) => {   // tvx = a reference value with no box (Cash: what is left after the asset classes)
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : null) : (key ? tv : (tvx > 0 ? tvx : null));
-      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" title="Calculated: 100% minus the asset class targets above"><b>${Math.round(tvx * 100) / 100}</b></td>` : '<td></td>'));
+      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" title="Calculated: 100% minus the asset class targets above"><b>${tvx.toFixed(1)}</b></td>` : '<td></td>'));
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
       return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}" title="Click: show only this in the names list (Ctrl+click: add to the current filters)"` : ''}><td${tip ? ` class="bld-tip" data-tip="${esc(tip)}"` : ''}>${label}</td>${barTd}${cell}<td class="n">${pCell}</td><td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>` +
-        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${coverTd(hv, eff, flt)}${planTd(asset, asset ? (Object.keys(chosen).length ? (chosen[asset] || 0) : null) : (key ? tv : null), hv)}</tr>`;
+        `${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}${planTd(asset, asset ? (Object.keys(chosen).length ? (chosen[asset] || 0) : null) : (key ? tv : null), hv)}</tr>`;
     };
     const generalTip = 'Asset class rows are % of the account. Everything below is also % of the account (the same basis the plan check uses). Quad and style rows overlap (one fund can carry several), so they do not add to 100%. A stock takes its sector\'s Quad view. Red = over target.';
     let t = '';
@@ -549,20 +574,20 @@
       heldInvested += cur[b] || 0;
       t += R(`<span class="bld-sw" style="background:${bcol(b)}"></span>${esc(b)}`, placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
-    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td><td></td></tr>`;
+    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td><td></td><td></td></tr>`;
     const clsSum = BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0);
     const overBy = Object.keys(chosen).length && clsSum > 100.05 ? clsSum - 100 : 0;
-    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash${overBy ? ` <span class="bld-over" title="The asset class targets add to ${clsSum.toFixed(1)}%. They need to add to 100% before the plan can be activated.">classes add to ${clsSum.toFixed(0)}%, over by ${overBy.toFixed(0)}</span>` : ''}`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
+    t += R(`<span class="bld-sw" style="background:${_PM_ASSET_COLORS.Cash}"></span>Cash${overBy ? ` <span class="bld-over" title="The asset class targets add to ${clsSum.toFixed(1)}%. They need to add to 100% before the plan can be activated.">classes add to ${clsSum.toFixed(1)}%, over by ${overBy.toFixed(1)}</span>` : ''}`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
     if (cur.Unmapped > 0.04) t += R('Unmapped', null, cur.Unmapped, 'Held with no asset class: cannot be picked');
     t += sec('Risk');
     const fb = v => (v == null ? dash : v.toFixed(2));
     t += R('Low beta (0.8 or under)', hasPick ? P.lowbeta : null, hasHeld ? H.lowbeta : null, null, 'lowbeta', undefined, ['factor', 'lowbeta']) + R('High beta (over 1.2)', hasPick ? P.highbeta : null, hasHeld ? H.highbeta : null, null, 'highbeta', undefined, ['factor', 'highbeta']);
     t += R('Middle beta (0.8 to 1.2)', hasPick ? P.midbeta : null, hasHeld ? H.midbeta : null, 'Names with a beta between 0.8 and 1.2: not low, not high.', 'midbeta')
-      + R('No beta known', hasPick ? P.nobeta : null, hasHeld ? H.nobeta : null, 'Names with no beta yet (cash, new listings, some funds). Not covered by the beta rows above.', 'nobeta');
+      + R('No beta known', hasPick ? P.nobeta : null, hasHeld ? H.nobeta : null, 'Names with no beta yet (cash, new listings, some funds). Not covered by the beta rows above. Click the row to list them.', 'nobeta', undefined, ['factor', 'nobeta']);
     t += sec('Quad');
     for (const q of ['Q1', 'Q2', 'Q3', 'Q4']) {
       const pq = (P.quad || {})[q], hq = (H.quad || {})[q];
-      const tip = `${q} outlook. Picks: Bull ${bd(pq, 'bull').toFixed(0)}%, Neutral ${bd(pq, 'neutral').toFixed(0)}%, Bear ${bd(pq, 'bear').toFixed(0)}%, no view ${bd(pq, 'none').toFixed(0)}%. Portfolio: Bull ${bd(hq, 'bull').toFixed(0)}%, Neutral ${bd(hq, 'neutral').toFixed(0)}%, Bear ${bd(hq, 'bear').toFixed(0)}%, no view ${bd(hq, 'none').toFixed(0)}%`;
+      const tip = `${q} outlook. Picks: Bull ${bd(pq, 'bull').toFixed(1)}%, Neutral ${bd(pq, 'neutral').toFixed(1)}%, Bear ${bd(pq, 'bear').toFixed(1)}%, no view ${bd(pq, 'none').toFixed(1)}%. Portfolio: Bull ${bd(hq, 'bull').toFixed(1)}%, Neutral ${bd(hq, 'neutral').toFixed(1)}%, Bear ${bd(hq, 'bear').toFixed(1)}%, no view ${bd(hq, 'none').toFixed(1)}%`;
       t += R(q, hasPick ? bd(pq, 'bull') : null, hasHeld ? bd(hq, 'bull') : null, tip, 'quad:' + q, undefined, ['quad', String(['Q1', 'Q2', 'Q3', 'Q4'].indexOf(q))]);
     }
     t += sec('Sectors');
@@ -572,7 +597,7 @@
     EQUITY_SECTORS.forEach(k => allSec.add(k));      // 2026-11-17, user: all 11 sectors always have a row, so a limit can be typed for any of them
     Object.values(S.nameCache).forEach(n => { if (n.bucket === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) allSec.add(n.sector); });
     [...allSec].filter(s => s === 'Equities' || !BUCKETS.includes(s)).sort((a, b) => sv(b) - sv(a) || a.localeCompare(b))   // Fixed Income / Gold / Currency are in the Asset class grid; 'Equities' here = equities with no sector
-      .forEach(s => { t += R(s === 'Equities' ? 'No sector' : esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, s === 'Equities' ? 'Equities with no sector assigned (not a filter: Equities is in the Asset class grid)' : null, 'sector:' + s, undefined, s === 'Equities' ? undefined : ['sector', s]); });
+      .forEach(s => { t += R(s === 'Equities' ? 'No sector' : esc(s), hasPick ? ((P.sector || {})[s] || 0) : null, hasHeld ? ((H.sector || {})[s] || 0) : null, s === 'Equities' ? 'Equities with no sector assigned. Click the row to list them.' : null, 'sector:' + s, undefined, s === 'Equities' ? ['sector', '__none'] : ['sector', s]); });
     t += sec('Style');
     // 2026-11-18, user: say what each style row means. A name can carry several tags, so it can sit in more than one row (rows can add to over 100%).
     const STYLE_HELP = {
@@ -583,7 +608,7 @@
       mid: 'Mid: stocks tagged Mid Caps. Medium-sized companies, between large and small.' };
     [['defensive', 'Defensive'], ['offensive', 'Offensive'], ['value', 'Value'], ['growth', 'Growth'], ['mid', 'Mid']]
       .forEach(f => { t += R(f[1], hasPick ? ((P.style || {})[f[0]] || 0) : null, hasHeld ? ((H.style || {})[f[0]] || 0) : null, STYLE_HELP[f[0]] + '\nA stock can carry several tags, so it can count in more than one row and the rows can add to over 100%.', 'style:' + f[0], undefined, ['factor', f[0]]); });
-    t += R('No style tag', hasPick ? P.nostyle : null, hasHeld ? H.nostyle : null, 'Names that carry none of the style groups above.', 'style:none');
+    t += R('No style tag', hasPick ? P.nostyle : null, hasHeld ? H.nostyle : null, 'Names that carry none of the style groups above. Click the row to list them.', 'style:none', undefined, ['factor', 'nostyle']);
     // 2026-10-28, user: show the sections in three columns. Cut the rows at each section break, one small table per section.
     const parts = t.split(/\u0001([^\u0002]*)\u0002/);          // ['', title1, rows1, title2, rows2, ...]
     const tables = {};
@@ -591,7 +616,7 @@
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = !!S.collapsed[skey];
       tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}><span class="bld-chev" data-sec-toggle="${esc(skey)}" title="${shut ? 'Show' : 'Hide'} this section">${shut ? '&#9656;' : '&#9662;'}</span> ${title}<button type="button" class="bld-clr" data-clear="${esc(skey)}" title="Clear the Target boxes in this grid only">Clear</button></th><th class="bld-bar-h" title="Bar = picks (green on target, amber short, red over), thin grey = portfolio, black line = target">Chart</th>` +
-        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n">Gap</th><th class="n bld-tip" data-tip="How much of the Target your held stocks already fill, and how many stocks that is. 100% = the target is fully covered by what you hold.">Covered</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th class="n bld-tip" data-tip="Room left under the limit, in dollars (or how far held is over it).">Room</th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
+        `<th class="n bld-tip" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks.">Target</th><th class="n">Picks</th><th class="n">Held</th><th class="n bld-tip" data-tip="Picks against the Target, in points of the account. Short = your picks are below the target; Over = above it. Without a target it is Picks minus Held.">Gap</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th class="n bld-tip" data-tip="Room left under the limit, in dollars (or how far held is over it).">Room</th>'}</tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}</tbody></table></div>`;
     }
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
@@ -637,7 +662,7 @@
       planDirty();
       host.innerHTML = compareTable(S.preview);
       bindCmp();
-      schedule();                         // Stock Room $ depends on the limits
+      schedule();                         // Stk Room $ depends on the limits
     });
     // the whole charts-and-grids panel: shown only when there is something to show; open/closed is remembered in this browser
     const panel = $('cmpPanel');
@@ -703,7 +728,7 @@
     const res = S.preview;
     if (!res) return [];
     const P = (res.exposure || {}).picked || {}, fin = res.mix_final || {}, amt = res.amount || 1, out = [];
-    const add = (label, short, apply) => { if (short > 5) out.push({ label: `${label}: ${short.toFixed(0)} pts short`, short, apply }); };
+    const add = (label, short, apply) => { if (short > 5) out.push({ label: `${label}: ${short.toFixed(1)} pts short`, short, apply }); };
     BUCKETS.forEach(b => {
       const placed = (res.positions || []).filter(p => p.bucket === b).reduce((a, p) => a + p.value, 0) / amt * 100;
       add(b, (fin[b] || 0) - placed, f => { f.cls = b; });
@@ -744,8 +769,10 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stock Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stock Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stock Room $ is the cap less what you hold.">Ceiling $</th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stock Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
+    S.clsTotal = {};
+    const overs = [];   // classes where the picks add up to more than the class allows
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => {
         // 2026-11-19, user: stocks you hold come first (biggest first); a stock you just ticked stays at the bottom, in the order ticked
@@ -758,14 +785,24 @@
       let t = '';
       const mTot = mine.reduce((a, r) => a + r.model, 0), hTot = mine.reduce((a, r) => a + r.hold, 0);
       const sumPct = mine.reduce((a, r) => a + (r.pk && r.pk.pct != null ? r.pk.pct : 0), 0);
-      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${(sumPct > 100.5 || (fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) ? 'bld-over' : ''}" title="${sumPct > 0 ? 'Your % boxes in this class add to ' + sumPct.toFixed(0) + '%' : ''}">${usd(mTot)} · ${pct(mTot / amt, 0)}${sumPct > 100.5 ? ' (' + sumPct.toFixed(0) + '% of class)' : ''}</td><td></td><td></td><td></td><td></td><td class="n">${usd(hTot)} · ${acctVal ? pct(hTot / acctVal, 0) : ''}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(0)}%</span>` : ''}</td></tr>`;
+      const clsShare = (fin[b] || 0) > 0 && amt ? mTot / (amt * fin[b] / 100) * 100 : (sumPct > 0 ? sumPct : null);
+      // the header adds up what each row shows: the % you typed, or the gray one where you typed nothing
+      const sumShown = mine.reduce((a, r) => a + (!r.pk ? 0 : (r.pk.pct != null ? r.pk.pct : ((fin[b] || 0) > 0 && amt && r.pos ? r.pos.value / (amt * fin[b] / 100) * 100 : 0))), 0);
+      S.clsTotal[b] = sumShown;   // the class total on screen: a stock picked next may take what is left of 100
+      const hdrShare = sumShown > 0 ? sumShown : clsShare;
+      const hdrCls = sumShown > 0 ? (Math.abs(sumShown - 100) < 0.05 ? 'bld-up' : (sumShown > 100 ? 'bld-over' : 'bld-warn')) : '';   // green = exactly 100, amber = short, red = over
+      const overCls = sumPct > 100.5 || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5);
+      if (overCls) overs.push(`${CLS_ABBR[b] || b}: picks ${usd(mTot)}${clsShare != null ? ' = ' + clsShare.toFixed(1) + '% of the class' : ''}${(fin[b] || 0) > 0 ? ' (class target ' + usd(amt * fin[b] / 100) + ')' : ''}${sumPct > 100.5 ? ', your % boxes add to ' + sumPct.toFixed(1) + '%' : ''}`);
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5 ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(1)}%</span>` : ''}</td></tr>`;
       mine.forEach(r => {
-        const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
+        const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(1) : 'equal';
         const pCell = r.pk
-          ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
-            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Nothing to add: no room left under its Stock Room $">nothing to add</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
+          ? `<input type="number" min="0" max="100" step="0.1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : Number(r.pk.pct).toFixed(1)}" placeholder="${ph}" style="width:48px;padding-left:3px;padding-right:3px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
+            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Nothing to add: no room left under its Stk Room $">nothing to add</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
-        const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
+        const clsBase = (fin[b] || 0) > 0 && amt ? amt * fin[b] / 100 : hTot;   // same base as the Picks % box: a share of the class
+        const hPct = r.h ? (clsBase > 0 ? pct(r.hold / clsBase, 1) : '') : dash;
+        const hCell = r.h ? `${usd(r.hold)}${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
         const gl = r.pk && r.pk.grp ? r.pk.grp : '', gcol = gl ? GRP_COL[gl.charCodeAt(0) - 65] : '';
         const rm = (S.room || {})[r.sym];
@@ -773,23 +810,24 @@
         const maxTd = !rm ? '<td></td>' : (rm.stock == null ? '<td class="n bld-muted" title="No per-stock limit for this class">-</td>'
           : `<td class="n bld-tip" data-tip="${esc('Most you can still buy of this one stock: ' + usd(rm.stock) + '. (Its Max rule less what you hold; an ETF with no rule uses your usual stock limit.)')}">${rm.stock > 0 ? usd(rm.stock) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">at max</span>'}</td>`);
         const mmv = S.myMax[r.sym];
-        const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}" value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:70px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule."></td>`;
-        const bktTd = !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>'}</td>`;
+        const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}"${rm && rm.rule_max != null ? ' max="' + Math.round(rm.rule_max) + '"' : ''} value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:56px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule.">${mmv != null && (fin[b] || 0) > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:4px;white-space:nowrap;display:inline-block;width:38px;text-align:right;vertical-align:middle" title="Your ceiling as a share of the class target, the same basis as the Picks % box. Your ceiling as a share of the class target, the same basis as the Picks % box.">${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}%</span>${r.pk ? `<button type="button" class="bld-btn sm alt" data-ceilpct="${esc(r.sym)}" data-v="${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}" style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % to this value">&rarr;</button>` : ''}` : ''}</td>`;
+        const bktTd = !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span>'}${(rm.bucket <= 0 || (rm.stock != null && rm.bucket < rm.stock) || (rm.stock == null && rm.bucket < 5000)) ? ' <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>' : ''}</td>`;
         const amtCells = r.pk
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
           : '<td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
           `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`;
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
     }
     // 2026-11-17, user: the column names show once, on the left block; the Equities block drops its own header row (it keeps one when it is the only block)
     const tbl = (rowsHtml, noHead) => rowsHtml ? (noHead ? head.replace(/<thead>.*<\/thead>/, '') : head) + rowsHtml + '</tbody></table>' : '';
-    // 2026-11-17, user: one line saying where the Stock Room $ money comes from (real cash vs money from selling over-target classes)
+    // 2026-11-17, user: one line saying where the Stk Room $ money comes from (real cash vs money from selling over-target classes)
     const rmeta = res.room_meta;
-    const money = rmeta ? `<div class="bld-muted bld-money" title="Stock Room $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
-    return money + `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
+    const money = rmeta ? `<div class="bld-muted bld-money" title="Stk Room $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
+    const overMsg = overs.length ? `<div class="bld-over" style="font-size:12px;margin:4px 0">Over the limit - ${overs.map(esc).join(' | ')}. Lower a pick or raise the class target.</div>` : '';
+    return money + overMsg + `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
   }
 
   // ---------------------------------------------------------------- step 2: your picks, actual mix, factor mix
@@ -799,15 +837,50 @@
     const pcb = document.querySelector('#cmpPanel .bld-copy'); if (pcb) pcb.hidden = !S.picks.length;
     $('cmpTable').innerHTML = compareTable(res);
     bindCmp();
+    // keep the cursor where it is: typing in one box and clicking another must not lose the click when the table redraws
+    let keep = null;
+    const ae = document.activeElement;
+    if (ae && ae.tagName === 'INPUT' && $('symTable').contains(ae)) {
+      const at = [...ae.attributes].find(x => /^data-(pct|mymax|amt)$/.test(x.name));
+      if (at) keep = { name: at.name, val: at.value, s: ae.selectionStart, e: ae.selectionEnd };
+    }
     $('symTable').innerHTML = symbolTable(res);
+    if (keep) {
+      const el = [...$('symTable').querySelectorAll('input[' + keep.name + ']')].find(x => x.getAttribute(keep.name) === keep.val);
+      if (el) { el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch (e) { /* number boxes have no selection */ } }
+    }
     $('symTable').querySelectorAll('[data-pct]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.pct);
       if (p) { p.pct = i.value === '' ? null : Math.max(0, parseFloat(i.value)); schedule(0); }
     });
     $('symTable').querySelectorAll('[data-mymax]').forEach(i => i.onchange = () => {
       const sym = i.dataset.mymax;
-      if (i.value === '') delete S.myMax[sym]; else S.myMax[sym] = Math.max(0, parseFloat(i.value) || 0);
+      const rmx = (S.room || {})[sym], ruleMax = rmx && rmx.rule_max != null ? rmx.rule_max : null;
+      if (i.value === '') delete S.myMax[sym];
+      else {
+        let v = Math.max(0, parseFloat(i.value) || 0);
+        if (ruleMax != null && v > ruleMax) {   // a ceiling can only lower the rule Max, never raise it
+          v = Math.round(ruleMax);
+          i.value = v; i.style.outline = '2px solid #dc2626';
+          i.title = 'Capped: your ceiling can not be above the Max rule (' + usd(ruleMax) + ').';
+          const note = document.createElement('div');
+          note.className = 'bld-over'; note.style.cssText = 'font-size:10px;font-weight:400';
+          note.textContent = 'Max is ' + usd(ruleMax);
+          if (i.parentNode) i.parentNode.appendChild(note);
+        }
+        S.myMax[sym] = v;
+      }
       planDirty(); schedule(0);
+    });
+    $('symTable').querySelectorAll('[data-ceilpct]').forEach(btn => btn.onclick = () => {
+      const p = picked(btn.dataset.ceilpct);
+      if (p) { p.pct = Math.min(100, parseFloat(btn.dataset.v) || 0); planDirty(); schedule(0); }
+    });
+    $('symTable').querySelectorAll('[data-ceilall]').forEach(btn => btn.onclick = e => {
+      e.stopPropagation();
+      let n = 0;
+      $('symTable').querySelectorAll('[data-ceilpct]').forEach(b => { const p = picked(b.dataset.ceilpct); if (p) { p.pct = Math.min(100, parseFloat(b.dataset.v) || 0); n++; } });
+      if (n) { planDirty(); schedule(0); }
     });
     $('symTable').querySelectorAll('[data-drop]').forEach(btn => btn.onclick = () => { setPick(btn.dataset.drop, false); renderSourceNames(); planDirty(); schedule(0); });
     // 2026-11-14: a pick's dollars, and 'buy one of' groups (same letter = buy any one; the group shares one amount)
@@ -852,9 +925,19 @@
       applyBought(res);
       S.room = res.room || {};
       let refill = false;
+      // the last stock added gets only what is left of its class: if its default would take the class over 100%, it is reduced so the total is exactly 100%
+      const posVal = {}, bSum = {}, lastAuto = {};
+      (res.positions || []).forEach(x => { posVal[x.sym] = x.value || 0; bSum[x.bucket] = (bSum[x.bucket] || 0) + (x.value || 0); });
+      S.picks.forEach(p => { if (autoAmt(p) && p.pct == null) lastAuto[p.bucket] = p.sym; });
+      const heldNow = {}; ((res.account && res.account.holdings) || []).forEach(h => { heldNow[h.sym] = h.value || 0; });
       S.picks.forEach(p => {                          // fill the starting Buy $ of picks you have not typed an amount for
         if (!autoAmt(p)) return;
-        const st = (S.room[p.sym] || {}).start;
+        let st = (S.room[p.sym] || {}).start;
+        const bk = (res.buckets || {})[p.bucket];
+        if (st > 0 && p.pct == null && lastAuto[p.bucket] === p.sym && bk && bk.pct > 0) {
+          const room = bk.dollars - (bSum[p.bucket] - (posVal[p.sym] || 0)) - (heldNow[p.sym] || 0);
+          st = Math.min(st, Math.max(0, Math.floor(room)));
+        }
         if (st > 0 && p.amt !== st) { p.amt = st; p.autoAmt = true; refill = true; } else if (!(st > 0) && p.autoAmt) { p.amt = null; p.autoAmt = false; refill = true; }
       });
       if (refill) schedule(0);        // the amounts changed: the grids must be worked out again with them
@@ -1140,12 +1223,12 @@
       return `<div style="margin-bottom:10px"><div class="bld-line"><b>${esc(sl.cls)}</b>` +
         tdPill('sell', sl.all ? 'Plan 0%: sell all ' + usd(sl.held) : 'Over plan by about ' + usd(def)) +
         `<span style="margin-left:auto">Amount to sell <input type="number" min="0" step="1000" data-tdcls="${esc(sl.cls)}" value="${Math.round(amt)}" style="width:92px" title="Defaults to how far the class is over its plan. Split over the holdings below in proportion to their value."></span></div>` +
-        '<table class="bld-t"><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Sell $</th><th class="n">Shares</th><th class="n">Left</th></tr></thead><tbody>' +
+        '<table class="bld-t"><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Sell $</th></tr></thead><tbody>' +
         sl.holdings.map(h => {
-          const sv = split[h.sym] || 0, qty = h.qty || null, sh = qty && h.value ? Math.round(qty * sv / h.value * 10) / 10 : null;
-          return `<tr><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td class="n"><input type="number" min="0" step="500" data-tdhold="${esc(h.sym)}" value="${Math.round(sv)}" style="width:80px"${S.sellHold[h.sym] != null ? ' class="tgt-over" title="You typed this amount: the other holdings share the rest"' : ''}></td><td class="n">${sh == null ? '-' : sh}</td><td class="n">${usd(h.value - sv)}</td></tr>`;
+          const sv = split[h.sym] || 0;
+          return `<tr><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td class="n"><input type="number" min="0" step="500" data-tdhold="${esc(h.sym)}" value="${Math.round(sv)}" style="width:80px"${S.sellHold[h.sym] != null ? ' class="tgt-over" title="You typed this amount: the other holdings share the rest"' : ''}></td></tr>`;
         }).join('') +
-        `<tr><td><b>Total</b></td><td class="n">${usd(held)}</td><td class="n"><b>${usd(tot)}</b></td><td></td><td class="n">${usd(held - tot)}</td></tr></tbody></table></div>`;
+        `<tr><td><b>Total</b></td><td class="n">${usd(held)}</td><td class="n"><b>${usd(tot)}</b></td></tr></tbody></table></div>`;
     }).join('') : '<div class="bld-muted">Nothing is over its plan. No sells needed.</div>';
     $('tdSells').querySelectorAll('[data-tdcls]').forEach(e => e.onchange = () => {
       S.sell[e.dataset.tdcls] = Math.max(0, Number(e.value) || 0);
@@ -1181,7 +1264,7 @@
       const names = x.members.map(m => `<b>${esc(m)}</b>`).join(x.members.length > 1 ? ' <span class="bld-muted">or</span> ' : '');
       b += `<tr><td>${names}</td><td class="n">${x.amount ? usd(x.amount) : '-'}</td><td>${tdPill('', 'Saved only')} <span class="bld-muted">in the saved plan, not picked on the screen</span>${flagOf(x) ? ' ' + flagOf(x) : ''}</td></tr>`;
     });
-    if (!rows) b += '<tr><td colspan="3" class="bld-muted">No planned buys yet. Picks with room under their Stock Room $ appear here at once and are saved when you press Save.</td></tr>';
+    if (!rows) b += '<tr><td colspan="3" class="bld-muted">No planned buys yet. Picks with room under their Stk Room $ appear here at once and are saved when you press Save.</td></tr>';
     $('tdBuys').innerHTML = b + '</tbody>';
     // what is left
     const bar = (now, used, plan, hard) => {
@@ -1246,6 +1329,19 @@
     };
     if (!PL.dirty) planLoad();   // date change / Refresh must not replace unsaved edits with the saved plan
   }
+
+  // Hover help uses the browser's normal tooltip (title), not a drawn popup that
+  // changes the page size and makes the screen jump.
+  document.addEventListener('mouseover', function (e) {
+    const el = e.target.closest && e.target.closest('[data-tip]');
+    if (el && !el.title) el.title = el.getAttribute('data-tip');
+  });
+
+  // Clicking into a number box selects what is in it, so typing replaces it.
+  document.addEventListener('focusin', function (e) {
+    const t = e.target;
+    if (t && t.tagName === 'INPUT' && t.type === 'number') setTimeout(function () { try { t.select(); } catch (err) { /* ignore */ } }, 0);
+  });
 
   document.addEventListener('DOMContentLoaded', init);
 })();

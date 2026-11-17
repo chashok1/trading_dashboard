@@ -437,14 +437,14 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             stock_room = _mx - held_v
             rooms.append(("Your ceiling" if _mine else "The stock's own Max", stock_room))
         tight = min(rooms, key=lambda x: x[1])
-        item["max_add"] = max(0.0, float(int(max(tight[1], 0.0) // 100) * 100))
+        item["max_add"] = max(0.0, float(int(max(tight[1], 0.0) // 1) * 1))
         item["binding"] = tight[0]
         if cap:
             start = cap.get("unit") if held_v > 0 else cap.get("min")
             if start:
                 item["suggest"] = min(float(start), item["max_add"])
         allowed = ask if warn_only else min(ask, left_cash)
-        allowed = float(int(allowed // 100) * 100) if allowed >= 100 else 0.0
+        allowed = float(int(allowed // 1) * 1) if allowed >= 1 else 0.0
         item["allowed"] = allowed
         if warn_only and allowed > left_cash + 0.5:
             item["result"] = "OVER_PLAN"
@@ -590,12 +590,12 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         for k in ln["quad"]:
             _rm("quad", k, p["quad"].get(k), k + " favored (Bull)")
         tight = min(rooms, key=lambda x: x[1])
-        bucket = max(0.0, float(int(max(tight[1], 0.0) // 100) * 100))
+        bucket = max(0.0, float(int(max(tight[1], 0.0) // 1) * 1))
         cap = caps.get(c["sym"]) or ((default_cap or {}) if ln["cls"] == "Equities" else {})
         stock = None
         _mx, _mine = eff_max(cap, p["my_max"].get(c["sym"]))
         if _mx is not None:
-            stock = max(0.0, float(int(max(_mx - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 100) * 100))
+            stock = max(0.0, float(int(max(_mx - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 1) * 1))
         mine_flag[c["sym"]] = _mine
         rule_max[c["sym"]] = cap.get("max")
         return stock, bucket, tight[0]

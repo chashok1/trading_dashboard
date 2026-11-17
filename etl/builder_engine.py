@@ -401,8 +401,9 @@ def build_positions(ctx: dict, req: dict) -> dict:
     for sym, d in picks_dollars.items():
         f = funds[sym]
         price = f.get("price")
+        # 2026-11-21, user: the plan does not care about the share price. A pick keeps its exact dollars; whole shares are only a hint.
         sh = whole_shares(d["dollars"], price)
-        val = sh * (price or 0.0)
+        val = d["dollars"] if price else 0.0
         # 2026-11-14: a name the account already holds, whose target is within half a share of the holding, keeps the
         # held share count and the held value (rounding down must not lose a share, and the model price can differ from
         # the position file's price). Match-my-holdings then lands on a gap of 0.
@@ -411,9 +412,9 @@ def build_positions(ctx: dict, req: dict) -> dict:
         # 2026-11-20, user: fractional holdings (mutual funds such as FXNAX) keep their exact shares and value too, so the gap is 0, not -one share
         if price and hq > 0 and not h.get("is_cash") and abs(d["dollars"] - float(h.get("value") or hq * price)) < 0.5 * price:
             sh, val = (int(hq) if hq == int(hq) else hq), float(h.get("value") or hq * price)
-        if sh <= 0:
+        if not price or val <= 0:
             cash_extra += d["dollars"]
-            out["notes"].append("%s: %s is less than one share: goes to Cash." % (sym, _usd(d["dollars"])))
+            out["notes"].append("%s: %s has no price today: goes to Cash." % (sym, _usd(d["dollars"])))
             continue
         positions.append({"sym": sym, "bucket": d["bucket"], "area": d["area"], "dollars": d["dollars"], "price": price,
                           "shares": sh, "value": val, "is_kept": False, "why": d["why"], "why_detail": d["detail"],
@@ -468,11 +469,10 @@ def vs_account(model: list, holdings: dict, kept: set, account_type: Optional[st
             row["gap"] = mv - hv
             if paper_only:
                 row["trade"] = "Plan funds only, use as a guide"
-            elif price and abs(row["gap"]) >= price:
-                sh = int(abs(row["gap"]) // price)
-                row["trade"] = ("Buy %d sh" if row["gap"] > 0 else "Sell %d sh") % sh
+            elif abs(row["gap"]) >= 1.0:
+                row["trade"] = ("Buy %s" if row["gap"] > 0 else "Sell %s") % _usd(abs(row["gap"]))   # 2026-11-21, user: dollars, not shares
             else:
-                row["trade"] = "Matched" if abs(row["gap"]) < 1.0 else "Close enough"   # under $1 = the same position
+                row["trade"] = "Matched"   # under $1 = the same position
         if show_tax and s not in kept and hv > 0 and h.get("cost") is not None:
             frac = 1.0 if m is None else (min(1.0, max(0.0, -row["gap"] / hv)) if row["gap"] is not None and row["gap"] < 0 else 0.0)
             g = (hv - float(h["cost"])) * frac

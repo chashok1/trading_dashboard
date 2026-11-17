@@ -91,7 +91,18 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 from etl import plan_check as pc
                 plan_picks = [x for x in (body["plan"].get("picks") or []) if x.get("sym")]
                 picked = {str(x["sym"]).upper() for x in plan_picks}
-                cands = [{"sym": str(x["sym"]).upper(), "bucket": x.get("bucket"), "amt": float(x.get("amt") or 0.0), "pick": True} for x in plan_picks]
+                # 2026-11-21, user: a pick with a typed Picks % uses up that share of its class (% of the class target less what is held),
+                # so a stock added later only gets what is really left
+                def _pct_amt(x):
+                    amt = float(x.get("amt") or 0.0)
+                    if amt > 0 or x.get("pct") is None:
+                        return amt
+                    cp = ((body["plan"].get("cls") or {}).get(x.get("bucket")))
+                    if cp is None:
+                        return 0.0
+                    held_v = float(((acct["holdings"].get(str(x["sym"]).upper()) or {}).get("value")) or 0.0)
+                    return max(0.0, float(cp) / 100.0 * float(acct["value"]) * float(x["pct"]) / 100.0 - held_v)
+                cands = [{"sym": str(x["sym"]).upper(), "bucket": x.get("bucket"), "amt": _pct_amt(x), "pick": True} for x in plan_picks]
                 cands += [{"sym": k, "bucket": h.get("bucket"), "amt": 0.0, "pick": False} for k, h in acct["holdings"].items() if k not in picked and h.get("value")]
                 # 2026-11-18: every name in the names list also gets a Max $ (info comes from the screen, no extra lookups)
                 known = {c["sym"] for c in cands}

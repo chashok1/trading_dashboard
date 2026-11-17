@@ -14,7 +14,7 @@ const TOGGLEABLE_COLS = [
   { id: 'plan',      label: 'Plan' },
   { id: 'apl',       label: 'Planned $ (acct)' },
   { id: 'ah',        label: 'Held $ (acct)' },
-  { id: 'amax',      label: 'Stock Room $ (acct)' },
+  { id: 'amax',      label: 'Stk Room $ (acct)' },
   { id: 'abkt',      label: 'Room Left $ (acct)' },
   { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
@@ -4108,7 +4108,7 @@ const _LIVE_TIER_IDX = { MUST: 0, CONSIDER: 1, BUYIDEA: 2, INFO: 3 };
 const _LIVE_TIER_LABEL = { MUST: 'Do today', CONSIDER: 'Consider', BUYIDEA: 'Buy idea', INFO: 'Info only' };
 state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen: null };
 
-// 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Stock Room $), the room left
+// 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Stk Room $), the room left
 // in its buckets (Room Left $) and the planned buy still to do. Information only. Columns are hidden until an account is picked in the Acct box.
 state.acctRoom = { short: '', data: null };
 function _pickedAccountShort() {
