@@ -9671,6 +9671,7 @@ CREATE TABLE IF NOT EXISTS user_plan_done (
     qty_at_done   NUMERIC,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE user_plan_done ADD COLUMN IF NOT EXISTS suggested_usd NUMERIC;   -- 2026-11-20: the Actionable suggested trade at the time (NULL = none), to see how often it is followed
 CREATE INDEX IF NOT EXISTS ix_user_plan_done_acct ON user_plan_done (account_short, as_of_date);
 
 -- The user's own stocks. moved_on = the day Hedgeye listed it (then it counts as a Hedgeye name, not here).

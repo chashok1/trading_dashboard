@@ -26,10 +26,7 @@ Tunables in `VOL_SPIKE_CONFIG`.
 * Actionable grid, **IV** column: chip `IV STRESS` / `IV SPIKE 5d` / `HV SPIKE 14d` / `IV NORM 3d` (bulleted tooltip incl. the
   app's own history). Header sort + filter funnel on the spike state.
 * Action popup studies panels (right side): same code (`api/routers/dash.py::get_studies` imports `etl/vol_spike`).
-* Watch alert: a **held** symbol with a fresh IV spike arrow or fresh stress gets an auto-created, already-triggered `ref_watch`
-  row (note `Auto: IV spike|stress <date>`), picked up by the existing Watch email digest. Only on the live anchor day; never on
-  backfill/re-derive of older dates; skipped if the symbol already has an ACTIVE watch (the user's own watch is left alone) or
-  the same event was already alerted.
+* No Watch alert: the auto-created triggered `ref_watch` rows were removed 2026-11-16 (watches are manual only).
 
 ## Commands
 ```

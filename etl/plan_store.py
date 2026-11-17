@@ -292,7 +292,7 @@ def done_rows(session, d: date, account: str) -> list:
     return [{"sym": r[0], "side": r[1], "amount": float(r[2] or 0.0), "qty_at_done": float(r[3] or 0.0)} for r in rs]
 
 
-def record_done(session, d: date, account: str, sym: str, side: str, amount: float) -> dict:
+def record_done(session, d: date, account: str, sym: str, side: str, amount: float, suggested: Optional[float] = None) -> dict:
     """The user marked a planned buy / sell Done for `amount` dollars (maybe part of it). Remembers the shares held now."""
     sym = str(sym or "").upper()
     side = "SELL" if str(side).upper() == "SELL" else "BUY"
@@ -301,8 +301,9 @@ def record_done(session, d: date, account: str, sym: str, side: str, amount: flo
     snap = snapshot(session, d, account, [])
     q0 = float((snap["holdings"].get(sym) or {}).get("qty") or 0.0)
     try:
-        session.execute(text("INSERT INTO user_plan_done (account_short, tos_symbol, as_of_date, side, amount_usd, qty_at_done) "
-                             "VALUES (:a, :s, :d, :sd, :amt, :q)"), {"a": account, "s": sym, "d": d, "sd": side, "amt": float(amount), "q": q0})
+        sg = float(suggested) if suggested not in (None, "") and float(suggested) > 0 else None     # what Actionable suggested, kept to see how often it is followed
+        session.execute(text("INSERT INTO user_plan_done (account_short, tos_symbol, as_of_date, side, amount_usd, qty_at_done, suggested_usd) "
+                             "VALUES (:a, :s, :d, :sd, :amt, :q, :sg)"), {"a": account, "s": sym, "d": d, "sd": side, "amt": float(amount), "q": q0, "sg": sg})
         session.commit()
     except Exception as e:      # table not created yet
         session.rollback()
@@ -349,20 +350,23 @@ def acct_room_page(session, d: date, account: str) -> dict:
     # planned buy still to do = the saved amount less what has been bought since the plan was saved (shares added x price)
     pend = pc.done_pending(done_rows(session, d, account), holdings)          # marked Done today, not in the positions file yet
     planned = {}
+    charge = {}          # sym -> planned dollars still to be charged to ITS sector / class (a group's leftover goes to the member bought)
     for pk in picks:
-        for i, m in enumerate(pk["members"]):
-            h = holdings.get(m) or {}
-            base = plan["pick_base"].get(m)
-            bought = max(0.0, float(h.get("qty") or 0.0) - base) * float(h.get("price") or 0.0) if base is not None else 0.0
-            left = max(0.0, float(pk["amount"] or 0.0) - bought)
-            dn = (pend.get(m) or {}).get("BUY", 0.0)
-            planned[m] = {"amount": max(0.0, left - dn), "group": len(pk["members"]) > 1, "first": i == 0}
+        mem = pk["members"]
+        got = pick_got(mem, holdings, plan["pick_base"], pend)
+        # 2026-11-20, user: a group is ONE pool -- a buy of ANY member uses it up, and the others' planned money goes away
+        left = max(0.0, float(pk["amount"] or 0.0) - sum(got.values()))
+        buyer = max(mem, key=lambda m: got[m]) if len(mem) > 1 and any(got[m] > 0 for m in mem) else None
+        for i, m in enumerate(mem):
+            planned[m] = {"amount": left, "group": len(mem) > 1, "first": i == 0}
+            if len(mem) == 1 or m == buyer:
+                charge[m] = left          # a group nobody bought yet charges no sector / class at all
     for m, v in pend.items():                                                  # a stock bought today that was not planned also uses room
         if v.get("BUY", 0.0) > 0:
             planned.setdefault(m, {"amount": 0.0, "group": False, "first": True})
     syms = sorted(set(holdings) | set(buy_syms) | set(planned))
     info = bd.name_info(session, d, syms, problems) if syms else {}
-    cands = [{"sym": s, "bucket": (holdings.get(s) or {}).get("bucket"), "amt": ((planned[s]["amount"] + (pend.get(s) or {}).get("BUY", 0.0)) if s in planned and (not planned[s]["group"] or planned[s]["first"]) else 0.0), "pick": False}
+    cands = [{"sym": s, "bucket": (holdings.get(s) or {}).get("bucket"), "amt": (charge.get(s, 0.0) + (pend.get(s) or {}).get("BUY", 0.0)) if s in planned else 0.0, "pick": False}
              for s in syms]
     room = pc.room_for(plan, {"value": value, "cash": snap["cash"], "holdings": holdings}, cands, info, style_groups(),
                        sizes_for(session, d, account, syms), None, account_default_size(session, d, account))
@@ -544,6 +548,16 @@ def _picks_changed(session, active: list, sig) -> bool:
     return _picks_sig(session, active) != sig
 
 
+def pick_got(mem: list, holdings: dict, pick_base: dict, pend: dict) -> dict:
+    """Dollars of each member bought since the plan was saved: shares added x price (positions file) plus Done marks the file does not show yet."""
+    got = {}
+    for m in mem:
+        h = holdings.get(m) or {}
+        base = (pick_base or {}).get(m)
+        got[m] = (max(0.0, float(h.get("qty") or 0.0) - base) * float(h.get("price") or 0.0) if base is not None else 0.0) + (pend.get(m) or {}).get("BUY", 0.0)
+    return got
+
+
 def todo_page(session, d: date, account: str) -> dict:
     """Everything the To do tab needs: sells, buys with Actionable's call, what is left."""
     problems: list = []
@@ -556,9 +570,13 @@ def todo_page(session, d: date, account: str) -> dict:
     info = bd.name_info(session, d, syms, problems) if syms else {}
     calls = calls_for(session, d, syms)
     pend = pc.done_pending(done_rows(session, d, account), snap["holdings"])
-    for pk in picks:                              # a buy marked Done today comes off the to-do amount
-        if pk["side"] == "BUY" and len(pk["members"]) == 1:
-            pk["amount"] = max(0.0, float(pk["amount"] or 0.0) - (pend.get(pk["members"][0]) or {}).get("BUY", 0.0))
+    pb = pc.clean_plan(row["active"])["pick_base"]
+    for pk in picks:                              # what was bought (a Done mark, or shares added since the plan was saved) comes off the to-do amount;
+        if pk["side"] == "BUY":                   # a buy of ANY member of a buy-one-of group uses up the group's one amount
+            got = pick_got(pk["members"], snap["holdings"], pb, pend)
+            pk["amount"] = max(0.0, float(pk["amount"] or 0.0) - sum(got.values()))
+            if len(pk["members"]) > 1 and any(v > 0 for v in got.values()):
+                pk["members"] = [max(pk["members"], key=lambda m: got[m])]     # the stock actually bought carries it to its own sector / class
     out = pc.todo(row["active"], {"value": snap["value"], "cash": snap["cash"], "holdings": snap["holdings"]},
                   picks, calls, info, style_groups(), final_call_side, sizes_for(session, d, account, syms), assume_sells=True, warn_only=True)
     out.update({"account": account, "state": "active", "active_at": row["active_at"], "plan": row["active"],

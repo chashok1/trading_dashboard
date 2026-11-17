@@ -14,8 +14,8 @@ const TOGGLEABLE_COLS = [
   { id: 'plan',      label: 'Plan' },
   { id: 'apl',       label: 'Planned $ (acct)' },
   { id: 'ah',        label: 'Held $ (acct)' },
-  { id: 'amax',      label: 'Max $ (acct)' },
-  { id: 'abkt',      label: 'Bucket $ (acct)' },
+  { id: 'amax',      label: 'Stock Room $ (acct)' },
+  { id: 'abkt',      label: 'Room Left $ (acct)' },
   { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
   { id: 'iv',        label: 'IV' },
@@ -4108,8 +4108,8 @@ const _LIVE_TIER_IDX = { MUST: 0, CONSIDER: 1, BUYIDEA: 2, INFO: 3 };
 const _LIVE_TIER_LABEL = { MUST: 'Do today', CONSIDER: 'Consider', BUYIDEA: 'Buy idea', INFO: 'Info only' };
 state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen: null };
 
-// 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Max $), the room left
-// in its buckets (Bucket $) and the planned buy still to do. Information only. Columns are hidden until an account is picked in the Acct box.
+// 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Stock Room $), the room left
+// in its buckets (Room Left $) and the planned buy still to do. Information only. Columns are hidden until an account is picked in the Acct box.
 state.acctRoom = { short: '', data: null };
 function _pickedAccountShort() {
   if (!state.filters.account) return '';
@@ -5379,7 +5379,7 @@ function _buildRowEl(r) {
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
       <td data-col="bulk" style="padding:4px 4px; text-align:center; line-height:1.5;">
-        <button type="button" class="row-act-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Done / Skip / Snooze this stock, with an amount if it is part of a planned buy or sell">&#10003;</button>
+        <button type="button" class="row-act-btn${r._actionInfo ? ' row-act-done' : ''}" data-sym="${escapeHtml(r.tos_symbol)}" title="Done / Skip / Snooze this stock, with an amount if it is part of a planned buy or sell">&#10003;</button>
         <div>${r.conviction_hold
           ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction ${r.conviction_direction === 'AVOID' ? 'avoid' : 'hold'} — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">${r.conviction_direction === 'AVOID' ? '🚫' : '🔭'}</span>`
           : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}</div>
@@ -5546,17 +5546,26 @@ function _openRowActPopup(sym) {
   const planned = x ? (x.planned > 0 ? 'BUY' : (x.planned_sell > 0 ? 'SELL' : '')) : '';
   const sellish = ['REMOVE', 'REDUCE'].includes(String(row.consolidated_action || '').toUpperCase());
   const side0 = planned || (sellish ? 'SELL' : 'BUY');
-  const amt0 = planned ? (planned === 'BUY' ? x.planned : x.planned_sell) : (Number(row._amt) || 0);
+  // 2026-11-20, user: the Done amount starts at the Actionable suggested trade (AMT$ from the Min / Unit sizing rules), held down to what the plan still allows
+  // (the planned amount left, and the room the plan's Max / limits leave). It is only a starting point: type what you really did. The suggestion is saved with it.
+  const _fcc = String(row.final_code || '').toUpperCase(), _ca = String(row.consolidated_action || '').toUpperCase();
+  const sug = (['BM', 'BS', 'BMN', 'SS', 'STM', 'SA'].includes(_fcc) || ['ADD', 'INCREASE', 'REDUCE', 'REMOVE'].includes(_ca)) ? (Number(row._amt) || 0) : 0;
+  const planLeft = planned ? (planned === 'BUY' ? x.planned : x.planned_sell) : null;
+  let amt0 = sug > 0 ? sug : (planLeft != null ? planLeft : 0);
+  let capWhy = '';
+  if (sug > 0 && planLeft != null && planLeft < amt0) { amt0 = planLeft; capWhy = 'the plan has only ' + _planUsd(planLeft) + ' left'; }
+  if (sug > 0 && side0 === 'BUY' && x && x.max != null && x.max < amt0) { amt0 = Math.max(0, x.max); capWhy = 'room is ' + _planUsd(x.max) + (x.binding ? ' (' + x.binding + ')' : ''); }
+  const sugLine = sug > 0 ? '<div style="margin:2px 0;font-size:11px;color:#6b7280;">Suggested trade ' + _planUsd(sug) + (capWhy ? ' - filled with ' + _planUsd(amt0) + ' because ' + escapeHtml(capWhy) : '') + '.</div>' : '';
   const ov = document.createElement('div');
   ov.id = 'rowActPop';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:9999;display:flex;align-items:center;justify-content:center;';
   const sel = 'padding:2px 4px;font-size:12px;';
   const planLine = planned
-    ? '<div style="margin:6px 0 4px;font-size:12px;">Plan (' + escapeHtml(picked) + '): <b>' + (planned === 'BUY' ? 'Buy' : 'Sell') + ' ' + _planUsd(amt0) + '</b> still to do.</div>'
+    ? '<div style="margin:6px 0 4px;font-size:12px;">Plan (' + escapeHtml(picked) + '): <b>' + (planned === 'BUY' ? 'Buy' : 'Sell') + ' ' + _planUsd(planLeft) + '</b> still to do.</div>'
     : '<div style="margin:6px 0 4px;font-size:12px;color:#6b7280;">Nothing is planned for this stock' + (picked ? ' in ' + escapeHtml(picked) : '') + '. You can still record what you did.</div>';
   ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:14px 16px;min-width:340px;max-width:440px;box-shadow:0 10px 30px rgba(0,0,0,.25);">'
     + '<div style="font-size:14px;font-weight:700;">' + escapeHtml(sym) + ' <span style="font-weight:400;color:#6b7280;font-size:12px;">' + escapeHtml(row.consolidated_action || '') + '</span></div>'
-    + planLine
+    + planLine + sugLine
     + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:12px;">'
     + (picked ? '' : '<select id="rapAcct" style="' + sel + '">' + accts.map(a => '<option value="' + escapeHtml(a) + '"' + (a === defAcct ? ' selected' : '') + '>' + escapeHtml(a) + '</option>').join('') + '</select>')
     + (planned ? '<b>' + (planned === 'BUY' ? 'Bought' : 'Sold') + '</b>' : '<select id="rapSide" style="' + sel + '"><option value="BUY"' + (side0 === 'BUY' ? ' selected' : '') + '>Bought</option><option value="SELL"' + (side0 === 'SELL' ? ' selected' : '') + '>Sold</option></select>')
@@ -5575,7 +5584,7 @@ function _openRowActPopup(sym) {
     close();
     if (amt > 0 && acct) {                                   // the amount (a part is fine) goes against that account's plan for today
       try {
-        await fetchJson('/api/builder/done' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''), { method: 'POST', body: JSON.stringify({ account: acct, symbol: sym, side, amount: amt }) });
+        await fetchJson('/api/builder/done' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''), { method: 'POST', body: JSON.stringify({ account: acct, symbol: sym, side, amount: amt, suggested: sug > 0 ? sug : null }) });
         if (acct === picked) await _fetchAcctRoom();
       } catch (e) { showStatus('Could not record the amount: ' + e.message, 'error'); return; }
     }

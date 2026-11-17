@@ -309,3 +309,13 @@ def test_done_pending_counts_only_what_the_positions_file_does_not_show_yet():
     assert p["KO"]["SELL"] == 0.0                                       # shares fell 90 -> 40: 50 x $60 = $3,000 already in the file
     h2 = {"DGX": {"qty": 20, "price": 255.0}}                           # file now shows 20 shares = $5,100 of the $10,000
     assert pc.done_pending(rows[:1], h2)["DGX"]["BUY"] == 4900.0
+
+
+def test_eff_max_user_cap_only_lowers():
+    from etl import plan_check as pc
+    assert pc.eff_max({"max": 5000}, None) == (5000.0, False)
+    assert pc.eff_max({"max": 5000}, 2500) == (2500.0, True)
+    assert pc.eff_max({"max": 5000}, 9000) == (5000.0, False)     # never above the rule
+    assert pc.eff_max({}, 3000) == (3000.0, True)                  # no rule: your number is the cap
+    assert pc.eff_max({}, None) == (None, False)
+    assert pc.clean_plan({"my_max": {"cake": 2500, "x": None}})["my_max"] == {"CAKE": 2500.0}

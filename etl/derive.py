@@ -3872,8 +3872,7 @@ def _derive_all_impl(session: Session, as_of_date: date,
             return 0
         return derive_pvv(session, as_of_date, parent_run_id)
     counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
-    # drv_vol_spike (2026-10-29): IV / HV spike state from the user's TOS spike studies + the "stress" flag; held symbols with a
-    # fresh spike/stress get an auto Watch alert. Informational only. See etl/vol_spike.py.
+    # drv_vol_spike (2026-10-29): IV / HV spike state from the user's TOS spike studies + the "stress" flag; informational only, no auto Watch alerts. See etl/vol_spike.py.
     def _drv_vol_spike_runner(session, as_of_date, parent_run_id=None):
         from etl.vol_spike import derive_vol_spike
         return derive_vol_spike(session, as_of_date, parent_run_id)

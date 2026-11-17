@@ -408,8 +408,9 @@ def build_positions(ctx: dict, req: dict) -> dict:
         # the position file's price). Match-my-holdings then lands on a gap of 0.
         h = holdings.get(sym) or {}
         hq = float(h.get("qty") or 0.0)
-        if price and hq >= 1 and hq == int(hq) and not h.get("is_cash") and abs(d["dollars"] - float(h.get("value") or hq * price)) < 0.5 * price:
-            sh, val = int(hq), float(h.get("value") or hq * price)
+        # 2026-11-20, user: fractional holdings (mutual funds such as FXNAX) keep their exact shares and value too, so the gap is 0, not -one share
+        if price and hq > 0 and not h.get("is_cash") and abs(d["dollars"] - float(h.get("value") or hq * price)) < 0.5 * price:
+            sh, val = (int(hq) if hq == int(hq) else hq), float(h.get("value") or hq * price)
         if sh <= 0:
             cash_extra += d["dollars"]
             out["notes"].append("%s: %s is less than one share: goes to Cash." % (sym, _usd(d["dollars"])))

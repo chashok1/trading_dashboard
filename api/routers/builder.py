@@ -243,7 +243,7 @@ def post_done(body: dict = Body(...), date: Optional[str] = Query(None)):
     """Actionable Done with an amount: {account, symbol, side BUY|SELL, amount}. Counts today only, until the positions file shows it."""
     d = _resolve_date(date)
     with session_scope() as s:
-        return _plan_call(ps.record_done, s, d, body.get("account"), body.get("symbol"), body.get("side"), body.get("amount"))
+        return _plan_call(ps.record_done, s, d, body.get("account"), body.get("symbol"), body.get("side"), body.get("amount"), body.get("suggested"))
 
 
 @router.delete("/api/builder/done")

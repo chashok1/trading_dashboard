@@ -67,7 +67,9 @@ def clean_plan(plan: Optional[dict]) -> dict:
            "sell": {k: v for k, v in ((k, _f(v)) for k, v in (plan.get("sell") or {}).items()) if v is not None and v >= 0},
            "sell_hold": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("sell_hold") or {}).items()) if v is not None and v >= 0},
            # 2026-11-20: shares held of each planned buy when the plan was saved, so later purchases come off the planned amount
-           "pick_base": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("pick_base") or {}).items()) if v is not None and v >= 0}}
+           "pick_base": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("pick_base") or {}).items()) if v is not None and v >= 0},
+           # 2026-11-20, user: the user's own lower cap on the TOTAL held of a stock (never above the stock's rule Max)
+           "my_max": {str(k).upper(): v for k, v in ((k, _f(v)) for k, v in (plan.get("my_max") or {}).items()) if v is not None and v >= 0}}
     if out["cash_keep"] is None:
         out["cash_keep"] = DEFAULT_CASH_KEEP
     picks = []
@@ -79,6 +81,17 @@ def clean_plan(plan: Optional[dict]) -> dict:
     out["picks"] = picks
     out["sources"] = [str(x) for x in (plan.get("sources") or []) if x]    # the lists that were ticked
     return out
+
+
+def eff_max(cap: Optional[dict], mine: Optional[float]):
+    """(max, yours) -- the cap on the total held of a stock: the stock's rule Max, lowered (never raised) by the user's own max."""
+    rule = (cap or {}).get("max")
+    rule = float(rule) if rule is not None else None
+    if mine is None:
+        return rule, False
+    if rule is None or float(mine) < rule:
+        return float(mine), True
+    return rule, False
 
 
 def validate_plan(plan: dict) -> list:
@@ -419,9 +432,10 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
         cap = caps.get(pick_sym) or {}
         held_v = float((holdings.get(pick_sym) or {}).get("value") or 0.0)
         stock_room = None
-        if cap.get("max") is not None:
-            stock_room = float(cap["max"]) - held_v
-            rooms.append(("The stock's own Max", stock_room))
+        _mx, _mine = eff_max(cap, p["my_max"].get(pick_sym))
+        if _mx is not None:
+            stock_room = _mx - held_v
+            rooms.append(("Your ceiling" if _mine else "The stock's own Max", stock_room))
         tight = min(rooms, key=lambda x: x[1])
         item["max_add"] = max(0.0, float(int(max(tight[1], 0.0) // 100) * 100))
         item["binding"] = tight[0]
@@ -543,6 +557,8 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
     cash0 = summ["spendable"]
     used = {"cls": {}, "sector": {}, "style": {}, "beta": {}, "quad": {}}
     lines = {}
+    mine_flag = {}
+    rule_max = {}
 
     def _ln(c):
         sym = c["sym"]
@@ -577,8 +593,11 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         bucket = max(0.0, float(int(max(tight[1], 0.0) // 100) * 100))
         cap = caps.get(c["sym"]) or ((default_cap or {}) if ln["cls"] == "Equities" else {})
         stock = None
-        if cap.get("max") is not None:
-            stock = max(0.0, float(int(max(float(cap["max"]) - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 100) * 100))
+        _mx, _mine = eff_max(cap, p["my_max"].get(c["sym"]))
+        if _mx is not None:
+            stock = max(0.0, float(int(max(_mx - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 100) * 100))
+        mine_flag[c["sym"]] = _mine
+        rule_max[c["sym"]] = cap.get("max")
         return stock, bucket, tight[0]
 
     typed = {c["sym"]: float(c.get("amt") or 0.0) for c in cands}
@@ -595,8 +614,8 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
         if own > 0:
             _touch(_ln(c), own)
         m = bkt if stk is None else min(stk, bkt)
-        b = "The stock's own Max" if (stk is not None and stk < bkt) else bb
-        out[c["sym"]] = {"stock": stk, "bucket": bkt, "max": m, "binding": b, "bucket_binding": bb, "start": None, "sells": round(sell_cash)}
+        b = ("Your ceiling" if mine_flag.get(c["sym"]) else "The stock's own Max") if (stk is not None and stk < bkt) else bb
+        out[c["sym"]] = {"stock": stk, "bucket": bkt, "max": m, "binding": b, "bucket_binding": bb, "start": None, "sells": round(sell_cash), "rule_max": rule_max.get(c["sym"])}
     left = cash0 - spent
     # starting amounts: every pick without an amount (this is planning: a Buy call is not needed today), first come first served.
     # Stocks with a Buy call in Actionable now go first; the rest follow in the order picked.

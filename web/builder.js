@@ -37,7 +37,7 @@
   const S = {
     date: null, accounts: [], acct: '', horizon: '3M', preset: 'current', seeded: null, mix: null, amount: null, useDial: false,
     srcNames: [], outlooks: {}, nameCache: {}, picks: [], assign: {}, targets: {}, gapIdx: null, namesSeq: 0, sources: [], srcList: [], warn: {}, presets: {}, preview: null,
-    reqSeq: 0, timer: null, detail: null, chart: null, sell: {}, sellHold: {}, pickBase: {},
+    reqSeq: 0, timer: null, detail: null, chart: null, sell: {}, sellHold: {}, myMax: {}, pickBase: {},
   };
 
   async function api(url, opts) {
@@ -51,7 +51,7 @@
   const withDate = u => u + (dq() ? (u.includes('?') ? '&' : '?') + dq() : '');
   const post = (u, body, method) => api(withDate(u), { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-  // 2026-11-17: a pick's Buy $ is filled for you (its Max $ share, first come first served, Buy-call stocks first; a Buy call is not needed, this is planning) until you type your own
+  // 2026-11-17: a pick's Buy $ is filled for you (its Stock Room $ share, first come first served, Buy-call stocks first; a Buy call is not needed, this is planning) until you type your own
   const autoAmt = p => !p.amtUser && !p.grp && (!p.amt || p.autoAmt);
   function buildReq() {
     // hand-picked build: the server uses exactly these names, each in its asset class, with the % typed (null = share equally)
@@ -59,7 +59,7 @@
       manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0 })) };
     if (S.preset === 'custom') req.mix = S.mix;
     if (S.amount) req.amount = S.amount;
-    if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Max $ per stock from it (warn only)
+    if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Stock Room $ per stock from it (warn only)
       const pl = planFromState();
       pl.picks = S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: autoAmt(p) ? 0 : (p.amt || 0), grp: p.grp || '' }));
       req.plan = pl;
@@ -113,7 +113,7 @@
     // the saved plan (if any) loads first and marks the targets as seeded so holdings never overwrite them.
     $('acctSel').onchange = () => {
       if (PL.dirty && !window.confirm('You have unsaved changes for ' + S.acct + '. Switch account and lose them?')) { $('acctSel').value = S.acct; return; }
-      S.acct = $('acctSel').value; S.amount = null; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.guideFor = null; S.preset = 'current'; S.mix = null;
+      S.acct = $('acctSel').value; S.amount = null; S.sell = {}; S.sellHold = {}; S.myMax = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.guideFor = null; S.preset = 'current'; S.mix = null;
       S.picks = []; S.fillGapNext = false; S.matchNext = false; PL.dirty = false;
       loadSourceNames(); planLoad(); schedule(0);
     };
@@ -267,14 +267,14 @@
   // 2026-10-29: copy-symbols icon (two overlapping squares, same as the Actionable screen) -> comma-separated, pastes into a TOS watchlist
   const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const EQUITY_SECTORS = ['Communication Services', 'Consumer Discretionary', 'Consumer Staples', 'Energy', 'Financials', 'Health Care', 'Industrials', 'Information Technology', 'Materials', 'Real Estate', 'Utilities'];   // the 11 sectors the data uses
-  // 2026-11-18, user: when Max $ is $0, say WHY in the cell (the tightest limit), so nobody has to hover
+  // 2026-11-18, user: when Stock Room $ is $0, say WHY in the cell (the tightest limit), so nobody has to hover
   const whyShort = b => b === 'Cash to spend' ? 'no cash' : (b === "The stock's own Max" ? 'own max' : (CLS_ABBR[b] ? CLS_ABBR[b] + ' full' : String(b || '').replace(/ favored \(Bull\)/, '') + ' full'));
   // 2026-11-18, user: say why a pick got no shares. Two causes: the class has no target money, or one share costs more than the pick's slice.
   function noBuyWhy(sym, b, fin, amt) {
     const n = S.nameCache[sym] || {}, pk = picked(sym) || {};
     if (n.price == null) return 'no price today';
-    if (pk.amt > 0) return 'Buy $ is less than one share ($' + Math.round(n.price).toLocaleString() + ')';
-    return 'no Buy $ yet';
+    if (pk.amt > 0) return 'The room is less than one share ($' + Math.round(n.price).toLocaleString() + ')';
+    return 'nothing to add';
   }
   // 2026-11-18, user: short names in the names list (hover shows the full name). Display only.
   const SEC_ABBR = { 'Communication Services': 'Comm', 'Consumer Discretionary': 'Disc', 'Consumer Staples': 'Stap', 'Energy': 'Energy', 'Financials': 'Fin',
@@ -404,7 +404,7 @@
     renderSourceNames(); schedule(0);
   }
 
-  // 2026-11-18, user: can this name be picked, and is there room to buy it? (same Max $ as the picks grid; warn-only, you can still pick it)
+  // 2026-11-18, user: can this name be picked, and is there room to buy it? (same Stock Room $ as the picks grid; warn-only, you can still pick it)
   function canPickTd(n, b) {
     if (!b) return '<td class="bld-muted" title="Choose an asset class first (use the Asset class filter or the name\'s class)">No class</td>';
     if (n.price == null) return '<td class="bld-muted" title="No price today, so it cannot be turned into shares">No price</td>';
@@ -498,7 +498,7 @@
         if (tv == null || !(tv > 0) || !hasHeld || hv == null) return '<td></td>';
         const g = (tv - hv) / 100 * amt;
         if (g < -500) return `<td class="n bld-dn" title="Held is over this limit">Over ${usd(-g)}</td>`;
-        if (g > 500) return `<td class="n bld-up" title="Room left under this limit">Room ${usd(g)}</td>`;
+        if (g > 500) return `<td class="n bld-up" title="Room left under this limit">Stock Room ${usd(g)}</td>`;
         return '<td class="n bld-muted">On plan</td>';
       }
       if (curKey !== 'Asset class') return '<td></td>';
@@ -506,7 +506,7 @@
       const gap = (tv - (hv || 0)) / 100 * amt;
       if (tv === 0 && (hv || 0) * amt / 100 > 500) return `<td class="n bld-dn"><b>Sell all ${usd((hv || 0) * amt / 100)}</b></td>`;
       if (gap < -500) return `<td class="n bld-dn">Sell ${usd(-gap)}</td>`;
-      if (gap > 500) return `<td class="n bld-up">Room ${usd(gap)}</td>`;
+      if (gap > 500) return `<td class="n bld-up">Stock Room ${usd(gap)}</td>`;
       return '<td class="n bld-muted">On plan</td>';
     };
     // 2026-11-17, user: "Covered" = how much of the target the stocks you already hold fill (held up to the target, as % of the target),
@@ -637,7 +637,7 @@
       planDirty();
       host.innerHTML = compareTable(S.preview);
       bindCmp();
-      schedule();                         // Max $ depends on the limits
+      schedule();                         // Stock Room $ depends on the limits
     });
     // the whole charts-and-grids panel: shown only when there is something to show; open/closed is remembered in this browser
     const panel = $('cmpPanel');
@@ -744,7 +744,7 @@
     });
     const dash = '<span class="bld-muted">-</span>';
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Max $ = the most you can still buy of this ONE stock: its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Max $</th><th class="n bld-tip" data-tip="Bucket $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The starting Buy $ is the smaller of Max $ and Bucket $. Information only: nothing stops you going over.">Bucket $</th><th class="n bld-tip" data-tip="Dollars you want to buy of this pick. Blank = not planned yet.">Buy $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). One amount is shared by the group.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stock Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stock Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stock Room $ is the cap less what you hold.">Ceiling $</th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stock Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n">Held</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => {
@@ -763,7 +763,7 @@
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(0) : 'equal';
         const pCell = r.pk
           ? `<input type="number" min="0" max="100" step="1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : r.pk.pct}" placeholder="${ph}" style="width:80px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
-            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Set a Buy $ to plan a purchase of this stock">no Buy $ yet</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
+            `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Nothing to add: no room left under its Stock Room $">nothing to add</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const hCell = r.h ? `${usd(r.hold)} <span class="bld-muted">${acctVal ? pct(r.hold / acctVal, 1) : ''}</span>${r.kept ? ' <span class="bld-badge sell">Kept</span>' : ''}` : dash;
         const gap = (r.pk || r.h) ? sgnUsd(r.model - r.hold) : '';
@@ -772,21 +772,23 @@
         const callTxt = '';
         const maxTd = !rm ? '<td></td>' : (rm.stock == null ? '<td class="n bld-muted" title="No per-stock limit for this class">-</td>'
           : `<td class="n bld-tip" data-tip="${esc('Most you can still buy of this one stock: ' + usd(rm.stock) + '. (Its Max rule less what you hold; an ETF with no rule uses your usual stock limit.)')}">${rm.stock > 0 ? usd(rm.stock) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">at max</span>'}</td>`);
+        const mmv = S.myMax[r.sym];
+        const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}" value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:70px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule."></td>`;
         const bktTd = !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>'}</td>`;
         const amtCells = r.pk
-          ? `<td class="n"><input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="$" style="width:74px"${rm && r.pk.amt > rm.max + 0.5 ? ' class="tgt-over" title="Over the room left (' + usd(rm.max) + ', tightest: ' + esc(rm.binding) + '). This is a warning only."' : (r.pk.autoAmt ? ' title="Filled in for you: the most that fits. Type your own amount to replace it."' : ' title="Dollars to buy"')}></td>` +
-            `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select></td>`
-          : '<td></td><td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${bktTd}${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
+          ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
+            (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
+          : '<td></td>';
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n">${hCell}</td><td class="n">${gap}</td>` +
           `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`;
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
     }
     // 2026-11-17, user: the column names show once, on the left block; the Equities block drops its own header row (it keeps one when it is the only block)
     const tbl = (rowsHtml, noHead) => rowsHtml ? (noHead ? head.replace(/<thead>.*<\/thead>/, '') : head) + rowsHtml + '</tbody></table>' : '';
-    // 2026-11-17, user: one line saying where the Max $ money comes from (real cash vs money from selling over-target classes)
+    // 2026-11-17, user: one line saying where the Stock Room $ money comes from (real cash vs money from selling over-target classes)
     const rmeta = res.room_meta;
-    const money = rmeta ? `<div class="bld-muted bld-money" title="Max $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
+    const money = rmeta ? `<div class="bld-muted bld-money" title="Stock Room $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
     return money + `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
   }
 
@@ -801,6 +803,11 @@
     $('symTable').querySelectorAll('[data-pct]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.pct);
       if (p) { p.pct = i.value === '' ? null : Math.max(0, parseFloat(i.value)); schedule(0); }
+    });
+    $('symTable').querySelectorAll('[data-mymax]').forEach(i => i.onchange = () => {
+      const sym = i.dataset.mymax;
+      if (i.value === '') delete S.myMax[sym]; else S.myMax[sym] = Math.max(0, parseFloat(i.value) || 0);
+      planDirty(); schedule(0);
     });
     $('symTable').querySelectorAll('[data-drop]').forEach(btn => btn.onclick = () => { setPick(btn.dataset.drop, false); renderSourceNames(); planDirty(); schedule(0); });
     // 2026-11-14: a pick's dollars, and 'buy one of' groups (same letter = buy any one; the group shares one amount)
@@ -952,7 +959,7 @@
       if (k.startsWith('sector:')) { if (isEquitySector(k.slice(7))) plan.sector[k.slice(7)] = S.targets[k]; }
       else if (k.startsWith('style:')) plan.style[k.slice(6)] = S.targets[k];
     });
-    plan.sell = Object.assign({}, S.sell); plan.sell_hold = Object.assign({}, S.sellHold);
+    plan.sell = Object.assign({}, S.sell); plan.sell_hold = Object.assign({}, S.sellHold); plan.my_max = Object.assign({}, S.myMax);
     plan.pick_base = {};                                   // shares held now of every planned buy: later purchases come off its amount
     const hq = {}; (((S.preview || {}).account || {}).holdings || []).forEach(h => { hq[h.sym] = h.qty || 0; });
     S.picks.forEach(p => { if (p.amt > 0) plan.pick_base[p.sym] = hq[p.sym] || 0; });   // the sale amounts typed in the To do list
@@ -974,7 +981,7 @@
     Object.keys(p.sector || {}).forEach(k => { if (p.sector[k] != null) S.targets['sector:' + k] = p.sector[k]; });
     Object.keys(p.style || {}).forEach(k => { if (p.style[k] != null) S.targets['style:' + k] = p.style[k]; });
     if (Array.isArray(p.sources) && p.sources.length) { S.sources = p.sources.slice(); renderSources(); loadSourceNames(); }
-    S.sell = Object.assign({}, p.sell || {}); S.sellHold = Object.assign({}, p.sell_hold || {}); S.pickBase = Object.assign({}, p.pick_base || {});
+    S.sell = Object.assign({}, p.sell || {}); S.sellHold = Object.assign({}, p.sell_hold || {}); S.myMax = Object.assign({}, p.my_max || {}); S.pickBase = Object.assign({}, p.pick_base || {});
     if (Array.isArray(p.picks)) { S.picks = p.picks.map(x => ({ sym: x.sym, bucket: x.bucket, pct: x.pct == null ? null : x.pct, amt: x.amt || null, grp: x.grp || '', amtUser: !!x.amt, amtSaved: x.amt || null })); renderSourceNames(); }
     schedule(0);
   }
@@ -1054,11 +1061,11 @@
   }
   async function planDelete() {
     if (!S.acct || S.acct === 'ALL') return;
-    if (!PL.name) { S.picks = []; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.mix = null; S.preset = 'current'; PL.dirty = false; tickHeldPicks(); planPill(); renderSourceNames(); schedule(0); return; }
+    if (!PL.name) { S.picks = []; S.sell = {}; S.sellHold = {}; S.myMax = {}; S.pickBase = {}; S.targets = {}; S.mix = null; S.preset = 'current'; PL.dirty = false; tickHeldPicks(); planPill(); renderSourceNames(); schedule(0); return; }
     if (!window.confirm('Delete the saved plan "' + PL.name + '" for ' + S.acct + '?' + (PL.name === PL.checked ? ' It is the active plan, so the To do list and its planned buys stop. ' : ' ') + 'Your My stocks list is kept.')) return;
     try {
       await planSend('/api/builder/plan?account=' + encodeURIComponent(S.acct) + '&name=' + encodeURIComponent(PL.name), {}, 'DELETE');
-      S.picks = []; S.sell = {}; S.sellHold = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.mix = null; S.preset = 'current'; PL.name = null;
+      S.picks = []; S.sell = {}; S.sellHold = {}; S.myMax = {}; S.pickBase = {}; S.targets = {}; S.seeded = null; S.mix = null; S.preset = 'current'; PL.name = null;
       await planLoad(); tickHeldPicks(); renderSourceNames(); schedule(0);
       planNote('Plan deleted for ' + esc(S.acct) + '.');
       } catch (e) { planNote(esc(e.message), true); }
@@ -1096,7 +1103,7 @@
     li.push(buys.length ? `<li><b>Buys:</b> ${buys.length} planned, ${usd(buyTot)} in all (${buys.slice(0, 3).map(x => esc(x.members.join(' or ')) + ' ' + usd(x.amount)).join(', ')}${buys.length > 3 ? ', ...' : ''}). Carry them out on the Actionable screen.</li>` : '<li><b>Buys:</b> none planned yet.</li>');
     li.push(sells.length ? `<li><b>Sells:</b> ${sells.map(x => esc(x.cls) + (x.all ? ' (plan 0%: sell all ' + usd(x.held) + ')' : ' is ' + usd(x.need) + ' over its target')).join('; ')}. They are counted as sold for the cash below.</li>` : '<li><b>Sells:</b> nothing is over its plan.</li>');
     if (unsaved.length) li.push(`<li class="bld-warn"><b>Not saved yet:</b> ${unsaved.slice(0, 8).map(esc).join(', ')}${unsaved.length > 8 ? ' ...' : ''} ${unsaved.length === 1 ? 'has' : 'have'} a Buy $ but ${unsaved.length === 1 ? 'is' : 'are'} not in this list. Press Save to add ${unsaved.length === 1 ? 'it' : 'them'}.</li>`);
-    if (noAmt.length) li.push(`<li class="bld-muted"><b>Chosen but not in the list:</b> ${noAmt.slice(0, 8).map(esc).join(', ')}${noAmt.length > 8 ? ' ...' : ''} ${noAmt.length === 1 ? 'has' : 'have'} no Buy $. Type one to plan the purchase.</li>`);
+    if (noAmt.length) li.push(`<li class="bld-muted"><b>Chosen but not in the list:</b> ${noAmt.slice(0, 8).map(esc).join(', ')}${noAmt.length > 8 ? ' ...' : ''} ${noAmt.length === 1 ? 'has' : 'have'} no room to add under the limits.</li>`);
     return '<b>What to do</b><ul>' + li.join('') + '</ul>';
   }
   function todoRender() {
@@ -1174,7 +1181,7 @@
       const names = x.members.map(m => `<b>${esc(m)}</b>`).join(x.members.length > 1 ? ' <span class="bld-muted">or</span> ' : '');
       b += `<tr><td>${names}</td><td class="n">${x.amount ? usd(x.amount) : '-'}</td><td>${tdPill('', 'Saved only')} <span class="bld-muted">in the saved plan, not picked on the screen</span>${flagOf(x) ? ' ' + flagOf(x) : ''}</td></tr>`;
     });
-    if (!rows) b += '<tr><td colspan="3" class="bld-muted">No planned buys yet. Type a Buy $ on a pick; it appears here at once and is saved when you press Save.</td></tr>';
+    if (!rows) b += '<tr><td colspan="3" class="bld-muted">No planned buys yet. Picks with room under their Stock Room $ appear here at once and are saved when you press Save.</td></tr>';
     $('tdBuys').innerHTML = b + '</tbody>';
     // what is left
     const bar = (now, used, plan, hard) => {

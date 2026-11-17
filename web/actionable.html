@@ -585,6 +585,8 @@
       width: 16px; height: 16px; border-radius: 50%; font-size: 10px; line-height: 1;
       cursor: pointer; border: 1px solid #e2e8f0; background: #f8fafc; opacity: 0.55;
     }
+    .watch-scope-btn { filter: grayscale(1); }
+    .watch-scope-btn.watch-scope-active, .watch-scope-btn.watch-scope-triggered { filter: none; }
     .watch-scope-btn:hover { opacity: 1; border-color: #7dd3fc; background: #f0f9ff; }
     .watch-scope-btn.watch-scope-active { opacity: 1; border-color: #7dd3fc; background: #e0f2fe; }
     .watch-scope-btn.watch-scope-triggered { opacity: 1; border-color: #fbbf24; background: #fef3c7; animation: wp-pulse 1.6s ease-in-out infinite; }
@@ -961,7 +963,8 @@
     .amt-primary { font-size: 11px; font-weight: 800; }
 
     /* ── Pass 3: Inline action buttons ──────────────────────────────────── */
-    .row-act-btn { background: #EAF3DE; color: #27500A; border: none; border-radius: 6px; width: 22px; height: 20px; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+    .row-act-btn { background: #f1f5f9; color: #64748b; border: none; border-radius: 6px; width: 22px; height: 20px; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+    .row-act-btn.row-act-done { background: #EAF3DE; color: #27500A; }
     .row-act-btn:hover { filter: brightness(.93); }
     .btn-done  { background: #EAF3DE; color: #27500A; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
     .btn-skip  { background: #F1EFE8; color: #444441; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
@@ -1440,8 +1443,8 @@
               <th data-col="plan" class="sortable" data-key="_plan_rank" data-type="num" data-filter-key="_plan_state" data-filter-type="str" data-label="Plan" title="What your active Builder plan says about the stock, per account: a planned pick or buy-one-of group, a sell (its class is above the plan), or Sorted: sell, buy one of, buy. Information only; never changes the Final Call." style="width:150px;min-width:150px;">Plan</th>
               <th data-col="apl" class="sortable" data-key="_a_plan" data-type="num" data-label="Planned $" title="What the account's active Builder plan still has to do with this stock: a Buy (the planned amount less what you have bought since it was saved) or a Sell (its share of the sale planned for its asset class)." style="width:110px;min-width:110px;text-align:right;">Planned $</th>
               <th data-col="ah" class="sortable" data-key="_a_held" data-type="num" data-label="Held $" title="What the picked account holds of this stock, in dollars. Needs an account picked in the Acct box." style="width:64px;min-width:64px;text-align:right;">Held $</th>
-              <th data-col="amax" class="sortable" data-key="_a_max" data-type="num" data-label="Max $" title="The most you can still buy of this one stock in the picked account: its Max rule (ETFs count as equities) less what you hold. A dash = no per-stock limit. From the account's active Builder plan. Information only." style="width:64px;min-width:64px;text-align:right;">Max $</th>
-              <th data-col="abkt" class="sortable" data-key="_a_bkt" data-type="num" data-label="Bucket $" title="The room left in the buckets this stock sits in for the picked account: cash, asset class, sector, style, beta, after the buys already planned. The word beside a $0 says which bucket is full. Information only." style="width:90px;min-width:90px;text-align:right;">Bucket $</th>
+              <th data-col="amax" class="sortable" data-key="_a_max" data-type="num" data-label="Stock Room $" title="The most you can still buy of this one stock in the picked account: its Max rule (ETFs count as equities) less what you hold. A dash = no per-stock limit. From the account's active Builder plan. Information only." style="width:84px;min-width:84px;text-align:right;">Stock Room $</th>
+              <th data-col="abkt" class="sortable" data-key="_a_bkt" data-type="num" data-label="Room Left $" title="The room left in the buckets this stock sits in for the picked account: cash, asset class, sector, style, beta, after the buys already planned. The word beside a $0 says which bucket is full. Information only." style="width:90px;min-width:90px;text-align:right;">Room Left $</th>
               <th data-col="rr" class="sortable" data-key="_rrPos" data-type="num" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right), 0-100%. Sort ascending to bring rows near LRR to the top, descending for rows near TRR." style="width:52px;min-width:52px;">RR</th>
               <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:44px;min-width:44px;">Vlm</th>
               <th data-col="iv" class="num sortable" data-key="_vs_rank" data-type="num" data-filter-key="_vs_state" data-filter-type="str" data-label="IV" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade. Numbers below: IVP / HV / IV. Chip below = IV/HV spike state (your TOS spike studies): STRESS, SPIKE, NORM. Sort/filter by spike state." style="width:62px;min-width:62px;">IV</th>
@@ -1683,7 +1686,7 @@
        web/index.html, which now has every one of those panels. -->
   <script src="/static/technical_graphs.js?v=20261025a"></script>
   <script src="/static/actionable_pops.js?v=20261120a"></script>
-  <script src="/static/actionable.js?v=20261120t"></script>
+  <script src="/static/actionable.js?v=20261120w"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261107a" defer></script>
   <script src="/static/today_strip.js?v=20261113y" defer></script>

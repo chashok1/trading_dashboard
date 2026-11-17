@@ -6,8 +6,7 @@ feeds the factor scorecard; it never changes consolidated_action / the Final Cal
 
 The study logic is a line-for-line translation of the user's thinkscript (see spike_series). It is causal (each day only uses
 that day and earlier), so one pass over a symbol's history gives the correct as-of value for every past day -- backfill() uses
-that. Alerts (derive only, never backfill): a HELD symbol with a fresh IV spike or fresh stress gets an auto-created, already
-triggered ref_watch row, which the existing Watch email digest picks up.
+that. No auto Watch alerts (removed 2026-11-16): watches are managed manually; the IV chip is the only signal.
 
 Run:  python -m etl.vol_spike [--date YYYY-MM-DD]          # derive one date (default: latest anchor), no alerts
       python -m etl.vol_spike --backfill 2026-03-01        # (re)build history from that date, no alerts
@@ -183,41 +182,6 @@ def _write(session, rows, d_from, d_to):
     return len(rows)
 
 
-# ── Alerts: held symbol + fresh IV spike / fresh stress -> triggered ref_watch row (the Watch email digest picks it up) ──
-def _alert_for(row, prev_stress):
-    """(note, reason) when this day deserves an alert, else None. Pure."""
-    d = row["as_of_date"]
-    if row["stress"] and not prev_stress:
-        return (f"Auto: IV stress {d}",
-                f"IV spike while price fell {abs(row['px_chg_5d'] or 0):.1f}% in {VOL_SPIKE_CONFIG['stress_px_days']} days "
-                f"(IV ratio {row['iv_ratio']:.2f})" if row["iv_ratio"] is not None else "IV spike while price fell")
-    if row["iv_event"] == "up":
-        return (f"Auto: IV spike {d}", f"IV spiked (ratio {row['iv_ratio']:.2f})" if row["iv_ratio"] is not None else "IV spiked")
-    return None
-
-
-def _create_watch_alerts(session: Session, as_of_date: date, today_rows: dict, prev_stress: dict, price: dict) -> int:
-    from etl.derive_outlook_action import _load_holdings
-    held = _load_holdings(session, as_of_date)
-    n = 0
-    for sym in sorted(held & today_rows.keys()):
-        alert = _alert_for(today_rows[sym], prev_stress.get(sym, False))
-        if not alert:
-            continue
-        note, reason = alert
-        if session.execute(text("SELECT 1 FROM ref_watch WHERE tos_symbol = :s AND (note = :n OR status = 'ACTIVE') LIMIT 1"),
-                           {"s": sym, "n": note}).first():
-            continue        # already alerted for this event, or the user has their own live watch on it (left untouched)
-        session.execute(text("""
-            INSERT INTO ref_watch (tos_symbol, note, baseline_price, status, triggered_at, triggered_reason)
-            VALUES (:s, :n, :p, 'ACTIVE', now(), :r)
-        """), {"s": sym, "n": note, "p": price.get(sym), "r": reason})
-        n += 1
-    if n:
-        log.info("vol_spike: %d watch alert(s) created for held symbols", n)
-    return n
-
-
 # ── Entry points ─────────────────────────────────────────────────────────────────────────────────────────────────────
 def _derive_vol_spike_impl(session: Session, as_of_date: date, run_id: int, alerts: bool = True) -> int:
     cfg = VOL_SPIKE_CONFIG
@@ -231,12 +195,6 @@ def _derive_vol_spike_impl(session: Session, as_of_date: date, run_id: int, aler
     for r in sorted((r for r in rows if r["as_of_date"] < as_of_date), key=lambda r: r["as_of_date"]):
         prev[r["tos_symbol"]] = r["stress"]
     n = _write(session, list(today.values()), as_of_date, as_of_date)
-    # Alerts only for the live anchor day -- re-deriving an older date must never raise them.
-    anchor = session.execute(text("SELECT MAX(export_date) FROM hist_td")).scalar()
-    if alerts and today and as_of_date == anchor:
-        px = {s: _f(v) for s, v in session.execute(text(
-            "SELECT tos_symbol, last_price FROM drv_quote WHERE as_of_date = :d"), {"d": as_of_date}).fetchall()}
-        _create_watch_alerts(session, as_of_date, today, prev, px)
     return n
 
 
