@@ -276,12 +276,19 @@ def render_signal_strength(rows: list[dict], path: Path) -> None:
             r.get("prior_close"),
             r.get("last_close"),
             r.get("pct_delta"),
-            r.get("sector") or "",
-            r.get("analyst") or "",
-            r.get("anlst_best_idea_rank") or "",
+            _first_part(r.get("sector")),
+            _first_part(r.get("analyst")),
+            _first_part(r.get("anlst_best_idea_rank")),
         ])
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(path))
+
+
+def _first_part(v):
+    """Keep only the text before the first comma ('AMZN, DG' -> 'AMZN')."""
+    if v is None:
+        return ""
+    return str(v).split(",")[0].strip()
 
 
 def render_go_anywhere(rows: list[dict], path: Path) -> None:
