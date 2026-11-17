@@ -66,6 +66,7 @@ def _normalize_sss_sector(raw: Optional[str]) -> Optional[str]:
     docstring for the cutoff rationale."""
     if not raw:
         return None
+    raw = str(raw).split(",")[0]  # two sectors -> keep the first
     compact = re.sub(r"[^a-zA-Z]", "", raw).lower()
     if compact in _SECTOR_ALIASES:
         return _SECTOR_ALIASES[compact]
@@ -172,7 +173,7 @@ def _parse_rank(raw: Optional[str]) -> tuple:
     """Returns (kind, rank, book_size). kind in {'ranked','bench','km',None}."""
     if not raw:
         return (None, None, None)
-    s = str(raw).strip()
+    s = str(raw).split(",")[0].strip()  # two ranks -> keep the first
     su = s.upper()
     if su == "BENCH":
         return ("bench", None, None)
