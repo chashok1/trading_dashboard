@@ -39,7 +39,7 @@
   const S = {
     date: null, accounts: [], acct: '', horizon: '3M', preset: 'current', seeded: null, mix: null, amount: null, useDial: false,
     srcNames: [], outlooks: {}, nameCache: {}, picks: [], assign: {}, targets: {}, gapIdx: null, namesSeq: 0, sources: [], srcList: [], warn: {}, presets: {}, preview: null,
-    reqSeq: 0, timer: null, detail: null, chart: null, sell: {}, sellHold: {}, myMax: {}, pickBase: {},
+    reqSeq: 0, timer: null, detail: null, chart: null, sell: {}, sellHold: {}, myMax: {}, pickBase: {}, flags: {},
   };
 
   async function api(url, opts) {
@@ -154,6 +154,16 @@
       if (!po.some(p => p[0] === S.preset)) S.preset = po.length > 2 ? po[1][0] : 'current';
       planInit();
     } catch (e) { problems(['Could not load accounts: ' + e.message]); }
+    await loadFlags();
+    if (!S.icWired) {
+      S.icWired = true;      // reloadAll runs again on Refresh: wire the click once
+      document.addEventListener('click', e => {
+        const b = e.target.closest('[data-ic]');
+        if (!b || !window.BldNotes) return;
+        e.preventDefault();
+        window.BldNotes.open(b.dataset.ic, b, S.flags[b.dataset.ic], refreshFlags);
+      });
+    }
     loadSourceNames();
     if (first !== true || true) schedule(0);
   }
@@ -268,6 +278,30 @@
   const bucketOf = n => (n && (n.bucket || S.assign[n.sym])) || null;
   // symbol text coloured by its Hedgeye outlook (same colours as the other screens); plain when unknown
   const symHtml = sym => { const o = (S.outlooks[sym] || (S.nameCache[sym] || {}).outlook); const c = o && window.outlookColor ? window.outlookColor(o) : ''; return `<span${c && c !== 'inherit' ? ` style="color:${c}"` : ''}${o ? ` title="Outlook: ${esc(o)}"` : ''}>${window.symbolLink ? window.symbolLink(esc(sym), sym) : esc(sym)}</span>`; };
+  // 2026-11-18, user: 🔭 long-term and 🔔 watch badges (+ notes) in the first column, same notes as the Actionable screen.
+  // Fixed-width slots (ticker | group letter | 🔭 | 🔔) so the icons line up on every row; an empty slot shows a faint icon on row hover.
+  const bullets = lines => lines.filter(Boolean).map(l => '• ' + l).join('\n');
+  function noteIcon(sym, kind) {
+    const f = S.flags[sym] || {};
+    if (kind === 'lt') {
+      const lt = f.lt, avoid = lt && lt.dir === 'AVOID';
+      if (lt) return `<button type="button" class="bld-ic on${avoid ? ' avoid' : ''}" data-ic="${esc(sym)}" title="${esc(bullets([avoid ? 'Long-term AVOID: do not buy' : 'Long-term hold: do not sell on short-term noise', lt.note, lt.target ? 'Target date ' + lt.target : '', 'Click to edit']))}">${avoid ? '🚫' : '🔭'}</button>`;
+      if (f.mine) return `<button type="button" class="bld-ic on" data-ic="${esc(sym)}" title="${esc(bullets(['My stocks note', f.mine, 'Click to edit']))}">📝</button>`;
+      return `<button type="button" class="bld-ic off" data-ic="${esc(sym)}" title="Add a long-term note, a watch or a note">🔭</button>`;
+    }
+    const w = f.w;
+    if (w) return `<button type="button" class="bld-ic on" data-ic="${esc(sym)}" title="${esc(bullets(['Watching' + (w.triggered ? ' (triggered)' : ''), w.note, 'Alert: ' + [w.pct != null ? (w.dir === 'DOWN' ? 'down ' : 'up ') + w.pct + '% move' : '', w.lrr ? 'LRR' : '', w.trr ? 'TRR' : '', w.trade ? 'Trade line' : '', w.trend ? 'Trend line' : '', w.price != null ? '$' + w.price : ''].filter(Boolean).join(', ').replace(/^Alert: $/, 'Alert: end-of-close reminder'), 'Click to edit']))}">🔔</button>`;
+    return `<button type="button" class="bld-ic off" data-ic="${esc(sym)}" title="Add a watch or a note">🔔</button>`;
+  }
+  const symCell = (sym, grpHtml) => `<span class="bld-sc"><span class="bld-sct">${symHtml(sym)}</span>${grpHtml == null ? '' : `<span class="bld-scg">${grpHtml}</span>`}${noteIcon(sym, 'lt')}${noteIcon(sym, 'w')}</span>`;
+  async function loadFlags() {
+    try { S.flags = (await api('/api/builder/sym-flags')).flags || {}; } catch (e) { S.flags = S.flags || {}; }
+  }
+  async function refreshFlags() {
+    await loadFlags();
+    if (S.sources.includes('LT') || S.sources.includes('WATCH')) await loadSourceNames(); else renderSourceNames();
+    if (S.preview) renderPicks(S.preview);
+  }
   const picked = sym => S.picks.find(p => p.sym === sym);
   const isEquitySector = n => !!n && !BUCKETS.includes(n) && !['Equities', 'Unmapped', 'Other', 'Cash'].includes(n);
   // which comparison sections are collapsed (Asset class, Risk, Style, ...): remembered in this browser only
@@ -478,7 +512,7 @@
       const st = (n.styles || []).map(t => { const f = STYLE_TO_FACTOR[String(t).toLowerCase()]; const sh = STY_ABBR[String(t).toLowerCase()] || t; return f ? ftag('factor', f, esc(sh), t + '. Filter: ' + ((FACTORS.find(x => x[0] === f) || [])[1] || f) + ' (a group of related tags)') : `<span title="${esc(t)}">${esc(sh)}</span>`; }).join(', ') || '<span class="bld-muted">-</span>';
       const heldNow = on;      // on = already in the picks on the right (held or not)      // 2026-11-19, user: a stock you already hold is already on the right: its box is ticked and locked
       return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${(!b || heldNow) ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : (heldNow ? (heldSyms.has(n.sym) ? 'You hold this stock: it is already in the picks on the right (use the x there to remove it)' : 'Already in the picks on the right (use the x there to remove it)') : 'Add to picks')}"></td>` +
-        `<td>${symHtml(n.sym)}</td>${canPickTd(n, b)}<td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(CLS_ABBR[b] || b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(SEC_ABBR[n.sector] || n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
+        `<td>${symCell(n.sym)}</td>${canPickTd(n, b)}<td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(CLS_ABBR[b] || b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(SEC_ABBR[n.sector] || n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
         `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td><td>${actHtml(n.act, n.sym)}</td></tr>`;
     }).join('') || '<tr><td colspan="10" class="bld-muted">No names match.</td></tr>';
     $('srcNamesRows').querySelectorAll('[data-pick]').forEach(c => c.onchange = () => { setPick(c.dataset.pick, c.checked); renderSourceNames(); schedule(0); });
@@ -840,7 +874,7 @@
       return `<td><span style="color:${col};font-weight:600;font-size:10px" data-actpop="${esc(sym)}">${esc(fc.code || fc.label)}</span></td>`;
     };
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th><th title="The Actionable screen's Final Call for this stock">Action</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th><th title="Action: the Actionable screen's Final Call for this stock">Actn</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     S.clsTotal = {};
     const overs = [];   // classes where the picks add up to more than the class allows
@@ -890,7 +924,7 @@
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
           : '<td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symCell(r.sym, gl ? `<span class="bld-badge" style="background:${gcol};color:#fff;padding:1px 5px" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : '')}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
           (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))}</td>${actTd(r.sym)}</tr>`
             : `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td>${actTd(r.sym)}</tr>`);
       });

@@ -143,6 +143,13 @@
     .bld-chip.B { background: var(--act-buy-strong-bg); color: var(--act-buy-strong); }
     .bld-chip.S { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
     .bld-chip.H, .bld-chip.dash { background: var(--act-neutral-bg, #f3f4f6); color: var(--act-neutral, #6b7280); }
+    /* 2026-11-18: first-column cell = fixed slots (ticker | group | 🔭 | 🔔) so the icons line up on every row */
+    .bld-sc { display: inline-flex; align-items: center; gap: 1px; white-space: nowrap; }
+    .bld-sct { display: inline-block; width: 32px; overflow: hidden; text-overflow: ellipsis; }
+    .bld-scg { display: inline-block; width: 18px; text-align: center; }
+    .bld-ic { display: inline-block; width: 15px; height: 20px; padding: 0; border: 0; background: none; cursor: pointer; font-size: 12px; line-height: 20px; text-align: center; }
+    .bld-ic.off { opacity: .28; filter: grayscale(1); }     /* always shown: faint grey when empty, full colour when it has a note */
+    .bld-ic.off:hover, .bld-ic.off:focus { opacity: .8; filter: none; }
     .bld-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
     .bld-badge.buy { background: var(--act-buy-bg); color: var(--act-buy); }
     .bld-badge.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
@@ -242,7 +249,7 @@
     .bld-modal > div { border-radius: 12px; box-shadow: 0 18px 50px rgba(15,23,42,.28); }
 
     /* 2026-10-28, user: the comparison sections (asset class, risk, Quad, sectors, style) sit in three columns */
-    .bld-cmp3 { width: 768px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 20px; align-items: start; }
+    .bld-cmp3 { width: 688px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 20px; align-items: start; }
     .bld-cmp3 > div { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
     .bld-cmp3 .bld-exp th:first-child { white-space: normal; border-left: 3px solid var(--accent); background: #f3f5fa; color: var(--text-2); letter-spacing: .05em; }
     .bld-cmp3 .bld-exp th.n { font-size: 9px; white-space: normal; line-height: 1.15; vertical-align: bottom; }
@@ -253,7 +260,7 @@
     .bld-sym2 > div { min-width: 0; overflow-x: auto; }
     /* every asset class table (Fixed Income, Currency, Equities...) uses the same column positions, so the columns line up across the two blocks */
     .bld-sym2 table.bld-symt { table-layout: fixed; width: 100%; min-width: 800px; }
-    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 96px; overflow: hidden; text-overflow: ellipsis; }
+    .bld-symt th:nth-child(1), .bld-symt td:nth-child(1) { width: 100px; overflow: hidden; text-overflow: ellipsis; }
     .bld-symt th:nth-child(2), .bld-symt td:nth-child(2) { width: 160px; }
     .bld-symt th:nth-child(3), .bld-symt td:nth-child(3) { width: 72px; }
     .bld-symt th:nth-child(4), .bld-symt td:nth-child(4) { width: 134px; }
@@ -263,7 +270,7 @@
     .bld-symt th:nth-child(8), .bld-symt td:nth-child(8) { width: 59px; }
     .bld-symt th:nth-child(9), .bld-symt td:nth-child(9) { width: 76px; }
     .bld-symt th:nth-child(10), .bld-symt td:nth-child(10) { width: 113px; }   /* To match: gets the width the Action column does not need */
-    .bld-symt th:nth-child(11), .bld-symt td:nth-child(11) { width: 52px; }   /* Action: a short code */
+    .bld-symt th:nth-child(11), .bld-symt td:nth-child(11) { width: 39px; }   /* Action: a short code */
     .bld-symt th:nth-child(10), .bld-symt td:nth-child(10), .bld-symt th:nth-child(11), .bld-symt td:nth-child(11) { text-align: left; white-space: nowrap; }
     /* input boxes start at the same left edge in every row and every block: the Picks and Buy $ cells are left-aligned */
     .bld-symt th:nth-child(2), .bld-symt td:nth-child(2), .bld-symt th:nth-child(5), .bld-symt td:nth-child(5) { text-align: left; }
@@ -293,21 +300,22 @@
     /* 2026-11-18, user: tighter names list. Fixed column widths (Lsts / Asset / Sector / Quad / Beta / Style), Lsts in a smaller font */
     .bld-side .bld-t { table-layout: fixed; width: 100%; }
     .bld-side .bld-t th:nth-child(1), .bld-side .bld-t td:nth-child(1) { width: 26px; }
-    .bld-side .bld-t th:nth-child(2), .bld-side .bld-t td:nth-child(2) { width: 66px; }
+    .bld-side .bld-t th:nth-child(2), .bld-side .bld-t td:nth-child(2) { width: 80px; }
     .bld-side .bld-t th:nth-child(3), .bld-side .bld-t td:nth-child(3) { width: 130px; }
     .bld-side .bld-t th:nth-child(4), .bld-side .bld-t td:nth-child(4) { width: 40px; font-size: 9px; }
     .bld-side .bld-t th:nth-child(5), .bld-side .bld-t td:nth-child(5) { width: 40px; }
     .bld-side .bld-t th:nth-child(6), .bld-side .bld-t td:nth-child(6) { width: 50px; }
     .bld-side .bld-t th:nth-child(7), .bld-side .bld-t td:nth-child(7) { width: 136px; }
     .bld-side .bld-t th:nth-child(8), .bld-side .bld-t td:nth-child(8) { width: 46px; }
-    .bld-side .bld-t th:nth-child(10), .bld-side .bld-t td:nth-child(10) { width: 45px; }   /* Action */
+    .bld-side .bld-t th:nth-child(10), .bld-side .bld-t td:nth-child(10) { width: 44px; }   /* Actn */
+    .bld-side .bld-t th:nth-child(9), .bld-side .bld-t td:nth-child(9) { width: 194px; }   /* Style: 5% narrower, the 10px went to Actn */   /* Action */
     .bld-side .bld-t td { overflow: hidden; text-overflow: ellipsis; }
     .bld-side .bld-t .bld-qp { width: 29px; margin-right: 1px; }
     /* 2026-10-28, user: the Build new / My model portfolios buttons sit at the top of the left column, level with
        the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
        columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
     @media (min-width: 1001px) {
-      .bld-wrap { display: grid; grid-template-columns: 802px 740px minmax(560px, 1fr); column-gap: 16px; row-gap: 0; align-items: start;
+      .bld-wrap { display: grid; grid-template-columns: 722px 820px minmax(560px, 1fr); column-gap: 16px; row-gap: 0; align-items: start;
         /* rows: problems, banner, buttons, left-column cards, disclaimer. The tall Names/Picks cards span rows 3-4; the 1fr
            row 4 soaks up their extra height so the buttons' row stays short and Account sits right under the buttons. */
         grid-template-rows: auto auto auto 1fr auto; }
@@ -468,7 +476,7 @@
             <span class="bld-muted" id="srcNamesHint"></span>
             <button type="button" class="bld-copy" data-copy="shown" title="Copy the symbols shown in this list (comma separated)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           </div>
-          <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th class="bld-tip" data-tip="Can you pick it, and is there room to buy it? A dollar amount = the most you can still add under your limits. Full = a limit has no room left (you can still pick it: it is a warning only). No class / No price = it cannot be picked yet.">Can pick</th><th title="Which Hedgeye lists the name is on">Lsts</th><th title="Asset class">Asset</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th><th title="The Actionable screen's Final Call">Action</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
+          <div class="bld-side-scroll"><table class="bld-t"><thead><tr><th></th><th>Symbol</th><th class="bld-tip" data-tip="Can you pick it, and is there room to buy it? A dollar amount = the most you can still add under your limits. Full = a limit has no room left (you can still pick it: it is a warning only). No class / No price = it cannot be picked yet.">Can pick</th><th title="Which Hedgeye lists the name is on">Lsts</th><th title="Asset class">Asset</th><th>Sector</th><th>Quad</th><th class="n">Beta</th><th>Style</th><th title="Action: the Actionable screen's Final Call">Actn</th></tr></thead><tbody id="srcNamesRows"></tbody></table></div>
         </aside>
         </div>
 
@@ -504,7 +512,8 @@
   <script src="/static/_common.js?v=20261026a"></script>
   <script src="/static/actions.js"></script>   <!-- the Action popup (web/actionable_pops_dash.js) needs actionDisplay / actionText / actionIcon from here -->
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261125k"></script>
+  <script src="/static/builder_notes.js?v=20261118a"></script>
+  <script src="/static/builder.js?v=20261125s"></script>
   <script src="/static/actionable_pops_dash.js?v=20261113e" defer></script>
   <script src="/static/warning_badge.js"></script>
 </body>

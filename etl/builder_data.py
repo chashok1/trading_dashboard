@@ -224,6 +224,16 @@ def source_names(session, d: date, sources: list, problems: Optional[list] = Non
                          {"d": d}, problems, "drv_actionable"):
             on.setdefault(sym, set()).add("ACT")
             bull.add(sym)
+    if "LT" in (sources or []):           # 2026-11-18, user: the long-term notes (Hold names; Avoid names are listed too but are never counted as bullish)
+        for sym, direction in _q(session, "SELECT tos_symbol, direction FROM ref_conviction_hold WHERE status = 'ACTIVE'",
+                                 None, problems, "ref_conviction_hold"):
+            on.setdefault(sym, set()).add("LT")
+            if str(direction or "HOLD").upper() != "AVOID":
+                bull.add(sym)
+    if "WATCH" in (sources or []):        # 2026-11-18, user: everything on the 🔔 watch list
+        for (sym,) in _q(session, "SELECT tos_symbol FROM ref_watch WHERE status = 'ACTIVE'", None, problems, "ref_watch"):
+            on.setdefault(sym, set()).add("WATCH")
+            bull.add(sym)
     if not on:
         return []
     info = name_info(session, d, sorted(on), problems, uni_bucket)

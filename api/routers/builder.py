@@ -209,10 +209,37 @@ def get_sources():
     """Hedgeye source lists the pick pool can be built from, and the validation checks."""
     from etl.builder_engine import CHECKS
     imported = _source_imported()
-    return {"sources": [{"code": "FUND", "label": "Fixed fund list"}, {"code": "HELD", "label": "Your holdings"}, {"code": "MINE", "label": "My stocks"}, {"code": "ACT", "label": "Actionable actions"}] +
+    return {"sources": [{"code": "FUND", "label": "Fixed fund list"}, {"code": "HELD", "label": "Your holdings"}, {"code": "MINE", "label": "My stocks"}, {"code": "ACT", "label": "Actionable actions"},
+                        {"code": "LT", "label": "Long-term notes"}, {"code": "WATCH", "label": "Watching"}] +
                        [{"code": k, "label": v} for k, v in bd.SOURCE_LABELS.items()],
             "imported": imported,
             "checks": [{"key": k, "label": v} for k, v in CHECKS.items()]}
+
+
+@router.get("/api/builder/sym-flags")
+def get_sym_flags():
+    """2026-11-18: the 🔭 long-term note, 🔔 watch and My-stocks note per symbol, for the badges in the Builder's first column.
+    The notes are the SAME rows the Actionable screen uses (ref_conviction_hold, ref_watch): one note per stock on both screens."""
+    out: dict = {}
+    with session_scope() as s:
+        for sid, sym, note, direction, tgt in s.execute(text(
+                "SELECT id, tos_symbol, thesis_note, direction, target_date FROM ref_conviction_hold WHERE status = 'ACTIVE'")).fetchall():
+            out.setdefault(sym, {})["lt"] = {"id": sid, "note": note, "dir": direction or "HOLD", "target": tgt.isoformat() if tgt else None}
+        for r in s.execute(text(
+                "SELECT id, tos_symbol, note, trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price, "
+                "triggered_at FROM ref_watch WHERE status = 'ACTIVE'")).mappings().all():
+            out.setdefault(r["tos_symbol"], {})["w"] = {
+                "id": r["id"], "note": r["note"], "pct": r["trigger_pct"], "dir": r["trigger_pct_dir"], "lrr": r["trigger_lrr"], "trr": r["trigger_trr"],
+                "trade": r["trigger_trade"], "trend": r["trigger_trend"], "price": float(r["trigger_price"]) if r["trigger_price"] is not None else None,
+                "triggered": bool(r["triggered_at"])}
+            if out[r["tos_symbol"]]["w"]["pct"] is not None:
+                out[r["tos_symbol"]]["w"]["pct"] = float(out[r["tos_symbol"]]["w"]["pct"])
+        try:
+            for sym, note in s.execute(text("SELECT tos_symbol, note FROM user_my_stock WHERE moved_on IS NULL AND note IS NOT NULL AND note <> ''")).fetchall():
+                out.setdefault(sym, {})["mine"] = note
+        except Exception:
+            s.rollback()
+    return {"flags": out}
 
 
 @router.get("/api/builder/source-names")
