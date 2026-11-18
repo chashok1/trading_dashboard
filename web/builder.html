@@ -303,14 +303,15 @@
     .bld-side .bld-t th:nth-child(2), .bld-side .bld-t td:nth-child(2) { width: 80px; }
     .bld-side .bld-t th:nth-child(3), .bld-side .bld-t td:nth-child(3) { width: 130px; }
     .bld-side .bld-t th:nth-child(4), .bld-side .bld-t td:nth-child(4) { width: 40px; font-size: 9px; }
-    .bld-side .bld-t th:nth-child(5), .bld-side .bld-t td:nth-child(5) { width: 40px; }
+    .bld-side .bld-t th:nth-child(5), .bld-side .bld-t td:nth-child(5) { width: 74px; }
     .bld-side .bld-t th:nth-child(6), .bld-side .bld-t td:nth-child(6) { width: 50px; }
     .bld-side .bld-t th:nth-child(7), .bld-side .bld-t td:nth-child(7) { width: 136px; }
     .bld-side .bld-t th:nth-child(8), .bld-side .bld-t td:nth-child(8) { width: 46px; }
     .bld-side .bld-t th:nth-child(10), .bld-side .bld-t td:nth-child(10) { width: 44px; }   /* Actn */
-    .bld-side .bld-t th:nth-child(9), .bld-side .bld-t td:nth-child(9) { width: 194px; }   /* Style: 5% narrower, the 10px went to Actn */   /* Action */
+    .bld-side .bld-t th:nth-child(9), .bld-side .bld-t td:nth-child(9) { width: 160px; }   /* Style: 5% narrower, the 10px went to Actn */   /* Action */
     .bld-side .bld-t td { overflow: hidden; text-overflow: ellipsis; }
     .bld-side .bld-t .bld-qp { width: 29px; margin-right: 1px; }
+    .bld-side .bld-t td select[data-assign] { width: 58px; box-sizing: border-box; }   /* the "Class..." box in the Asset column */
     /* 2026-10-28, user: the Build new / My model portfolios buttons sit at the top of the left column, level with
        the Names and Picks-vs-portfolio cards (not in a band above all three). The page becomes one grid whose three
        columns match .bld-grid; the build view and its grid dissolve into it (display:contents). */
@@ -513,7 +514,7 @@
   <script src="/static/actions.js"></script>   <!-- the Action popup (web/actionable_pops_dash.js) needs actionDisplay / actionText / actionIcon from here -->
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
   <script src="/static/builder_notes.js?v=20261118d"></script>
-  <script src="/static/builder.js?v=20261126a"></script>
+  <script src="/static/builder.js?v=20261126h"></script>
   <script src="/static/actionable_pops_dash.js?v=20261113e" defer></script>
   <script src="/static/warning_badge.js"></script>
 </body>
