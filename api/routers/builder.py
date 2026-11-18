@@ -47,6 +47,26 @@ def get_presets():
             "horizons": list(PB_PARAMS["horizon_months"]), "flavours": {k: v for k, v in FLAVOURS.items()}}
 
 
+# 2026-11-17, user: the outlook (drv_rr.outlook: Hedgeye risk range, else the Bollinger-band fill) of each sector's ETF and of a
+# proxy for each asset class, for the coloured left edge on the Builder grids. Display only. Style / Quad / Risk rows have no proxy.
+_SECTOR_ETF = {"Communication Services": "XLC", "Consumer Discretionary": "XLY", "Consumer Staples": "XLP", "Energy": "XLE",
+               "Financials": "XLF", "Health Care": "XLV", "Industrials": "XLI", "Information Technology": "XLK",
+               "Materials": "XLB", "Real Estate": "XLRE", "Utilities": "XLU"}
+_ASSET_PROXY = {"Equities": "SPX", "Gold": "/GC", "Crypto": "/BTC", "Currency": "$DXY"}
+
+
+def _group_outlooks(s, d) -> dict:
+    try:
+        want = list(_SECTOR_ETF.values()) + list(_ASSET_PROXY.values())
+        got = {r[0]: r[1] for r in s.execute(text(
+            "SELECT tos_symbol, outlook FROM drv_rr WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"), {"d": d, "syms": want}).all()}
+        return {"sector": {k: got.get(v) for k, v in _SECTOR_ETF.items() if got.get(v)},
+                "asset": {k: got.get(v) for k, v in _ASSET_PROXY.items() if got.get(v)},
+                "proxy": {**{k: v for k, v in _SECTOR_ETF.items()}, **_ASSET_PROXY}}
+    except Exception:
+        return {}
+
+
 @router.post("/api/builder/preview")
 def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
     d = _resolve_date(date)
@@ -82,6 +102,7 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
             if x["sym"] in info and x.get("bucket") in BUCKETS:
                 info[x["sym"]]["bucket"] = x["bucket"]
         res["outlooks"] = {k: v.get("outlook") for k, v in info.items() if v.get("outlook")}
+        res["group_outlooks"] = _group_outlooks(s, d)
         # percent of the WHOLE account (one basis, same as the plan check); no base for the whole-book preview
         base = float(acct.get("value") or 0.0) if account != "ALL" else None
         res["exposure"] = {"picked": bd.exposure(pvals, info, float(res.get("amount") or 0.0) or base), "held": bd.exposure(hvals, info, base)}
