@@ -221,6 +221,7 @@
     if (w.trigger_trade) cond.push('Trade line');
     if (w.trigger_trend) cond.push('Trend line');
     if (w.trigger_price != null) cond.push('$' + Number(w.trigger_price).toFixed(2));
+    if (w.trigger_call) cond.push('Final Call turns ' + (w.trigger_call === 'SELL' ? 'Sell' : 'Buy'));
     lines.push(cond.length ? 'Watching for: ' + cond.join(', ') : 'Plain reminder (no condition)');
     if (w.baseline_price != null) lines.push('Baseline price: $' + Number(w.baseline_price).toFixed(2));
     if (w.triggered_at) lines.push('Triggered: ' + (w.triggered_reason || '(no reason recorded)'));

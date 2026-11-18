@@ -238,16 +238,29 @@ def build_positions(ctx: dict, req: dict) -> dict:
                     ok.append(x)
             # 2026-11-19, user: a pick is sized by what you HOLD plus the Buy $ you planned, so a bigger class target leaves room
             # for new stocks and never scales the stocks you already own. A % you type overrides it (that % of the class target).
+            # 2026-11-18, user: a blank % must behave like a typed one. A pick with no % keeps what you hold PLUS an equal share of what is
+            # still unfilled in the class target (class target less the typed picks, the other blank picks' holdings and any buy-one-of group
+            # money). Limits never change it (they only warn on screen). Held stocks that already fill the target stay as they are.
+            def _hv(sym_):
+                return float((holdings.get(sym_) or {}).get("value") or 0.0)
+            typed_d = sum(buy * max(0.0, float(x["pct"])) / 100.0 for x in ok if x.get("pct") is not None)
+            blank = [x for x in ok if x.get("pct") is None and not x.get("grp")]
+            grouped_d = sum(_hv(x["sym"]) + max(0.0, float(x.get("amt") or 0.0)) for x in ok if x.get("pct") is None and x.get("grp"))
+            unfilled = max(0.0, buy - typed_d - grouped_d - sum(_hv(x["sym"]) for x in blank))
+            share = unfilled / len(blank) if blank else 0.0
             for x in ok:
                 sym = x["sym"]
                 f = funds[sym]
-                held_v = float((holdings.get(sym) or {}).get("value") or 0.0)
+                held_v = _hv(sym)
                 if x.get("pct") is not None:
                     dollars = buy * max(0.0, float(x["pct"])) / 100.0
                     detail = ["Picked by you", "%s of %s" % (_pct(max(0.0, float(x["pct"])) / 100.0, 1), bucket)]
-                else:
+                elif x.get("grp"):
                     dollars = held_v + max(0.0, float(x.get("amt") or 0.0))
                     detail = ["Picked by you", "holds %s, plans to buy %s" % (_usd(held_v), _usd(max(0.0, float(x.get("amt") or 0.0))))]
+                else:
+                    dollars = held_v + share
+                    detail = ["Picked by you", "holds %s, plus an equal share (%s) of what is still unfilled in %s" % (_usd(held_v), _usd(share), bucket)]
                 add_pick(sym, dollars, bucket, f.get("area") or bucket, "Picked by you", detail + _src_line(f), "manual")
             continue
         cands = [dict(sym=s, **{k: v for k, v in f.items() if k != "sym"}) for s, f in funds.items()

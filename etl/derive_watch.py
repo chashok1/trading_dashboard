@@ -44,6 +44,17 @@ def _crossed(baseline_price, baseline_level, now_price, now_level) -> bool:
     return was_above != now_above
 
 
+def call_state(side, target, armed):
+    """2026-11-18: the 'Final Call turns Buy / Sell' condition. side = drv_actionable.final_side now ('buy' / 'sell' / other / None),
+    target = 'BUY' | 'SELL', armed = has the call been seen OFF the target side since the watch was made.
+    Returns (met, armed_now): met only when the call is on the target side AND it had left it before (a genuine new turn);
+    a call that is already Sell when the watch is made does not fire until it has left Sell and come back."""
+    on = str(side or "").lower() == str(target or "").lower()
+    if not on:
+        return False, True
+    return bool(armed), bool(armed)
+
+
 def check_watches() -> int:
     """Evaluate every ACTIVE, not-yet-triggered watch against the latest
     known price/LRR/TRR/Trade-line/Trend-line for its symbol. Returns the
@@ -53,8 +64,13 @@ def check_watches() -> int:
             SELECT w.id, w.baseline_price, w.baseline_lrr, w.baseline_trr,
                    w.baseline_trade, w.baseline_trend, w.trigger_pct, w.trigger_pct_dir, w.trigger_lrr,
                    w.trigger_trr, w.trigger_trade, w.trigger_trend, w.trigger_price,
+                   w.trigger_call, w.call_armed, ac.final_side, ac.final_action,
                    q.last_price, dr.lrr, dr.trr, mt.a_trade_value, mt.a_trend_value
             FROM ref_watch w
+            LEFT JOIN LATERAL (
+                SELECT final_side, final_action FROM drv_actionable
+                WHERE tos_symbol = w.tos_symbol ORDER BY as_of_date DESC LIMIT 1
+            ) ac ON TRUE
             LEFT JOIN LATERAL (
                 SELECT last_price FROM drv_quote
                 WHERE tos_symbol = w.tos_symbol ORDER BY as_of_date DESC LIMIT 1
@@ -73,10 +89,10 @@ def check_watches() -> int:
         n = 0
         for r in rows:
             last = r["last_price"]
-            if last is None:
-                continue
             reason = None
-            if r["trigger_pct"] is not None and r["baseline_price"]:
+            has_price = any([r["trigger_pct"] is not None, r["trigger_lrr"], r["trigger_trr"], r["trigger_trade"],
+                             r["trigger_trend"], r["trigger_price"] is not None])
+            if last is not None and r["trigger_pct"] is not None and r["baseline_price"]:
                 pct = (float(last) - float(r["baseline_price"])) / float(r["baseline_price"]) * 100
                 # Direction-specific (2026-09-02, user: "% move should be
                 # specific direction either up or down") -- UP only fires on
@@ -86,18 +102,30 @@ def check_watches() -> int:
                     reason = f"+{pct:.1f}% from ${float(r['baseline_price']):.2f}"
                 elif r["trigger_pct_dir"] == "DOWN" and pct <= -float(r["trigger_pct"]):
                     reason = f"{pct:.1f}% from ${float(r['baseline_price']):.2f}"
-            if reason is None and r["trigger_lrr"] and _crossed(r["baseline_price"], r["baseline_lrr"], last, r["lrr"]):
-                reason = f"crossed LRR (${float(r['lrr']):.2f})"
-            if reason is None and r["trigger_trr"] and _crossed(r["baseline_price"], r["baseline_trr"], last, r["trr"]):
-                reason = f"crossed TRR (${float(r['trr']):.2f})"
-            if reason is None and r["trigger_trade"] and _crossed(r["baseline_price"], r["baseline_trade"], last, r["a_trade_value"]):
-                reason = f"crossed Trade line (${float(r['a_trade_value']):.2f})"
-            if reason is None and r["trigger_trend"] and _crossed(r["baseline_price"], r["baseline_trend"], last, r["a_trend_value"]):
-                reason = f"crossed Trend line (${float(r['a_trend_value']):.2f})"
-            if reason is None and r["trigger_price"] is not None and _crossed(
-                r["baseline_price"], float(r["trigger_price"]), last, float(r["trigger_price"])
-            ):
-                reason = f"crossed ${float(r['trigger_price']):.2f}"
+            if last is not None:
+                if reason is None and r["trigger_lrr"] and _crossed(r["baseline_price"], r["baseline_lrr"], last, r["lrr"]):
+                    reason = f"crossed LRR (${float(r['lrr']):.2f})"
+                if reason is None and r["trigger_trr"] and _crossed(r["baseline_price"], r["baseline_trr"], last, r["trr"]):
+                    reason = f"crossed TRR (${float(r['trr']):.2f})"
+                if reason is None and r["trigger_trade"] and _crossed(r["baseline_price"], r["baseline_trade"], last, r["a_trade_value"]):
+                    reason = f"crossed Trade line (${float(r['a_trade_value']):.2f})"
+                if reason is None and r["trigger_trend"] and _crossed(r["baseline_price"], r["baseline_trend"], last, r["a_trend_value"]):
+                    reason = f"crossed Trend line (${float(r['a_trend_value']):.2f})"
+                if reason is None and r["trigger_price"] is not None and _crossed(
+                    r["baseline_price"], float(r["trigger_price"]), last, float(r["trigger_price"])
+                ):
+                    reason = f"crossed ${float(r['trigger_price']):.2f}"
+            call_reason = None
+            if r["trigger_call"]:
+                met, armed_now = call_state(r["final_side"], r["trigger_call"], r["call_armed"])
+                if armed_now != bool(r["call_armed"]):
+                    s.execute(text("UPDATE ref_watch SET call_armed = :a WHERE id = :id"), {"a": armed_now, "id": r["id"]})
+                if met:
+                    call_reason = f"Final Call turned {str(r['trigger_call']).title()}" + (f" ({r['final_action']})" if r["final_action"] else "")
+            # price-style triggers and the Final Call condition must BOTH hold when both are set
+            if r["trigger_call"]:
+                fire = call_reason is not None and (reason is not None or not has_price)
+                reason = (call_reason + (" and " + reason if reason else "")) if fire else None
             if reason:
                 s.execute(text(
                     "UPDATE ref_watch SET triggered_at = now(), triggered_reason = :reason WHERE id = :id"

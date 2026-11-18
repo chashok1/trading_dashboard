@@ -53,6 +53,14 @@ goes up, so a bigger target leaves room for new stocks. A typed % still override
 held stocks (no % shares are written). A class with a 0% target still shows its held picks. The Picks column and the class totals are therefore held + planned buys.
 Note: `etl/` is not hot-reloaded by uvicorn (`--reload-dir api`): touch `api/routers/builder.py` or restart after an `etl/` edit.
 
+## Blank % = equal share of what is unfilled (2026-11-18, replaces the "held + planned Buy $" sizing above for picks without a buy-one-of letter)
+A pick with no typed % must behave like a typed one. `etl/builder_engine.py` (manual build): typed % = that % of the class dollars; a blank pick = what you
+HOLD of it plus an equal share of what is still unfilled in the class (class target less the typed picks, the other blank picks' holdings and any
+buy-one-of group money). Limits never change it. A class whose target equals the holdings stays Matched; a bigger target gives every blank pick an equal top-up;
+type a % to pin a stock. Buy-one-of picks keep held + group $. The saved planned buy of a blank pick is its gap from the build (`runPreview`), and
+`room_for` counts it for the other picks (`api/routers/builder.py::_pct_amt`). On screen: Room Left $ shows a red "Over <limit> +$X" when this buy is more than
+its room; a line above the picks grids lists the Quad / Sector / Style / Beta rows the picks go over ("All limits OK" otherwise). Tests: `tests/test_blank_pct_sizing.py`.
+
 ## To do list is read-only (2026-11-19)
 No checkboxes and no Actionable columns in the Builder's To do list. `plan_check.todo(..., assume_sells=True, warn_only=True)` (used by `plan_store.todo_page`): the excess of every class above
 its plan counts as sold (no ticks), and a buy is never cut or blocked for cash: the planned amount stands and the result says "Over plan" (warning). The old behaviour (ticked sells, cut / blocked)

@@ -184,6 +184,7 @@ function _watchConfigSummary(r) {
   if (r.watch_trigger_trade) parts.push('Trade line');
   if (r.watch_trigger_trend) parts.push('Trend line');
   if (r.watch_trigger_price != null) parts.push('$' + Number(r.watch_trigger_price).toFixed(2));
+  if (r.watch_trigger_call) parts.push('Final Call turns ' + (r.watch_trigger_call === 'SELL' ? 'Sell' : 'Buy') + (parts.length > 1 ? ' (with the rest)' : ''));
   return parts.length ? parts.join(' · ') : 'plain reminder (no condition)';
 }
 
@@ -6796,7 +6797,7 @@ function _watchPopHtml(sym, active, row) {
       <div class="wp-title">🔔 ${escapeHtml(sym)} — Watching</div>
       <div style="margin-bottom:7px;color:#64748b;">Since ${escapeHtml(added)}${active.note ? '<br>' + escapeHtml(active.note) : ''}<br>${escapeHtml(_watchConfigSummary({
         watch_trigger_pct: active.trigger_pct, watch_trigger_pct_dir: active.trigger_pct_dir, watch_trigger_lrr: active.trigger_lrr, watch_trigger_trr: active.trigger_trr,
-        watch_trigger_trade: active.trigger_trade, watch_trigger_trend: active.trigger_trend, watch_trigger_price: active.trigger_price,
+        watch_trigger_trade: active.trigger_trade, watch_trigger_trend: active.trigger_trend, watch_trigger_price: active.trigger_price, watch_trigger_call: active.trigger_call,
       }))}</div>
       <div class="wp-actions">
         <button class="btn" id="wpDeleteBtn" title="Stop watching (not reversible)" style="color:#dc2626;border-color:#dc2626;">Stop watching</button>
@@ -6817,6 +6818,7 @@ function _watchPopHtml(sym, active, row) {
     <label class="wp-trig"><input type="checkbox" id="wpTrade"> Trade line <span class="wp-trig-val">(${fmt(row && row.trade_line_value)})</span></label>
     <label class="wp-trig"><input type="checkbox" id="wpTrend"> Trend line <span class="wp-trig-val">(${fmt(row && row.trend_line_value)})</span></label>
     <div class="wp-pctrow">$ <input type="number" id="wpPrice" step="0.01" min="0" placeholder="target price"></div>
+    <div class="wp-pctrow" title="Alert when the Actionable Final Call turns Buy or Sell (any buy-side / sell-side call). With other triggers above, both must hold.">Final Call turns <select id="wpCall" style="flex:0 0 auto;margin-bottom:0;padding:3px 4px;"><option value="">(off)</option><option value="BUY">Buy</option><option value="SELL">Sell</option></select><span class="wp-trig-val">now: ${escapeHtml((row && row.final_action) || '—')}</span></div>
     <textarea id="wpNote" placeholder="note (optional)…"></textarea>
     <div class="wp-actions">
       <button class="btn" id="wpAddBtn">Watch</button>
@@ -6843,6 +6845,7 @@ function _wireWatchPop(sym) {
           trigger_trade: document.getElementById('wpTrade').checked,
           trigger_trend: document.getElementById('wpTrend').checked,
           trigger_price: price ? Number(price) : null,
+          trigger_call: document.getElementById('wpCall').value || null,
         }),
       });
       closeWatchPop();

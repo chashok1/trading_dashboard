@@ -8556,6 +8556,13 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
      'outcomes_compute_hour. Default 15 (3pm) -- "before close".')
 ON CONFLICT (setting_name) DO NOTHING;
 
+-- 2026-11-18, user: alert when the stock's Actionable Final Call TURNS Buy or Sell (drv_actionable.final_side).
+-- trigger_call = 'BUY' | 'SELL' (any buy-side / sell-side call). With other triggers set, both must hold (AND).
+-- call_armed: TRUE once the call has been seen NOT on the target side since the watch was made, so a call that is
+-- already Sell when you start the watch fires only after it has left Sell and come back (a genuine new turn).
+ALTER TABLE ref_watch ADD COLUMN IF NOT EXISTS trigger_call TEXT;
+ALTER TABLE ref_watch ADD COLUMN IF NOT EXISTS call_armed BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- 2026-09-02: trigger_pct direction. User: "% move should be specific
 -- direction either up or down" -- trigger_pct was a magnitude threshold
 -- (fired on a move of that size either way); now paired with an explicit

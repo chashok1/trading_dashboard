@@ -125,6 +125,10 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 # so a stock added later only gets what is really left
                 def _pct_amt(x):
                     amt = float(x.get("amt") or 0.0)
+                    if amt <= 0 and x.get("pct") is None and not x.get("grp"):
+                        # 2026-11-18: a blank % takes an equal share of the class target left unfilled; that fill is its planned buy
+                        hv0 = float(((acct["holdings"].get(str(x["sym"]).upper()) or {}).get("value")) or 0.0)
+                        return max(0.0, pvals.get(str(x["sym"]).upper(), 0.0) - hv0)
                     if amt > 0 or x.get("pct") is None:
                         return amt
                     cp = ((body["plan"].get("cls") or {}).get(x.get("bucket")))
@@ -226,12 +230,12 @@ def get_sym_flags():
                 "SELECT id, tos_symbol, thesis_note, direction, target_date FROM ref_conviction_hold WHERE status = 'ACTIVE'")).fetchall():
             out.setdefault(sym, {})["lt"] = {"id": sid, "note": note, "dir": direction or "HOLD", "target": tgt.isoformat() if tgt else None}
         for r in s.execute(text(
-                "SELECT id, tos_symbol, note, trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price, "
+                "SELECT id, tos_symbol, note, trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price, trigger_call, "
                 "triggered_at FROM ref_watch WHERE status = 'ACTIVE'")).mappings().all():
             out.setdefault(r["tos_symbol"], {})["w"] = {
                 "id": r["id"], "note": r["note"], "pct": r["trigger_pct"], "dir": r["trigger_pct_dir"], "lrr": r["trigger_lrr"], "trr": r["trigger_trr"],
                 "trade": r["trigger_trade"], "trend": r["trigger_trend"], "price": float(r["trigger_price"]) if r["trigger_price"] is not None else None,
-                "triggered": bool(r["triggered_at"])}
+                "call": r["trigger_call"], "triggered": bool(r["triggered_at"])}
             if out[r["tos_symbol"]]["w"]["pct"] is not None:
                 out[r["tos_symbol"]]["w"]["pct"] = float(out[r["tos_symbol"]]["w"]["pct"])
         try:

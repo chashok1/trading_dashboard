@@ -58,7 +58,7 @@
   function buildReq() {
     // hand-picked build: the server uses exactly these names, each in its asset class, with the % typed (null = share equally)
     const req = { account: S.acct || 'ALL', horizon: S.horizon, preset: S.preset, use_risk_dial: S.useDial, warnings: S.warn,
-      manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0 })) };
+      manual: true, picks: S.picks.map(p => ({ sym: p.sym, bucket: p.bucket, pct: p.pct, amt: p.amt || 0, grp: p.grp || '' })) };
     if (S.preset === 'custom') req.mix = S.mix;
     if (S.amount) req.amount = S.amount;
     if (S.acct && S.acct !== 'ALL') {            // the plan as typed on screen: the server works out Stk Room $ per stock from it (warn only)
@@ -161,7 +161,7 @@
         const b = e.target.closest('[data-ic]');
         if (!b || !window.BldNotes) return;
         e.preventDefault();
-        window.BldNotes.open(b.dataset.ic, b, S.flags[b.dataset.ic], refreshFlags);
+        window.BldNotes.open(b.dataset.ic, b, S.flags[b.dataset.ic], refreshFlags, b.dataset.k);
       });
     }
     loadSourceNames();
@@ -281,7 +281,8 @@
   // 2026-11-18, user: 🔭 long-term and 🔔 watch badges (+ notes) in the first column, same notes as the Actionable screen.
   // Fixed-width slots (ticker | group letter | 🔭 | 🔔) so the icons line up on every row; an empty slot shows a faint icon on row hover.
   const bullets = lines => lines.filter(Boolean).map(l => '• ' + l).join('\n');
-  function noteIcon(sym, kind) {
+  const noteIcon = (sym, kind) => noteIconRaw(sym, kind).replace('data-ic=', `data-k="${kind}" data-ic=`);   // data-k = which popover the icon opens (lt | w)
+  function noteIconRaw(sym, kind) {
     const f = S.flags[sym] || {};
     if (kind === 'lt') {
       const lt = f.lt, avoid = lt && lt.dir === 'AVOID';
@@ -290,7 +291,7 @@
       return `<button type="button" class="bld-ic off" data-ic="${esc(sym)}" title="Add a long-term note, a watch or a note">🔭</button>`;
     }
     const w = f.w;
-    if (w) return `<button type="button" class="bld-ic on" data-ic="${esc(sym)}" title="${esc(bullets(['Watching' + (w.triggered ? ' (triggered)' : ''), w.note, 'Alert: ' + [w.pct != null ? (w.dir === 'DOWN' ? 'down ' : 'up ') + w.pct + '% move' : '', w.lrr ? 'LRR' : '', w.trr ? 'TRR' : '', w.trade ? 'Trade line' : '', w.trend ? 'Trend line' : '', w.price != null ? '$' + w.price : ''].filter(Boolean).join(', ').replace(/^Alert: $/, 'Alert: end-of-close reminder'), 'Click to edit']))}">🔔</button>`;
+    if (w) return `<button type="button" class="bld-ic on" data-ic="${esc(sym)}" title="${esc(bullets(['Watching' + (w.triggered ? ' (triggered)' : ''), w.note, 'Alert: ' + [w.pct != null ? (w.dir === 'DOWN' ? 'down ' : 'up ') + w.pct + '% move' : '', w.lrr ? 'LRR' : '', w.trr ? 'TRR' : '', w.trade ? 'Trade line' : '', w.trend ? 'Trend line' : '', w.price != null ? '$' + w.price : '', w.call ? 'Final Call turns ' + (w.call === 'SELL' ? 'Sell' : 'Buy') : ''].filter(Boolean).join(', ').replace(/^Alert: $/, 'Alert: end-of-close reminder'), 'Click to edit']))}">🔔</button>`;
     return `<button type="button" class="bld-ic off" data-ic="${esc(sym)}" title="Add a watch or a note">🔔</button>`;
   }
   const symCell = (sym, grpHtml) => `<span class="bld-sc"><span class="bld-sct">${symHtml(sym)}</span>${grpHtml == null ? '' : `<span class="bld-scg">${grpHtml}</span>`}${noteIcon(sym, 'lt')}${noteIcon(sym, 'w')}</span>`;
@@ -559,6 +560,7 @@
 
   // One comparison table: factor names down the left, "Your picks" and "My portfolio" side by side, then the gap.
   function compareTable(res) {
+    S.limitOvers = [];      // 2026-11-18: limit rows (Quad / Sector / Style / Beta) the picks go over, for the line above the picks grids
     const ex = res.exposure || {}, P = ex.picked || {}, H = ex.held || {};
     const cur = res.mix_current || {}, fin = res.mix_final || {}, amt = res.amount || 1;
     const hasPick = (P.total || 0) > 0, hasHeld = (H.total || 0) > 0;
@@ -644,6 +646,7 @@
       // 2026-11-17, user: once a mix is set, a class at 0 is a real target of 0 (picks there are Over), not "no target"
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : (Object.keys(chosen).length ? 0 : null)) : (key ? tv : (tvx > 0 ? tvx : null));
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" style="white-space:nowrap" title="Calculated: 100% minus the asset class targets above"><b style="display:inline-block;width:41px;padding-right:3px;box-sizing:border-box;text-align:right">${tvx.toFixed(1)}</b>${amt ? `<span style="color:var(--text-1);font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tvx / 100 * amt))} of the account">$${Math.round(tvx / 100 * amt / 1000)}K</span>` : ''}</td>` : '<td></td>'));
+      if (!asset && key && tv != null && hasPick && pv != null && (pv - tv) / 100 * amt > Math.min(500, 0.005 * amt)) S.limitOvers.push({ label: String(label).replace(/<[^>]*>/g, ''), by: (pv - tv) / 100 * amt });
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<span class="bld-muted">${f0(pv)}</span>` : dash;   // 2026-11-17, user: % grey, amounts dark (the status colour is on the Picks $ and Gap amounts)
@@ -901,7 +904,7 @@
       const zeroTgt = mixSet && BUCKETS.includes(b) && !((fin[b] || 0) > 0);
       const overCls = sumPct > 100.5 || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) || (zeroTgt && mTot > Math.min(500, 0.005 * amt));
       if (overCls) overs.push(`${CLS_ABBR[b] || b}: picks ${usd(mTot)}${clsShare != null ? ' = ' + clsShare.toFixed(1) + '% of the class' : ''}${(fin[b] || 0) > 0 ? ' (class target ' + usd(amt * fin[b] / 100) + ')' : (zeroTgt ? ' (class target $0)' : '')}${sumPct > 100.5 ? ', your % boxes add to ' + sumPct.toFixed(1) + '%' : ''}`);
-      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || (overCls ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(1)}%</span>` : ''}</td><td></td></tr>`;
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || (overCls ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum" title="Class target: ${(fin[b]).toFixed(1)}% of the account = ${usd(amt * fin[b] / 100)}">Tgt ${(fin[b]).toFixed(1)}%${amt ? ' ' + usd(amt * fin[b] / 100) : ''}</span>` : ''}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(1) : 'equal';
         const pCell = r.pk
@@ -919,7 +922,11 @@
           : `<td class="n bld-tip" data-tip="${esc('Most you can still buy of this one stock: ' + usd(rm.stock) + '. (Its Max rule less what you hold; an ETF with no rule uses your usual stock limit.)')}">${rm.stock > 0 ? usd(rm.stock) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">at max</span>'}</td>`);
         const mmv = S.myMax[r.sym];
         const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}"${rm && rm.rule_max != null ? ' max="' + Math.round(rm.rule_max) + '"' : ''} value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:56px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule.">${mmv != null && (fin[b] || 0) > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:4px;white-space:nowrap;display:inline-block;width:38px;text-align:right;vertical-align:middle" title="Your ceiling as a share of the class target, the same basis as the Picks % box. Your ceiling as a share of the class target, the same basis as the Picks % box.">${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}%</span>${r.pk ? `<button type="button" class="bld-btn sm alt" data-ceilpct="${esc(r.sym)}" data-v="${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}" style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % to this value">&rarr;</button>` : ''}` : ''}</td>`;
-        const bktTd = !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span>'}${(rm.bucket <= 0 || (rm.stock != null && rm.bucket < rm.stock) || (rm.stock == null && rm.bucket < 5000)) ? ' <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>' : ''}</td>`;
+        const planBuy = (r.pk && (r.pk.pct != null || !r.pk.grp)) ? Math.max(0, r.model - r.hold) : 0;     // 2026-11-18, user: say when the buy goes over a limit
+        const overBy = rm && rm.max != null && planBuy > rm.max + 50 ? planBuy - rm.max : 0;
+        const bindLbl = b0 => b0 === 'Cash to spend' ? 'cash' : (b0 === "The stock's own Max" ? 'own max' : (CLS_ABBR[b0] || String(b0 || '').replace(/ favored \(Bull\)/, '')));
+        const bktTd = overBy > 0 ? `<td class="n bld-tip" data-tip="${esc('This buy (' + usd(planBuy) + ') is ' + usd(overBy) + ' more than the room left (' + usd(rm.max) + '). Tightest limit: ' + rm.binding + '. Warning only: nothing is cut.')}"><span class="bld-over" style="white-space:nowrap">Over ${esc(bindLbl(rm.binding))} +${usd(overBy)}</span></td>`
+          : !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? usd(rm.bucket) : '<span class="bld-warn">$0</span>'}${(rm.bucket <= 0 || (rm.stock != null && rm.bucket < rm.stock) || (rm.stock == null && rm.bucket < 5000)) ? ' <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>' : ''}</td>`;
         const amtCells = r.pk
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
@@ -935,7 +942,10 @@
     // 2026-11-17, user: one line saying where the Stk Room $ money comes from (real cash vs money from selling over-target classes)
     const rmeta = res.room_meta;
     const money = rmeta ? `<div class="bld-muted bld-money" title="Stk Room $ spends from this. Spendable keeps your cash reserve (${usd(rmeta.keep)}) and the plan's Cash %. Sale money assumes you sell whatever sits above its asset class target. Information only.">Cash <b>${usd(rmeta.cash)}</b> · From selling over-target classes <b>${usd(rmeta.sells)}</b> · Spendable <b>${usd(rmeta.spendable)}</b></div>` : '';
-    const overMsg = overs.length ? `<div class="bld-over" style="font-size:12px;margin:4px 0">Over the limit - ${overs.map(esc).join(' | ')}. Lower a pick or raise the class target.</div>` : '';
+    const lim = (S.limitOvers || []);
+    const limMsg = lim.length ? `<div class="bld-over" style="font-size:12px;margin:4px 0" title="Picks above the limit you set on those rows. Warning only: nothing is cut.">Your picks go over ${lim.length} limit${lim.length === 1 ? '' : 's'}: ${lim.map(l => esc(l.label) + ' +' + usd(l.by)).join(', ')}</div>`
+      : (S.picks.length && !overs.length ? '<div class="bld-up" style="font-size:11px;margin:4px 0">All limits OK</div>' : '');
+    const overMsg = limMsg + (overs.length ? `<div class="bld-over" style="font-size:12px;margin:4px 0">Over the limit - ${overs.map(esc).join(' | ')}. Lower a pick or raise the class target.</div>` : '');
     return money + overMsg + `<div class="bld-sym2"><div>${tbl(side.left)}</div><div>${tbl(side.right, !!side.left)}</div></div>`;
   }
 
@@ -1042,11 +1052,8 @@
       S.picks.forEach(p => {                          // fill the starting Buy $ of picks you have not typed an amount for
         if (!autoAmt(p)) return;
         let st = (S.room[p.sym] || {}).start;
-        const bk = (res.buckets || {})[p.bucket];
-        if (st > 0 && p.pct == null && lastAuto[p.bucket] === p.sym && bk && bk.pct > 0) {
-          const room = bk.dollars - (bSum[p.bucket] - (posVal[p.sym] || 0)) - (heldNow[p.sym] || 0);
-          st = Math.min(st, Math.max(0, Math.floor(room)));
-        }
+        // 2026-11-18, user: a blank % behaves like a typed one -- the planned buy is what the build gives it (its equal share of what is unfilled in the class)
+        if (p.pct == null) st = Math.max(0, Math.round((posVal[p.sym] || 0) - (heldNow[p.sym] || 0)));
         if (st > 0 && p.amt !== st) { p.amt = st; p.autoAmt = true; refill = true; } else if (!(st > 0) && p.autoAmt) { p.amt = null; p.autoAmt = false; refill = true; }
       });
       if (refill) schedule(0);        // the amounts changed: the grids must be worked out again with them

@@ -1253,7 +1253,7 @@ def get_actionable(
                w.trigger_pct AS watch_trigger_pct, w.trigger_pct_dir AS watch_trigger_pct_dir,
                w.trigger_lrr AS watch_trigger_lrr, w.trigger_trr AS watch_trigger_trr,
                w.trigger_trade AS watch_trigger_trade, w.trigger_trend AS watch_trigger_trend,
-               w.trigger_price AS watch_trigger_price,
+               w.trigger_price AS watch_trigger_price, w.trigger_call AS watch_trigger_call,
                (w.triggered_at IS NOT NULL) AS watch_triggered,
                w.triggered_reason AS watch_triggered_reason,
                (w.reviewed_at IS NOT NULL) AS watch_reviewed
@@ -1300,7 +1300,7 @@ def get_actionable(
             -- ref_watch isn't baked into drv_actionable at all (see its own
             -- baseline.sql comment), this IS the only source for it.
             SELECT id, note, trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade,
-                   trigger_trend, trigger_price, triggered_at, triggered_reason, reviewed_at
+                   trigger_trend, trigger_price, trigger_call, triggered_at, triggered_reason, reviewed_at
             FROM ref_watch
             WHERE ref_watch.tos_symbol = a.tos_symbol
               AND ref_watch.status = 'ACTIVE'
@@ -3022,7 +3022,7 @@ def get_watches(
         params["status"] = status_u
     sql = """
         SELECT w.id, w.tos_symbol, w.note, w.added_at, w.baseline_price,
-               w.trigger_pct, w.trigger_pct_dir, w.trigger_lrr, w.trigger_trr, w.trigger_trade, w.trigger_trend, w.trigger_price,
+               w.trigger_pct, w.trigger_pct_dir, w.trigger_lrr, w.trigger_trr, w.trigger_trade, w.trigger_trend, w.trigger_price, w.trigger_call, w.call_armed,
                w.status, w.triggered_at, w.triggered_reason, w.emailed_at, w.reviewed_at, w.closed_at,
                q.last_price, q.pct_change
         FROM ref_watch w
@@ -3074,9 +3074,13 @@ def post_watch(payload: dict):
         trigger_pct_dir = str(payload.get("trigger_pct_dir") or "").upper().strip()
         if trigger_pct_dir not in ("UP", "DOWN"):
             raise HTTPException(400, "trigger_pct_dir must be 'UP' or 'DOWN' when trigger_pct is set")
+    # 2026-11-18, user: alert when the Final Call turns Buy or Sell (any buy-side / sell-side call); with other triggers both must hold
+    trigger_call = str(payload.get("trigger_call") or "").upper().strip() or None
+    if trigger_call not in (None, "BUY", "SELL"):
+        raise HTTPException(400, "trigger_call must be 'BUY' or 'SELL'")
     has_condition = bool(
         triggers["trigger_pct"] or triggers["trigger_lrr"] or triggers["trigger_trr"]
-        or triggers["trigger_trade"] or triggers["trigger_trend"] or triggers["trigger_price"]
+        or triggers["trigger_trade"] or triggers["trigger_trend"] or triggers["trigger_price"] or trigger_call
     )
     with session_scope() as s:
         # Baseline snapshot -- crossing triggers (LRR/TRR/Trade/Trend/$)
@@ -3095,16 +3099,20 @@ def post_watch(payload: dict):
                 SELECT a_trade_value, a_trend_value FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT 1
             ) mt ON TRUE
         """), {"sym": sym}).mappings().first() or {}
+        # Final Call now: armed only if it is NOT already on the target side (see etl/derive_watch.py::call_state)
+        side_now = s.execute(text("SELECT final_side FROM drv_actionable WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT 1"),
+                             {"sym": sym}).scalar()
+        call_armed = bool(trigger_call) and str(side_now or "").lower() != trigger_call.lower()
         try:
             row = s.execute(text("""
                 INSERT INTO ref_watch (
                     tos_symbol, note, baseline_price, baseline_lrr, baseline_trr, baseline_trade, baseline_trend,
                     trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
-                    triggered_at, triggered_reason
+                    trigger_call, call_armed, triggered_at, triggered_reason
                 ) VALUES (
                     :sym, :note, :bp, :blrr, :btrr, :btrade, :btrend,
                     :tpct, :tpctdir, :tlrr, :ttrr, :ttrade, :ttrend, :tprice,
-                    :trig_at, :trig_reason
+                    :tcall, :tarmed, :trig_at, :trig_reason
                 )
                 RETURNING id
             """), {
@@ -3114,6 +3122,7 @@ def post_watch(payload: dict):
                 "tpct": triggers["trigger_pct"], "tpctdir": trigger_pct_dir,
                 "tlrr": triggers["trigger_lrr"], "ttrr": triggers["trigger_trr"],
                 "ttrade": triggers["trigger_trade"], "ttrend": triggers["trigger_trend"], "tprice": triggers["trigger_price"],
+                "tcall": trigger_call, "tarmed": call_armed,
                 "trig_at": None if has_condition else datetime.now(),
                 "trig_reason": None if has_condition else "Reminder (no condition set)",
             }).first()
