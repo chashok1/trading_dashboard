@@ -456,6 +456,7 @@
             <span class="bld-quadf" id="srcfQuad" title="Show only names Hedgeye favours (Bull) in the Quad(s) ticked. A stock takes its sector's view.">Quad favored <label><input type="checkbox" value="0">Q1</label><label><input type="checkbox" value="1">Q2</label><label><input type="checkbox" value="2">Q3</label><label><input type="checkbox" value="3">Q4</label></span>
             <input type="search" id="srcfText" placeholder="Symbol" style="width:90px">
             <label class="bld-muted" style="white-space:nowrap" title="Hide the stocks already in your picks, so only the ones left to choose show"><input type="checkbox" id="srcfHidePicked" checked> Hide picked</label>
+            <select id="srcfScope" title="Which grids the filters cut: both, the Target grid (your picks, right) only, or the Selection grid (names to choose from, middle) only"><option value="both">Filters: both grids</option><option value="picks">Filters: Target grid only</option><option value="names">Filters: Selection grid only</option></select>
 
           </div>
           <div class="bld-line" style="gap:10px 6px">
@@ -501,8 +502,10 @@
   </main>
 
   <script src="/static/_common.js?v=20261026a"></script>
+  <script src="/static/actions.js"></script>   <!-- the Action popup (web/actionable_pops_dash.js) needs actionDisplay / actionText / actionIcon from here -->
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/builder.js?v=20261125g"></script>
+  <script src="/static/builder.js?v=20261125k"></script>
+  <script src="/static/actionable_pops_dash.js?v=20261113e" defer></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

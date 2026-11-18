@@ -185,6 +185,7 @@
     $('srcfFactor').title = FACTOR_TIP;
     $('srcfText').oninput = renderSourceNames;
     $('srcfHidePicked').onchange = renderSourceNames;
+    $('srcfScope').onchange = renderSourceNames;
     $('selShown').onclick = selectShown;
     $('clearTargets').onclick = e => {          // 2026-11-17, user: Clear targets is a button on the charts-and-grids panel (left)
       e.preventDefault(); e.stopPropagation();   // it sits in the panel's heading, which opens and closes the panel
@@ -345,12 +346,13 @@
   // The name's sector / quad / style / source come from the names list when it has it, else from the cache of looked-up names.
   // 2026-11-17, user: the Actionable Final Call as a column and a filter (any action = buy side or sell side)
   const actOk = (a, f) => !f || (f === 'any' ? !!(a && (a.side === 'buy' || a.side === 'sell')) : !!(a && a.side === f));
-  const actHtml = a => !a || !a.label ? '' : `<span style="color:${a.side === 'buy' ? '#0f9d58' : a.side === 'sell' ? '#e5484d' : '#8a93a6'};font-weight:600;font-size:10px" title="Actionable Final Call: ${esc(a.label)}">${esc(a.code || a.label)}</span>`;
+  const actHtml = (a, sym) => !a || !a.label ? `<span class="bld-muted" data-actpop="${esc(sym || '')}">-</span>` : `<span style="color:${a.side === 'buy' ? '#0f9d58' : a.side === 'sell' ? '#e5484d' : '#8a93a6'};font-weight:600;font-size:10px" data-actpop="${esc(sym || '')}">${esc(a.code || a.label)}</span>`;   // hover = the Actionable screen's Action popup (web/actionable_pops_dash.js)
   function rowPassesFilters(sym, bucket) {
     const sc = $('srcfSector').value, ind = $('srcfIndustry').value;
     const fs = $('srcfSource').value, fc = $('srcfClass').value, ff = $('srcfFactor').value, tx = $('srcfText').value.trim().toUpperCase();
     const qsel = [...$('srcfQuad').querySelectorAll('input:checked')].map(i => parseInt(i.value, 10));
     const fa = $('srcfAction').value;
+    if ($('srcfScope').value === 'names') return true;   // 2026-11-17, user: "names list only" leaves the picked grid unfiltered
     if (!sc && !ind && !fs && !fc && !ff && !tx && !qsel.length && !fa) return true;
     const n = (S.srcNames || []).find(x => x.sym === sym) || S.nameCache[sym] || {};
     return (!fs || (n.sources || []).includes(fs)) &&
@@ -365,6 +367,8 @@
     const fs =$('srcfSource').value, fc = $('srcfClass').value, ff = $('srcfFactor').value, tx = $('srcfText').value.trim().toUpperCase();
     const qsel = [...$('srcfQuad').querySelectorAll('input:checked')].map(i => parseInt(i.value, 10));
     const hidePicked = !!($('srcfHidePicked') && $('srcfHidePicked').checked);
+    // 2026-11-17, user: "Picked grid only" leaves the names list unfiltered (Hide picked still applies)
+    if ($('srcfScope').value === 'picks') return all.filter(n => !hidePicked || !picked(n.sym));
     return all.filter(n => (!fs || n.sources.includes(fs)) &&
       (!qsel.length || qsel.some(i => (n.quad || [])[i] === 'bull')) &&
       (!sc || (bucketOf(n) === 'Equities' && (sc === '__none' ? noSector(n) : n.sector === sc))) && (!ind || n.industry === ind) &&
@@ -475,7 +479,7 @@
       const heldNow = on;      // on = already in the picks on the right (held or not)      // 2026-11-19, user: a stock you already hold is already on the right: its box is ticked and locked
       return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${(!b || heldNow) ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : (heldNow ? (heldSyms.has(n.sym) ? 'You hold this stock: it is already in the picks on the right (use the x there to remove it)' : 'Already in the picks on the right (use the x there to remove it)') : 'Add to picks')}"></td>` +
         `<td>${symHtml(n.sym)}</td>${canPickTd(n, b)}<td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(CLS_ABBR[b] || b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(SEC_ABBR[n.sector] || n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
-        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td><td>${actHtml(n.act)}</td></tr>`;
+        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td><td>${actHtml(n.act, n.sym)}</td></tr>`;
     }).join('') || '<tr><td colspan="10" class="bld-muted">No names match.</td></tr>';
     $('srcNamesRows').querySelectorAll('[data-pick]').forEach(c => c.onchange = () => { setPick(c.dataset.pick, c.checked); renderSourceNames(); schedule(0); });
     $('srcNamesRows').querySelectorAll('[data-assign]').forEach(sel => sel.onchange = () => {
@@ -831,9 +835,9 @@
     // 2026-11-17, user: the Actionable screen's Final Call, as a last column (green = buy side, red = sell side, grey = hold / other)
     const actTd = sym => {
       const fc = (res.final_calls || {})[sym];
-      if (!fc || !fc.label) return '<td></td>';
+      if (!fc || !fc.label) return `<td><span class="bld-muted" data-actpop="${esc(sym)}">-</span></td>`;
       const col = fc.side === 'buy' ? '#0f9d58' : fc.side === 'sell' ? '#e5484d' : '#8a93a6';
-      return `<td title="Actionable Final Call: ${esc(fc.label)}"><span style="color:${col};font-weight:600;font-size:10px">${esc(fc.code || fc.label)}</span></td>`;
+      return `<td><span style="color:${col};font-weight:600;font-size:10px" data-actpop="${esc(sym)}">${esc(fc.code || fc.label)}</span></td>`;
     };
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
     const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th><th title="The Actionable screen's Final Call for this stock">Action</th></tr></thead><tbody>`;

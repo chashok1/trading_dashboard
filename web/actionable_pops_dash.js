@@ -120,13 +120,17 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
 
   function show(el, kind) {
     var rowEl = el.closest('.msr-row');
-    var sym = rowEl && rowEl.getAttribute('data-sym');
+    var sym = (rowEl && rowEl.getAttribute('data-sym')) || el.getAttribute('data-actpop');   // 2026-11-17: the Builder's Action cells carry data-actpop
     var row = sym && rows[sym];
-    if (!api || !row || hoverEl !== el) return;
+    if (!api || hoverEl !== el) return;
+    if (!row && !(kind === 'act' && el.hasAttribute('data-actpop'))) return;
     ensurePopEl();
     muteTitle(rowEl, true);
     try {
-      if (kind === 'act') {
+      if (kind === 'act' && !row) {
+        // 2026-11-17, user: show the popover even when it is blank (a Builder name with no Actionable row)
+        api.showData(el, '<div class="sp-title">' + String(sym).replace(/[<>&]/g, '') + '</div><span style="color:#94a3b8">No Actionable data for this symbol.</span>');
+      } else if (kind === 'act') {
         api.showData(el, api.build(row));
         api.loadNotes(sym);
       } else {
@@ -140,6 +144,8 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
   function targetOf(e) {
     var t = e.target && e.target.closest ? e.target : null;
     if (!t) return null;
+    var bld = t.closest('[data-actpop]');
+    if (bld) return { el: bld, kind: 'act' };
     var tag = t.closest('.msr-row .ms-tag');
     if (tag) return { el: tag, kind: 'act' };
     var nm = t.closest('.msr-row .msr-name-tick');
