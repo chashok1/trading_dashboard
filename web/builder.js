@@ -130,7 +130,8 @@
     // editable amount (defaults to the account value)
     const lab = document.createElement('label');
     lab.className = 'bld-muted';
-    lab.innerHTML = 'Amt <b id="amount" title="The account value the plan is worked out on."></b>';
+    lab.style.cssText = 'justify-content:flex-start;gap:4px';   // 2026-11-17, user: the value sits right after the colon, one space, not pushed to the right edge
+    lab.innerHTML = 'Acct Value: <b id="amount" style="color:var(--text-1)" title="The account value the plan is worked out on."></b>';
     $('acctType').after(lab);
     await reloadAll(true);
   }
@@ -547,7 +548,7 @@
       if (!dec) return `<td class="n ${c}" style="white-space:nowrap" title="Picks minus Held: ${Math.abs(g).toFixed(1)} points = ${esc(usd(Math.abs(g) / 100 * amt))}">${gapPd(g)}</td>`;
       return `<td class="n ${c}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec)}</td>`;
     };
-    const tgtCell = (attr, tv, dec) => `<td class="n" style="white-space:nowrap"><input type="number" min="0" step="${dec ? 0.05 : 0.1}" ${attr} value="${tv == null ? '' : Number(tv).toFixed(1)}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}">${tv != null && tv > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tv / 100 * amt))} of the account">$${Math.round(tv / 100 * amt / 1000)}K</span>` : ''}</td>`;
+    const tgtCell = (attr, tv, dec) => `<td class="n" style="white-space:nowrap"><input type="number" min="0" step="${dec ? 0.05 : 0.1}" ${attr} value="${tv == null ? '' : Number(tv).toFixed(1)}" class="${tv != null && !dec && tv > 100 ? 'tgt-over' : ''}">${tv != null && tv > 0 && amt ? `<span style="color:var(--text-1);font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tv / 100 * amt))} of the account">$${Math.round(tv / 100 * amt / 1000)}K</span>` : ''}</td>`;
     // 2026-11-14, user: in the Asset class grid, say in dollars what the account must do to reach the target (the account's own value).
     // Target vs what it holds now: Sell all / Sell $X / Room to buy $X / On plan. Information only; nothing trades.
     const planTd = (asset, tv, hv) => {
@@ -588,7 +589,7 @@
     // asset = asset class name (its target is the mix you chose; judged against the mix after the Risk Dial).
     // 2026-11-17, user: dollars next to the % -- the % of the account times the account amount
     const kOf = p => { const d = p / 100 * amt; return (d < 0 ? '-$' : '$') + Math.round(Math.abs(d) / 1000) + 'K'; };
-    const dolTd = (p, cls) => `<td class="n ${cls == null ? 'bld-muted' : cls}" style="font-size:9px" title="${p == null ? '' : esc(usd(p / 100 * amt))}">${p == null ? '-' : kOf(p)}</td>`;
+    const dolTd = (p, cls) => `<td class="n ${cls == null ? '' : cls}" style="font-size:9px${cls == null ? ';color:var(--text-1)' : ''}" title="${p == null ? '' : esc(usd(p / 100 * amt))}">${p == null ? '-' : kOf(p)}</td>`;
     // 2026-11-17, user: colour of the name = the outlook (Hedgeye risk range, else your Bollinger-band signal) of the sector's ETF or the
     // asset class's proxy.  (Style / Quad / Risk rows have no proxy).
     const GO = res.group_outlooks || {};
@@ -600,11 +601,11 @@
       const tv = asset ? (chosen[asset] > 0 ? Math.round(chosen[asset] * 100) / 100 : null) : (key ? tgtOf(key) : null);
       // 2026-11-17, user: once a mix is set, a class at 0 is a real target of 0 (picks there are Over), not "no target"
       const eff = asset ? (fin[asset] > 0 ? fin[asset] : (Object.keys(chosen).length ? 0 : null)) : (key ? tv : (tvx > 0 ? tvx : null));
-      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" style="white-space:nowrap" title="Calculated: 100% minus the asset class targets above"><b style="display:inline-block;width:41px;padding-right:3px;box-sizing:border-box;text-align:right">${tvx.toFixed(1)}</b>${amt ? `<span class="bld-muted" style="font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tvx / 100 * amt))} of the account">$${Math.round(tvx / 100 * amt / 1000)}K</span>` : ''}</td>` : '<td></td>'));
+      const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv) : (tvx > 0 ? `<td class="n" style="white-space:nowrap" title="Calculated: 100% minus the asset class targets above"><b style="display:inline-block;width:41px;padding-right:3px;box-sizing:border-box;text-align:right">${tvx.toFixed(1)}</b>${amt ? `<span style="color:var(--text-1);font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tvx / 100 * amt))} of the account">$${Math.round(tvx / 100 * amt / 1000)}K</span>` : ''}</td>` : '<td></td>'));
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
-      const pCell = hasPick && pv != null ? `<b class="${eff != null ? judge(pv, eff) : ''}">${f0(pv)}</b>` : dash;
-      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}"` : ''}><td${olCol ? ` style="color:${olCol};font-weight:600"` : ''}${tip ? ` class="bld-tip" data-tip="${esc(tip + olTip)}"` : (flt ? ` title="${esc('Click: show only this in the names list (Ctrl+click: add to the current filters)' + olTip)}"` : (olTip ? ` title="${esc(olTip.trim())}"` : ''))}>${label}</td>${barTd}${cell}<td class="n">${hasHeld && hv != null ? f0(hv) : dash}</td>${dolTd(hasHeld ? hv : null)}` +
+      const pCell = hasPick && pv != null ? `<span class="bld-muted">${f0(pv)}</span>` : dash;   // 2026-11-17, user: % grey, amounts dark (the status colour is on the Picks $ and Gap amounts)
+      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}"` : ''}><td${olCol ? ` style="color:${olCol};font-weight:600"` : ''}${tip ? ` class="bld-tip" data-tip="${esc(tip + olTip)}"` : (flt ? ` title="${esc('Click: show only this in the names list (Ctrl+click: add to the current filters)' + olTip)}"` : (olTip ? ` title="${esc(olTip.trim())}"` : ''))}>${label}</td>${barTd}${cell}<td class="n bld-muted">${hasHeld && hv != null ? f0(hv) : dash}</td>${dolTd(hasHeld ? hv : null)}` +
         // 2026-11-17, user: order = Target, Held, Held $, To plan (none use picks), then Picks, Picks $, Gap (use picks)
         `${planTd(asset, asset ? (Object.keys(chosen).length ? (chosen[asset] || 0) : null) : (key ? tv : null), hv)}<td class="n">${pCell}</td>${dolTd(hasPick ? pv : null, hasPick && pv != null && eff != null ? judge(pv, eff) : null)}${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
     };
@@ -618,7 +619,7 @@
       heldInvested += cur[b] || 0;
       t += R(esc(b), placed, cur[b] || 0, null, null, b, ['cls', b]);
     }
-    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n">${hasHeld ? f0(heldInvested) : dash}</td>${dolTd(hasHeld ? heldInvested : null)}<td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td>${dolTd(S.picks.length ? placedTotal : null)}<td></td></tr>`;
+    t += `<tr><td class="bld-tip" data-tip="All the money your picks place. Over 100% (red) means the picks add up to more than the account.">Total invested</td><td class="bld-bar"></td><td></td><td class="n bld-muted">${hasHeld ? f0(heldInvested) : dash}</td>${dolTd(hasHeld ? heldInvested : null)}<td></td><td class="n">${S.picks.length ? `<b class="${placedTotal > 100.5 ? 'bld-over' : ''}">${f0(placedTotal)}</b>` : dash}</td>${dolTd(S.picks.length ? placedTotal : null)}<td></td></tr>`;
     const clsSum = BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0);
     const overBy = Object.keys(chosen).length && clsSum > 100.05 ? clsSum - 100 : 0;
     t += R(`Cash${overBy ? ` <span class="bld-over" title="The asset class targets add to ${clsSum.toFixed(1)}%. They need to add to 100% before the plan can be activated.">classes add to ${clsSum.toFixed(1)}%, over by ${overBy.toFixed(1)}</span>` : ''}`, (res.cash && res.cash.dollars || 0) / amt * 100, cur.Cash || 0, 'Cash and money not yet placed', null, undefined, undefined, Object.keys(chosen).length ? Math.max(0, 100 - BUCKETS.reduce((a, b) => a + (chosen[b] || 0), 0)) : fin.Cash);
@@ -871,7 +872,7 @@
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
           : '<td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
           (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))} to reach target</td></tr>`
             : `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`);
       });
