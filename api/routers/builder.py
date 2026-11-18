@@ -220,6 +220,25 @@ def get_sources():
             "checks": [{"key": k, "label": v} for k, v in CHECKS.items()]}
 
 
+# 2026-11-18, user: show the min-max % next to each asset class name. Source = Ref Data's ref_asset_allocation (the allowed size of ONE position
+# in that category, as a share of the account). Only classes with a matching category are shown (no Gold / Crypto / Cash row there).
+_CLASS_CATEGORY = {"Equities": "Equities", "Fixed Income": "Fixed Income", "Commodities": "Commodities", "Currency": "Foreign Currency"}
+
+
+@router.get("/api/builder/class-bands")
+def get_class_bands():
+    out: dict = {}
+    try:
+        with session_scope() as s:
+            rows = {c: (lo, hi) for c, lo, hi in s.execute(text("SELECT category, min_pct, max_pct FROM ref_asset_allocation")).fetchall()}
+        for cls, cat in _CLASS_CATEGORY.items():
+            if cat in rows and rows[cat][0] is not None and rows[cat][1] is not None:
+                out[cls] = {"min": round(float(rows[cat][0]) * 100, 2), "max": round(float(rows[cat][1]) * 100, 2), "category": cat}
+    except Exception:
+        pass
+    return {"bands": out}
+
+
 @router.get("/api/builder/sym-flags")
 def get_sym_flags():
     """2026-11-18: the 🔭 long-term note, 🔔 watch and My-stocks note per symbol, for the badges in the Builder's first column.

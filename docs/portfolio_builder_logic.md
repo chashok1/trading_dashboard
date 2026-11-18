@@ -53,13 +53,18 @@ goes up, so a bigger target leaves room for new stocks. A typed % still override
 held stocks (no % shares are written). A class with a 0% target still shows its held picks. The Picks column and the class totals are therefore held + planned buys.
 Note: `etl/` is not hot-reloaded by uvicorn (`--reload-dir api`): touch `api/routers/builder.py` or restart after an `etl/` edit.
 
-## Blank % = equal share of what is unfilled (2026-11-18, replaces the "held + planned Buy $" sizing above for picks without a buy-one-of letter)
-A pick with no typed % must behave like a typed one. `etl/builder_engine.py` (manual build): typed % = that % of the class dollars; a blank pick = what you
-HOLD of it plus an equal share of what is still unfilled in the class (class target less the typed picks, the other blank picks' holdings and any
-buy-one-of group money). Limits never change it. A class whose target equals the holdings stays Matched; a bigger target gives every blank pick an equal top-up;
-type a % to pin a stock. Buy-one-of picks keep held + group $. The saved planned buy of a blank pick is its gap from the build (`runPreview`), and
-`room_for` counts it for the other picks (`api/routers/builder.py::_pct_amt`). On screen: Room Left $ shows a red "Over <limit> +$X" when this buy is more than
-its room; a line above the picks grids lists the Quad / Sector / Style / Beta rows the picks go over ("All limits OK" otherwise). Tests: `tests/test_blank_pct_sizing.py`.
+## Blank %, Unallocated / Over target (2026-11-18, replaces the "held + planned Buy $" sizing above for picks without a buy-one-of letter)
+`etl/builder_engine.py` (manual build): a typed % = that % of the class dollars. A HELD stock with no % keeps what you hold (a bigger or smaller class target never
+resizes it). A NEW stock with no % takes an equal share of what is still unfilled in the class (class target less the typed picks, the held blank picks and any
+buy-one-of group money). Buy-one-of picks keep held + group $. Limits never change sizing (they only warn).
+On screen each class's picks grid ends with one line when the picks differ from the class target by more than the on-plan band: **Unallocated +$X** (blue, room the
+class has that no stock was given) or **Over target -$X** (red). Nothing is bought or sold for you. The line's button works only on stocks with no typed % and only
+when pressed: **Spread equally** gives the unallocated money to them equally, **Trim evenly** takes the excess off the held ones in proportion to what they hold
+(both write a typed % on those stocks, `web/builder.js` `data-unal`). The Picks box is typed as a % of the WHOLE account; the class % and dollars show beside it
+(stored as the class %). The saved planned buy of a blank pick is its gap from the build (`runPreview`), and `room_for` counts it for the other picks
+(`api/routers/builder.py::_pct_amt`). Room Left $ shows a red "Over <limit> +$X" when a buy is more than its room, and a line above the picks grids lists the Quad /
+Sector / Style / Beta rows the picks go over ("All limits OK" otherwise). Asset class names show the min-max % of one position (`GET /api/builder/class-bands`,
+from `ref_asset_allocation`). Tests: `tests/test_blank_pct_sizing.py`. Note: `etl/` is not hot-reloaded: touch `api/routers/builder.py` after an engine edit.
 
 ## To do list is read-only (2026-11-19)
 No checkboxes and no Actionable columns in the Builder's To do list. `plan_check.todo(..., assume_sells=True, warn_only=True)` (used by `plan_store.todo_page`): the excess of every class above

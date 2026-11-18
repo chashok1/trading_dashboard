@@ -155,6 +155,7 @@
       planInit();
     } catch (e) { problems(['Could not load accounts: ' + e.message]); }
     await loadFlags();
+    try { S.bands = (await api('/api/builder/class-bands')).bands || {}; } catch (e) { S.bands = S.bands || {}; }
     if (!S.icWired) {
       S.icWired = true;      // reloadAll runs again on Refresh: wire the click once
       document.addEventListener('click', e => {
@@ -650,7 +651,9 @@
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const pCell = hasPick && pv != null ? `<span class="bld-muted">${f0(pv)}</span>` : dash;   // 2026-11-17, user: % grey, amounts dark (the status colour is on the Picks $ and Gap amounts)
-      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}"` : ''}><td${olCol ? ` style="color:${olCol};font-weight:600"` : ''}${tip ? ` class="bld-tip" data-tip="${esc(tip + olTip)}"` : (flt ? ` title="${esc('Click: show only this in the names list (Ctrl+click: add to the current filters)' + olTip)}"` : (olTip ? ` title="${esc(olTip.trim())}"` : ''))}>${label}</td>${barTd}${cell}<td class="n bld-muted">${hasHeld && hv != null ? f0(hv) : dash}</td>${dolTd(hasHeld ? hv : null)}` +
+      const bd = asset && (S.bands || {})[asset];      // 2026-11-18, user: min-max % of one position, next to the asset class name
+      const bandTxt = bd ? ` <span class="bld-muted bld-tip" style="font-size:9px;font-weight:400" data-tip="${esc('Each ' + asset + ' position may be ' + bd.min + '% to ' + bd.max + '% of the account (Ref Data: asset allocation, ' + bd.category + ').')}">${bd.min}%-${bd.max}%</span>` : '';
+      return `<tr${flt ? ` class="bld-frow" data-ftype="${flt[0]}" data-fval="${esc(flt[1])}"` : ''}><td${olCol ? ` style="color:${olCol};font-weight:600"` : ''}${tip ? ` class="bld-tip" data-tip="${esc(tip + olTip)}"` : (flt ? ` title="${esc('Click: show only this in the names list (Ctrl+click: add to the current filters)' + olTip)}"` : (olTip ? ` title="${esc(olTip.trim())}"` : ''))}>${label}${bandTxt}</td>${barTd}${cell}<td class="n bld-muted">${hasHeld && hv != null ? f0(hv) : dash}</td>${dolTd(hasHeld ? hv : null)}` +
         // 2026-11-17, user: order = Target, Held, Held $, To plan (none use picks), then Picks, Picks $, Gap (use picks)
         `${planTd(asset, asset ? (Object.keys(chosen).length ? (chosen[asset] || 0) : null) : (key ? tv : null), hv)}<td class="n">${pCell}</td>${dolTd(hasPick ? pv : null, hasPick && pv != null && eff != null ? judge(pv, eff) : null)}${eff != null ? gapCell(pv, eff, true, 0, true) : gapCell(pv, hv, hasHeld, 0, false)}</tr>`;
     };
@@ -880,6 +883,7 @@
     const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th><th title="Action: the Actionable screen's Final Call for this stock">Actn</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     S.clsTotal = {};
+    S.unal = {};          // 2026-11-18: per class, what the Unallocated / Over target buttons work on
     const overs = [];   // classes where the picks add up to more than the class allows
     const mixSet = Object.keys((S.preset === 'custom' && S.mix) ? S.mix : (res.mix_target || {})).length > 0;
     for (const b of BUCKETS.concat(['Unmapped'])) {
@@ -904,11 +908,15 @@
       const zeroTgt = mixSet && BUCKETS.includes(b) && !((fin[b] || 0) > 0);
       const overCls = sumPct > 100.5 || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) || (zeroTgt && mTot > Math.min(500, 0.005 * amt));
       if (overCls) overs.push(`${CLS_ABBR[b] || b}: picks ${usd(mTot)}${clsShare != null ? ' = ' + clsShare.toFixed(1) + '% of the class' : ''}${(fin[b] || 0) > 0 ? ' (class target ' + usd(amt * fin[b] / 100) + ')' : (zeroTgt ? ' (class target $0)' : '')}${sumPct > 100.5 ? ', your % boxes add to ' + sumPct.toFixed(1) + '%' : ''}`);
-      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || (overCls ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum" title="Class target: ${(fin[b]).toFixed(1)}% of the account = ${usd(amt * fin[b] / 100)}">Tgt ${(fin[b]).toFixed(1)}%${amt ? ' ' + usd(amt * fin[b] / 100) : ''}</span>` : ''}</td><td></td></tr>`;
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || (overCls ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:36px;text-align:right;box-sizing:border-box;padding-right:3px" title="Picks in this class as a % of the whole account">${amt ? (mTot / amt * 100).toFixed(1) : ''}</span><span style="display:inline-block;width:92px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="display:inline-block;width:36px;text-align:right;margin-right:6px" title="Class share: the picks' % boxes (blank ones as shown) add to this">${hdrShare != null ? hdrShare.toFixed(1) + '%' : ''}</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum" title="Class target: ${(fin[b]).toFixed(1)}% of the account = ${usd(amt * fin[b] / 100)}">Tgt ${(fin[b]).toFixed(1)}%${amt ? ' ' + usd(amt * fin[b] / 100) : ''}</span>` : ''}</td><td></td></tr>`;
       mine.forEach(r => {
-        const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(1) : 'equal';
+        // 2026-11-18, user: the Picks box is typed as a % of the WHOLE account; to its right: the class % and the dollars (same total width as before)
+        const fb = fin[b] || 0, cb0 = fb > 0 && amt ? amt * fb / 100 : hTot;
+        const ph = r.pos && amt ? (r.pos.value / amt * 100).toFixed(1) : '';
+        const accVal = r.pk && r.pk.pct != null && fb > 0 ? String(Number((r.pk.pct * fb / 100).toFixed(2))) : '';
+        const clsLbl = cb0 > 0 ? ((r.pos ? r.pos.value : r.model) / cb0 * 100).toFixed(1) + '%' : '';
         const pCell = r.pk
-          ? `<input type="number" min="0" max="100" step="0.1" data-pct="${esc(r.sym)}" value="${r.pk.pct == null ? '' : Number(r.pk.pct).toFixed(1)}" placeholder="${ph}" style="width:48px;padding-left:3px;padding-right:3px" title="% of ${esc(b)}"><span style="font-size:9px;display:inline-block;width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span style="margin-right:12px">%</span>` +
+          ? `<input type="number" min="0" max="${fb > 0 ? fb.toFixed(1) : 100}" step="0.1" data-pct="${esc(r.sym)}" data-fin="${fb}" value="${accVal}" placeholder="${ph}"${fb > 0 ? '' : ' disabled'} style="width:36px;padding-left:3px;padding-right:3px" title="${fb > 0 ? '% of the whole account (the class share and the dollars are shown to the right)' : 'Set the ' + esc(b) + ' class target first'}"><span style="font-size:9px;display:inline-block;width:92px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding-left:6px;box-sizing:border-box"><span class="bld-muted" style="display:inline-block;width:36px;text-align:right;margin-right:6px" title="Share of the ${esc(b)} class target">${clsLbl}</span>` +
             `${r.pos ? '<b>' + usd(r.pos.value) + '</b>' : (r.pk.amt > 0 ? '<span class="bld-warn" title="' + esc(noBuyWhy(r.sym, b, fin, amt)) + '">' + esc(noBuyWhy(r.sym, b, fin, amt)) + '</span>' : '<span class="bld-muted" title="Nothing to add: no room left under its Stk Room $">nothing to add</span>')}</span> <button class="bld-btn sm alt" data-drop="${esc(r.sym)}" title="Remove from picks">×</button>`
           : dash;
         const clsBase = (fin[b] || 0) > 0 && amt ? amt * fin[b] / 100 : hTot;   // same base as the Picks % box: a share of the class
@@ -921,7 +929,7 @@
         const maxTd = !rm ? '<td></td>' : (rm.stock == null ? '<td class="n bld-muted" title="No per-stock limit for this class">-</td>'
           : `<td class="n bld-tip" data-tip="${esc('Most you can still buy of this one stock: ' + usd(rm.stock) + '. (Its Max rule less what you hold; an ETF with no rule uses your usual stock limit.)')}">${rm.stock > 0 ? usd(rm.stock) : '<span class="bld-warn">$0</span> <span class="bld-muted" style="font-size:9px">at max</span>'}</td>`);
         const mmv = S.myMax[r.sym];
-        const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}"${rm && rm.rule_max != null ? ' max="' + Math.round(rm.rule_max) + '"' : ''} value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:56px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule.">${mmv != null && (fin[b] || 0) > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:4px;white-space:nowrap;display:inline-block;width:38px;text-align:right;vertical-align:middle" title="Your ceiling as a share of the class target, the same basis as the Picks % box. Your ceiling as a share of the class target, the same basis as the Picks % box.">${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}%</span>${r.pk ? `<button type="button" class="bld-btn sm alt" data-ceilpct="${esc(r.sym)}" data-v="${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}" style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % to this value">&rarr;</button>` : ''}` : ''}</td>`;
+        const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}"${rm && rm.rule_max != null ? ' max="' + Math.round(rm.rule_max) + '"' : ''} value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:56px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule.">${mmv != null && (fin[b] || 0) > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:4px;white-space:nowrap;display:inline-block;width:38px;text-align:right;vertical-align:middle" title="Your ceiling as a % of the whole account, the same basis as the Picks % box.">${(mmv / amt * 100).toFixed(1)}%</span>${r.pk ? `<button type="button" class="bld-btn sm alt" data-ceilpct="${esc(r.sym)}" data-v="${(mmv / (amt * fin[b] / 100) * 100).toFixed(1)}" style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % to this value">&rarr;</button>` : ''}` : ''}</td>`;
         const planBuy = (r.pk && (r.pk.pct != null || !r.pk.grp)) ? Math.max(0, r.model - r.hold) : 0;     // 2026-11-18, user: say when the buy goes over a limit
         const overBy = rm && rm.max != null && planBuy > rm.max + 50 ? planBuy - rm.max : 0;
         const bindLbl = b0 => b0 === 'Cash to spend' ? 'cash' : (b0 === "The stock's own Max" ? 'own max' : (CLS_ABBR[b0] || String(b0 || '').replace(/ favored \(Bull\)/, '')));
@@ -935,6 +943,29 @@
           (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))}</td>${actTd(r.sym)}</tr>`
             : `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td>${actTd(r.sym)}</tr>`);
       });
+      // 2026-11-18, user: one line per class showing the difference between the class target and what the picks add up to.
+      // Under target = "Unallocated" (money the class has room for that no stock was given); over = "Over target" (picks add up to more than allowed).
+      // Nothing is bought or sold for you: you type a % on a stock, or press the button (it only changes blank stocks, evenly).
+      {
+        const tgtD = (fin[b] || 0) > 0 && amt ? amt * fin[b] / 100 : (zeroTgt ? 0 : null);
+        const un = tgtD != null && Math.abs(tgtD - mTot) > Math.min(500, 0.005 * amt) ? tgtD - mTot : 0;
+        if (un) {
+          const over = un < 0, bk = (res.buckets || {})[b];
+          const base = bk ? Math.max(0, (bk.dollars || 0) - (bk.kept_dollars || 0)) : (tgtD || hTot);
+          const blank = mine.filter(r => r.pk && r.pk.pct == null && !r.pk.grp && (!over || r.hold > 0)).map(r => ({ sym: r.sym, v: r.model }));
+          S.unal[b] = { diff: un, base, blank };
+          const can = blank.length > 0 && base > 0, col = over ? '#dc2626' : '#2563eb';
+          t += `<tr class="bld-unal"><td style="color:${col};font-weight:600;white-space:nowrap" title="${over ? 'The picks add up to ' + usd(mTot) + ', more than the ' + esc(b) + ' target of ' + usd(tgtD) + '.' : 'The ' + esc(b) + ' target is ' + usd(tgtD) + ' and the picks add up to ' + usd(mTot) + '.'} Nothing is bought or sold for you.">${over ? 'Over target' : 'Unallocated'}</td>` +
+            `<td class="n" style="white-space:nowrap"><b style="color:${col}">${over ? '−' : '+'}${usd(Math.abs(un))}</b> <button type="button" class="bld-btn sm alt" data-unal="${esc(b)}" data-mode="${over ? 'trim' : 'spread'}"${can ? '' : ' disabled'} style="margin-left:4px;padding:0 6px;font-size:9px" title="${can ? (over ? 'Take the excess off the stocks you hold in this class that have no % typed, in proportion to what you hold' : 'Share it equally between the stocks in this class that have no % typed') : (over ? 'No held stock without a typed % to trim: lower a % yourself' : 'No stock without a typed % to give it to: type a % on one')}">${over ? 'Trim evenly' : 'Spread equally'}</button></td>` +
+            `<td colspan="9" class="bld-muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(() => {
+              const pctAcct = amt ? Math.abs(un) / amt * 100 : null, filled = tgtD > 0 ? mTot / tgtD * 100 : null, n = blank.length;
+              const bits = [(pctAcct != null ? pctAcct.toFixed(1) + '% of the account' : ''),
+                (filled != null ? 'picks are ' + filled.toFixed(1) + '% of the ' + esc(CLS_ABBR[b] || b) + ' target (' + usd(mTot) + ' vs ' + usd(tgtD) + ')' : 'picks ' + usd(mTot) + ' with a target of $0'),
+                (n ? (over ? 'Trim evenly: ' + n + ' held stock' + (n === 1 ? '' : 's') + ', about ' + usd(Math.abs(un) / n) + ' each' : 'Spread equally: ' + n + ' stock' + (n === 1 ? '' : 's') + ', about ' + usd(un / n) + ' each') : (over ? 'no held stock without a typed % to trim' : 'no stock without a typed % to give it to'))];
+              return bits.filter(Boolean).join(' · ');
+            })()}</td></tr>`;
+        }
+      }
       side[b === 'Equities' ? 'right' : 'left'] += t;
     }
     // 2026-11-17, user: the column names show once, on the left block; the Equities block drops its own header row (it keeps one when it is the only block)
@@ -970,7 +1001,8 @@
     }
     $('symTable').querySelectorAll('[data-pct]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.pct);
-      if (p) { p.pct = i.value === '' ? null : Math.max(0, parseFloat(i.value)); schedule(0); }
+      const fb = parseFloat(i.dataset.fin) || 0;     // the box is a % of the whole account; stored as a % of the class (fb = the class target % of the account)
+      if (p && fb > 0) { p.pct = i.value === '' ? null : Math.min(100, Math.max(0, parseFloat(i.value)) / fb * 100); schedule(0); }
     });
     $('symTable').querySelectorAll('[data-mymax]').forEach(i => i.onchange = () => {
       const sym = i.dataset.mymax;
@@ -994,6 +1026,18 @@
     $('symTable').querySelectorAll('[data-ceilpct]').forEach(btn => btn.onclick = () => {
       const p = picked(btn.dataset.ceilpct);
       if (p) { p.pct = Math.min(100, parseFloat(btn.dataset.v) || 0); planDirty(); schedule(0); }
+    });
+    $('symTable').querySelectorAll('[data-unal]').forEach(btn => btn.onclick = () => {
+      const c = (S.unal || {})[btn.dataset.unal];
+      if (!c || !(c.base > 0) || !c.blank.length) return;
+      if (btn.dataset.mode === 'spread') {
+        const add = c.diff / c.blank.length;
+        c.blank.forEach(x => { const p = picked(x.sym); if (p) p.pct = Math.min(100, (x.v + add) / c.base * 100); });
+      } else {
+        const tot = c.blank.reduce((a, x) => a + x.v, 0), cut = Math.min(-c.diff, tot);
+        c.blank.forEach(x => { const p = picked(x.sym); if (p && tot > 0) p.pct = Math.max(0, x.v - cut * x.v / tot) / c.base * 100; });
+      }
+      planDirty(); schedule(0);
     });
     $('symTable').querySelectorAll('[data-ceilall]').forEach(btn => btn.onclick = e => {
       e.stopPropagation();

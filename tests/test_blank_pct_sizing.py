@@ -1,4 +1,4 @@
-"""Builder: a pick with a blank % takes what you hold plus an equal share of what is still unfilled in the class target (2026-11-18)."""
+"""Builder: a held pick with a blank % stays as held; a NEW blank pick takes an equal share of what is still unfilled in the class target (2026-11-18)."""
 import pytest
 
 from etl import builder_engine as eng
@@ -16,17 +16,20 @@ def _values(picks, held):
     return {p["sym"]: p["value"] for p in res["positions"]}
 
 
-def test_single_blank_pick_fills_the_class_target():
+def test_held_blank_pick_stays_as_held_even_when_the_class_target_is_bigger():
     v = _values([{"sym": "XLK", "bucket": "Equities", "pct": None, "amt": 0}], {"XLK": 20000.0})
-    assert v["XLK"] == pytest.approx(40000.0)          # 10% of $400K: same as typing 100%
+    assert v["XLK"] == pytest.approx(20000.0)           # the screen's "Unallocated" line shows the other $20K; you decide
+
+
+def test_typed_pct_still_takes_its_share_of_the_class():
     typed = _values([{"sym": "XLK", "bucket": "Equities", "pct": 100.0, "amt": 0}], {"XLK": 20000.0})
-    assert typed["XLK"] == pytest.approx(v["XLK"])
+    assert typed["XLK"] == pytest.approx(40000.0)
 
 
-def test_two_blank_picks_split_the_unfilled_part_equally():
+def test_new_blank_pick_takes_the_unfilled_room():
     v = _values([{"sym": "XLK", "bucket": "Equities", "pct": None, "amt": 0}, {"sym": "XLF", "bucket": "Equities", "pct": None, "amt": 0}],
                 {"XLK": 20000.0})
-    assert v["XLK"] == pytest.approx(30000.0) and v["XLF"] == pytest.approx(10000.0)      # $20K unfilled, $10K each on top of what is held
+    assert v["XLK"] == pytest.approx(20000.0) and v["XLF"] == pytest.approx(20000.0)      # $40K target, $20K held: the new stock gets the rest
 
 
 def test_target_equal_to_holdings_leaves_every_pick_matched():
