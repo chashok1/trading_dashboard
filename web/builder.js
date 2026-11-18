@@ -172,10 +172,10 @@
       S.sources = [...$('srcBox').querySelectorAll('[data-src]')].filter(i => i.checked).map(i => i.dataset.src);
       loadSourceNames();
     });
-    ['srcfSource', 'srcfClass', 'srcfFactor', 'srcfIndustry'].forEach(id => $(id).onchange = renderSourceNames);
+    ['srcfSource', 'srcfClass', 'srcfFactor', 'srcfIndustry', 'srcfAction'].forEach(id => $(id).onchange = renderSourceNames);
     $('srcfSector').onchange = () => { fillIndustries(''); renderSourceNames(); };
     $('clearFilters').onclick = () => {
-      ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor'].forEach(id => { $(id).value = ''; });
+      ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor', 'srcfAction'].forEach(id => { $(id).value = ''; });
       fillIndustries('');
       $('srcfText').value = ''; S.gapIdx = null; $('srcNamesHint').textContent = '';
       setFilters({});
@@ -343,17 +343,21 @@
   const noSector = n => !n.sector || ['Unmapped', 'Other'].includes(n.sector);   // an equity with no real sector: the 'No sector' row
   // 2026-11-17, user: the same filters also apply to the picked list on the right (a row there = a pick or a holding).
   // The name's sector / quad / style / source come from the names list when it has it, else from the cache of looked-up names.
+  // 2026-11-17, user: the Actionable Final Call as a column and a filter (any action = buy side or sell side)
+  const actOk = (a, f) => !f || (f === 'any' ? !!(a && (a.side === 'buy' || a.side === 'sell')) : !!(a && a.side === f));
+  const actHtml = a => !a || !a.label ? '' : `<span style="color:${a.side === 'buy' ? '#0f9d58' : a.side === 'sell' ? '#e5484d' : '#8a93a6'};font-weight:600;font-size:10px" title="Actionable Final Call: ${esc(a.label)}">${esc(a.code || a.label)}</span>`;
   function rowPassesFilters(sym, bucket) {
     const sc = $('srcfSector').value, ind = $('srcfIndustry').value;
     const fs = $('srcfSource').value, fc = $('srcfClass').value, ff = $('srcfFactor').value, tx = $('srcfText').value.trim().toUpperCase();
     const qsel = [...$('srcfQuad').querySelectorAll('input:checked')].map(i => parseInt(i.value, 10));
-    if (!sc && !ind && !fs && !fc && !ff && !tx && !qsel.length) return true;
+    const fa = $('srcfAction').value;
+    if (!sc && !ind && !fs && !fc && !ff && !tx && !qsel.length && !fa) return true;
     const n = (S.srcNames || []).find(x => x.sym === sym) || S.nameCache[sym] || {};
     return (!fs || (n.sources || []).includes(fs)) &&
       (!qsel.length || qsel.some(i => (n.quad || [])[i] === 'bull')) &&
       (!sc || (bucket === 'Equities' && (sc === '__none' ? noSector(n) : n.sector === sc))) && (!ind || n.industry === ind) &&
       (!fc || (fc === '__missing' ? bucket === 'Unmapped' : bucket === fc)) && factorOk(n, ff) &&
-      (!tx || sym.toUpperCase().includes(tx));
+      (!tx || sym.toUpperCase().includes(tx)) && actOk(((S.preview || {}).final_calls || {})[sym], fa);
   }
   function shownNames() {
     const all = S.srcNames || [];
@@ -366,7 +370,7 @@
       (!sc || (bucketOf(n) === 'Equities' && (sc === '__none' ? noSector(n) : n.sector === sc))) && (!ind || n.industry === ind) &&
       (!fc || (fc === '__missing' ? !bucketOf(n) : bucketOf(n) === fc)) && factorOk(n, ff) &&
       (!tx || n.sym.toUpperCase().includes(tx)) &&
-      (!hidePicked || !picked(n.sym)));
+      actOk(n.act, $('srcfAction').value) && (!hidePicked || !picked(n.sym)));
   }
 
   // 2026-11-17, user: "Allocate my holdings". Ticks the stocks the account holds (only in asset classes that have a target, or all of
@@ -466,12 +470,12 @@
     if (!all.length) { $('srcNamesRows').innerHTML = `<tr><td colspan="10" class="bld-muted">${S.sources.length ? 'No names on those lists today.' : 'Tick a list on the left to see its names here.'}</td></tr>`; return; }
     $('srcNamesRows').innerHTML = rows.map(n => {
       const b = bucketOf(n), on = !!picked(n.sym);
-      const cls = b ? esc(b) : `<select data-assign="${esc(n.sym)}"><option value="">Choose...</option>${BUCKETS.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
+      const cls = b ? esc(b) : `<select data-assign="${esc(n.sym)}"><option value="">Class...</option>${BUCKETS.map(x => `<option>${esc(x)}</option>`).join('')}</select>`;
       const st = (n.styles || []).map(t => { const f = STYLE_TO_FACTOR[String(t).toLowerCase()]; const sh = STY_ABBR[String(t).toLowerCase()] || t; return f ? ftag('factor', f, esc(sh), t + '. Filter: ' + ((FACTORS.find(x => x[0] === f) || [])[1] || f) + ' (a group of related tags)') : `<span title="${esc(t)}">${esc(sh)}</span>`; }).join(', ') || '<span class="bld-muted">-</span>';
       const heldNow = on;      // on = already in the picks on the right (held or not)      // 2026-11-19, user: a stock you already hold is already on the right: its box is ticked and locked
       return `<tr><td><input type="checkbox" data-pick="${esc(n.sym)}" ${on ? 'checked' : ''} ${(!b || heldNow) ? 'disabled' : ''} title="${!b ? 'Choose an asset class first' : (heldNow ? (heldSyms.has(n.sym) ? 'You hold this stock: it is already in the picks on the right (use the x there to remove it)' : 'Already in the picks on the right (use the x there to remove it)') : 'Add to picks')}"></td>` +
         `<td>${symHtml(n.sym)}</td>${canPickTd(n, b)}<td>${n.sources.map(c => ftag('src', c, esc(c), 'Show only the ' + c + ' list')).join(', ')}</td><td>${b ? ftag('cls', b, esc(CLS_ABBR[b] || b), 'Show only ' + b) : cls}</td><td>${(bucketOf(n) === 'Equities' && n.sector && !['Unmapped', 'Other'].includes(n.sector)) ? ftag('sector', n.sector, esc(SEC_ABBR[n.sector] || n.sector), 'Show only ' + n.sector) : '<span class="bld-muted">-</span>'}</td>` +
-        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td></tr>`;
+        `<td>${(n.quad || []).map((w, i) => `<span class="bld-qp ${w || 'none'}${w ? ' bld-ftag' : ''}${w && $('srcfQuad').querySelector('input[value="' + i + '"]:checked') ? ' on' : ''}"${w ? ` data-ftype="quad" data-fval="${i}"` : ''} title="Q${i + 1}: ${w || 'no view'}${w ? ' (click: filter to Quad ' + (i + 1) + ' favored)' : ''}">${w ? 'Q' + (i + 1) : '-'}</span>`).join('')}</td><td class="n">${n.beta == null ? '<span class="bld-muted">-</span>' : n.beta.toFixed(2)}</td><td>${st}</td><td>${actHtml(n.act)}</td></tr>`;
     }).join('') || '<tr><td colspan="10" class="bld-muted">No names match.</td></tr>';
     $('srcNamesRows').querySelectorAll('[data-pick]').forEach(c => c.onchange = () => { setPick(c.dataset.pick, c.checked); renderSourceNames(); schedule(0); });
     $('srcNamesRows').querySelectorAll('[data-assign]').forEach(sel => sel.onchange = () => {
@@ -540,7 +544,7 @@
     const gapCell = (pv, ref, haveRef, dec, judged) => {
       if (pv == null || ref == null || !hasPick || !haveRef) return '<td></td>';
       const g = pv - ref;
-      const c = judged ? judge(pv, ref, dec) : (Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn'));
+      const c = judged ? judge(pv, ref, dec) : '';   // 2026-11-17, user: no target = no verdict, so no green / red
       if (judged && !dec) {   // against a target: say it in words ("Short 20.0 pts" = 20 points of the account below the target)
         const a = Math.abs(g);
         return `<td class="n ${c}" style="white-space:nowrap" title="${a < 0.05 ? 'On target' : (g < 0 ? 'Short ' : 'Over ') + a.toFixed(1) + ' points of the account = ' + esc(usd(a / 100 * amt)) + '. Picks ' + pv.toFixed(1) + '% vs Target ' + ref.toFixed(1) + '%'}">${a < 0.05 ? 'On target' : gapPd(g)}</td>`;
@@ -752,9 +756,9 @@
     if ($('srcfHidePicked')) $('srcfHidePicked').checked = false;   // 2026-11-17, user: clicking a grid row to filter shows the picked stocks too
     if (add) return toggleFilter(type, val);
     const was = filterIsOn(type, val);
-    const others = ['srcfSource', 'srcfClass', 'srcfSector', 'srcfIndustry', 'srcfFactor', 'srcfText'].some(id => $(id).value && !(filterSel[type] === id && was))
+    const others = ['srcfSource', 'srcfClass', 'srcfSector', 'srcfIndustry', 'srcfFactor', 'srcfAction', 'srcfText'].some(id => $(id).value && !(filterSel[type] === id && was))
       || [...$('srcfQuad').querySelectorAll('input:checked')].some(c => !(type === 'quad' && was && c.value === val));
-    ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor', 'srcfText'].forEach(id => { $(id).value = ''; });
+    ['srcfSource', 'srcfClass', 'srcfSector', 'srcfFactor', 'srcfAction', 'srcfText'].forEach(id => { $(id).value = ''; });
     fillIndustries('');
     $('srcfQuad').querySelectorAll('input').forEach(c => { c.checked = false; });
     if (was && !others) renderSourceNames(); else toggleFilter(type, val);
@@ -824,11 +828,19 @@
       return (cp > 0 && ex > Math.min(500, 0.005 * amt)) ? ex * r.model / cp : 0;
     };
     const dash = '<span class="bld-muted">-</span>';
+    // 2026-11-17, user: the Actionable screen's Final Call, as a last column (green = buy side, red = sell side, grey = hold / other)
+    const actTd = sym => {
+      const fc = (res.final_calls || {})[sym];
+      if (!fc || !fc.label) return '<td></td>';
+      const col = fc.side === 'buy' ? '#0f9d58' : fc.side === 'sell' ? '#e5484d' : '#8a93a6';
+      return `<td title="Actionable Final Call: ${esc(fc.label)}"><span style="color:${col};font-weight:600;font-size:10px">${esc(fc.code || fc.label)}</span></td>`;
+    };
     // 2026-10-28, user: two columns -- Equities on the right, every other asset class on the left
-    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th></tr></thead><tbody>`;
+    const head = `<table class="bld-t bld-exp bld-symt"><thead><tr><th>Symbol ${copyBtn('list', rows.map(r => r.sym), 'Copy all ' + rows.length + ' symbols (every asset class)')}</th><th class="n">Picks</th><th class="n bld-tip" data-tip="Stk Room $ = the most you can still buy of this ONE stock (its cap less what you hold): its Max rule less what you hold. An ETF counts as an equity, so with no rule of its own it uses your usual stock limit. A dash = no per-stock limit for this class.">Stk Room $</th><th class="n bld-tip" data-tip="Ceiling $ = your own lower cap on the TOTAL you hold of this stock. The gray number is the Max rule; you can never go above it. Blank = use the rule. Stk Room $ is the cap less what you hold.">Ceiling $ <button type="button" class="bld-btn sm alt" data-ceilall style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % of every stock that has a ceiling, to its ceiling %">&rarr;</button></th><th class="n bld-tip" data-tip="Room Left $ = the room left in the buckets this stock sits in: cash, its asset class, sector, style and beta, after the other buys you planned. The word beside a $0 says which bucket is full. The amount planned is the smaller of Stk Room $ and Room Left $. Information only: nothing stops you going over.">Room Left $</th><th class="bld-tip" data-tip="Give two or more picks the same letter to buy any one of them (whichever is better when Actionable says Buy). The $ box beside the letter is the most to buy across the whole group; blank = the biggest room any member has.">One of</th><th class="n bld-tip" data-tip="Held % = this stock's held dollars as a share of its asset class (the class target when one is set, otherwise what you hold in the class). Same basis as the Picks % box. The class row shows the share of the whole account.">Held %</th><th class="n">Held $</th><th class="n">Gap $</th><th>To match</th><th title="The Actionable screen's Final Call for this stock">Action</th></tr></thead><tbody>`;
     const side = { left: '', right: '' };
     S.clsTotal = {};
     const overs = [];   // classes where the picks add up to more than the class allows
+    const mixSet = Object.keys((S.preset === 'custom' && S.mix) ? S.mix : (res.mix_target || {})).length > 0;
     for (const b of BUCKETS.concat(['Unmapped'])) {
       const mine = rows.filter(r => r.bucket === b).sort((x, y) => {
         // 2026-11-19, user: stocks you hold come first (biggest first); a stock you just ticked stays at the bottom, in the order ticked
@@ -847,9 +859,11 @@
       S.clsTotal[b] = sumShown;   // the class total on screen: a stock picked next may take what is left of 100
       const hdrShare = sumShown > 0 ? sumShown : clsShare;
       const hdrCls = sumShown > 0 ? (Math.abs(sumShown - 100) < 0.05 ? 'bld-up' : (sumShown > 100 ? 'bld-over' : 'bld-warn')) : '';   // green = exactly 100, amber = short, red = over
-      const overCls = sumPct > 100.5 || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5);
-      if (overCls) overs.push(`${CLS_ABBR[b] || b}: picks ${usd(mTot)}${clsShare != null ? ' = ' + clsShare.toFixed(1) + '% of the class' : ''}${(fin[b] || 0) > 0 ? ' (class target ' + usd(amt * fin[b] / 100) + ')' : ''}${sumPct > 100.5 ? ', your % boxes add to ' + sumPct.toFixed(1) + '%' : ''}`);
-      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5 ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(1)}%</span>` : ''}</td></tr>`;
+      // 2026-11-17, user: a blank / 0 class target (once a mix is set) is a target of 0, so any picks there are over the limit
+      const zeroTgt = mixSet && BUCKETS.includes(b) && !((fin[b] || 0) > 0);
+      const overCls = sumPct > 100.5 || ((fin[b] || 0) > 0 && mTot / amt * 100 > fin[b] + 0.5) || (zeroTgt && mTot > Math.min(500, 0.005 * amt));
+      if (overCls) overs.push(`${CLS_ABBR[b] || b}: picks ${usd(mTot)}${clsShare != null ? ' = ' + clsShare.toFixed(1) + '% of the class' : ''}${(fin[b] || 0) > 0 ? ' (class target ' + usd(amt * fin[b] / 100) + ')' : (zeroTgt ? ' (class target $0)' : '')}${sumPct > 100.5 ? ', your % boxes add to ' + sumPct.toFixed(1) + '%' : ''}`);
+      t += `<tr class="sec"><td title="${esc(b)}">${esc(CLS_ABBR[b] || b)} ${mine.length ? copyBtn('list', mine.map(r => r.sym), 'Copy the ' + mine.length + ' ' + b + ' symbols') : ''}</td><td class="n ${hdrCls || (overCls ? 'bld-over' : '')}" title="${(sumShown > 0 ? 'The Picks % shown in this class (typed, or gray where blank) add to ' + sumShown.toFixed(1) + '% (green = 100, amber = short, red = over). ' : '') + 'Picks in this class: ' + (clsShare != null ? clsShare.toFixed(1) + '% of the class, ' : '') + pct(mTot / amt, 1) + ' of the whole account'}"><span style="display:inline-block;width:48px;text-align:right;box-sizing:border-box;padding-right:4px">${hdrShare != null ? hdrShare.toFixed(1) : ''}</span><span style="display:inline-block;width:80px;padding-left:6px;box-sizing:border-box;font-size:9px"><span style="margin-right:12px;visibility:hidden">%</span><b>${usd(mTot)}</b></span></td><td></td><td></td><td></td><td></td><td class="n">${hTot > 0 && (fin[b] || 0) > 0 && amt ? pct(hTot / (amt * fin[b] / 100), 1) : (acctVal ? pct(hTot / acctVal, 1) : '')}</td><td class="n">${usd(hTot)}</td><td class="n">${sgnUsd(mTot - hTot)}</td><td>${(fin[b] || 0) > 0 ? `<span class="bld-muted bld-tsum">target ${(fin[b]).toFixed(1)}%</span>` : ''}</td><td></td></tr>`;
       mine.forEach(r => {
         const ph = r.pos && (fin[b] || 0) > 0 ? (r.pos.value / amt * 100 / fin[b] * 100).toFixed(1) : 'equal';
         const pCell = r.pk
@@ -873,8 +887,8 @@
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
           : '<td></td>';
         t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symHtml(r.sym)}${gl ? ` <span class="bld-badge" style="background:${gcol};color:#fff" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : ''}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
-          (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))} to reach target</td></tr>`
-            : `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td></tr>`);
+          (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))}</td>${actTd(r.sym)}</tr>`
+            : `<td>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? 'Held, not in picks' : '')))}</td>${actTd(r.sym)}</tr>`);
       });
       side[b === 'Equities' ? 'right' : 'left'] += t;
     }
@@ -1089,7 +1103,8 @@
     const dc = $('planDiscard'); if (dc) dc.hidden = !(PL.dirty && PL.name);   // 2026-11-17, user: Discard shows only while there are unsaved changes
     el.innerHTML = esc(act + view) + (PL.dirty ? ' · <b style="color:#dc2626;background:#fee2e2;padding:0 6px;border-radius:8px">UNSAVED</b>' : '');
   }
-  function planDirty() { PL.dirty = true; planPill(); }
+  let tdTimer = null;
+  function planDirty() { PL.dirty = true; planPill(); clearTimeout(tdTimer); tdTimer = setTimeout(todoLoad, 700); }   // the To do preview follows the edits
   function planFromState() {
     const res = S.preview || {}, base = Object.assign({}, S.mix || res.mix_target || {});
     const cls = {}; let sum = 0;
@@ -1226,7 +1241,10 @@
     if (!S.acct || S.acct === 'ALL') { $('tdEmpty').hidden = false; $('tdBody').hidden = true; $('tdSub').textContent = ''; return; }
     $('tdBody').classList.add('td-dim');
     try {
-      const t = await api(withDate('/api/builder/todo?account=' + encodeURIComponent(S.acct)));
+      // 2026-11-17, user: with unsaved changes the To do list is a preview of the plan on the screen (nothing is saved)
+      const t = PL.dirty && PL.name
+        ? await api(withDate('/api/builder/todo-preview'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: S.acct, plan: planFromState() }) })
+        : await api(withDate('/api/builder/todo?account=' + encodeURIComponent(S.acct)));
       if (seq !== TD.seq) return;
       TD.data = t; todoRender();
     } catch (e) { if (seq === TD.seq) tdMsg('Could not load the to-do list: ' + e.message, true); }
@@ -1251,7 +1269,7 @@
   function todoRender() {
     const t = TD.data;
     $('tdEmpty').hidden = t.state !== 'none'; $('tdBody').hidden = t.state === 'none';
-    $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (PL.dirty ? ' · your unsaved changes are not in this list' : '');
+    $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (t.preview ? ' · PREVIEW with your unsaved changes (not saved)' : '');
     if (t.state === 'none') return;
     $('tdSummary').innerHTML = tdSummaryHtml(t);
 

@@ -558,14 +558,44 @@ def pick_got(mem: list, holdings: dict, pick_base: dict, pend: dict) -> dict:
     return got
 
 
-def todo_page(session, d: date, account: str) -> dict:
-    """Everything the To do tab needs: sells, buys with Actionable's call, what is left."""
+def _buy_picks_from_grid(plan: dict, saved: list) -> list:
+    """2026-11-17: the unsaved grid's picks as BUY picks (same grouping as sync_buy_picks, but nothing is written). Ticks are kept
+    for a pick that already exists; the saved SELL ticks stay."""
+    groups, order = {}, []
+    for pk in (plan or {}).get("picks") or []:
+        if not pk.get("sym"):
+            continue
+        g = pk.get("grp") or ""
+        key = ("g", g) if g else ("s", pk["sym"])
+        if key not in groups:
+            groups[key] = {"members": [], "amount": 0.0}
+            order.append(key)
+        groups[key]["members"].append(str(pk["sym"]).upper())
+        groups[key]["amount"] = max(groups[key]["amount"], float(pk.get("amt") or 0.0))
+    old = {frozenset(p["members"]): p for p in saved if p["side"] == "BUY"}
+    out = [p for p in saved if p["side"] == "SELL"]
+    for k in order:
+        it = groups[k]
+        if it["amount"] > 0:
+            ex = old.get(frozenset(it["members"]))
+            out.append({"id": ex["id"] if ex else None, "side": "BUY", "members": it["members"], "amount": it["amount"],
+                        "ticked": bool(ex and ex["ticked"])})
+    return out
+
+
+def todo_page(session, d: date, account: str, plan: Optional[dict] = None) -> dict:
+    """Everything the To do tab needs: sells, buys with Actionable's call, what is left. With `plan` (the unsaved screen) it is
+    a preview of that plan; nothing is saved."""
     problems: list = []
     row = get_plan_row(session, account)
-    if not row["active"]:
+    active = pc.clean_plan(plan) if plan is not None else row["active"]   # the same shape activate() stores
+    if not active:
         return {"account": account, "state": "none", "problems": problems}
+    row = dict(row, active=active)
     snap = snapshot(session, d, account, problems)
     picks = list_picks(session, account)
+    if plan is not None:
+        picks = _buy_picks_from_grid(plan, picks)
     syms = sorted(set(snap["holdings"].keys()) | {m for pk in picks for m in pk["members"]})
     info = bd.name_info(session, d, syms, problems) if syms else {}
     calls = calls_for(session, d, syms)
@@ -579,7 +609,7 @@ def todo_page(session, d: date, account: str) -> dict:
                 pk["members"] = [max(pk["members"], key=lambda m: got[m])]     # the stock actually bought carries it to its own sector / class
     out = pc.todo(row["active"], {"value": snap["value"], "cash": snap["cash"], "holdings": snap["holdings"]},
                   picks, calls, info, style_groups(), final_call_side, sizes_for(session, d, account, syms), assume_sells=True, warn_only=True)
-    out.update({"account": account, "state": "active", "active_at": row["active_at"], "plan": row["active"],
+    out.update({"account": account, "state": "active", "active_at": row.get("active_at"), "plan": row["active"], "preview": plan is not None,
                 "snap_date": snap["snap_date"].isoformat() if snap["snap_date"] else None, "stale": snap["stale"],
                 "problems": problems})
     return out

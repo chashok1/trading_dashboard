@@ -219,12 +219,20 @@ def source_names(session, d: date, sources: list, problems: Optional[list] = Non
         for (sym,) in _q(session, "SELECT tos_symbol FROM user_my_stock WHERE moved_on IS NULL", None, problems, "user_my_stock"):
             on.setdefault(sym, set()).add("MINE")
             bull.add(sym)
+    if "ACT" in (sources or []):          # 2026-11-17, user: every stock the Actionable screen gives a buy- or sell-side Final Call
+        for (sym,) in _q(session, "SELECT tos_symbol FROM drv_actionable WHERE as_of_date = :d AND final_side IN ('buy', 'sell')",
+                         {"d": d}, problems, "drv_actionable"):
+            on.setdefault(sym, set()).add("ACT")
+            bull.add(sym)
     if not on:
         return []
     info = name_info(session, d, sorted(on), problems, uni_bucket)
+    act = {r[0]: {"label": r[1], "code": r[2], "side": r[3]} for r in _q(
+        session, "SELECT tos_symbol, final_action, final_code, final_side FROM drv_actionable WHERE as_of_date = :d AND tos_symbol = ANY(:s)",
+        {"d": d, "s": sorted(on)}, problems, "drv_actionable")}     # 2026-11-17, user: the Actionable Final Call as a column / filter
     out = []
     for sym in sorted(on):
-        out.append(dict(info[sym], sources=sorted(on[sym]), bullish=sym in bull))
+        out.append(dict(info[sym], sources=sorted(on[sym]), bullish=sym in bull, act=act.get(sym)))
     return out
 
 

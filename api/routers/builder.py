@@ -103,6 +103,15 @@ def post_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
                 info[x["sym"]]["bucket"] = x["bucket"]
         res["outlooks"] = {k: v.get("outlook") for k, v in info.items() if v.get("outlook")}
         res["group_outlooks"] = _group_outlooks(s, d)
+        # 2026-11-17, user: the Actionable screen's Final Call for every picked / held name (a column in the picked list)
+        try:
+            want = sorted(set(pvals) | set(hvals) | {str(x.get("sym") or "").upper() for x in ((body.get("plan") or {}).get("picks") or []) if x.get("sym")})
+            res["final_calls"] = {r[0]: {"label": r[1], "code": r[2], "side": r[3]} for r in s.execute(text(
+                "SELECT tos_symbol, final_action, final_code, final_side FROM drv_actionable WHERE as_of_date = :d AND tos_symbol = ANY(:s)"),
+                {"d": d, "s": want}).all()} if want else {}
+        except Exception:
+            s.rollback()
+            res["final_calls"] = {}
         # percent of the WHOLE account (one basis, same as the plan check); no base for the whole-book preview
         base = float(acct.get("value") or 0.0) if account != "ALL" else None
         res["exposure"] = {"picked": bd.exposure(pvals, info, float(res.get("amount") or 0.0) or base), "held": bd.exposure(hvals, info, base)}
@@ -200,7 +209,7 @@ def get_sources():
     """Hedgeye source lists the pick pool can be built from, and the validation checks."""
     from etl.builder_engine import CHECKS
     imported = _source_imported()
-    return {"sources": [{"code": "FUND", "label": "Fixed fund list"}, {"code": "HELD", "label": "Your holdings"}, {"code": "MINE", "label": "My stocks"}] +
+    return {"sources": [{"code": "FUND", "label": "Fixed fund list"}, {"code": "HELD", "label": "Your holdings"}, {"code": "MINE", "label": "My stocks"}, {"code": "ACT", "label": "Actionable actions"}] +
                        [{"code": k, "label": v} for k, v in bd.SOURCE_LABELS.items()],
             "imported": imported,
             "checks": [{"key": k, "label": v} for k, v in CHECKS.items()]}
@@ -280,6 +289,19 @@ def delete_plan(account: str = Query(...), name: Optional[str] = Query(None)):
     with session_scope() as s:
         ps.delete_plan(s, account, name)
     return {"ok": True}
+
+
+@router.post("/api/builder/todo-preview")
+def post_todo_preview(body: dict = Body(...), date: Optional[str] = Query(None)):
+    """The To do list for the plan on the screen, unsaved changes included. Nothing is saved."""
+    if not body.get("account"):
+        raise HTTPException(status_code=400, detail="Choose an account.")
+    d = _resolve_date(date)
+    with session_scope() as s:
+        out = ps.todo_page(s, d, body["account"], plan=body.get("plan") or {})
+    out["as_of"] = d.isoformat()
+    out["data_stale"] = _stale(d)
+    return out
 
 
 @router.get("/api/builder/todo")
