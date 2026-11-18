@@ -723,7 +723,6 @@
                    ['r_hi', 'Hi', 'How far the price is below its high line (TRR), in %. Negative = above it']];
   // 2026-11-10, user-directed: 'Ext' radio -- pre-market / after-hours price and its move from the last regular close. Display only.
   var _EXT_COLS = [['e_pct', '%', 'Move of the pre-market / after-hours price from the last regular close, in %'],
-                   ['e_px', 'Price', 'Pre-market / after-hours price'],
                    ['e_ses', 'Ses', 'Session: Pre = before the open, Post = after the close. Hover a number for the time of the price']];
   function _periodHeader(area, force, group) {
     if (!force && !_volOn && !_rngOn && !_extOn && !_PERIOD_AREAS[area.area_key]) return '';
@@ -798,10 +797,10 @@
       '• ' + (e.sess === 'PRE' ? 'Pre-market' : 'After-hours') + ' price: ' + _fmtPrice(e.px),
       '• Last regular close: ' + (e.ref == null ? '--' : _fmtPrice(e.ref)),
       '• Price as of: ' + (e.t || '--') + ' ET'].join(String.fromCharCode(10))).split(String.fromCharCode(10)).join('&#10;') + '"' : '';
-    if (!e) return cell(_extOpen ? '' : '–', 'na') + cell('', 'na') + cell('', 'na');
+    if (!e) return cell(_extOpen ? '' : '–', 'na') + cell('', 'na');
     var p = e.pct, cls = p == null ? '' : p > 0 ? 'up' : p < 0 ? 'dn' : '';
     if (m.inverted && cls) cls = cls === 'up' ? 'dn' : 'up';
-    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(2), cls) + cell(_fmtPrice(e.px)) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
+    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(2) + '%', cls) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
   }
   async function _loadExtMap() {
     try {
@@ -815,6 +814,20 @@
   }
   function _altCells(m, dispName) { return _extOn ? _extCells(m) : _rngOn ? _rngCells(m) : _volCells(m, dispName); }
   // Hover text for the symbol: name plus every value, one bullet each.
+  // Hover on the Investable/Chop/Elevated badge: the bucket ranges for this symbol (same edges as api/_helpers.py::vol_zone:
+  // investable <= low, chop <= high, elevated above high) with the current bucket marked.
+  function _zoneTipAttr(m, zone) {
+    if (m.vol_low == null || m.vol_high == null) return '';
+    var lo = Number(m.vol_low), hi = Number(m.vol_high);
+    var f = function (x) { return String(Math.round(x * 100) / 100); };
+    var mark = function (z) { return z === zone ? '  <-- now' : ''; };
+    var nl = String.fromCharCode(10);
+    var tip = [(m.label || m.symbol) + (m.last != null ? ' ' + f(Number(m.last)) : ''),
+      '• Investable: up to ' + f(lo) + mark('investable'),
+      '• Chop: ' + f(lo) + ' - ' + f(hi) + mark('chop'),
+      '• Elevated: above ' + f(hi) + mark('elevated')].join(nl);
+    return ' title="' + esc(tip).split(nl).join('&#10;') + '"';
+  }
   function _volTip(m, dispName) {
     var v = _volOf(m);
     if (!v) return null;
@@ -930,7 +943,7 @@
             // was never wired in anywhere until now.
             '<span class="msr-gauge-vix">' + esc(_fmtPrice(m.last) || '') + '</span>' +
             '<div class="msr-gauge-wrap">' +
-              '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
+              '<span class="msr-gauge ' + gaugeClass + '"' + _zoneTipAttr(m, zone) + '>' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
               (vol ? _altCells(m, m.label) : perf ? _perfPills(m, area) :
