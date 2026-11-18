@@ -74,7 +74,7 @@
   // ---------------------------------------------------------------- init
   // Every panel gets a small button (top right) that collapses it to its title. Remembered in this browser only.
   function makePanelsCollapsible() {
-    const panels = [['.bld-acct', 'Account and plan', 'acct'], ['#srcBox', 'Lists to choose from', 'lists', '.bld-card'], ['#srcNames', 'Names', 'names'],
+    const panels = [['.bld-acct', 'Account and plan', 'acct'], ['#srcNames', 'Names', 'names'],
       ['.bld-picks', 'Stock picks', 'picks'], ['#todoCard', 'To do', 'todo']];
     let st = {};
     try { st = JSON.parse(localStorage.getItem('bld_cx') || '{}') || {}; } catch (e) { st = {}; }
@@ -85,7 +85,7 @@
       el.dataset.ctitle = title;
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'bld-cx';
-      if (key === 'acct' || key === 'picks') { b.classList.add('bld-cx-l'); el.classList.add('cx-left'); }   // 2026-11-17, user: these two panels carry the button before their label (Account / Symbol)
+      // 2026-11-17, user: every panel's collapse button sits at the right edge   // 2026-11-17, user: these two panels carry the button before their label (Account / Symbol)
       const paint = () => { const shut = el.classList.contains('cx-collapsed'); b.innerHTML = shut ? '&#9656;' : '&#9662;'; b.title = (shut ? 'Show ' : 'Hide ') + title; };
       b.onclick = () => {
         el.classList.toggle('cx-collapsed');
@@ -122,6 +122,7 @@
     try {
       const so = await api('/api/builder/sources');
       S.srcList = so.sources || [];
+      S.srcImported = so.imported || {};
       if (S.srcList.some(x => x.code === 'HELD')) S.sources = ['HELD'];
       renderSources();
     } catch (e) { problems(['Could not load source lists: ' + e.message]); }
@@ -165,7 +166,7 @@
 
   // ---------------------------------------------------------------- Hedgeye source pool + checks
   function renderSources() {
-    $('srcBox').innerHTML = S.srcList.map(x => `<label><input type="checkbox" data-src="${esc(x.code)}" ${S.sources.includes(x.code) ? 'checked' : ''}> ${esc(x.code)} <span class="bld-muted">${esc(x.label)}</span></label>`).join('');
+    $('srcBox').innerHTML = S.srcList.map(x => `<label><input type="checkbox" data-src="${esc(x.code)}" ${S.sources.includes(x.code) ? 'checked' : ''}> ${esc(x.code)} <span class="bld-muted">${esc(x.label)}</span>${S.srcImported && S.srcImported[x.code] ? ` <span class="bld-muted" title="Last imported ${esc(S.srcImported[x.code])}">${esc(S.srcImported[x.code].slice(5, 7) + '/' + S.srcImported[x.code].slice(8, 10))}</span>` : ''}</label>`).join('');
     $('srcBox').querySelectorAll('[data-src]').forEach(c => c.onchange = () => {
       S.sources = [...$('srcBox').querySelectorAll('[data-src]')].filter(i => i.checked).map(i => i.dataset.src);
       loadSourceNames();
@@ -184,12 +185,16 @@
     $('srcfText').oninput = renderSourceNames;
     $('srcfHidePicked').onchange = renderSourceNames;
     $('selShown').onclick = selectShown;
+    $('clearTargets').onclick = e => {          // 2026-11-17, user: Clear targets is a button on the charts-and-grids panel (left)
+      e.preventDefault(); e.stopPropagation();   // it sits in the panel's heading, which opens and closes the panel
+      if (!window.confirm('Clear every target in all the grids? Your picks stay. Nothing is saved until you press Save.')) return;
+      clearTargetsIn('all');
+    };
     $('srcNamesRows').addEventListener('click', e => { const t = e.target.closest('[data-ftype]'); if (t) toggleFilter(t.dataset.ftype, t.dataset.fval); });
     // Start from my holdings (one direct function, no hidden flags). A click ticks every stock the account holds (your other
     // picks stay), sets each one's share of its class, sets the asset class % to the current mix, fills the sector / style /
     // beta limits and the Buy $ gaps, and says what it did. The automatic pass on opening an account (auto = true) only ticks
     // and matches the held stocks: it never fills the limits or any Buy $.
-    $('matchHold').onclick = () => startFromHoldings(false);
     startFromHoldings = function (auto) {
       const held = ((S.preview && S.preview.account && S.preview.account.holdings) || []);
       const hold = {};
@@ -526,8 +531,8 @@
     const sec = t => { curKey = t.split(' ·')[0]; vizRows[curKey] = []; return `\u0001${t}\u0002`; };
     const chosen = (S.preset === 'custom' && S.mix) ? S.mix : (res.mix_target || {});   // what you typed, not the rescaled copy
     // 2026-11-17: against a target of 0, any pick is Over (no 5-point leeway)
-    // 2026-11-17, user: any pick over the target is red (a 1% sector limit with 3.9% picked is over); only a SHORTFALL gets the 5-point leeway before amber
-    const judge = (pv, tv, dec) => { const tolUp = 0.05, tolDn = (dec || tv === 0) ? 0.05 : 5; return pv > tv + tolUp ? 'bld-over' : (pv < tv - tolDn ? 'bld-warn' : 'bld-up'); };
+    // 2026-11-17, user: amber until the target is reached (no "close enough"), green on target, red over
+    const judge = (pv, tv) => { const tol = 0.05; return pv > tv + tol ? 'bld-over' : (pv < tv - tol ? 'bld-warn' : 'bld-up'); };
     // gap = picks minus its reference (the target if one is set, else the portfolio); coloured against a target
     // 2026-11-17, user: Gap in points and dollars, each right-aligned in a fixed-width box so they line up row to row
     const gapPd = g => `<span style="display:inline-block;width:62px;text-align:right">${(g >= 0 ? '+' : '−') + '$' + Math.round(Math.abs(g) / 100 * amt / 1000)}K</span>`;   // 2026-11-17, user: amount only, no points
@@ -664,8 +669,9 @@
 
   // The Preset sits between the Asset class bar chart and its grid: it only fills the asset class % boxes below it.
   function presetHtml() {
-    const opts = (S.presetOpts || [['current', 'My current mix'], ['custom', 'Custom']]).map(p => `<option value="${esc(p[0])}"${p[0] === S.preset ? ' selected' : ''}>${esc(p[1])}</option>`).join('');
-    return `<b style="min-width:0;font-weight:600" class="bld-tip" data-tip="A ready-made mix that fills the asset class % boxes below. Type a % in any box and this switches to Custom.">Fill classes from</b><select id="preset">${opts}</select><button class="bld-btn sm alt" id="allocHold" title="Tick the stocks you hold and give each its share of its asset class (in proportion to what you hold), laid over the Target % you set. Targets are not changed.">Allocate my holdings</button><button class="bld-btn sm alt" id="clearTargets" title="Clear every Target box in all the grids (asset classes, risk, Quad, sectors, style). Nothing is saved until you press Save, and your picks are not touched.">Clear targets</button>`;
+    // 2026-11-17, user: ONE control. "My holdings" = everything from the account; a preset = class % only; Clear = every target. It resets to "Start from..." after it runs.
+    const pre = (S.presetOpts || []).filter(p => p[0] !== 'current' && p[0] !== 'custom').map(p => `<option value="p:${esc(p[0])}">${esc(p[1])}</option>`).join('');
+    return `<select id="startFrom" title="Create a new plan from: your holdings (class %, picked stocks, sector / style / beta limits, Buy $ gaps), a ready-made mix (asset class % only). Nothing is saved until you press Save."><option value="">Create new plan from...</option><option value="hold">My holdings</option>${pre ? '<option disabled>------------</option>' + pre : ''}</select>`;
   }
   const tgtOf = key => (S.targets[key] == null ? null : S.targets[key]);
 
@@ -728,14 +734,14 @@
     });
     // the preset + Allocate controls live on the Charts and grids heading line
     const slot = $('presetSlot'); if (slot) slot.innerHTML = presetHtml();
-    const ct = slot && slot.querySelector('#clearTargets');
-    if (ct) ct.onclick = () => {                       // 2026-11-18, user: one button clears every target in every grid
-      if (!window.confirm('Clear every target in all the grids? Your picks stay. Nothing is saved until you press Save.')) return;
-      clearTargetsIn('all');
+    const sf = slot && slot.querySelector('#startFrom');
+    if (sf) sf.onchange = () => {
+      const v = sf.value; sf.value = '';
+      if (!v) return;
+      if (PL.dirty && !window.confirm('This replaces your current numbers (you have unsaved changes). Continue?')) return;
+      if (v === 'hold') { startFromHoldings(false); return; }
+      S.preset = v.slice(2); S.mix = null; planDirty(); schedule();     // a ready-made mix: the asset class % boxes only
     };
-    const ah = slot && slot.querySelector('#allocHold'); if (ah) ah.onclick = () => allocateHoldings();
-    const pe = slot && slot.querySelector('#preset');
-    if (pe) pe.onchange = () => { S.preset = pe.value; if (S.preset !== 'custom') { S.mix = null; S.allocNext = true; } planDirty(); schedule(); };
     host.querySelectorAll('[data-tgt-asset]').forEach(i => i.onchange = () => setAssetTarget(i.dataset.tgtAsset, i.value));
     markActiveFilters();
   }
@@ -884,7 +890,7 @@
   function renderPicks(res) {
     Object.assign(S.outlooks, res.outlooks || {});
     if ($('picksCount')) $('picksCount').textContent = S.picks.length ? `${S.picks.length} picked` : '';
-    const pcb = document.querySelector('#cmpPanel .bld-copy'); if (pcb) pcb.hidden = !S.picks.length;
+    const pcb = document.querySelector('.bld-copy[data-copy="picks"]'); if (pcb) pcb.hidden = !S.picks.length;
     $('cmpTable').innerHTML = compareTable(res);
     bindCmp();
     // keep the cursor where it is: typing in one box and clicking another must not lose the click when the table redraws
@@ -1078,7 +1084,9 @@
     const el = $('planPill'); if (!el) return;
     const act = PL.checked ? 'Active plan: ' + PL.checked + (PL.activeAt ? ' (since ' + PL.activeAt.slice(5, 10) + ')' : '') : 'No active plan';
     const view = PL.name && PL.name !== PL.checked ? ' · viewing "' + PL.name + '"' : '';
-    el.textContent = act + view + (PL.dirty ? ' · unsaved' : '');
+    // 2026-11-17, user: say Unsaved loudly, in red
+    const dc = $('planDiscard'); if (dc) dc.hidden = !(PL.dirty && PL.name);   // 2026-11-17, user: Discard shows only while there are unsaved changes
+    el.innerHTML = esc(act + view) + (PL.dirty ? ' · <b style="color:#dc2626;background:#fee2e2;padding:0 6px;border-radius:8px">UNSAVED</b>' : '');
   }
   function planDirty() { PL.dirty = true; planPill(); }
   function planFromState() {
@@ -1371,6 +1379,10 @@
     if (!$('planPill')) return;
     $('planSave').onclick = () => planSave().catch(e => planNote(esc(e.message), true));
     $('planDelete').onclick = planDelete;
+    $('planDiscard').onclick = async () => {
+      if (!window.confirm('Discard your unsaved changes and go back to the saved plan "' + PL.name + '"?')) return;
+      await planLoad(PL.name); tickHeldPicks(); renderSourceNames(); schedule(0);
+    };
     $('planSaveAs').onclick = () => planSaveAs().catch(e => planNote(esc(e.message), true));
     $('planActivate').onclick = () => planActivate().catch(e => planNote(esc(e.message), true));
     $('planVer').onchange = () => {

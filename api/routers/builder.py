@@ -167,12 +167,42 @@ def post_asset_class(body: dict = Body(...)):
     return {"sym": sym, "bucket": bucket}
 
 
+# 2026-11-17, user: show when each list was last imported (mm/dd). The file-load log first, else the newest snapshot of its raw history table.
+_SRC_HIST = {"PS": "hist_ps", "GOANY": "hist_goany", "II": "hist_ii", "CALL": "hist_call", "ETF": "hist_etf", "SSS": "hist_sss", "RR": "hist_rr"}
+
+
+def _source_imported() -> dict:
+    out: dict = {}
+    try:
+        with session_scope() as s:
+            try:
+                for ft, dt in s.execute(text("SELECT upper(file_type), max(processed_at) FROM meta_file_processed WHERE file_type IS NOT NULL GROUP BY 1")).all():
+                    if ft in _SRC_HIST and dt:
+                        out[ft] = dt.date().isoformat()
+            except Exception:
+                s.rollback()
+            for code, tbl in _SRC_HIST.items():
+                if code in out:
+                    continue
+                try:
+                    dt = s.execute(text("SELECT max(snapshot_date) FROM %s" % tbl)).scalar()
+                    if dt:
+                        out[code] = dt.isoformat()
+                except Exception:
+                    s.rollback()
+    except Exception:
+        pass
+    return out
+
+
 @router.get("/api/builder/sources")
 def get_sources():
     """Hedgeye source lists the pick pool can be built from, and the validation checks."""
     from etl.builder_engine import CHECKS
+    imported = _source_imported()
     return {"sources": [{"code": "FUND", "label": "Fixed fund list"}, {"code": "HELD", "label": "Your holdings"}, {"code": "MINE", "label": "My stocks"}] +
                        [{"code": k, "label": v} for k, v in bd.SOURCE_LABELS.items()],
+            "imported": imported,
             "checks": [{"key": k, "label": v} for k, v in CHECKS.items()]}
 
 
