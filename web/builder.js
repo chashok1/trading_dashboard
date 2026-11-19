@@ -1052,7 +1052,7 @@
     $('symTable').querySelectorAll('[data-pct]').forEach(i => i.onchange = () => {
       const p = picked(i.dataset.pct);
       const fb = parseFloat(i.dataset.fin) || 0;     // 2026-11-19: the box is a % of the class, stored as typed (fb = the class target % of the account)
-      if (p && fb > 0) { p.pct = i.value === '' ? null : Math.min(100, Math.max(0, parseFloat(i.value))); schedule(0); }
+      if (p && fb > 0) { p.pct = i.value === '' ? null : Math.min(100, Math.max(0, parseFloat(i.value))); planDirty(); schedule(0); }
     });
     $('symTable').querySelectorAll('[data-mymax]').forEach(i => i.onchange = () => {
       const sym = i.dataset.mymax;
@@ -1381,7 +1381,7 @@
     $('tdBody').classList.add('td-dim');
     try {
       // 2026-11-17, user: with unsaved changes the To do list is a preview of the plan on the screen (nothing is saved)
-      const t = PL.dirty && PL.name
+      const t = PL.name && (PL.dirty || PL.name !== PL.checked)   // 2026-11-19, user: a loaded plan gets its To do list at once (a preview when it is not the active plan)
         ? await api(withDate('/api/builder/todo-preview'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: S.acct, plan: planFromState() }) })
         : await api(withDate('/api/builder/todo?account=' + encodeURIComponent(S.acct)));
       if (seq !== TD.seq) return;
@@ -1408,7 +1408,7 @@
   function todoRender() {
     const t = TD.data;
     $('tdEmpty').hidden = t.state !== 'none'; $('tdBody').hidden = t.state === 'none';
-    $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (t.preview ? ' · PREVIEW with your unsaved changes (not saved)' : '');
+    $('tdSub').textContent = t.state === 'none' ? '' : ' · ' + S.acct + ' · active plan since ' + String(t.active_at || '').slice(5, 10) + (t.preview ? (PL.dirty ? ' · PREVIEW with your unsaved changes (not saved)' : ' · PREVIEW of the loaded plan (it is not the active plan)') : '');
     if (t.state === 'none') return;
     $('tdSummary').innerHTML = tdSummaryHtml(t);
 
