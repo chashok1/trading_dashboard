@@ -55,13 +55,11 @@ Note: `etl/` is not hot-reloaded by uvicorn (`--reload-dir api`): touch `api/rou
 
 ## Blank %, Unallocated / Over target (2026-11-18, replaces the "held + planned Buy $" sizing above for picks without a buy-one-of letter)
 `etl/builder_engine.py` (manual build): a typed % = that % of the class dollars. A HELD stock with no % keeps what you hold (a bigger or smaller class target never
-resizes it). A NEW stock with no % takes an equal share of what is still unfilled in the class (class target less the typed picks, the held blank picks and any
-buy-one-of group money). Buy-one-of picks keep held + group $. Limits never change sizing (they only warn).
-On screen each class's picks grid ends with one line when the picks differ from the class target by more than the on-plan band: **Unallocated +$X** (blue, room the
+resizes it). A NEW stock with no % gets nothing (2026-11-19: typing a % on one stock must never move the other rows; only the class's last line changes). Buy-one-of picks keep held + group $. Limits never change sizing (they only warn).
+On screen each class's picks grid ends with one line when the picks differ from the class target by more than the on-plan band: **Left to set** (blue; was Unallocated; shows class %, account % and $; shown unless the class adds to exactly 100.0%) (blue, room the
 class has that no stock was given) or **Over target -$X** (red). Nothing is bought or sold for you. The line's button works only on stocks with no typed % and only
 when pressed: **Spread equally** gives the unallocated money to them equally, **Trim evenly** takes the excess off the held ones in proportion to what they hold
-(both write a typed % on those stocks, `web/builder.js` `data-unal`). The Picks box is typed as a % of the WHOLE account; the class % and dollars show beside it
-(stored as the class %). The saved planned buy of a blank pick is its gap from the build (`runPreview`), and `room_for` counts it for the other picks
+(both write a typed % on those stocks, `web/builder.js` `data-unal`). 2026-11-19: the Picks box is typed as a % of the CLASS (stored as typed); the account % and dollars show beside it. In the left grids the SCTR Target box is a % of the Equities target (stored as % of the account); Style/Quad/Risk stay % of the account. The saved planned buy of a blank pick is its gap from the build (`runPreview`), and `room_for` counts it for the other picks
 (`api/routers/builder.py::_pct_amt`). Room Left $ shows a red "Over <limit> +$X" when a buy is more than its room, and a line above the picks grids lists the Quad /
 Sector / Style / Beta rows the picks go over ("All limits OK" otherwise). Asset class names show the min-max % of one position (`GET /api/builder/class-bands`,
 from `ref_asset_allocation`). Tests: `tests/test_blank_pct_sizing.py`. Note: `etl/` is not hot-reloaded: touch `api/routers/builder.py` after an engine edit.

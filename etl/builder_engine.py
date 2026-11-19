@@ -249,7 +249,7 @@ def build_positions(ctx: dict, req: dict) -> dict:
             blank_new = [x for x in blank if _hv(x["sym"]) <= 0]
             grouped_d = sum(_hv(x["sym"]) + max(0.0, float(x.get("amt") or 0.0)) for x in ok if x.get("pct") is None and x.get("grp"))
             unfilled = max(0.0, buy - typed_d - grouped_d - sum(_hv(x["sym"]) for x in blank if _hv(x["sym"]) > 0))
-            share = unfilled / len(blank_new) if blank_new else 0.0
+            share = 0.0   # 2026-11-19, user: a new stock with no % gets nothing; typing a % on one stock must not move the others (the screen's Left to set / Over target line shows the difference)
             for x in ok:
                 sym = x["sym"]
                 f = funds[sym]
@@ -263,7 +263,7 @@ def build_positions(ctx: dict, req: dict) -> dict:
                 else:
                     dollars = held_v if held_v > 0 else share
                     detail = ["Picked by you", ("holds %s, no %% typed: kept as held" % _usd(held_v)) if held_v > 0
-                              else "new pick: an equal share (%s) of what is still unfilled in %s" % (_usd(share), bucket)]
+                              else "new pick, no %% typed: nothing allocated (type a %% or use Spread equally)"]
                 add_pick(sym, dollars, bucket, f.get("area") or bucket, "Picked by you", detail + _src_line(f), "manual")
             continue
         cands = [dict(sym=s, **{k: v for k, v in f.items() if k != "sym"}) for s, f in funds.items()

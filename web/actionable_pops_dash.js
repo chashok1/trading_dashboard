@@ -145,7 +145,7 @@ function _rsiColor(v) { if (v == null) return ''; var n = Number(v);
     var t = e.target && e.target.closest ? e.target : null;
     if (!t) return null;
     var bld = t.closest('[data-actpop]');
-    if (bld) return { el: bld, kind: 'act' };
+    if (bld) return (window.actPopHoverOn && !window.actPopHoverOn()) ? null : { el: bld, kind: 'act' };   // 2026-11-18: the Builder's 💬 switch (act_pop_toggle.js)
     var tag = t.closest('.msr-row .ms-tag');
     if (tag) return { el: tag, kind: 'act' };
     var nm = t.closest('.msr-row .msr-name-tick');

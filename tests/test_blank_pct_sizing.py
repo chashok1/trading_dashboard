@@ -1,4 +1,4 @@
-"""Builder: a held pick with a blank % stays as held; a NEW blank pick takes an equal share of what is still unfilled in the class target (2026-11-18)."""
+"""Builder: a held pick with a blank % stays as held; a NEW blank pick gets nothing (2026-11-19: typing a % on one stock never moves the others)."""
 import pytest
 
 from etl import builder_engine as eng
@@ -26,10 +26,10 @@ def test_typed_pct_still_takes_its_share_of_the_class():
     assert typed["XLK"] == pytest.approx(40000.0)
 
 
-def test_new_blank_pick_takes_the_unfilled_room():
+def test_new_blank_pick_gets_nothing_so_other_rows_never_move():
     v = _values([{"sym": "XLK", "bucket": "Equities", "pct": None, "amt": 0}, {"sym": "XLF", "bucket": "Equities", "pct": None, "amt": 0}],
                 {"XLK": 20000.0})
-    assert v["XLK"] == pytest.approx(20000.0) and v["XLF"] == pytest.approx(20000.0)      # $40K target, $20K held: the new stock gets the rest
+    assert v["XLK"] == pytest.approx(20000.0) and v.get("XLF", 0.0) == pytest.approx(0.0)      # $40K target, $20K held: the new stock is not given the rest (2026-11-19)
 
 
 def test_target_equal_to_holdings_leaves_every_pick_matched():
