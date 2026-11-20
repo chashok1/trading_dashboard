@@ -599,14 +599,14 @@
     const judge = (pv, tv) => { const tol = 0.05; return pv > tv + tol ? 'bld-over' : (pv < tv - tol ? 'bld-warn' : 'bld-up'); };
     // gap = picks minus its reference (the target if one is set, else the portfolio); coloured against a target
     // 2026-11-17, user: Gap in points and dollars, each right-aligned in a fixed-width box so they line up row to row
-    const gapPd = g => `<span style="display:inline-block;width:62px;text-align:right">${(g >= 0 ? '+' : '−') + '$' + Math.round(Math.abs(g) / 100 * amt / 1000)}K</span>`;   // 2026-11-17, user: amount only, no points
+    const gapPd = (g, words) => `<span style="display:inline-block;width:${words ? '100%' : '62px'};text-align:right;${words ? 'font-size:10px;' : ''}">${(words ? (g >= 0 ? 'Over ' : 'Short ') : (g >= 0 ? '+' : '−')) + '$' + Math.round(Math.abs(g) / 100 * amt / 1000)}K</span>`;   // 2026-11-17, user: amount only, no points
     const gapCell = (pv, ref, haveRef, dec, judged) => {
       if (pv == null || ref == null || !hasPick || !haveRef) return '<td></td>';
       const g = pv - ref;
       const c = judged ? judge(pv, ref, dec) : '';   // 2026-11-17, user: no target = no verdict, so no green / red
       if (judged && !dec) {   // against a target: say it in words ("Short 20.0 pts" = 20 points of the account below the target)
         const a = Math.abs(g);
-        return `<td class="n ${c}" style="white-space:nowrap" title="${a < 0.05 ? 'On target' : (g < 0 ? 'Short ' : 'Over ') + a.toFixed(1) + ' points of the account = ' + esc(usd(a / 100 * amt)) + '. Picks ' + pv.toFixed(1) + '% vs Target ' + ref.toFixed(1) + '%'}">${a < 0.05 ? 'On target' : gapPd(g)}</td>`;
+        return `<td class="n ${c}" style="white-space:nowrap" title="${a < 0.05 ? 'On target' : (g < 0 ? 'Short ' : 'Over ') + a.toFixed(1) + ' points of the account = ' + esc(usd(a / 100 * amt)) + '. Picks ' + pv.toFixed(1) + '% vs Target ' + ref.toFixed(1) + '%'}">${a < 0.05 ? 'On target' : gapPd(g, true)}</td>`;
       }
       if (!dec) return `<td class="n ${c}" style="white-space:nowrap" title="Picks minus Held: ${Math.abs(g).toFixed(1)} points = ${esc(usd(Math.abs(g) / 100 * amt))}">${gapPd(g)}</td>`;
       return `<td class="n ${c}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec)}</td>`;
@@ -667,7 +667,7 @@
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv, false, /^sector:/.test(key) ? (fin.Equities > 0 ? fin.Equities : 0) : 0, key.startsWith('sector:') && fin.Equities > 0) : (tvx > 0 ? `<td class="n" style="white-space:nowrap" title="Calculated: 100% minus the asset class targets above"><b style="display:inline-block;width:37px;padding-right:3px;box-sizing:border-box;text-align:right">${tvx.toFixed(1)}</b>${amt ? `<span style="display:inline-block;width:22px;margin:0 3px 0 6px"></span><span style="color:var(--text-1);font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tvx / 100 * amt))} of the account">$${Math.round(tvx / 100 * amt / 1000)}K</span>` : ''}</td>` : '<td></td>'));
       if (!asset && key && tv != null && hasPick && pv != null && (pv - tv) / 100 * amt > Math.min(500, 0.005 * amt)) S.limitOvers.push({ label: String(label).replace(/<[^>]*>/g, ''), by: (pv - tv) / 100 * amt });
       if (hasHeld && hv != null && (asset || key)) (heldMap[curKey] = heldMap[curKey] || {})[asset ? 'asset:' + asset : key] = hv;
-      if (hasPick && pv != null && key) (pickMap[curKey] = pickMap[curKey] || {})[key] = pv;   // 2026-11-20: for the Sectors 'from picks' button (No sector included, so the Targets add to the whole Equities target)
+      if (hasPick && pv != null && (key || asset)) (pickMap[curKey] = pickMap[curKey] || {})[asset ? 'asset:' + asset : key] = pv;   // 2026-11-20: for the Sectors 'from picks' button (No sector included, so the Targets add to the whole Equities target)
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const eqB = key && key.startsWith('sector:') && fin.Equities > 0 ? fin.Equities : 0, kq = eqB ? 100 / eqB : 1;   // 2026-11-18, user: the SCTR grid shows Held % and Picks % as a share of the Equities target
@@ -738,7 +738,7 @@
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = false;
-      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title.replace(/^Asset class/, 'Asset').replace(/^Sectors/, 'SCTR')}<span style="white-space:nowrap;margin-left:2px">${heldMap[skey] && Object.keys(heldMap[skey]).length ? `<button type="button" class="bld-clr" data-byholdgrid="${esc(skey)}" style="margin-right:4px" title="Set every Target in this grid to what you hold now (rounded to 0.1%). Nothing is saved until you press Save.">Hlds</button>` : ''}<button type="button" class="bld-clr" style="float:none" data-clear="${esc(skey)}" title="Clear the Target boxes in this grid only">Clear</button></span></th><th class="bld-bar-h" title="Bar = what you hold: green = held (up to the target), amber = still to add, red = held beyond the target, grey = no target. Thin blue line = picks. Black line = target.">${skey === 'Sectors' ? `<button type="button" class="bld-clr" style="float:none" data-bypickgrid="Sectors" title="Set every sector Target to the share your picks have in it (kept to 0.01%, shown to 0.1%); sectors with no picks are cleared. Nothing is saved until you press Save.">From picks</button>` : 'Chart'}</th>` +
+      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title.replace(/^Asset class/, 'Asset').replace(/^Sectors/, 'SCTR')}<span style="white-space:nowrap;margin-left:2px">${heldMap[skey] && Object.keys(heldMap[skey]).length ? `<button type="button" class="bld-clr" data-byholdgrid="${esc(skey)}" style="margin-right:4px" title="Set every Target in this grid to what you hold now (rounded to 0.1%). Nothing is saved until you press Save.">Hlds</button>` : ''}<button type="button" class="bld-clr" style="float:none" data-clear="${esc(skey)}" title="Clear the Target boxes in this grid only">Clear</button></span></th><th class="bld-bar-h" title="Bar = what you hold: green = held (up to the target), amber = still to add, red = held beyond the target, grey = no target. Thin blue line = picks. Black line = target."><button type="button" class="bld-clr" style="float:none" data-bypickgrid="${esc(skey)}" title="${skey === 'Sectors' ? 'Set every sector Target to the share your picks have in it (kept to 0.01%, shown to 0.1%); sectors with no picks are cleared.' : 'Set every Target in this grid to what your picks add up to (kept to 0.01%); rows with no picks are cleared.'} Nothing is saved until you press Save.">From picks</button></th>` +
         `<th class="n bld-tip" style="white-space:nowrap !important" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks."><span style="display:inline-block;width:68px;white-space:nowrap">Target</span><span style="margin-left:3px;font-weight:600;color:var(--text-1);font-size:9px;text-transform:none;letter-spacing:0;white-space:nowrap" title="${esc(skey === 'Sectors' && fin.Equities > 0 ? 'The Equities target in dollars: 100% of this grid' : 'The account amount: 100% of this grid')}">${amt && (skey === 'Asset class' || skey === 'Sectors') ? '$' + Math.round((skey === 'Sectors' && fin.Equities > 0 ? amt * fin.Equities / 100 : amt) / 1000) + 'K' : ""}</span></th><th class="n">Held</th><th class="n" title="Held in dollars (K = thousands)">Held $</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th class="n bld-tip" data-tip="Room left under the limit, in dollars (or how far held is over it).">Room</th>'}<th class="n">Picks</th><th class="n" title="Picks in dollars (K = thousands)">Picks $</th><th class="n bld-tip" data-tip="Picks against the Target, in points of the account. A minus = your picks are below the target; a plus = above it. Without a target it is Picks minus Held. The dollars are the points times the account amount.">Gap <span class="bld-muted" style="font-weight:400;font-size:9px;text-transform:none;letter-spacing:0">$K</span></th></tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}${skey === 'Asset class' || skey === 'Sectors' ? totRow(skey) : ''}</tbody></table></div>`;
     }
     S.heldMap = heldMap; S.pickMap = pickMap;
@@ -767,14 +767,12 @@
 
   // targets typed on the other rows are guides only: redraw the table, no server call
   // 2026-11-18, user: a Clear button on every grid (and one for all, on the heading line). Targets only: picks stay, nothing is saved until Save.
+  const keyInGrid = (scope, k) => (scope === 'Risk' && ['lowbeta', 'highbeta', 'midbeta', 'nobeta'].includes(k)) || (scope === 'Quad' && k.startsWith('quad:'))
+    || (scope === 'Sectors' && k.startsWith('sector:')) || (scope === 'Style' && k.startsWith('style:'));
   function clearTargetsIn(scope) {
     const all = scope === 'all';
     if (all || scope === 'Asset class') { S.mix = {}; S.preset = 'custom'; S.allocNext = false; }
-    Object.keys(S.targets).forEach(k => {
-      const hit = all || (scope === 'Risk' && ['lowbeta', 'highbeta', 'midbeta', 'nobeta'].includes(k)) || (scope === 'Quad' && k.startsWith('quad:'))
-        || (scope === 'Sectors' && k.startsWith('sector:')) || (scope === 'Style' && k.startsWith('style:'));
-      if (hit) delete S.targets[k];
-    });
+    Object.keys(S.targets).forEach(k => { if (all || keyInGrid(scope, k)) delete S.targets[k]; });
     if (all) S.targets = {};
     planDirty(); drawCmpSoon(); schedule(0);
   }
@@ -823,7 +821,17 @@
     });
     host.querySelectorAll('[data-bypickgrid]').forEach(b => b.onclick = e => {   // 2026-11-20, user: fill the sector Targets from the picks
       e.stopPropagation();
-      const pm = (S.pickMap || {})[b.dataset.bypickgrid] || {};
+      const grid = b.dataset.bypickgrid, pm = (S.pickMap || {})[grid] || {};
+      if (grid === 'Asset class') {
+        const mix = {}; Object.keys(pm).forEach(k => { const v = Math.round(pm[k] * 10) / 10; if (k.startsWith('asset:') && v > 0) mix[k.slice(6)] = v; });
+        S.mix = mix; S.preset = 'custom'; S.allocNext = false;
+        planDirty(); drawCmpSoon(); schedule(0); return;
+      }
+      if (grid !== 'Sectors') {
+        Object.keys(S.targets).filter(k => keyInGrid(grid, k)).forEach(k => delete S.targets[k]);
+        Object.keys(pm).forEach(k => { const v = Math.round(pm[k] * 100) / 100; if (v > 0) S.targets[k] = v; });
+        planDirty(); drawCmpSoon(); schedule(0); return;
+      }
       Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => delete S.targets[k]);
       // the SCTR boxes show a % of the Equities target (stored as a % of the account): round what is SHOWN to 0.1 so the Target equals the Picks % beside it
       const eqEl = host.querySelector('[data-tgt^="sector:"][data-eq]'), eq = eqEl ? parseFloat(eqEl.dataset.eq) : 0;
