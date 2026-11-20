@@ -598,8 +598,10 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
             stock = max(0.0, float(int(max(_mx - float((holdings.get(c["sym"]) or {}).get("value") or 0.0), 0.0) // 1) * 1))
         mine_flag[c["sym"]] = _mine
         rule_max[c["sym"]] = cap.get("max")
+        raw_bkt[c["sym"]] = float(tight[1])           # 2026-11-20: unclamped, so the screen can say HOW MUCH over a bucket is
         return stock, bucket, tight[0]
 
+    raw_bkt: dict = {}
     typed = {c["sym"]: float(c.get("amt") or 0.0) for c in cands}
     for c in cands:
         if typed[c["sym"]] > 0:
@@ -615,7 +617,7 @@ def room_for(plan: dict, account: dict, cands: list, info: dict, style_groups: O
             _touch(_ln(c), own)
         m = bkt if stk is None else min(stk, bkt)
         b = ("Your ceiling" if mine_flag.get(c["sym"]) else "The stock's own Max") if (stk is not None and stk < bkt) else bb
-        out[c["sym"]] = {"stock": stk, "bucket": bkt, "max": m, "binding": b, "bucket_binding": bb, "start": None, "sells": round(sell_cash), "rule_max": rule_max.get(c["sym"])}
+        out[c["sym"]] = {"stock": stk, "bucket": bkt, "bucket_raw": round(raw_bkt.get(c["sym"], 0.0)), "max": m, "binding": b, "bucket_binding": bb, "start": None, "sells": round(sell_cash), "rule_max": rule_max.get(c["sym"])}
     left = cash0 - spent
     # starting amounts: every pick without an amount (this is planning: a Buy call is not needed today), first come first served.
     # Stocks with a Buy call in Actionable now go first; the rest follow in the order picked.
