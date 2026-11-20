@@ -222,7 +222,7 @@ def get_sources():
 
 # 2026-11-18, user: show the min-max % next to each asset class name. Source = Ref Data's ref_asset_allocation (the allowed size of ONE position
 # in that category, as a share of the account). Only classes with a matching category are shown (no Gold / Crypto / Cash row there).
-_CLASS_CATEGORY = {"Equities": "Equities", "Fixed Income": "Fixed Income", "Commodities": "Commodities", "Currency": "Foreign Currency"}
+_CLASS_CATEGORY = {"Equities": "Stocks", "Fixed Income": "Fixed Income", "Commodities": "Commodities", "Currency": "Foreign Currency"}
 
 
 @router.get("/api/builder/class-bands")

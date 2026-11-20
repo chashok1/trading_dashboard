@@ -964,3 +964,18 @@ Pressing **Done** on a stock the picked account's plan buys or sells asks "how m
 Done) record the whole amount left for each. Because the positions file loads only after hours, a Done counts for its own day until the file shows it: `plan_check.done_pending` compares the shares now with
 `qty_at_done`. Effects: the Planned $ cell shows "Buy $X ... done $Y" (planned less done), the done amount still counts against the room (Max $ / Bucket $), the Builder's To do buy amounts shrink by it.
 API: `POST /api/builder/done {account, symbol, side, amount}`, `DELETE /api/builder/done?account=&symbol=`. The existing Done (row parked in "Actioned today", `user_action_log`) is unchanged and still runs.
+
+## 2026-11-19 — Sizing by asset class (min / max / unit)
+
+Replaces the old source-list rows (Call, Sig, RR, II, PS, ETF, CAll*, My, ...) in `ref_asset_allocation`. A symbol is sized by what it IS (`etl/size_class.py`, called in `derive_actionable.py`; the chosen row is stored as `drv_actionable.position_category`, so `derive_account_size` and the household sizing follow it):
+
+| Row | Min / Max / Unit (% of one account) | Who |
+|---|---|---|
+| Stocks | 1 / 3 / 1 | individual stock on Signal Strength, or on neither Call/RR, or on no list |
+| Stocks (Call/RR only) | 0.5 / 1.5 / 0.5 | stock on Call or RR and NOT on Signal Strength (half strength) |
+| Exchange Traded Funds | 2 / 6 / 1 | Yahoo quote type ETF (equity funds); Signal Strength rule does not apply |
+| Fixed Income / Commodities / Foreign Currency | 3-10-1.5 / 1-2-0.5 / 4-12-2 | by asset class (beats quote type, so a bond ETF is Fixed Income) |
+| Cash | 0 / 100 / 0 | |
+| Other | 0 / 0 / 0.125 | index, future, other non-tradable |
+
+"On a list" = the source row exists and is not a REMOVE. A stock that leaves Signal Strength drops to half strength the same day (held amount above the new max then shows as over max). Unknown symbol on no list: no sizing (unchanged). Table rewritten by `python -m scripts.migrate_asset_alloc_by_class` (old rows backed up to `data/ref_asset_allocation_backup_2026-11-19.csv`, ignored). Portfolio limit status (`dash.py`) and the Builder class bands (`Equities` uses the Stocks row) read the same rows.

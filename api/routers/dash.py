@@ -4293,11 +4293,24 @@ def get_portfolio(
             except Exception:
                 pass
 
+            # 2026-11-19: the sizing row is now chosen by asset class (etl/size_class.py) and stored in
+            # drv_actionable.position_category, so read it from there; the old source rules below are the fallback.
+            actionable_cat = {}
+            try:
+                for row in s.execute(text(
+                        "SELECT tos_symbol, position_category FROM drv_actionable "
+                        "WHERE as_of_date = :d AND position_category IS NOT NULL"), {"d": d}).fetchall():
+                    actionable_cat[row[0]] = row[1]
+            except Exception:
+                pass
+
             for r in out:
                 sym = r.get("symbol")
                 win_src = r.get("winning_source")
                 cat = None
-                if win_src == "PS":
+                if actionable_cat.get(sym):
+                    cat = actionable_cat[sym]
+                elif win_src == "PS":
                     cat = asset_class_ps.get(sym) or src_cat_map.get(win_src)
                 elif win_src == "ETF":
                     cat = asset_class_etf.get(sym) or src_cat_map.get(win_src)

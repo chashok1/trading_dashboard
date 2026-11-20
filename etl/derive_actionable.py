@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from etl._derive_common import position_ceiling, _ps_drop_verdicts
+from etl.size_class import size_class, STOCKS
 
 log = logging.getLogger("etl.derive_actionable")
 
@@ -776,6 +777,21 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     """), {"d": as_of_date}).fetchall():
         if r[0] and r[1]: asset_class_etf[r[0]] = r[1]
 
+    # 2026-11-19, user: size by what the symbol IS (asset class + Yahoo quote type), not by source list.
+    # Asset class = drv_technicals (ref_sector) on the derive date; quote type = cache_yahoo_quote.
+    _sz_ac: dict[str, str] = {}
+    for r in session.execute(text(
+            "SELECT tos_symbol, asset_class FROM drv_technicals "
+            "WHERE as_of_date = :d AND asset_class IS NOT NULL"), {"d": as_of_date}).fetchall():
+        _sz_ac[r[0]] = r[1]
+    _sz_qt: dict[str, str] = {}
+    try:
+        for r in session.execute(text(
+                "SELECT tos_symbol, quote_type FROM cache_yahoo_quote WHERE quote_type IS NOT NULL")).fetchall():
+            _sz_qt[r[0]] = r[1]
+    except Exception:
+        log.warning("quote_type load failed (stock/ETF split falls back to asset class)", exc_info=True)
+
     def _category_for(sym, win_src, fallback):
         """Resolve ref_asset_allocation lookup key.
         PS     → hist_ps.asset_class (must map to a row, else fallback)
@@ -793,6 +809,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             # Return ac (post-alias) if it maps to an allocation row; else warn + None.
             if not ac:
                 return None
+            if alloc_has(STOCKS):
+                return None   # by-class table in use (2026-11-19): size_class() decides, no legacy warnings
             ac = _norm_asset_class(ac)
             if alloc_has(ac):
                 return ac
@@ -1315,6 +1333,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 cover.sort(key=lambda a: src_priority.get(a["source_code"], 999))
                 fallback_src = cover[0]["source_code"]
                 category = _category_for(sym, fallback_src, cover[0]["category"])
+        # 2026-11-19, user: the allocation row is chosen by asset class / stock vs ETF / Signal Strength
+        # (etl/size_class.py). The old source-list category is only the fallback when the new rows are absent.
+        _on_srcs = {str(a["source_code"]).upper() for a in src_all if a.get("action") != "REMOVE"}
+        _sc = size_class(_sz_ac.get(sym), _sz_qt.get(sym), _on_srcs, category)
+        if _sc is not None and alloc_has(_sc):
+            category = _sc
+        elif alloc_has(STOCKS):
+            category = None            # new table in use and symbol unclassifiable: no sizing (as before)
         params = asset_alloc.get(_alloc_key(category), {}) if category else {}
         target_min  = params.get("min_dollar")
         target_max  = params.get("max_dollar")

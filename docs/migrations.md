@@ -864,3 +864,6 @@ On the latest day (anchor) the periodic Hedgeye lists (SSS, PS, ETF, II, CALL, G
 
 ## 2026-10-23 — RR Zone score for every stock (display only)
 `drv_tn_td_bb_rr.rr_zone_score` (new, `db/baseline.sql`): the range-position setup score (`qo_seq`: bull list when bands are rising, else not-bull list) now stored for EVERY stock in `etl/derive.py` Pass 2. `td_tn_bb_rr_action` is unchanged (still Trend/Trade first). The Action popup's Technical chain shows it greyed as "RR Zone N · not counted" when Trend/Trade ended the chain. API field `zone_score` = `COALESCE(rr_zone_score, risk_rng_longs_action)`. On 2026-10-22: 285 of 1,134 stocks have a score (was ~10 where Trend/Trade was not bullish).
+
+## 2026-11-19 — ref_asset_allocation rewritten by asset class
+8 rows (Stocks, Stocks (Call/RR only), Exchange Traded Funds, Fixed Income, Commodities, Foreign Currency, Cash, Other). Run `python -m scripts.migrate_asset_alloc_by_class`. See `docs/actionable_logic.md` (2026-11-19 section). Do not reload the Parm tab over this table.
