@@ -276,9 +276,17 @@ def test_todo_read_only_mode_assumes_sells_and_only_warns():
     cut = pc.todo(plan, acct, picks, {}, INFO, buy_side=SIDE)                # old behaviour: cut to cash
     assert cut["buys"][0]["allowed"] < 50000
     ro = pc.todo(plan, acct, picks, {}, INFO, buy_side=SIDE, assume_sells=True, warn_only=True)
-    assert ro["sell_cash"] == 10000                                         # the over-target equities count as sold, nothing ticked
+    assert ro["sell_cash"] == 40000                                         # the excess (10,000) plus the planned equities buy, capped at what is held
     b = ro["buys"][0]
     assert b["allowed"] == 50000 and b["result"] == "OVER_PLAN"            # the amount stands; it is flagged, not cut
+
+
+def test_read_only_buy_inside_an_over_class_is_paid_by_the_classes_own_sells():
+    plan = _plan(Equities=30, **{"Fixed Income": 40, "Gold": 10})            # equities held 40,000 vs 30,000 target
+    picks = [{"id": 1, "side": "BUY", "members": ["AAPL"], "amount": 5000.0, "ticked": False}]
+    ro = pc.todo(plan, _acct(), picks, {}, INFO, buy_side=SIDE, assume_sells=True, warn_only=True)
+    assert ro["sells"][0]["default"] == 15000 and ro["sell_cash"] == 15000   # excess 10,000 + the 5,000 buy
+    assert ro["buys"][0]["result"] == "OK"                                  # swapping within the class is not over plan
 
 
 def test_alloc_sell_is_proportional_and_overrides_stand():

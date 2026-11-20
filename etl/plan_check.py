@@ -332,6 +332,16 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
     sells = []
     sell_cash = 0.0
     sold_by_cls = {}
+    # 2026-11-20, user: a class above its plan sells to reach it AND to pay for the buys planned inside the same class (the picks swap the
+    # overweight names for the others), so those buys are not "over plan". The default sell = the excess + the planned buys in the class.
+    buy_by_cls: dict = {}
+    assumed_sold: dict = {}          # {sym: dollars} the read-only list assumes sold (so sector / style / beta / Quad lines free up too)
+    for pk in picks:
+        if pk["side"] == "BUY" and float(pk.get("amount") or 0.0) > 0 and pk["members"]:
+            m0 = pk["members"][0]
+            c0 = _lines_of(m0, (holdings.get(m0) or {}).get("bucket"), info, style_groups)["cls"]
+            if c0:
+                buy_by_cls[c0] = buy_by_cls.get(c0, 0.0) + float(pk["amount"])
     for n in needs:
         rows = []
         tot = 0.0
@@ -346,15 +356,19 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
                          "pick_id": ticked_sell[sym]["id"] if on else None})
         if assume_sells:
             amt = p["sell"].get(n["cls"])
-            amt = n["need"] if amt is None else min(amt, sum(r["value"] for r in rows))
+            held_rows = sum(r["value"] for r in rows)
+            dflt = min(held_rows, n["need"] + (0.0 if n["all"] else buy_by_cls.get(n["cls"], 0.0)))
+            amt = dflt if amt is None else min(amt, held_rows)
             split = alloc_sell({r["sym"]: r["value"] for r in rows}, amt, p["sell_hold"])
             for r in rows:
                 hh = holdings.get(r["sym"]) or {}
                 r["sell"] = split.get(r["sym"], 0.0)
+                if r["sell"] > 0:
+                    assumed_sold[r["sym"]] = r["sell"]
                 q = float(hh.get("qty") or 0.0)
                 r["shares"] = round(q * r["sell"] / r["value"], 1) if q and r["value"] else None
             tot = sum(split.values())
-            n = dict(n, amount=amt, default=n["need"])
+            n = dict(n, amount=amt, default=dflt)
         sell_cash += tot
         sold_by_cls[n["cls"]] = tot
         sells.append(dict(n, holdings=rows, ticked_total=tot, left=max(0.0, n["need"] - tot)))
@@ -380,6 +394,16 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
     if assume_sells:                                  # class level: the sold dollars leave their class
         for c, v in sold_by_cls.items():
             now_after["cls"][c] = now_after["cls"].get(c, 0.0) - v
+        for sym, v in assumed_sold.items():           # 2026-11-20: and the lines each sold holding sits in (sector, style, beta, Quad)
+            ln = _lines_of(sym, (holdings.get(sym) or {}).get("bucket"), info, style_groups)
+            if ln["sector"]:
+                now_after["sector"][ln["sector"]] = now_after["sector"].get(ln["sector"], 0.0) - v
+            for k in ln["style"]:
+                now_after["style"][k] = now_after["style"].get(k, 0.0) - v
+            if ln["beta"]:
+                now_after["beta"][ln["beta"]] = now_after["beta"].get(ln["beta"], 0.0) - v
+            for k in ln["quad"]:
+                now_after["quad"][k] = now_after["quad"].get(k, 0.0) - v
     now_after["cls"]["Cash"] = cash + sell_cash
 
     # ---- buys, walked in the order made. Money limits block / shrink; % lines only warn.
@@ -469,7 +493,7 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
                 return
             tgt = plan_pct / 100.0 * value
             lft = tgt - now_after[kind].get(key, 0.0) - used[kind][key] + allowed   # room before this pick
-            if allowed > lft:
+            if allowed > lft + min(500.0, 0.005 * value):      # the on-plan band: rounding dollars are not an overrun
                 over.append({"line": key, "over": allowed - max(lft, 0.0), "fits": max(lft, 0.0)})
         _touch("cls", ln["cls"], p["cls"].get(ln["cls"]) if ln["cls"] else None)
         _touch("sector", ln["sector"], p["sector"].get(ln["sector"]) if ln["sector"] else None)

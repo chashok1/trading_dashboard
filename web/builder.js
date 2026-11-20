@@ -591,7 +591,7 @@
       : `<td class="n ${Math.abs(g) < (dec ? 0.005 : 0.5) ? '' : (g > 0 ? 'bld-up' : 'bld-dn')}">${(g >= 0 ? '+' : '−') + Math.abs(g).toFixed(dec || 1)}${dec ? '' : ' pts'}</td>`;
     // a section break: the rows after it become their own small table (laid out in three columns, see the end of this function)
     let curKey = '';
-    const vizRows = {}, heldMap = {};
+    const vizRows = {}, heldMap = {}, pickMap = {};
     const sec = t => { curKey = t.split(' ·')[0]; vizRows[curKey] = []; return `\u0001${t}\u0002`; };
     const chosen = (S.preset === 'custom' && S.mix) ? S.mix : (res.mix_target || {});   // what you typed, not the rescaled copy
     // 2026-11-17: against a target of 0, any pick is Over (no 5-point leeway)
@@ -667,6 +667,7 @@
       const cell = asset ? tgtCell(`data-tgt-asset="${esc(asset)}"`, tv) : (key ? tgtCell(`data-tgt="${esc(key)}"`, tv, false, /^sector:/.test(key) ? (fin.Equities > 0 ? fin.Equities : 0) : 0, key.startsWith('sector:') && fin.Equities > 0) : (tvx > 0 ? `<td class="n" style="white-space:nowrap" title="Calculated: 100% minus the asset class targets above"><b style="display:inline-block;width:37px;padding-right:3px;box-sizing:border-box;text-align:right">${tvx.toFixed(1)}</b>${amt ? `<span style="display:inline-block;width:22px;margin:0 3px 0 6px"></span><span style="color:var(--text-1);font-size:9px;margin-left:3px;white-space:nowrap;display:inline-block;width:34px;text-align:left" title="The target in dollars: ${esc(usd(tvx / 100 * amt))} of the account">$${Math.round(tvx / 100 * amt / 1000)}K</span>` : ''}</td>` : '<td></td>'));
       if (!asset && key && tv != null && hasPick && pv != null && (pv - tv) / 100 * amt > Math.min(500, 0.005 * amt)) S.limitOvers.push({ label: String(label).replace(/<[^>]*>/g, ''), by: (pv - tv) / 100 * amt });
       if (hasHeld && hv != null && (asset || key)) (heldMap[curKey] = heldMap[curKey] || {})[asset ? 'asset:' + asset : key] = hv;
+      if (hasPick && pv != null && key) (pickMap[curKey] = pickMap[curKey] || {})[key] = pv;   // 2026-11-20: for the Sectors 'from picks' button (No sector included, so the Targets add to the whole Equities target)
       if (vizRows[curKey]) vizRows[curKey].push({ label: asset || String(label).replace(/<[^>]*>/g, ''), pv: hasPick ? pv : null, hv: hasHeld ? hv : null, tv: eff, col: asset ? bcol(asset) : null, flt });
       const barTd = `\u0005${curKey}\u0006${(vizRows[curKey] || []).length - 1}\u0007`;
       const eqB = key && key.startsWith('sector:') && fin.Equities > 0 ? fin.Equities : 0, kq = eqB ? 100 / eqB : 1;   // 2026-11-18, user: the SCTR grid shows Held % and Picks % as a share of the Equities target
@@ -737,10 +738,10 @@
     for (let i = 1; i < parts.length; i += 2) {
       const title = parts[i], first = i === 1;
       const skey = title.split(' ·')[0], shut = false;
-      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title.replace(/^Asset class/, 'Asset').replace(/^Sectors/, 'SCTR')}<span style="white-space:nowrap;margin-left:2px">${heldMap[skey] && Object.keys(heldMap[skey]).length ? `<button type="button" class="bld-clr" data-byholdgrid="${esc(skey)}" style="margin-right:4px" title="Set every Target in this grid to what you hold now (rounded to 0.1%). Nothing is saved until you press Save.">Hlds</button>` : ''}<button type="button" class="bld-clr" style="float:none" data-clear="${esc(skey)}" title="Clear the Target boxes in this grid only">Clear</button></span></th><th class="bld-bar-h" title="Bar = what you hold: green = held (up to the target), amber = still to add, red = held beyond the target, grey = no target. Thin blue line = picks. Black line = target.">Chart</th>` +
+      tables[skey] = `<div class="bld-sec${shut ? ' collapsed' : ''}" data-sec="${esc(skey)}">` + `<table class="bld-t bld-exp"><thead><tr><th${first ? ` class="bld-tip" data-tip="${esc(generalTip)}"` : ''}>${title.replace(/^Asset class/, 'Asset').replace(/^Sectors/, 'SCTR')}<span style="white-space:nowrap;margin-left:2px">${heldMap[skey] && Object.keys(heldMap[skey]).length ? `<button type="button" class="bld-clr" data-byholdgrid="${esc(skey)}" style="margin-right:4px" title="Set every Target in this grid to what you hold now (rounded to 0.1%). Nothing is saved until you press Save.">Hlds</button>` : ''}<button type="button" class="bld-clr" style="float:none" data-clear="${esc(skey)}" title="Clear the Target boxes in this grid only">Clear</button></span></th><th class="bld-bar-h" title="Bar = what you hold: green = held (up to the target), amber = still to add, red = held beyond the target, grey = no target. Thin blue line = picks. Black line = target.">${skey === 'Sectors' ? `<button type="button" class="bld-clr" style="float:none" data-bypickgrid="Sectors" title="Set every sector Target to the share your picks have in it (kept to 0.01%, shown to 0.1%); sectors with no picks are cleared. Nothing is saved until you press Save.">From picks</button>` : 'Chart'}</th>` +
         `<th class="n bld-tip" style="white-space:nowrap !important" data-tip="Type your target % on any row. Blank = no target. Targets guide you; they never pick stocks."><span style="display:inline-block;width:68px;white-space:nowrap">Target</span><span style="margin-left:3px;font-weight:600;color:var(--text-1);font-size:9px;text-transform:none;letter-spacing:0;white-space:nowrap" title="${esc(skey === 'Sectors' && fin.Equities > 0 ? 'The Equities target in dollars: 100% of this grid' : 'The account amount: 100% of this grid')}">${amt && (skey === 'Asset class' || skey === 'Sectors') ? '$' + Math.round((skey === 'Sectors' && fin.Equities > 0 ? amt * fin.Equities / 100 : amt) / 1000) + 'K' : ""}</span></th><th class="n">Held</th><th class="n" title="Held in dollars (K = thousands)">Held $</th>${first ? '<th class="n bld-tip" data-tip="What the account must do to reach the Target, in dollars: Sell all, Sell, or Room to buy. Information only; nothing trades.">To plan</th>' : '<th class="n bld-tip" data-tip="Room left under the limit, in dollars (or how far held is over it).">Room</th>'}<th class="n">Picks</th><th class="n" title="Picks in dollars (K = thousands)">Picks $</th><th class="n bld-tip" data-tip="Picks against the Target, in points of the account. A minus = your picks are below the target; a plus = above it. Without a target it is Picks minus Held. The dollars are the points times the account amount.">Gap <span class="bld-muted" style="font-weight:400;font-size:9px;text-transform:none;letter-spacing:0">$K</span></th></tr></thead><tbody>${barCells(parts[i + 1], skey, vizRows[skey])}${skey === 'Asset class' || skey === 'Sectors' ? totRow(skey) : ''}</tbody></table></div>`;
     }
-    S.heldMap = heldMap;
+    S.heldMap = heldMap; S.pickMap = pickMap;
     const T = k => tables[k] || '';
     // 2026-10-28, user: the five grids stay in three columns
     return `<div class="bld-cmp3"><div>${T('Asset class')}${T('Sectors')}</div><div>${T('Style')}${T('Quad')}${T('Risk')}</div></div>`;   // keys are the title up to " ·"
@@ -818,6 +819,18 @@
         const mix = {}; Object.keys(hm).forEach(k => { if (k.startsWith('asset:')) mix[k.slice(6)] = Math.round(hm[k] * 10) / 10; });
         S.mix = mix; S.preset = 'custom';
       } else Object.keys(hm).forEach(k => { S.targets[k] = Math.round(hm[k] * 10) / 10; });
+      planDirty(); drawCmpSoon(); schedule(0);
+    });
+    host.querySelectorAll('[data-bypickgrid]').forEach(b => b.onclick = e => {   // 2026-11-20, user: fill the sector Targets from the picks
+      e.stopPropagation();
+      const pm = (S.pickMap || {})[b.dataset.bypickgrid] || {};
+      Object.keys(S.targets).filter(k => k.startsWith('sector:')).forEach(k => delete S.targets[k]);
+      // the SCTR boxes show a % of the Equities target (stored as a % of the account): round what is SHOWN to 0.1 so the Target equals the Picks % beside it
+      const eqEl = host.querySelector('[data-tgt^="sector:"][data-eq]'), eq = eqEl ? parseFloat(eqEl.dataset.eq) : 0;
+      Object.keys(pm).forEach(k => {
+        const shown = Math.round((eq > 0 ? pm[k] / eq * 100 : pm[k]) * 100) / 100;   // 2 decimals kept so the total adds up; the box still shows 1
+        if (shown > 0) S.targets[k] = shown * (eq > 0 ? eq / 100 : 1);
+      });
       planDirty(); drawCmpSoon(); schedule(0);
     });
     host.querySelectorAll('[data-clear]').forEach(b => b.onclick = e => {
@@ -990,10 +1003,13 @@
         const mmTd = `<td class="n"><input type="number" min="0" step="500" data-mymax="${esc(r.sym)}"${rm && rm.rule_max != null ? ' max="' + Math.round(rm.rule_max) + '"' : ''} value="${mmv == null ? '' : mmv}" placeholder="${rm && rm.rule_max != null ? Math.round(rm.rule_max) : ''}" style="width:42px"${mmv != null && rm && rm.stock != null && rm.binding === 'Your ceiling' ? ' class="tgt-over"' : ''} title="Ceiling $: your own cap on the total you hold of ${esc(r.sym)}. Never above the Max rule (gray). Blank = use the rule.">${mmv != null && (fin[b] || 0) > 0 && amt ? `<span class="bld-muted" style="font-size:9px;margin-left:4px;white-space:nowrap;display:inline-block;width:38px;text-align:right;vertical-align:middle" title="Your ceiling as a % of the whole account, the same basis as the Picks % box.">${(mmv / amt * 100).toFixed(1)}%</span>` : ''}${(() => { const cv = mmv != null ? mmv : (rm && rm.rule_max != null ? rm.rule_max : null);   // arrow uses your ceiling, else the Max rule
         return r.pk && cv > 0 && (fin[b] || 0) > 0 && amt ? `<button type="button" class="bld-btn sm alt" data-ceilpct="${esc(r.sym)}" data-v="${(cv / (amt * fin[b] / 100) * 100).toFixed(1)}" style="padding:0 5px;margin-left:3px;font-size:9px" title="Set the Picks % to the ceiling (${mmv != null ? 'yours' : 'the Max rule'})">&rarr;</button>` : ''; })()}</td>`;
         const planBuy = (r.pk && (r.pk.pct != null || !r.pk.grp)) ? Math.max(0, r.model - r.hold) : 0;     // 2026-11-18, user: say when the buy goes over a limit
-        const overBy = rm && rm.max != null && planBuy > rm.max + 50 ? planBuy - rm.max : 0;
+        // 2026-11-20, user: when the picks in this class add up to no more than the class target, the grid's own sells pay for its buys (the class ends on target),
+        // so a class-full limit is not an overrun. Only a real overrun (picks above the class target, or another limit) says Over.
+        const clsFundedBySells = (fin[b] || 0) > 0 && amt > 0 && mTot / amt * 100 <= fin[b] + 0.5;   // same 0.5%-of-account slack the class header uses (whole shares round the dollars)
+        const overBy = rm && rm.max != null && planBuy > rm.max + 50 && !(clsFundedBySells && rm.binding === b) ? planBuy - rm.max : 0;
         const bindLbl = b0 => b0 === 'Cash to spend' ? 'cash' : (b0 === "The stock's own Max" ? 'own max' : (CLS_ABBR[b0] || String(b0 || '').replace(/ favored \(Bull\)/, '')));
         const bktTd = overBy > 0 ? `<td class="n bld-tip" data-tip="${esc('This buy (' + usd(planBuy) + ') is ' + usd(overBy) + ' more than the room left (' + usd(rm.max) + '). Tightest limit: ' + rm.binding + '. Warning only: nothing is cut.')}"><span class="bld-over" style="white-space:nowrap">Over ${esc(bindLbl(rm.binding))} +${usd(overBy)}</span></td>`
-          : !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? '<span class="bld-amt">' + usd(rm.bucket) + '</span>' : (rm.bucket_raw < -0.5 ? '<span class="bld-over" title="' + esc('Already over this limit by ' + usd(-rm.bucket_raw) + ' (held plus planned buys).') + '">Over ' + usd(-rm.bucket_raw) + '</span>' : '<span class="bld-warn">$0</span>')}${(rm.bucket <= 0 || (rm.stock != null && rm.bucket < rm.stock) || (rm.stock == null && rm.bucket < 5000)) ? ' <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>' : ''}</td>`;
+          : !rm ? '<td></td>' : `<td class="n bld-tip" data-tip="${esc('Room left in its buckets: ' + usd(rm.bucket) + '. Tightest: ' + rm.bucket_binding + '. Other planned buys already counted.' + callTxt)}">${rm.bucket > 0 ? '<span class="bld-amt">' + usd(rm.bucket) + '</span>' : (rm.bucket_raw < -0.5 && !(clsFundedBySells && rm.bucket_binding === b) ? '<span class="bld-over" title="' + esc('Already over this limit by ' + usd(-rm.bucket_raw) + ' (held plus planned buys).') + '">Over ' + usd(-rm.bucket_raw) + '</span>' : '<span class="bld-warn">$0</span>')}${(rm.bucket <= 0 || (rm.stock != null && rm.bucket < rm.stock) || (rm.stock == null && rm.bucket < 5000)) ? ' <span class="bld-muted" style="font-size:9px">' + esc(whyShort(rm.bucket_binding)) + '</span>' : ''}</td>`;
         const amtCells = r.pk
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
@@ -1160,7 +1176,9 @@
         if (!autoAmt(p)) return;
         let st = (S.room[p.sym] || {}).start;
         // 2026-11-18, user: a blank % behaves like a typed one -- the planned buy is what the build gives it (its equal share of what is unfilled in the class)
-        if (p.pct == null) st = Math.max(0, Math.round((posVal[p.sym] || 0) - (heldNow[p.sym] || 0)));
+        // 2026-11-20, user: a typed % too. The To do list was missing the buys of picks with a typed % (BNDD, UUP, XLRE): the server's start amount is 0 when a limit is
+        // already full, but limits only warn, so the planned buy is the gap the To match column shows.
+        st = Math.max(0, Math.round((posVal[p.sym] || 0) - (heldNow[p.sym] || 0)));
         if (st > 0 && p.amt !== st) { p.amt = st; p.autoAmt = true; refill = true; } else if (!(st > 0) && p.autoAmt) { p.amt = null; p.autoAmt = false; refill = true; }
       });
       if (refill) schedule(0);        // the amounts changed: the grids must be worked out again with them
@@ -1450,14 +1468,14 @@
       const split = allocSell(vals, amt, S.sellHold);
       const tot = Object.values(split).reduce((a, v) => a + v, 0);
       return `<div style="margin-bottom:10px"><div class="bld-line"><b>${esc(sl.cls)}</b>` +
-        tdPill('sell', sl.all ? 'Plan 0%: sell all ' + usd(sl.held) : 'Over plan by about ' + usd(def)) +
-        `<span style="margin-left:auto">Amount to sell <input type="number" min="0" step="1000" data-tdcls="${esc(sl.cls)}" value="${Math.round(amt)}" style="width:92px" title="Defaults to how far the class is over its plan. Split over the holdings below in proportion to their value."></span></div>` +
-        '<table class="bld-t"><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Sell $</th></tr></thead><tbody>' +
+        tdPill('sell', sl.all ? 'Plan 0%: sell all ' + usd(sl.held) : 'Over plan by about ' + usd(sl.need)) +
+        `<span style="margin-left:auto">Amount to sell <input type="number" min="0" step="1000" data-tdcls="${esc(sl.cls)}" value="${Math.round(amt)}" style="width:92px" title="Defaults to how far the class is over its plan plus the buys you planned in the same class (the sells pay for them). Split over the holdings below in proportion to their value."></span></div>` +
+        '<table class="bld-t"><thead><tr><th>Holding</th><th class="n">Value</th><th class="n">Sell $</th><th class="n" title="What you still hold after selling: Value minus Sell $">Remaining</th></tr></thead><tbody>' +
         sl.holdings.map(h => {
           const sv = split[h.sym] || 0;
-          return `<tr><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td class="n"><input type="number" min="0" step="500" data-tdhold="${esc(h.sym)}" value="${Math.round(sv)}" style="width:80px"${S.sellHold[h.sym] != null ? ' class="tgt-over" title="You typed this amount: the other holdings share the rest"' : ''}></td></tr>`;
+          return `<tr><td><b>${esc(h.sym)}</b></td><td class="n">${usd(h.value)}</td><td class="n"><input type="number" min="0" step="500" data-tdhold="${esc(h.sym)}" value="${Math.round(sv)}" style="width:80px"${S.sellHold[h.sym] != null ? ' class="tgt-over" title="You typed this amount: the other holdings share the rest"' : ''}></td><td class="n">${usd(Math.max(0, h.value - sv))}</td></tr>`;
         }).join('') +
-        `<tr><td><b>Total</b></td><td class="n">${usd(held)}</td><td class="n"><b>${usd(tot)}</b></td></tr></tbody></table></div>`;
+        `<tr><td><b>Total</b></td><td class="n">${usd(held)}</td><td class="n"><b>${usd(tot)}</b></td><td class="n"><b>${usd(Math.max(0, held - tot))}</b></td></tr></tbody></table></div>`;
     }).join('') : '<div class="bld-muted">Nothing is over its plan. No sells needed.</div>';
     $('tdSells').querySelectorAll('[data-tdcls]').forEach(e => e.onchange = () => {
       S.sell[e.dataset.tdcls] = Math.max(0, Number(e.value) || 0);
