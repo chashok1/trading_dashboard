@@ -295,6 +295,11 @@
     if (w) return `<button type="button" class="bld-ic on" data-ic="${esc(sym)}" title="${esc(bullets(['Watching' + (w.triggered ? ' (triggered)' : ''), w.note, 'Alert: ' + [w.pct != null ? (w.dir === 'DOWN' ? 'down ' : 'up ') + w.pct + '% move' : '', w.lrr ? 'LRR' : '', w.trr ? 'TRR' : '', w.trade ? 'Trade line' : '', w.trend ? 'Trend line' : '', w.price != null ? '$' + w.price : '', w.call ? 'Final Call turns ' + (w.call === 'SELL' ? 'Sell' : 'Buy') : ''].filter(Boolean).join(', ').replace(/^Alert: $/, 'Alert: end-of-close reminder'), 'Click to edit']))}">🔔</button>`;
     return `<button type="button" class="bld-ic off" data-ic="${esc(sym)}" title="Add a watch or a note">🔔</button>`;
   }
+  // 2026-11-20, user: a small marker before the symbol on a pick that is not on the list(s) ticked on the left (literal list; filters do not matter)
+  const notInListMark = r => {
+    if (!r.pk || !(S.srcNames || []).length || S.srcNames.some(n => n.sym === r.sym)) return '';
+    return '<span class="bld-tip" data-tip="Not in chosen list(s)" style="position:absolute;left:0;top:50%;transform:translateY(-50%);color:#64748b;font-size:9px;font-weight:700;line-height:1">&ne;</span>';
+  };
   const symCell = (sym, grpHtml) => `<span class="bld-sc"><span class="bld-sct">${symHtml(sym)}</span>${grpHtml == null ? '' : `<span class="bld-scg">${grpHtml}</span>`}${noteIcon(sym, 'lt')}${noteIcon(sym, 'w')}</span>`;
   // 2026-11-18, user: amounts in the grids are bold and dark. Any cell / span whose whole text is a dollar amount gets .bld-amt (CSS in builder.html).
   const AMT_RE = /^[+−-]?\$[\d.,]+[KM]?$/;
@@ -1022,7 +1027,7 @@
           ? `<td><select data-grp="${esc(r.sym)}" title="Give two or more picks the same letter to buy any one of them">${['', 'A', 'B', 'C', 'D', 'E', 'F'].map(g => `<option value="${g}"${(r.pk.grp || '') === g ? ' selected' : ''}>${g || '-'}</option>`).join('')}</select>` +
             (r.pk.grp ? ` <input type="number" min="0" step="500" data-amt="${esc(r.sym)}" value="${r.pk.amt ? r.pk.amt : ''}" placeholder="group $" style="width:70px" title="The most to buy across the whole group (all members share it). Blank = the biggest room any member has.">` : '') + '</td>'
           : '<td></td>';
-        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${symCell(r.sym, gl ? `<span class="bld-badge" style="background:${gcol};color:#fff;padding:1px 5px" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : '')}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted" style="font-size:9px">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
+        t += `<tr${(!r.pk && !r.kept) ? ' class="zero"' : ''}${gcol ? ` style="box-shadow:inset 3px 0 0 ${gcol}"` : ''}><td>${notInListMark(r)}${symCell(r.sym, gl ? `<span class="bld-badge" style="background:${gcol};color:#fff;padding:1px 5px" title="Buy one of group ${gl}: you buy only one of these">${gl}</span>` : '')}</td><td class="n">${pCell}</td>${maxTd}${mmTd}${bktTd}${amtCells}<td class="n bld-muted" style="font-size:9px">${hPct}</td><td class="n">${hCell}</td><td class="n">${gap}</td>` +
           (sellToTarget(r) > 0 ? `<td class="bld-dn" title="Same as held, but the ${esc(b)} picks are over the class target. This name's share of the excess, split in proportion to its amount.">Sell ${usd(sellToTarget(r))}</td>${actTd(r.sym)}</tr>`
             : `<td${!r.kept && r.pk && /^Buy /.test(r.trade) ? ' class="bld-up"' : (!r.kept && ((r.pk && /^Sell /.test(r.trade)) || (!r.pk && r.h && r.hold > 0)) ? (!r.pk ? ' class="bld-over"' : ' class="bld-dn"') : '')}${!r.pk && !r.kept && r.h && r.hold > 0 ? ' title="Held but not in your picks: selling all of it moves you to your plan."' : ''}>${esc(r.kept ? 'Kept' : (r.pk ? r.trade : (r.h ? (r.hold > 0 ? 'Sell ' + usd(r.hold) : 'Held, not in picks') : '')))}</td>${actTd(r.sym)}</tr>`);
       });

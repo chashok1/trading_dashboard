@@ -112,6 +112,7 @@
     .bld-exp th, .bld-exp td { padding: 3px 6px; }
     .bld-exp .sec td { background: #f6f6f3; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); }
     #pickList .bld-t td { padding: 3px 6px; }
+    .bld-symt td:first-child { position: relative; }   /* the 'not in chosen list' mark sits in the cell's left margin */
     #mixRows td:first-child { white-space: nowrap; }
     #mixRows td:first-child .bld-sw { vertical-align: baseline; }
     .bld-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin: 2px 0; }
@@ -520,7 +521,7 @@
   <script src="/static/actions.js"></script>   <!-- the Action popup (web/actionable_pops_dash.js) needs actionDisplay / actionText / actionIcon from here -->
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
   <script src="/static/builder_notes.js?v=20261118d"></script>
-  <script src="/static/builder.js?v=20261128v"></script>
+  <script src="/static/builder.js?v=20261128x"></script>
   <script src="/static/actionable_pops_dash.js?v=20261126b" defer></script>
   <script src="/static/act_pop_toggle.js?v=20261118a" defer></script>   <!-- the 💬 switch next to "As of": Action popup on hover, on / off -->
   <script src="/static/warning_badge.js"></script>
