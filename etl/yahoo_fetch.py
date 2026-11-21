@@ -1266,3 +1266,14 @@ async def auto_fetch_loop() -> None:
                 await loop.run_in_executor(executor, fetch_y_smart)
         except Exception as e:
             logger.error("auto_fetch_loop error: %s", e)
+
+
+def ext_weekend_catchup_due(now_et, last_fetched_at) -> bool:
+    """2026-11-21, user-directed: on Saturday/Sunday, run the pre/post-market price fetch once, but only if no fetch has happened since
+    Friday 8:00 PM ET (i.e. the 8:05 PM Friday slot was missed). last_fetched_at = newest cache_ext_quote.fetched_at (None = never)."""
+    from datetime import datetime, timedelta
+    if now_et.weekday() < 5:
+        return False
+    friday = (now_et - timedelta(days=now_et.weekday() - 4)).date()
+    cutoff = datetime(friday.year, friday.month, friday.day, 20, 0, tzinfo=now_et.tzinfo)
+    return last_fetched_at is None or last_fetched_at < cutoff

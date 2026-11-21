@@ -995,10 +995,26 @@ _ext_quote_done_today: set = set()
 def maybe_run_ext_quote_refresh() -> None:
     global _ext_quote_done_today
     now_et = _yahoo_fetch_et_now()
-    if now_et.weekday() >= 5:
-        return
     today, now_hm = now_et.date(), (now_et.hour, now_et.minute)
     _ext_quote_done_today = {k for k in _ext_quote_done_today if k[0] == today}
+    if now_et.weekday() >= 5:
+        # 2026-11-21, user-directed: weekends run only if Friday's 8:05 PM fetch did not happen (nothing fetched since Fri 8 PM ET).
+        if (today, "wkend") in _ext_quote_done_today:
+            return
+        from etl.db import session_scope
+        from sqlalchemy import text
+        from etl.yahoo_fetch import ext_weekend_catchup_due, fetch_ext_quotes
+        with session_scope() as s:
+            last = s.execute(text("SELECT max(fetched_at) FROM cache_ext_quote")).scalar()
+        if not ext_weekend_catchup_due(now_et, last):
+            return
+        _ext_quote_done_today.add((today, "wkend"))   # mark first: no retry storm on failure
+        log.info("scheduler: weekend catch-up of the after-hours price (last fetch %s, now %s ET)", last, now_et.strftime("%a %H:%M"))
+        try:
+            log.info("scheduler: weekend after-hours price refresh complete: %s", fetch_ext_quotes())
+        except Exception:
+            log.exception("scheduler: weekend after-hours price refresh crashed")
+        return
     due = [st for st, end in _EXT_QUOTE_SLOTS if st <= now_hm < end and (today, st) not in _ext_quote_done_today]
     if not due:
         return
