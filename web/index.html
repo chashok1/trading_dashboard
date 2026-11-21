@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261121a">
+  <link rel="stylesheet" href="/static/styles.css?v=20261121b">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261112b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -131,6 +131,10 @@
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
             <div id="heMktSituationBody">Loading…</div>
           </section>
+
+          <!-- 2026-11-21, user-directed: the Earnings calendar box moved here from the right-side Cross-Asset panel, directly
+               below MKT SIT. Filled by web/app.js::loadRegimeBand() by id (#regimeEarningsBody). -->
+          <section class="cockpit-band" id="earningsBand"><div id="regimeEarningsBody">Loading…</div></section>
 
           <!-- 2026-10-15 -- Quad cards (US Quarterly / US Monthly / Global); filled by web/macro_week.js.
                2026-11-09, user-directed: sits directly below MKT SIT (which is directly below the Risk Dial); SPX realized vol follows. -->
@@ -984,8 +988,8 @@
           <!-- 2026-09-30, user-directed: OPEX/events and Earnings boxes moved in here
                too (still filled by web/app.js::loadRegimeBand(); boxed via
                #crossAssetPanel rules in styles.css). -->
-          <!-- 2026-11-21, user-directed: the OPEX/events box (#regimeOpexBody) was removed; those events are now Risk Dial gauges. -->
-          <div id="regimeEarningsBody">Loading…</div>
+          <!-- 2026-11-21, user-directed: the OPEX/events box (#regimeOpexBody) was removed (now Risk Dial gauges) and the Earnings
+               box (#regimeEarningsBody) moved to the left column under MKT SIT (#earningsBand). -->
           <div id="crossAssetBody"></div>
         </section>
 
@@ -1148,7 +1152,7 @@
   <script src="/static/retail_panel.js?v=20261113a" defer></script>
   <script src="/static/jobless_panel.js?v=20261019a" defer></script>
   <script src="/static/mktsit_images.js?v=20261019a" defer></script>
-  <script src="/static/collapse_all.js?v=20261020b" defer></script>
+  <script src="/static/collapse_all.js?v=20261121a" defer></script>
   <script src="/static/actionable_pops_dash.js?v=20261126b" defer></script>
   <script src="/static/outlook_changes.js?v=20261113c" defer></script>
   <script src="/static/area_verdicts.js?v=20261111a" defer></script>

@@ -3092,7 +3092,7 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 /* 2026-11-05, user: earnings for stocks NOT owned in the last 30 days show in blue-grey (owned ones keep the normal text colour). Links inherit it. */
 .earn-other, .earn-other a { color: #5b7690; }
 /* Not-owned stocks reporting within 3 days: the yellow pill (.opex-soon) would hide the blue-grey, so they get a blue-grey pill instead. */
-#crossAssetPanel .earn-other .opex-soon { background: #e3eaf1; color: #3f5a73; border: 1px solid #b9c9d8; border-left: 3px solid #5b7690; }
+#crossAssetPanel .earn-other .opex-soon, #regimeEarningsBody .earn-other .opex-soon { background: #e3eaf1; color: #3f5a73; border: 1px solid #b9c9d8; border-left: 3px solid #5b7690; }
 /* 2026-08-14 -- yellow highlight for an OPEX/Qtly Exp entry <=5 days out.
    Same yellow as .rd-spx-vbar-fill.tier-caution (#eab308), dark text for
    contrast on the light background. User: "Options expirations (OPEX and
@@ -3831,11 +3831,9 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    inside the Cross-Asset panel, styled like the quad line / GLD cards (white,
    1px border + 3px left edge, 6px radius, 5px 10px padding), 2px apart. A box
    with no content hides. */
-#crossAssetPanel #regimeEarningsBody {
-  background: #fff; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--border, #e5e5e2);
-  border-radius: 6px; padding: 2px 6px; margin-bottom: 2px;
-}
-#crossAssetPanel #regimeEarningsBody:empty { display: none; }
+#regimeEarningsBody { padding: 2px 4px; }   /* the #earningsBand card supplies the frame */
+#regimeEarningsBody:empty { display: none; }   /* 2026-11-21: now in the left column (#earningsBand) */
+#earningsBand:has(#regimeEarningsBody:empty) { display: none; }
 
 /* 2026-09-30, user-directed: the risk-size phrase ("Full Size") in a very small
    font under the CLEAR/CAUTION pill (web/app.js risk-dial render). */
@@ -4228,7 +4226,7 @@ body.oc-only #macroRailsWrap .msr-row:not(.has-oc) { display: none; }
 /* 2026-10-17 -- OPEX / Earnings "soon" highlight in the Cross-Asset panel: soft tinted pill with a
    coloured left edge (quad-box look) instead of the solid mustard fill. Scoped to the panel, so the
    Indicator-table rows and Actionable screen keep the global .opex-soon. */
-#crossAssetPanel .opex-soon {
+#crossAssetPanel .opex-soon, #regimeEarningsBody .opex-soon {
   background: #eeedfb; color: #3c3489; font-weight: 600;
   border: 1px solid #c9c5f0; border-left: 3px solid #534ab7; border-radius: 4px;
 }
