@@ -3831,11 +3831,11 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    inside the Cross-Asset panel, styled like the quad line / GLD cards (white,
    1px border + 3px left edge, 6px radius, 5px 10px padding), 2px apart. A box
    with no content hides. */
-#crossAssetPanel #regimeOpexBody, #crossAssetPanel #regimeEarningsBody {
+#crossAssetPanel #regimeEarningsBody {
   background: #fff; border: 1px solid var(--border, #e5e5e2); border-left: 3px solid var(--border, #e5e5e2);
   border-radius: 6px; padding: 2px 6px; margin-bottom: 2px;
 }
-#crossAssetPanel #regimeOpexBody:empty, #crossAssetPanel #regimeEarningsBody:empty { display: none; }
+#crossAssetPanel #regimeEarningsBody:empty { display: none; }
 
 /* 2026-09-30, user-directed: the risk-size phrase ("Full Size") in a very small
    font under the CLEAR/CAUTION pill (web/app.js risk-dial render). */

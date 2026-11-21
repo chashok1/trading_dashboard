@@ -465,7 +465,7 @@ async function loadRiskDial() {
                    onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
                    onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
-        <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt}</span>
+        <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt === 0 ? 'i' : wt}</span>
         <span class="rd-gauge-text" title="${escapeHtml((g.label || g.key) + ' — ' + (g.how_helps || '') + (g.detail ? ' · ' + g.detail : ''))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.detail)}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
@@ -1153,10 +1153,10 @@ document.addEventListener('click', e => {
 // dropped; calRows/calTypes are still fetched below since _opexLineHtml
 // and _calTypesCache both still need them).
 async function loadRegimeBand() {
-  const opexBody = $('regimeOpexBody');
+  // 2026-11-21, user-directed: the OPEX/events box (#regimeOpexBody) is gone -- those are Risk Dial gauges now (etl/derive_risk_dial.py).
   const earningsBody = $('regimeEarningsBody');
   const regimeLineBody = $('regimeLineBody');
-  if (!opexBody || !earningsBody || !regimeLineBody) return;
+  if (!earningsBody || !regimeLineBody) return;
   const failHtml = '<div class="ev-fail">&#9888; Regime data unavailable.</div>';
   try {
     const viewingLive = !state.date || state.date === state.anchorDate;
@@ -1183,7 +1183,7 @@ async function loadRegimeBand() {
     _calTypesCache = calTypes;
     _earningsUnwatchedSymbols = earningsUnwatch.symbols || [];
     if (!windowData) {
-      opexBody.innerHTML = earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
+      earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
       return;
     }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
@@ -1236,7 +1236,6 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = sqBox('sq-win', windowData.dominant_quad, `${windowData.h ?? 60}d`, `Qd${windowData.dominant_quad ?? "?"}`, dominant);
-    opexBody.innerHTML = _opexLineHtml(calRows, calTypes);
     earningsBody.innerHTML = _earningsLineHtml(earningsRows);
     regimeLineBody.innerHTML = `<div class="regime-line" data-quadbandpop="1">
       ${winLabel}${months}${qtrEntry}
@@ -1254,7 +1253,7 @@ async function loadRegimeBand() {
     }
   } catch (e) {
     console.error('regime band failed:', e);
-    opexBody.innerHTML = earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
+    earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
   }
 }
 

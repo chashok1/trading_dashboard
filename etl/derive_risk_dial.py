@@ -281,6 +281,22 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "AND event_date <= :d + CAST(:n AS INTEGER) ORDER BY event_date LIMIT 1"),
         {"c": event_cats, "d": ev_start, "n": int(hedge_th["rd_hedge_event_days"])}).first()
 
+    # 2026-11-21, user-directed -- calendar gauges (opex_monthly / opex_quarterly / econ_events): the next 14 days of calendar rows from
+    # the same start day as the event_hedging gauge, the user's chosen event types (the dashboard_calendar_types setting) and the
+    # warning windows. Informational only (weight 0).
+    cal_events = [(r[0], r[1]) for r in session.execute(text(
+        "SELECT category, event_date FROM ref_calendar_event WHERE event_date >= :d AND event_date <= :d + 14 "
+        "ORDER BY event_date, category"), {"d": ev_start}).all()]
+    cal_th = {}
+    for nm, dflt in (("rd_opex_monthly_days", 3.0), ("rd_opex_qtly_days", 5.0), ("rd_events_days", 5.0)):
+        v = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"), {"n": nm}).scalar()
+        try:
+            cal_th[nm] = float(v) if v is not None else dflt
+        except (TypeError, ValueError):
+            cal_th[nm] = dflt
+    sel_raw = session.execute(text("SELECT setting_value FROM ref_settings WHERE setting_name = 'dashboard_calendar_types'")).scalar()
+    cal_selected = [c.strip() for c in (sel_raw or "").split(",") if c.strip()] or list(event_cats)
+
     vol_rows = session.execute(text(
         "SELECT tos_symbol, low, high FROM ref_vol_threshold"
     )).mappings().all()
@@ -381,6 +397,10 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "hedge_th": hedge_th,
         "event_always": event_always,
         "event_next": (event_next[0], event_next[1]) if event_next else None,
+        "cal_start": ev_start,
+        "cal_events": cal_events,
+        "cal_th": cal_th,
+        "cal_selected": cal_selected,
         "vol": vol_map,
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
@@ -664,6 +684,54 @@ def _g_event_hedging(ctx):
     else:
         parts.append("no major event in the next " + f"{th['rd_hedge_event_days']:.0f} days")
     return by_rise or by_event, rise, "; ".join(parts)
+
+
+# 2026-11-21, user-directed -- calendar gauges, replacing the OPEX/events panel on the dashboard's right side. Informational only:
+# weight 0 in ref_risk_gauge, so they never move the risk budget. Quarterly = the Monthly Exp row in Mar/Jun/Sep/Dec (quad witching);
+# monthly = the other months' Monthly Exp rows, so a quad-witching day is never shown twice.
+_QUAD_MONTHS = (3, 6, 9, 12)
+
+
+def _cal_gauge(ctx, rows, days_key, none_label):
+    """rows = [(label, event_date)] sorted by date. Fires when the first one is within the window (setting days_key)."""
+    start = ctx.get("cal_start")
+    window = (ctx.get("cal_th") or {}).get(days_key)
+    if start is None or window is None:
+        return None, None, "calendar data unavailable"
+    if not rows:
+        return False, None, f"no {none_label} in the next 14 days"
+    label, dt = rows[0]
+    days = (dt - start).days
+    when = "today" if days == 0 else f"in {days}d"
+    fired = days <= window
+    extra = "" if fired else f" (warns within {window:.0f}d)"
+    return fired, float(days), f"{label} {dt.strftime('%m/%d')} {when}{extra}"
+
+
+def _g_opex_monthly(ctx):
+    rows = [("Monthly options expiration", d) for c, d in (ctx.get("cal_events") or [])
+            if c == "Monthly Exp" and d.month not in _QUAD_MONTHS]
+    return _cal_gauge(ctx, rows, "rd_opex_monthly_days", "monthly options expiration")
+
+
+def _g_opex_quarterly(ctx):
+    rows = [("Quarterly options expiration (triple witching)", d) for c, d in (ctx.get("cal_events") or [])
+            if c == "Monthly Exp" and d.month in _QUAD_MONTHS]
+    return _cal_gauge(ctx, rows, "rd_opex_qtly_days", "quarterly options expiration")
+
+
+def _g_econ_events(ctx):
+    """The user's chosen event types (other than the two expirations) inside the window; detail lists all of them."""
+    start, th = ctx.get("cal_start"), (ctx.get("cal_th") or {}).get("rd_events_days")
+    if start is None or th is None:
+        return None, None, "calendar data unavailable"
+    sel = set(ctx.get("cal_selected") or [])
+    near = [(c, d, (d - start).days) for c, d in (ctx.get("cal_events") or [])
+            if c in sel and c not in ("Monthly Exp", "Qtly Exp") and (d - start).days <= th]
+    if not near:
+        return False, None, f"none of your chosen events in the next {th:.0f} days"
+    parts = [f"{c} {d.strftime('%m/%d')} ({'today' if n == 0 else str(n) + 'd'})" for c, d, n in near]
+    return True, float(near[0][2]), "; ".join(parts)
 
 
 def _hedge_rally_day(vix_now, vix_prev, spx_now, spx_prev, drop_pct):
@@ -1389,6 +1457,9 @@ GAUGES: list[tuple[str, Callable]] = [
     ("vix_elevated", _g_vix_elevated),
     ("vix_jump", _g_vix_jump),
     ("event_hedging", _g_event_hedging),
+    ("opex_monthly", _g_opex_monthly),
+    ("opex_quarterly", _g_opex_quarterly),
+    ("econ_events", _g_econ_events),
     ("hedge_removal_rally", _g_hedge_removal_rally),
     ("rally_fuel_spent", _g_rally_fuel_spent),
     ("vix_chop", _g_vix_chop),

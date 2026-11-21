@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261118r">
+  <link rel="stylesheet" href="/static/styles.css?v=20261121a">
   <link rel="stylesheet" href="/static/actionable_pops.css?v=20261112b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
@@ -984,7 +984,7 @@
           <!-- 2026-09-30, user-directed: OPEX/events and Earnings boxes moved in here
                too (still filled by web/app.js::loadRegimeBand(); boxed via
                #crossAssetPanel rules in styles.css). -->
-          <div id="regimeOpexBody">Loading…</div>
+          <!-- 2026-11-21, user-directed: the OPEX/events box (#regimeOpexBody) was removed; those events are now Risk Dial gauges. -->
           <div id="regimeEarningsBody">Loading…</div>
           <div id="crossAssetBody"></div>
         </section>
@@ -1121,7 +1121,7 @@
   <script src="/static/_common.js?v=20261113a"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20261020h5"></script>
-  <script src="/static/app.js?v=20261113b"></script>
+  <script src="/static/app.js?v=20261129d"></script>
   <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>

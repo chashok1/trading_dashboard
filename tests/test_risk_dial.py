@@ -203,3 +203,38 @@ def test_markets_at_records_low_side_only_when_enabled_and_no_data_is_none():
     on = _g_markets_at_records({"records": [_rec("vix", 9.2, 80.0, near=10, use_low=True, low=9.0)]})
     assert off[0] is False and on[0] is True
     assert _g_markets_at_records({"records": []})[0] is None
+
+
+# ---- calendar gauges (2026-11-21): options expiration + chosen economic events, informational ----
+from datetime import date as _d
+from etl.derive_risk_dial import _g_opex_monthly, _g_opex_quarterly, _g_econ_events
+
+_CT = {"rd_opex_monthly_days": 3.0, "rd_opex_qtly_days": 5.0, "rd_events_days": 5.0}
+
+
+def _cctx(events, start=_d(2026, 12, 14), selected=("CPI MoM", "NFP")):
+    return {"cal_start": start, "cal_events": events, "cal_th": _CT, "cal_selected": list(selected)}
+
+
+def test_opex_monthly_fires_within_3_days_only():
+    ev = [("Monthly Exp", _d(2026, 11, 20))]
+    assert _g_opex_monthly(_cctx(ev, start=_d(2026, 11, 17)))[0] is True
+    assert _g_opex_monthly(_cctx(ev, start=_d(2026, 11, 16)))[0] is False
+
+
+def test_opex_monthly_ignores_quarter_months_and_quarterly_uses_5_days():
+    ev = [("Monthly Exp", _d(2026, 12, 18))]
+    assert _g_opex_monthly(_cctx(ev))[0] is False
+    assert _g_opex_quarterly(_cctx(ev))[0] is True                      # 4 days away
+    assert _g_opex_quarterly(_cctx(ev, start=_d(2026, 12, 12)))[0] is False  # 6 days away
+
+
+def test_opex_gauges_unavailable_without_calendar():
+    assert _g_opex_monthly({"cal_start": None, "cal_th": _CT})[0] is None
+
+
+def test_econ_events_lists_only_chosen_types_in_window():
+    ev = [("CPI MoM", _d(2026, 12, 15)), ("PPI", _d(2026, 12, 16)), ("Monthly Exp", _d(2026, 12, 18)), ("NFP", _d(2026, 12, 30))]
+    f, _, detail = _g_econ_events(_cctx(ev))
+    assert f is True and "CPI MoM" in detail and "PPI" not in detail and "NFP" not in detail and "Monthly" not in detail
+    assert _g_econ_events(_cctx([("PPI", _d(2026, 12, 16))]))[0] is False
