@@ -432,7 +432,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "records": _load_records(session, as_of_date, is_latest),
         # 2026-10-19 -- Quad market check (etl/derive_quad_check.py): newest 3 rows up to D, for _g_quad_growth_break.
         "quad_check_hist": [dict(r) for r in session.execute(text(
-            "SELECT as_of_date, ref_quad, growth_score FROM drv_quad_check WHERE as_of_date <= :d "
+            "SELECT as_of_date, ref_quad, growth_score, risk, label_shown FROM drv_quad_check WHERE as_of_date <= :d "
             "ORDER BY as_of_date DESC LIMIT 3"), {"d": as_of_date}).mappings().all()],
     }
 
@@ -1419,6 +1419,19 @@ def _g_quad_growth_break(ctx):
                       (" (at or below -20 for 2 dates)" if fired else " (not broken)"))
 
 
+def _g_quad_transition(ctx):
+    """2026-11-21, user-directed -- the Quad market check's own transition label (drv_quad_check.label_shown, which already needs
+    quad_check_confirm_days dates in a row) is TRANSITION: transition risk 60 or more against the dashboard's 60-day Quad. Unlike
+    quad_growth_break it also catches an inflation-led break. Weight 1 so the two together do not double-count the same story."""
+    hist = ctx.get("quad_check_hist") or []
+    if not hist or hist[0].get("risk") is None or hist[0].get("ref_quad") is None:
+        return None, None, "Quad market check unavailable"
+    risk, ref = float(hist[0]["risk"]), hist[0]["ref_quad"]
+    fired = hist[0].get("label_shown") == "TRANSITION"
+    return fired, risk, (f"Transition risk {risk:.0f}/100 against Quad {ref}" +
+                         (" (transition likely, confirmed)" if fired else " (below 60 or not yet confirmed)"))
+
+
 def _record_gap(price: float, record: float, side: str) -> float:
     """Percent of the record still to go (<= 0 means at or past it)."""
     if side == "high":
@@ -1451,6 +1464,7 @@ def _g_markets_at_records(ctx):
 GAUGES: list[tuple[str, Callable]] = [
     ("markets_at_records", _g_markets_at_records),
     ("quad_growth_break", _g_quad_growth_break),
+    ("quad_transition", _g_quad_transition),
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),
     ("vix_spx_divergence", _g_vix_spx_divergence),

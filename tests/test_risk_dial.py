@@ -238,3 +238,20 @@ def test_econ_events_lists_only_chosen_types_in_window():
     f, _, detail = _g_econ_events(_cctx(ev))
     assert f is True and "CPI MoM" in detail and "PPI" not in detail and "NFP" not in detail and "Monthly" not in detail
     assert _g_econ_events(_cctx([("PPI", _d(2026, 12, 16))]))[0] is False
+
+
+# ---- Quad transition gauge (2026-11-21) ----
+from etl.derive_risk_dial import _g_quad_transition
+
+
+def test_quad_transition_fires_on_confirmed_transition_label():
+    f, v, d = _g_quad_transition({"quad_check_hist": [{"ref_quad": 2, "risk": 100, "label_shown": "TRANSITION"}]})
+    assert f is True and v == 100.0 and "Quad 2" in d
+
+
+def test_quad_transition_quiet_when_watch_or_unconfirmed():
+    assert _g_quad_transition({"quad_check_hist": [{"ref_quad": 2, "risk": 72, "label_shown": "WATCH"}]})[0] is False
+
+
+def test_quad_transition_unavailable_without_check():
+    assert _g_quad_transition({"quad_check_hist": []})[0] is None
