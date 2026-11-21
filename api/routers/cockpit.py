@@ -394,6 +394,7 @@ def _gauge_info(s, d, gauge_key: str) -> dict:
         "weight": float(row["weight"]) if row["weight"] is not None else None,
         "fired": (cur or {}).get("fired"),          # True / False / None (not evaluated that day)
         "detail": (cur or {}).get("detail"),
+        "amber": (cur or {}).get("amber"),            # 2026-11-21: the "elevated, not worsening" note, when that state applies
         "description": next((ln for ln in lines if not ln.startswith("- ")), None),
         "bullets": [ln[2:] for ln in lines if ln.startswith("- ")],
         "how_helps": row["how_helps"],

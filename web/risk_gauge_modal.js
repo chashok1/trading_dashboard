@@ -706,6 +706,7 @@
       '<div class="gm-info-top"><span class="gm-badge gm-badge-' + st[0] + '">' + st[1] + '</span>' +
       '<span class="gm-info-desc">' + _escG(g.description || 'No description yet.') + '</span></div>' +
       (g.detail ? '<div class="gm-info-today"><strong>Today:</strong> ' + _escG(g.detail) + '</div>' : '') +
+      (g.amber ? '<div class="gm-info-today"><strong>Elevated:</strong> ' + _escG(g.amber) + '</div>' : '') +
       (bullets ? '<ul class="gm-info-list">' + bullets + '</ul>' : '') +
       (g.how_helps ? '<div class="gm-info-how"><strong>How it helps you:</strong> ' + _escG(g.how_helps) + '</div>' : '');
     el.style.display = 'block';

@@ -389,7 +389,10 @@ function _rdHelpHtml(g) {
   const w = g.weight || 0;
   const pts = _rdHelp.evaluable ? (w / _rdHelp.evaluable * 100) : null;
   if (pts != null) bullets.push(`Weight ${Math.round(w)}: if it fires, it takes about ${pts.toFixed(1)} points off the Risk Dial number.`);
-  if (g.fired && g.detail) bullets.unshift(`Today: ${g.detail}`);
+  // 2026-11-21, user-directed: every gauge's hover carries the whole text (today's reading, the elevated note, how it helps), fired or not.
+  if (g.how_helps) bullets.unshift(`How it helps you: ${g.how_helps}`);
+  if (g.amber) bullets.unshift(`Elevated: ${g.amber}`);
+  if (g.detail) bullets.unshift(`Today: ${g.detail}`);
   return `<div class="rd-help-h">${escapeHtml(g.label || g.key)}</div>` +
     (intro.length ? `<div>${intro.map(escapeHtml).join('<br>')}</div>` : '<div>No description yet.</div>') +
     (bullets.length ? `<ul>${bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : '');
@@ -401,6 +404,10 @@ function _rdHowHtml(g) {
 // 2026-11-09, user-directed: a fired/amber row reads "Label — how it helps you" and the live numbers follow after it in
 // muted text; the row is at most two lines (CSS .rd-gauge-text: 2-line clamp + ellipsis), so the numbers show only if there is room and are cut
 // off otherwise. The "(fires at ...)" wording is stripped. Full text stays in the popup ("Today:") and the row's tooltip.
+// 2026-11-21: the row's native hover as a short bulleted list (name, how it helps, the full reading), never one flat line.
+function _rdRowTitle(g, live) {
+  return [(g.label || g.key)].concat(g.how_helps ? ['• ' + g.how_helps] : [], live ? ['• Today: ' + live] : []).join(String.fromCharCode(10));
+}
 function _rdRowText(g, live) {
   const how = g && g.how_helps ? `<span class="rd-desc">${escapeHtml(g.how_helps)}</span>` : '';
   const num = String(live || '').replace(/\s*\(fires? (?:at|when)[^)]*\)/gi, '').trim();
@@ -466,7 +473,7 @@ async function loadRiskDial() {
                    onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">${wt === 0 ? 'i' : wt}</span>
-        <span class="rd-gauge-text" title="${escapeHtml((g.label || g.key) + ' — ' + (g.how_helps || '') + (g.detail ? ' · ' + g.detail : ''))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.detail)}</span>
+        <span class="rd-gauge-text" title="${escapeHtml(_rdRowTitle(g, g.detail))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.detail)}</span>
         <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
@@ -477,7 +484,7 @@ async function loadRiskDial() {
         onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt" data-rdkey="${escapeHtml(g.key)}">~</span>
-        <span class="rd-gauge-text" title="${escapeHtml((g.label || g.key) + ' — ' + (g.how_helps || '') + (g.amber ? ' · ' + g.amber : ''))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.amber)}</span>
+        <span class="rd-gauge-text" title="${escapeHtml(_rdRowTitle(g, g.amber))}"><strong>${escapeHtml(g.label || g.key)}</strong> — ${_rdRowText(g, g.amber)}</span>
       </div>`).join('');
     const quietHtml = (r.quiet || [])
       .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}" role="button" tabindex="0"

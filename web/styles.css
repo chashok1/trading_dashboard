@@ -2556,9 +2556,9 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   background: none; cursor: pointer; border-radius: 4px;
 }
 .rd-gauge-row:hover, .rd-gauge-row:focus-visible { background: var(--act-sell-bg); outline: none; }
-/* 2026-11-09, user-directed: up to two lines per gauge; the live numbers (.rd-live) come last and are cut off with an ellipsis
-   if they do not fit in the second line. */
-.rd-gauge-row .rd-gauge-text { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.5; }
+/* 2026-11-21, user-directed: ONE line per gauge (was two). The live numbers (.rd-live) come last and are cut off with an ellipsis; the
+   full text is in the row's hover and in the click-through popup. */
+.rd-gauge-row .rd-gauge-text { min-width: 0; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
 .rd-gauge-row .rd-live { color: var(--text-1); }
 .rd-gauge-row .rd-gauge-text strong { font-size: 11px; font-weight: 700; }   /* 2026-11-09, user-directed: match the 'Lists vs Quad model' panel -- name 11px bold, description 10.5px, all dark text, line-height 1.5 */
 .rd-gauge-row .rd-desc { color: var(--text-1); }   /* 2026-11-09, user-directed: description in the normal dark text colour; only the live numbers stay grey */
@@ -4485,7 +4485,8 @@ body[data-rf-dir="dn"] :is(#macroRailsWrap,#marketReadSectorsBand,#psEtfBand,#ca
 
 /* 2026-10-20: Risk Dial gauge hover help (rank chip + quiet list), web/app.js::_rdHelpShow */
 .rd-wt[data-rdkey] { cursor: help; }
-.rd-q-item[data-rdkey] { cursor: pointer; display: block; margin-bottom: 3px; }
+.rd-q-item[data-rdkey] { cursor: pointer; display: block; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-q-item .rd-how { display: inline; margin: 0 0 0 4px; }   /* 2026-11-21: quiet gauges are one line too */
 .rd-help-tip { position: fixed; z-index: 1200; display: none; pointer-events: none; max-width: 340px; padding: 9px 12px; border-radius: 6px;
   background: var(--card-bg, #fff); color: var(--text-1, #111827); border: 1px solid var(--border, #d4d4d8); box-shadow: 0 8px 24px rgba(0,0,0,.22);
   font-size: 12px; line-height: 1.45; }
