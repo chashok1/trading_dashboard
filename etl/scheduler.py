@@ -985,9 +985,10 @@ def maybe_run_perf_base_fetch() -> None:
         state.write_text(this_month, encoding="utf-8")
 
 
-# 2026-11-10, user-directed: pre-market / after-hours prices (display only, cache_ext_quote). Three fetches on trading days:
+# 2026-11-10, user-directed: pre-market / after-hours prices (display only, cache_ext_quote). Four fetches on trading days:
 # 8:00 and 9:00 AM ET (pre-market) and 5:00 PM ET (after-hours). A missed slot is caught up inside its own window only.
-_EXT_QUOTE_SLOTS = [((8, 0), (9, 30)), ((9, 0), (9, 30)), ((17, 0), (20, 0))]   # (start, last time it may still run)
+# 2026-11-21, user-directed: a fourth fetch at 8:05 PM ET, just after Yahoo's after-hours session closes, for the final after-hours price.
+_EXT_QUOTE_SLOTS = [((8, 0), (9, 30)), ((9, 0), (9, 30)), ((17, 0), (20, 0)), ((20, 5), (22, 0))]   # (start, last time it may still run)
 _ext_quote_done_today: set = set()
 
 

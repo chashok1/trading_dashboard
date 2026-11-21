@@ -722,12 +722,14 @@
                    ['r_lo', 'Lo', 'How far the price is above its low line (LRR), in %. Negative = below it'],
                    ['r_hi', 'Hi', 'How far the price is below its high line (TRR), in %. Negative = above it']];
   // 2026-11-10, user-directed: 'Ext' radio -- pre-market / after-hours price and its move from the last regular close. Display only.
-  var _EXT_COLS = [['e_pct', '%', 'Move of the pre-market / after-hours price from the last regular close, in %'],
+  // 2026-11-21, user-directed: a 'Day' column first -- the regular-session % change (same number as the % radio) -- then the extended-hours move.
+  var _EXT_COLS = [['pct_change', 'Day', 'The regular-session % change (today\'s move to the close)'],
+                   ['e_pct', '%', 'Move of the pre-market / after-hours price from the last regular close, in %'],
                    ['e_ses', 'Ses', 'Session: Pre = before the open, Post = after the close. Hover a number for the time of the price']];
   function _periodHeader(area, force, group) {
     if (!force && !_volOn && !_rngOn && !_extOn && !_PERIOD_AREAS[area.area_key]) return '';
     var alt = _volOn || _rngOn || _extOn;
-    var key = area.area_key, mode = _rs(group ? key + ':' + group : key), f = _railSortField[key] || 'pct_change';
+    var key = area.area_key, mode = _rs(group ? key + ':' + group : key), f = _sortFieldOf(key);
     return (_extOn ? _EXT_COLS : _rngOn ? _RNG_COLS : _volOn ? _VOL_COLS : _PERIOD_COLS).map(function (c) {
       var on = mode && f === c[0];
       return '<button type="button" class="msr-colhdr-btn' + (alt ? ' vol' : '') + (on ? ' on' : '') + '" data-area="' + esc(key) +
@@ -783,7 +785,7 @@
     return cell(f(m.r_pos), hot ? 'hot' : cold ? 'cold' : '') + cell(f(m.r_lo)) + cell(f(m.r_hi));
   }
   // 'Ext' (2026-11-10): numbers come from GET /api/cockpit/ext-quotes (cache_ext_quote), keyed by symbol. Empty during regular hours.
-  var _extMap = null, _extOpen = false;
+  var _extMap = null, _extOpen = false, _extAutoDone = false;
   function _extAttach(m) {
     var e = _extMap && _extMap[m.symbol];
     m.e_pct = e && e.pct != null ? Math.round(e.pct * 100) / 100 : null;
@@ -797,10 +799,14 @@
       '• ' + (e.sess === 'PRE' ? 'Pre-market' : 'After-hours') + ' price: ' + _fmtPrice(e.px),
       '• Last regular close: ' + (e.ref == null ? '--' : _fmtPrice(e.ref)),
       '• Price as of: ' + (e.t || '--') + ' ET'].join(String.fromCharCode(10))).split(String.fromCharCode(10)).join('&#10;') + '"' : '';
-    if (!e) return cell(_extOpen ? '' : '–', 'na') + cell('', 'na');
+    // Day cell (regular-session % change), coloured like the extended-hours one; no hover of its own.
+    var d = m.pct_change, dcls = d == null ? 'na' : d > 0 ? 'up' : d < 0 ? 'dn' : '';
+    if (m.inverted && (dcls === 'up' || dcls === 'dn')) dcls = dcls === 'up' ? 'dn' : 'up';
+    var dayCell = '<span class="msr-volc' + (dcls ? ' ' + dcls : '') + '">' + (d == null ? '–' : (d > 0 ? '+' : '') + Number(d).toFixed(2) + '%') + '</span>';
+    if (!e) return dayCell + cell(_extOpen ? '' : '–', 'na') + cell('', 'na');
     var p = e.pct, cls = p == null ? '' : p > 0 ? 'up' : p < 0 ? 'dn' : '';
     if (m.inverted && cls) cls = cls === 'up' ? 'dn' : 'up';
-    return cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(2) + '%', cls) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
+    return dayCell + cell(p == null ? '–' : (p > 0 ? '+' : '') + p.toFixed(2) + '%', cls) + cell(e.sess === 'PRE' ? 'Pre' : 'Post');
   }
   async function _loadExtMap() {
     try {
@@ -809,7 +815,19 @@
       var j = await res.json();
       _extMap = j.rows || {};
       _extOpen = !!j.market_open;
-      if (_lastAreasData && _modes.rail === 'ext') renderRail(_lastAreasData);
+      // 2026-11-21, user-directed: when the screen opens, default the radio to Aft outside market hours and to % during market hours.
+      // Only switches between those two (a saved Perf / Vol / Rng / $ / Act pick is left alone); manual clicks afterwards stick.
+      var switched = false;
+      if (!_extAutoDone) {
+        _extAutoDone = true;
+        var want = _extOpen ? 'pct' : 'ext';
+        if ((_modes.rail === 'pct' || _modes.rail === 'ext') && _modes.rail !== want) {
+          _modes.rail = want; switched = true;
+          try { localStorage.setItem(_MODE_KEYS.rail, want); } catch (e) {}
+          document.querySelectorAll('input[name="msrValueMode"]').forEach(function (r) { r.checked = (r.value === want); });
+        }
+      }
+      if (_lastAreasData && (switched || _modes.rail === 'ext')) renderRail(_lastAreasData);
     } catch (e) { _extMap = {}; }
   }
   function _altCells(m, dispName) { return _extOn ? _extCells(m) : _rngOn ? _rngCells(m) : _volCells(m, dispName); }
@@ -1392,6 +1410,8 @@
   // 2026-10-15 -- Major Markets / Sectors also sort by any of their Day / MTD / QTD / YTD
   // column headers (_railSortField[area] = the member field, default pct_change).
   var _railSortField = {};
+  // 2026-11-21, user-directed: with the Aft radio on, a panel that has not been sorted by hand orders by the after-hours % change.
+  function _sortFieldOf(area) { return _railSortField[area] || (_modes.rail === 'ext' ? 'e_pct' : 'pct_change'); }
   // 2026-10-19, user-directed: a futures (or index) row and its ETF sit side by side. ETF -> its partner row; in the default order
   // the ETF is moved to sit directly under the partner whenever both are in the same panel. Column sorts still order purely by the column.
   var _ETF_PAIR = { GLD: '/GC', SLV: '/SI', CPER: '/HG', CORN: '/ZC', WEAT: '/ZW', SOYB: '/ZS',
@@ -1452,18 +1472,18 @@
       var out = [];
       order.forEach(function (g) {
         var gk = area.area_key + ':' + g;
-        out = out.concat(_sortByMode(byGroup[g], _rs(gk), _railSortField[area.area_key], _railSort[gk] === undefined));
+        out = out.concat(_sortByMode(byGroup[g], _rs(gk), _sortFieldOf(area.area_key), _railSort[gk] === undefined));
       });
       return out;
     }
-    return _sortByMode(members, _rs(area.area_key), _railSortField[area.area_key], _railSort[area.area_key] === undefined);
+    return _sortByMode(members, _rs(area.area_key), _sortFieldOf(area.area_key), _railSort[area.area_key] === undefined);
   }
 
   document.addEventListener('click', function (ev) {
     var hb = ev.target.closest && ev.target.closest('.msr-colhdr-btn');
     if (hb) {
       var a = hb.getAttribute('data-area'), f = hb.getAttribute('data-field'), g0 = hb.getAttribute('data-group'), k0 = g0 ? a + ':' + g0 : a;
-      if ((_railSortField[a] || 'pct_change') !== f || !_rs(k0)) { _railSortField[a] = f; _railSort[k0] = 1; }
+      if (_sortFieldOf(a) !== f || !_rs(k0)) { _railSortField[a] = f; _railSort[k0] = 1; }
       else { _railSort[k0] = (_rs(k0) + 1) % 3; }
       if (_lastAreasData) renderRail(_lastAreasData);
       return;
