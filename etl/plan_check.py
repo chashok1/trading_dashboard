@@ -94,6 +94,9 @@ def eff_max(cap: Optional[dict], mine: Optional[float]):
     return rule, False
 
 
+MIN_ENTRY = 1000.0      # 2026-11-23, user: a planned buy or sell under this many dollars is not shown / counted as a to-do entry
+
+
 def validate_plan(plan: dict) -> list:
     """Plain-language reasons the plan cannot be activated (empty list = fine)."""
     p = clean_plan(plan)
@@ -108,9 +111,7 @@ def validate_plan(plan: dict) -> list:
     tot = sum(p["cls"].values())
     if abs(tot - 100.0) > TOL:
         errs.append("Asset classes add to %s%%. They must add to 100." % ("%g" % round(tot, 2)))
-    sec = sum(v for v in p["sector"].values() if v is not None)
-    if sec > p["cls"]["Equities"] + TOL:
-        errs.append("Sectors add to %s%%, more than Equities (%s%%)." % ("%g" % round(sec, 2), "%g" % p["cls"]["Equities"]))
+    # 2026-11-23, user: sector limits are separate caps, not a split of Equities, so they may add to more than Equities and must not block Activate.
     if sum((p["beta"][k] or 0) for k in ("low", "high", "mid", "none")) > 100 + TOL:
         errs.append("The beta limits add to more than 100%.")
     return errs
@@ -335,6 +336,7 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
     # 2026-11-20, user: a class above its plan sells to reach it AND to pay for the buys planned inside the same class (the picks swap the
     # overweight names for the others), so those buys are not "over plan". The default sell = the excess + the planned buys in the class.
     buy_by_cls: dict = {}
+    buying = {m for pk in picks if pk["side"] == "BUY" and float(pk.get("amount") or 0.0) > 0 for m in pk["members"]}
     assumed_sold: dict = {}          # {sym: dollars} the read-only list assumes sold (so sector / style / beta / Quad lines free up too)
     for pk in picks:
         if pk["side"] == "BUY" and float(pk.get("amount") or 0.0) > 0 and pk["members"]:
@@ -359,7 +361,11 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             held_rows = sum(r["value"] for r in rows)
             dflt = min(held_rows, n["need"] + (0.0 if n["all"] else buy_by_cls.get(n["cls"], 0.0)))
             amt = dflt if amt is None else min(amt, held_rows)
-            split = alloc_sell({r["sym"]: r["value"] for r in rows}, amt, p["sell_hold"])
+            # 2026-11-23, user: a stock with a planned buy is never also sold: it takes 0 of the sale and the others share it (unless you typed its sale yourself)
+            hold = dict(p["sell_hold"])
+            for m in buying:
+                hold.setdefault(m, 0.0)
+            split = {k: (v if v >= MIN_ENTRY else 0.0) for k, v in alloc_sell({r["sym"]: r["value"] for r in rows}, amt, hold).items()}
             for r in rows:
                 hh = holdings.get(r["sym"]) or {}
                 r["sell"] = split.get(r["sym"], 0.0)
@@ -416,6 +422,8 @@ def todo(plan: dict, account: dict, picks: list, calls: dict, info: dict, style_
             continue
         members = list(pk["members"])
         ask = float(pk.get("amount") or 0.0)
+        if 0 < ask < MIN_ENTRY:          # 2026-11-23, user: a buy under $1,000 is not worth an entry
+            continue
         by_member = {s: calls.get(s) for s in members}
         buyers = [s for s in members if buy_side(calls.get(s)) == "buy"]
         cand = buyers or members

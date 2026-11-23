@@ -4175,6 +4175,62 @@ function _acctCellHtml(r, kind) {
   return dash;
 }
 
+// 2026-11-23, user: "Plan to do" panel -- every buy/sell of the ACTIVE plans in one list. No account picked = all accounts (with an Account column);
+// an account picked in Acct = just that account. Display only: never changes the Final Call.
+const _ptd = { lines: [], skipped: [], sort: 'account', dir: 1, only: '' };
+async function openPlanTodo() {
+  let ov = document.getElementById('planTodoOv');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'planTodoOv';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:#fff;border-radius:8px;padding:14px 16px;min-width:640px;max-width:90vw;max-height:75vh;overflow:auto;font-size:12px;">Loading the plan to-do list...</div>';
+  const sn = _pickedAccountShort();
+  try {
+    const d = await fetchJson('/api/builder/todo-all?' + (sn ? 'account=' + encodeURIComponent(sn) + '&' : '') + (state.date ? 'date=' + encodeURIComponent(state.date) : ''));
+    _ptd.lines = d.lines || []; _ptd.skipped = d.skipped || []; _ptd.only = '';  } catch (e) { ov.firstChild.textContent = 'Could not load the plan to-do list: ' + e.message; return; }
+  _renderPlanTodo(sn);
+}
+function _renderPlanTodo(sn) {
+  const ov = document.getElementById('planTodoOv'); if (!ov) return;
+  const k = _ptd.sort, dir = _ptd.dir;
+  const rows = _ptd.lines.filter(l => !_ptd.only || l.side === _ptd.only)
+    .sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * dir || (a.account + a.sym > b.account + b.sym ? 1 : -1));
+  const buy = rows.filter(l => l.side === 'BUY').reduce((s, l) => s + l.amount, 0);
+  const sell = rows.filter(l => l.side === 'SELL').reduce((s, l) => s + l.amount, 0);
+  const th = (key, label, al) => '<th data-ptdsort="' + key + '" style="cursor:pointer;text-align:' + (al || 'left') + ';padding:3px 8px;border-bottom:1px solid #d1d5db;">' + label + (_ptd.sort === key ? (dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
+  const tr = rows.map(l => '<tr><td style="padding:3px 8px;">' + escapeHtml(l.account) + '</td>'
+    + '<td style="padding:3px 8px;color:' + (l.side === 'BUY' ? '#2f6b45' : '#9e3636') + ';font-weight:600;">' + (l.side === 'BUY' ? 'Buy' : 'Sell') + '</td>'
+    + '<td style="padding:3px 8px;"><a href="#" data-ptdsym="' + escapeHtml(l.sym) + '">' + escapeHtml(l.sym) + '</a>'
+    + ((l.members || []).length > 1 ? ' <span style="color:#9ca3af;font-size:10px" title="Buy one of: ' + escapeHtml(l.members.join(', ')) + '">one of ' + l.members.length + '</span>' : '') + '</td>'
+    + '<td style="padding:3px 8px;text-align:right;">' + _planUsd(l.amount) + '</td>'
+    + '<td style="padding:3px 8px;">' + escapeHtml(l.cls || '') + '</td>'
+    + '<td style="padding:3px 8px;color:#6b7280;">' + escapeHtml(l.why || '') + '</td></tr>').join('');
+  const sk = _ptd.skipped.length ? '<div style="margin-top:8px;color:#9ca3af;">Not included: ' + _ptd.skipped.map(s => escapeHtml(s.account) + ' (' + escapeHtml(s.why) + ')').join(', ') + '</div>' : '';
+  const sm = '<div style="margin-top:8px;color:#9ca3af;">Buys and sells under $1,000 are not listed.</div>';
+  const chip = (v, label) => '<button data-ptdonly="' + v + '" class="btn" style="font-size:11px;padding:1px 8px;' + (_ptd.only === v ? 'font-weight:700;' : '') + '">' + label + '</button> ';
+  ov.innerHTML = '<div style="background:#fff;border-radius:8px;padding:14px 16px;min-width:640px;max-width:90vw;max-height:75vh;overflow:auto;font-size:12px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:14px;">Plan to do — ' + (sn ? escapeHtml(sn) : 'all accounts') + '</b>'
+    + '<button id="ptdClose" class="btn" style="font-size:11px;">Close</button></div>'
+    + '<div style="margin-bottom:8px;">' + chip('', 'All') + chip('BUY', 'Buys ' + _planUsd(buy)) + chip('SELL', 'Sells ' + _planUsd(sell)) + '</div>'
+    + (rows.length ? '<table style="border-collapse:collapse;width:100%;"><thead><tr>' + th('account', 'Account') + th('side', 'Action') + th('sym', 'Stock') + th('amount', 'Amount', 'right') + th('cls', 'Asset class') + '<th style="text-align:left;padding:3px 8px;border-bottom:1px solid #d1d5db;">Note</th></tr></thead><tbody>' + tr + '</tbody></table>'
+      : '<div style="color:#6b7280;">Nothing to do: no active plan has a buy or sell left' + (sn ? ' for ' + escapeHtml(sn) : '') + '.</div>')
+    + sk + sm + '</div>';
+  ov.querySelector('#ptdClose').onclick = () => ov.remove();
+  ov.querySelectorAll('[data-ptdsort]').forEach(h => h.onclick = () => { const kk = h.dataset.ptdsort; _ptd.dir = _ptd.sort === kk ? -_ptd.dir : 1; _ptd.sort = kk; _renderPlanTodo(sn); });
+  ov.querySelectorAll('[data-ptdonly]').forEach(b => b.onclick = () => { _ptd.only = b.dataset.ptdonly; _renderPlanTodo(sn); });
+  ov.querySelectorAll('[data-ptdsym]').forEach(a => a.onclick = e => {      // jump to the stock's row in the grid
+    e.preventDefault();
+    const sym = a.dataset.ptdsym;
+    const row = (state.allRows || []).find(r => r.tos_symbol === sym);
+    ov.remove();
+    if (row) { try { openDrilldown(row); } catch (err) { console.warn(err); } }
+  });
+}
+
 // 2026-11-14: My plan (Builder). Per symbol, what each account's ACTIVE plan says: a planned pick / buy-one-of group, a sell (its class
 // is above the plan), or a Buy call that would be over plan or out of cash there. Information only: never changes the Final Call.
 state.plan = { rows: {}, accounts: [] };
@@ -7493,6 +7549,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   const myManageBtn = $('myManageBtn');
   if (myManageBtn) myManageBtn.addEventListener('click', () => openMyPop(myManageBtn));
+  const planTodoBtn = $('planTodoBtn');
+  if (planTodoBtn) planTodoBtn.addEventListener('click', () => openPlanTodo());
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
   let _symbolSearchTimer = null;
   $('symbolSearch').addEventListener('input', (e) => {

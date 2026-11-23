@@ -27,10 +27,11 @@ def test_classes_must_add_to_100():
     assert any("100" in e for e in pc.validate_plan(_plan(Cash=10)))
 
 
-def test_sector_total_cannot_exceed_equities():
+def test_sector_limits_may_add_to_more_than_equities():
+    # sector limits are separate caps, not a split of Equities: they never block Activate
     p = _plan()
     p["sector"] = {"Technology": 40, "Health Care": 20}
-    assert any("Sectors" in e for e in pc.validate_plan(p))
+    assert pc.validate_plan(p) == []
 
 
 def test_cash_to_spend_keeps_cash_percent_and_floor():

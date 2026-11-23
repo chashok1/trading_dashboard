@@ -378,18 +378,35 @@ def acct_room_page(session, d: date, account: str) -> dict:
         o = out["rows"].setdefault(s, {})
         o.update({"stock": r["stock"], "bucket": r["bucket"], "max": r["max"], "binding": r["binding"], "bucket_binding": r["bucket_binding"]})
         if s in planned:
-            o["planned"] = planned[s]["amount"]
+            o["planned"] = planned[s]["amount"] if planned[s]["amount"] >= pc.MIN_ENTRY else 0.0   # under $1,000: no entry
             o["planned_group"] = planned[s]["group"]
         if (pend.get(s) or {}).get("BUY", 0.0) > 0:
             o["done_buy"] = pend[s]["BUY"]
     # planned SELLS: each class above its plan is sold by the amount saved in the plan (default: the excess), split over its holdings in proportion to their value
     now = pc.now_lines(holdings, info, snap["cash"], style_groups())
+    buying = {m for m, x in planned.items() if x["amount"] > 0}
+    # 2026-11-23, user: same sale as the To do list -- the excess PLUS the buys planned inside the class (a group counts once, under the member bought, else its first)
+    buy_by_cls: dict = {}
+    for pk in picks:
+        mem = pk["members"]
+        left = (planned.get(mem[0]) or {}).get("amount", 0.0) if mem else 0.0
+        if left > 0:
+            m0 = next((m for m in mem if charge.get(m, 0.0) > 0 and len(mem) > 1 and m in charge), mem[0])
+            c0 = pc._lines_of(m0, (holdings.get(m0) or {}).get("bucket"), info, style_groups())["cls"]
+            if c0:
+                buy_by_cls[c0] = buy_by_cls.get(c0, 0.0) + left
     for n in pc.sell_needs(plan, now, value):
         vals = {sym: float(h.get("value") or 0.0) for sym, h in holdings.items() if h.get("bucket") == n["cls"] and float(h.get("value") or 0.0) > 0}
         amt = plan["sell"].get(n["cls"])
-        amt = n["need"] if amt is None else min(amt, sum(vals.values()))
-        for sym, v in pc.alloc_sell(vals, amt, plan["sell_hold"]).items():
+        held_rows = sum(vals.values())
+        amt = min(held_rows, n["need"] + (0.0 if n["all"] else buy_by_cls.get(n["cls"], 0.0))) if amt is None else min(amt, held_rows)
+        hold = dict(plan["sell_hold"])
+        for m in buying:                       # a stock with a planned buy is never also sold (same rule as the To do list)
+            hold.setdefault(m, 0.0)
+        for sym, v in pc.alloc_sell(vals, amt, hold).items():
             dn = (pend.get(sym) or {}).get("SELL", 0.0)
+            if v < pc.MIN_ENTRY:
+                v = 0.0
             if v - dn > 0.5:
                 out["rows"].setdefault(sym, {})["planned_sell"] = v - dn
             if dn > 0:
