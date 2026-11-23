@@ -4112,6 +4112,7 @@ state.live = { data: null, bySym: {}, act: new Set(), showAll: false, panelOpen:
 // 2026-11-20: the picked account's own numbers per stock (Builder plan maths): what it holds, the most this stock can still be bought (Stk Room $), the room left
 // in its buckets (Room Left $) and the planned buy still to do. Information only. Columns are hidden until an account is picked in the Acct box.
 state.acctRoom = { short: '', data: null };
+state.planAll = {}; state.planAllBuyers = new Set();      // no-account mode: every account's plan lines by stock
 function _pickedAccountShort() {
   if (!state.filters.account) return '';
   const a = (state.allAccounts || []).find(x => x.account_number === state.filters.account);
@@ -4124,7 +4125,7 @@ function _roomAccountShort() {
 async function _fetchAcctRoom() {
   const sn = _roomAccountShort();
   state.acctRoom = { short: sn, data: null };
-  state.planAll = {};
+  state.planAll = {}; state.planAllBuyers = new Set();
   if (sn) {
     try { state.acctRoom.data = await fetchJson('/api/builder/acct-room?account=' + encodeURIComponent(sn) + (state.date ? '&date=' + encodeURIComponent(state.date) : '')); }
     catch (e) { console.warn('account room unavailable:', e); }
@@ -4132,7 +4133,10 @@ async function _fetchAcctRoom() {
     // 2026-11-23, user: no account picked = the plan of EVERY account with an active plan (Planned $ shows one line per account)
     try {
       const d = await fetchJson('/api/builder/todo-all' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''));
-      for (const l of (d.lines || [])) (state.planAll[l.sym] = state.planAll[l.sym] || []).push(l);
+      for (const l of (d.lines || [])) {
+        (state.planAll[l.sym] = state.planAll[l.sym] || []).push(l);
+        if (l.side === 'BUY') for (const m of (l.members && l.members.length ? l.members : [l.sym])) state.planAllBuyers.add(l.account + '|' + m);
+      }
     } catch (e) { console.warn('plan to-do (all accounts) unavailable:', e); }
   }
   const rows = (state.acctRoom.data && state.acctRoom.data.rows) || {};
@@ -4222,14 +4226,29 @@ function _applyPlanToRows() {
 function _planItems(sym) {
   const all = (state.plan && state.plan.rows[sym]) || [];
   const sn = _roomAccountShort();
-  return sn ? all.filter(i => i.account === sn) : all;      // 2026-11-20: with an account picked, only its own plan tags
+  return (sn ? all.filter(i => i.account === sn) : all).filter(i => i.kind === 'buy' || _planItemReal(sym, i));      // 2026-11-20: with an account picked, only its own plan tags
 }
 function _planSet() {
   // 2026-11-20, user: the My plan count and filter follow the account (only that account's plan items are counted)
+  // 2026-11-23, user: the count/filter must equal the Planned $ list: only stocks with a real planned buy/sell line (a stock with a planned buy is not also sold; under $1,000 is no entry)
   const out = new Set();
-  Object.keys((state.plan && state.plan.rows) || {}).forEach(s => { if (_planItems(s).some(i => i.kind !== 'buy')) out.add(s); });
-  if (!_roomAccountShort()) Object.keys(state.planAll || {}).forEach(s => out.add(s));   // no account: every stock with a planned buy/sell
+  if (_roomAccountShort()) {
+    const rows = (state.acctRoom.data && state.acctRoom.data.rows) || {};
+    Object.keys(rows).forEach(s => { if (rows[s].planned > 0 || rows[s].planned_sell > 0) out.add(s); });
+  } else {
+    Object.keys(state.planAll || {}).forEach(s => out.add(s));
+  }
   return out;
+}
+// Is there a real planned line behind this plan-check item? (plan-check also tags holdings of an over-plan class that the plan does not actually sell)
+function _planItemReal(sym, i) {
+  const sn = _roomAccountShort();
+  if (sn) {
+    const x = ((state.acctRoom.data && state.acctRoom.data.rows) || {})[sym] || {};
+    return i.kind === 'sell' ? x.planned_sell > 0 : x.planned > 0;
+  }
+  if (i.kind === 'sell') return (state.planAll[sym] || []).some(l => l.account === i.account && l.side === 'SELL');
+  return state.planAllBuyers.has(i.account + '|' + sym);
 }
 function _planUsd(n) { return '$' + (n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : Math.round(n)); }
 function _planPillsHtml(r) {
