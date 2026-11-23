@@ -4138,8 +4138,16 @@ async function _fetchAcctRoom() {
   const rows = (state.acctRoom.data && state.acctRoom.data.rows) || {};
   for (const r of (state.allRows || [])) {
     const x = rows[r.tos_symbol] || {};
-    if (!sn) { r._a_plan = (state.planAll[r.tos_symbol] || []).reduce((s, l) => s + (l.side === 'SELL' ? -l.amount : l.amount), 0); }
-    r._a_held = x.held != null ? x.held : -1; r._a_max = x.stock != null ? x.stock : -1; r._a_bkt = x.bucket != null ? x.bucket : -1; r._a_plan = x.planned_sell > 0 ? -x.planned_sell : (x.planned != null ? x.planned : 0);
+    r._a_held = x.held != null ? x.held : -1; r._a_max = x.stock != null ? x.stock : -1; r._a_bkt = x.bucket != null ? x.bucket : -1;
+    if (sn) {
+      r._a_plan = x.planned_sell > 0 ? -x.planned_sell : (x.planned != null ? x.planned : 0);
+      r._a_plan_kind = x.planned_sell > 0 ? 'Sell' : (x.planned > 0 ? 'Buy' : '');
+    } else {      // no account: every account's plan lines (buys +, sells -); kind = Buy, Sell or both
+      const ls = state.planAll[r.tos_symbol] || [];
+      r._a_plan = ls.reduce((s, l) => s + (l.side === 'SELL' ? -l.amount : l.amount), 0);
+      const b = ls.some(l => l.side === 'BUY'), sl = ls.some(l => l.side === 'SELL');
+      r._a_plan_kind = b && sl ? 'Buy + Sell' : (b ? 'Buy' : (sl ? 'Sell' : ''));
+    }
   }
   _applyAcctColsVisibility();
   try { _syncTriggerSourcePills(); } catch (e) { /* chips are optional */ }
