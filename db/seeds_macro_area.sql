@@ -623,3 +623,8 @@ UPDATE ref_macro_area SET pinned = TRUE WHERE area_key = 'commodities_metals' AN
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
   ('remaining', 'Tech & ETFs', 'SPCX', 'dual', 150, TRUE)
 ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE;
+
+-- 2026-11-23: keep the 2026-11-11 Industrial / Ag split (db/seeds_commodity_industrial.sql) when this file is re-applied.
+-- The older inserts above put CRB/Copper/CPER/URA/WOOD back into the Ag rail under the old "Industrial & Ag" label.
+DELETE FROM ref_macro_area WHERE area_key = 'commodities_ag' AND member_symbol IN ('TRCCRBTR', '/HG', 'CPER', 'URA', 'WOOD');
+UPDATE ref_macro_area SET label = 'Ag' WHERE area_key = 'commodities_ag' AND role = 'dual';
