@@ -489,7 +489,7 @@ async function loadRiskDial() {
     const quietHtml = (r.quiet || [])
       .map(g => `<span class="rd-q-item" data-rdkey="${escapeHtml(g.key)}" role="button" tabindex="0"
         onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
-        onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}${_rdHowHtml(g)}</span>`).join('');
+        onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')"><strong>${escapeHtml(g.label || g.key)}:</strong> ${escapeHtml(g.detail || '')}${_rdHowHtml(g)}</span>`).join('');
     // 2026-08-14 -- SPX vertical range indicator, ALWAYS shown (not just
     // when spx_top_range actually fires, which only happens at >=85% of its
     // risk range -- see etl/derive_risk_dial.py). The API returns this
