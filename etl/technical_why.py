@@ -184,6 +184,11 @@ def _step1_why(sid: str, d: dict) -> str:
         return (f"Price {_usd(last)} is under Trade ({_usd(trade)}) by less than one SD but rising (up day, MACDH up), above Trend ({_usd(trend)}) "
                 f"and not under the lowest Trade line of the last 5 days")
     ext = " and extended (more than 2 daily SDs away)" if qe == 4 else ""
+    ln, tl = _n(last), _n(trade)
+    if ln is not None and tl is not None and tl > 0 and ln < tl:
+        # Inside the noise tolerance (trend_trade_sd_tolerance): slightly under Trade still counts as above it.
+        return (f"Price {_usd(last)} is just under Trade ({_usd(trade)}, {(tl - ln) / tl * 100:.1f}% below), within the tolerance "
+                f"(under half a typical daily move), so it still counts as above Trade; above Trend ({_usd(trend)}){ext}")
     return f"Price {_usd(last)} is above Trade ({_usd(trade)}) and Trend ({_usd(trend)}){ext}"
 
 
