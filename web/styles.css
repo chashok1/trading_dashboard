@@ -2401,6 +2401,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    vertical scroll bar -> have a fixed height so i can see only 4 rows."
    Same 4-row budget/estimate as Currency just above. */
 #macroRailCountry.dash-macro-rail { max-height: 76px; overflow-y: auto; }
+#macroRailSoftware.dash-macro-rail { max-height: 133px; overflow-y: auto; }   /* 2026-11-23: ~7 rows (19px each), then scroll */
 /* 2026-08-08 -- align columns across the right-rail tables (Indicator/
    Symbol -- Event merged into Indicator 2026-08-10, see above -- all
    columns now that Indicator's Signal column is removed: label / Date /
@@ -4851,3 +4852,10 @@ body.portfolio-page .act-today { margin: 0 8px; }
 /* 2026-11-13, user: ONLY the US Dollar chip gets wider (48px) -- its right edge moves into the gap before S&P. The first column keeps its width
    (the other first-column items still keep their 64px margin), so S&P, VIX, the sectors and every other chip stay exactly where they are. */
 .ts-tgrid > .mw-usd { margin-right: 25px; }   /* 2026-11-13: first-column gap raised 64 -> 88px; this stays 24px smaller so the USD chip keeps its width */
+
+/* 2026-11-24 Positives panel */
+.pos-head { font-weight: 600; margin-bottom: 6px; }
+.pos-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; }
+.pos-row.on .pos-mark { color: var(--ok); }
+.pos-row.off { color: var(--text-3); }
+.pos-hist { font-size: 12px; color: var(--text-3); padding: 0 0 4px 22px; }

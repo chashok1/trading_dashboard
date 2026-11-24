@@ -32,15 +32,17 @@ setup_logging()
 log = logging.getLogger("fetch_vix9d")
 
 YF_SYMBOL = "^VIX9D"
+# 2026-11-24: ^VIX3M (3-month implied vol) added for the VIX term-structure test (1M vs 3M). Same table, same mechanics.
+YF_SYMBOLS = ["^VIX9D", "^VIX3M", "^VIX"]
 
 
-def _fetch_yfinance(full: bool) -> list[dict]:
+def _fetch_yfinance(full: bool, sym: str = YF_SYMBOL) -> list[dict]:
     """Download yfinance daily closes for VIX9D. Returns [{symbol, obs_date, close}]."""
     import yfinance as yf
     import pandas as pd
 
     period = "max" if full else "10d"
-    ticker = yf.Ticker(YF_SYMBOL)
+    ticker = yf.Ticker(sym)
     hist = ticker.history(period=period, auto_adjust=True)
     if hist is None or hist.empty:
         return []
@@ -52,17 +54,17 @@ def _fetch_yfinance(full: bool) -> list[dict]:
             continue
         try:
             obs_date = dt.date() if hasattr(dt, "date") else date.fromisoformat(str(dt)[:10])
-            rows.append({"symbol": YF_SYMBOL, "obs_date": obs_date, "close": float(close_val)})
+            rows.append({"symbol": sym, "obs_date": obs_date, "close": float(close_val)})
         except Exception:
             continue
     return rows
 
 
-def _existing_dates(session) -> set:
+def _existing_dates(session, sym: str = YF_SYMBOL) -> set:
     result = session.execute(text("""
         SELECT obs_date FROM hist_quote_daily
         WHERE source = 'yfinance' AND symbol = :sym
-    """), {"sym": YF_SYMBOL}).all()
+    """), {"sym": sym}).all()
     return {r[0] for r in result}
 
 
@@ -81,17 +83,17 @@ def _insert_rows(session, rows: list[dict]) -> int:
     return inserted
 
 
-def fetch_vix9d(full: bool = False, dry_run: bool = False) -> dict:
+def _fetch_one(sym: str, full: bool, dry_run: bool) -> dict:
     summary = {"rows_fetched": 0, "rows_inserted": 0, "error": None}
     try:
-        rows = _fetch_yfinance(full)
+        rows = _fetch_yfinance(full, sym)
     except Exception as exc:
-        log.error("fetch_vix9d: yfinance '%s' failed: %s", YF_SYMBOL, exc)
+        log.error("fetch_vix9d: yfinance '%s' failed: %s", sym, exc)
         summary["error"] = str(exc)
         return summary
 
     summary["rows_fetched"] = len(rows)
-    log.info("fetch_vix9d: '%s' -> %d rows from yfinance", YF_SYMBOL, len(rows))
+    log.info("fetch_vix9d: '%s' -> %d rows from yfinance", sym, len(rows))
 
     if dry_run:
         log.info("fetch_vix9d: dry-run -> %d rows (not written)", len(rows))
@@ -99,17 +101,22 @@ def fetch_vix9d(full: bool = False, dry_run: bool = False) -> dict:
 
     if not full:
         with session_scope() as s:
-            existing = _existing_dates(s)
+            existing = _existing_dates(s, sym)
         rows = [r for r in rows if r["obs_date"] not in existing]
 
     if rows:
         with session_scope() as s:
             inserted = _insert_rows(s, rows)
         summary["rows_inserted"] = inserted
-        log.info("fetch_vix9d: %d new rows inserted", inserted)
+        log.info("fetch_vix9d: '%s' %d new rows inserted", sym, inserted)
     else:
-        log.info("fetch_vix9d: no new rows (all already loaded)")
+        log.info("fetch_vix9d: '%s' no new rows (all already loaded)", sym)
     return summary
+
+
+def fetch_vix9d(full: bool = False, dry_run: bool = False) -> dict:
+    """Fetches every symbol in YF_SYMBOLS; returns {symbol: summary}."""
+    return {sym: _fetch_one(sym, full, dry_run) for sym in YF_SYMBOLS}
 
 
 def main() -> None:

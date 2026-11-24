@@ -110,6 +110,11 @@
             <div id="riskDialBody">Loading…</div>
           </section>
 
+          <!-- 2026-11-24, user-directed: Positives panel (good signs). Filled by web/positives.js. -->
+          <section class="cockpit-band" id="positivesBand">
+            <div id="positivesBody">Loading…</div>
+          </section>
+
           <!-- 2026-08-10 -- Hedgeye Mkt Situation (MSR), moved here from the
                Actionable screen's hedgeye_panel.js panel -- user: "move the
                mkt situation panel to just below risk dial panel." Plain
@@ -416,25 +421,32 @@
           </section>
           </div>
 
-          <!-- 2026-10-16, user-directed: Tech & ETFs in its own column at the end. -->
+          <!-- 2026-10-16, user-directed: Tech & ETFs in its own column at the end. 2026-11-23, user-directed: Credit moved here, above Tech & ETFs. -->
           <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroCreditBand">
+            <div class="msr-section-hdr">Credit<button class="msr-sort-btn" data-area="credit" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
           <section class="cockpit-band rail-band" id="macroRemainingBand">
-            <div class="msr-section-hdr">Tech &amp; ETFs<button class="msr-sort-btn" data-area="remaining" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div class="msr-section-hdr">Tech<button class="msr-sort-btn" data-area="remaining" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
 
           <!-- 2026-10-16, user-directed: Rates & Duration / Credit / Currency / Country ETFs column moved to the end. -->
           <div class="macro-rail-col">
+          <!-- 2026-11-23, user-directed: Software panel at the top of the last column (fixed height, ~7 rows, scrolls). -->
+          <section class="cockpit-band rail-band" id="macroSoftwareBand">
+            <div class="msr-section-hdr">Software<button class="msr-sort-btn" data-area="software" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
+            <div id="macroRailSoftware" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
           <section class="cockpit-band rail-band" id="macroRatesBand">
             <div class="msr-section-hdr">Rates &amp; Duration<button class="msr-sort-btn" data-area="rates_duration" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <section class="cockpit-band rail-band" id="macroCreditBand">
-            <div class="msr-section-hdr">Credit<button class="msr-sort-btn" data-area="credit" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
-            <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
           <section class="cockpit-band rail-band" id="macroUsdBand">
             <div class="msr-section-hdr">Currency<button class="msr-sort-btn" data-area="usd_currency" title="Sort: most bullish first (click to sort % change high to low)">&#8645;</button></div>
             <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
@@ -1142,6 +1154,7 @@
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260930rr2" defer></script>
   <script src="/static/macro_week.js?v=20261113e" defer></script>
+  <script src="/static/positives.js?v=20261124a" defer></script>
   <script src="/static/spx_rv.js?v=20261113a" defer></script>
   <script src="/static/today_strip.js?v=20261113y" defer></script>
   <script src="/static/sym_notes_toggle.js?v=20261113a" defer></script>
@@ -1179,7 +1192,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20261121c" defer></script>
+  <script src="/static/macro_areas.js?v=20261123a" defer></script>
   <script src="/static/rr_history.js?v=20261022b" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;

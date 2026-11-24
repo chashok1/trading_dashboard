@@ -2470,11 +2470,19 @@ async function loadCumPnlSnapshot() {
       }
       todayEl.title = title;
       // 2026-10-19, user-directed: the "(Δ ...)" leftover is no longer shown on the pill; it stays in the tooltip breakdown.
-      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge + estBadge : '';
+      // 2026-11-20, user: Today's % = Today $ / the account value at the previous close (simple)
+      let todayPctTxt = '';
+      const avs = (r.account_value || []).map(Number), prevVal = liveBarIdx >= 0 ? avs[avs.length - 1] : avs[avs.length - 2];
+      if (lastToday != null && isFinite(prevVal) && prevVal > 0) { const pt = lastToday / prevVal * 100; todayPctTxt = ' · ' + (pt >= 0 ? '+' : '') + pt.toFixed(1) + '%'; }
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + todayPctTxt + badge + estBadge : '';
     }
     if (totalEl) {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
-      totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '');  // _fsCompactUsd already signs its own output
+      // 2026-11-20, user: the cumulative % next to the $K = Cum $ / the account value on the first day of the period (simple, no time-weighting)
+      let cumPctTxt = '';
+      const startVal = Number((r.account_value || [])[0]);
+      if (isFinite(startVal) && startVal > 0) { const pc = lastCum / startVal * 100; cumPctTxt = ' · ' + (pc >= 0 ? '+' : '') + pc.toFixed(1) + '%'; }
+      totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '') + cumPctTxt;  // _fsCompactUsd already signs its own output
     }
     if (acctTotalEl) {
       acctTotalEl.textContent = acctTotal != null ? (_fmtKUsd(acctTotal) || '') : '';
@@ -2995,6 +3003,7 @@ async function refreshAll() {
   // (spec 7.2 Band 6: "When it is red, Band 1 must show a warning").
   await loadHousekeeping();
   await loadRiskDial();
+  if (window.loadPositives) window.loadPositives(state.date);
   // loadCatAccountFilter awaited on its own first -- it can prune stale
   // account selections from state.catAccounts (e.g. after navigating to a
   // date before an account had activity), and reloadFactorScorecards

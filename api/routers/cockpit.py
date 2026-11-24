@@ -2813,7 +2813,7 @@ def get_macro_week(date: Optional[str] = Query(None)):
 _OC_PANEL = {"commodities_ag": "Ag", "commodities_industrial": "Industrial", "commodities_metals": "Precious Metals",
              "commodities_energy": "Energy", "sector_etfs": "Sectors", "top9": "Major Markets",
              "usd_currency": "Currency", "rates_duration": "Rates & Duration", "credit": "Credit",
-             "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis & Crypto", "remaining": "Tech & ETFs"}
+             "crypto": "Crypto", "volatility": "Volatility", "cannabis": "Cannabis & Crypto", "remaining": "Tech", "software": "Software"}
 
 
 def _oc_bucket(col: str) -> str:
@@ -3139,3 +3139,71 @@ def get_today_strip(date: Optional[str] = Query(None)):
         return {"up": up, "down": dn, "n": up + dn, "pct": round(100.0 * up / (up + dn)) if (up + dn) else None}
     return {"as_of": d.isoformat(), "price_time": stamp.isoformat() if stamp else None,
             "cross": cross, "usd": usd, "rates": rates, "sectors": sectors, "vol": vol, "fx": fx, "breadth": _bre(b), "holdings": _bre(h), "themes": theme_out}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/cockpit/positives  (2026-11-24, user-directed)
+# The Positives panel: good signs, shown next to the Risk Dial. Only one so far:
+# the VIX "panic is ending" flip -- 1-month VIX falls back under 3-month VIX after
+# being above it for 3+ days. Display only; never changes the Risk Dial score.
+# ---------------------------------------------------------------------------
+_FLIP_MIN_INVERTED_DAYS = 3
+_FLIP_RECENT_DAYS = 10
+
+
+@router.get("/api/cockpit/positives")
+def get_positives(date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT v.obs_date, v.close AS vix, t.close AS vix3m, p.close AS spx "
+            "FROM hist_quote_daily v "
+            "JOIN hist_quote_daily t ON t.source='yfinance' AND t.symbol='^VIX3M' AND t.obs_date=v.obs_date "
+            "LEFT JOIN hist_quote_daily p ON p.source='yfinance' AND p.symbol='^SPX' AND p.obs_date=v.obs_date "
+            "WHERE v.source='yfinance' AND v.symbol='^VIX' AND v.obs_date <= :d ORDER BY v.obs_date"
+        ), {"d": d}).all()
+    if len(rows) < 30:
+        return {"as_of": d.isoformat(), "items": [], "note": "VIX history not loaded yet."}
+
+    dates = [r[0] for r in rows]
+    ratio = [float(r[1]) / float(r[2]) for r in rows]
+    spx = [float(r[3]) if r[3] is not None else None for r in rows]
+    inv = [x > 1 for x in ratio]
+
+    # Every past flip back (needs 3+ inverted days first).
+    flips = []
+    for i in range(_FLIP_MIN_INVERTED_DAYS, len(rows)):
+        if not inv[i] and all(inv[i - k] for k in range(1, _FLIP_MIN_INVERTED_DAYS + 1)):
+            flips.append(i)
+    hist_idx = [i for i in flips if i < len(rows) - 20]
+
+    def _fwd(idxs, h):
+        v = [spx[i + h] / spx[i] - 1 for i in idxs if i + h < len(rows) and spx[i] and spx[i + h]]
+        return (100 * sum(v) / len(v), 100 * sum(1 for x in v if x > 0) / len(v), len(v)) if v else (None, None, 0)
+    allidx = [i for i in range(len(rows) - 20)]
+    f_avg, f_hit, f_n = _fwd(hist_idx, 20)
+    b_avg, b_hit, _ = _fwd(allidx, 20)
+
+    n = len(rows) - 1
+    recent = [i for i in flips if n - i <= _FLIP_RECENT_DAYS]
+    run = 0
+    while run <= n and inv[n - run]:
+        run += 1
+
+    if recent:
+        i = recent[-1]
+        item = {"key": "vol_flip", "on": True, "title": "Market panic is ending",
+                "text": f"Short-term fear (1-month VIX) dropped back under 3-month fear {n - i} trading day(s) ago.",
+                "ratio": round(ratio[n], 3)}
+    elif inv[n]:
+        item = {"key": "vol_flip", "on": False, "title": "Market panic is ending",
+                "text": f"Not yet. Short-term fear is still above 3-month fear (for {run} trading day(s)). This turns on when it drops back under.",
+                "ratio": round(ratio[n], 3)}
+    else:
+        item = {"key": "vol_flip", "on": False, "title": "Market panic is ending",
+                "text": "No panic to end right now: short-term fear is below 3-month fear.", "ratio": round(ratio[n], 3)}
+    if f_avg is not None:
+        item["history"] = (f"Since {dates[0].year}, after {f_n} past panics ended, the S&P 500 rose {f_avg:.1f}% on average over the next 20 trading days "
+                           f"(normal: {b_avg:.1f}%) and was higher {f_hit:.0f}% of the time (normal: {b_hit:.0f}%). "
+                           "A better-than-usual sign, not a guarantee.")
+    return {"as_of": dates[n].isoformat(), "items": [item]}
