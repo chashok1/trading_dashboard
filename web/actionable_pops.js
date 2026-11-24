@@ -792,6 +792,16 @@ function _signalReasons(row, side) {
     if (rv >= hi) warn.push('RSI overbought (' + rv + ')');
     else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
   }
+  // 2026-11-24, user: stock-level mirror of the market "oversold" row -- all three together: RSI at/under the oversold line, price
+  // 5%+ under its own 200-day average, and IV percentile elevated (70+). Kept IN ADDITION to the RSI-only line above. On a sell row the
+  // lists swap, so this shows under the warning triangle ("against selling"). Display only; never changes the Final Call.
+  if (row.rsi != null && row.last_price != null && row.sma_200 != null && row.iv_percentile != null) {
+    const _lo3 = state.rsiOversold != null ? state.rsiOversold : 30;
+    const _px3 = Number(row.last_price), _ma3 = Number(row.sma_200);
+    if (Number(row.rsi) <= _lo3 && _ma3 > 0 && _px3 / _ma3 - 1 <= -0.05 && Number(row.iv_percentile) >= 70) {
+      buy.push('Oversold (RSI, 200-day average and volatility all stretched)');
+    }
+  }
   // 2026-10-21, user: IV vs this stock's own 63-day average (the Tradability box's IV item, now removed) -- a spike over the 1.15x red line is a caution.
   if (row.iv_ratio != null && Number(row.iv_ratio) > 1.15) {
     warn.push('IV spiked (' + Number(row.iv_ratio).toFixed(2) + 'x its own 63-day average)');

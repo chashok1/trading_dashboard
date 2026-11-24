@@ -3151,9 +3151,8 @@ _FLIP_MIN_INVERTED_DAYS = 3
 _FLIP_RECENT_DAYS = 10
 
 
-@router.get("/api/cockpit/positives")
-def get_positives(date: Optional[str] = Query(None)):
-    d = _resolve_date(date)
+def _positives_panic(d):
+    """Row 1: 1-month VIX back under 3-month VIX. Returns the item dict or None."""
     with session_scope() as s:
         rows = s.execute(text(
             "SELECT v.obs_date, v.close AS vix, t.close AS vix3m, p.close AS spx "
@@ -3163,7 +3162,7 @@ def get_positives(date: Optional[str] = Query(None)):
             "WHERE v.source='yfinance' AND v.symbol='^VIX' AND v.obs_date <= :d ORDER BY v.obs_date"
         ), {"d": d}).all()
     if len(rows) < 30:
-        return {"as_of": d.isoformat(), "items": [], "note": "VIX history not loaded yet."}
+        return None
 
     dates = [r[0] for r in rows]
     ratio = [float(r[1]) / float(r[2]) for r in rows]
@@ -3206,4 +3205,134 @@ def get_positives(date: Optional[str] = Query(None)):
         item["history"] = (f"Since {dates[0].year}, after {f_n} past panics ended, the S&P 500 rose {f_avg:.1f}% on average over the next 20 trading days "
                            f"(normal: {b_avg:.1f}%) and was higher {f_hit:.0f}% of the time (normal: {b_hit:.0f}%). "
                            "A better-than-usual sign, not a guarantee.")
-    return {"as_of": dates[n].isoformat(), "items": [item]}
+    return item
+
+
+def _fwd_stats(sig_dates, fwd20, start):
+    """Average / up-share of the S&P's next-20-day return after each episode (signals 30+ days apart), vs a normal day."""
+    ep, last = [], None
+    for x in sig_dates:
+        if x >= start and (last is None or (x - last).days > 30):
+            ep.append(x)
+        last = x
+    base = fwd20[fwd20.index >= start].dropna()
+    got = fwd20.reindex(ep).dropna()
+    if not len(got):
+        return None
+    return {"n": len(got), "avg": 100 * got.mean(), "hit": 100 * (got > 0).mean(), "bavg": 100 * base.mean(), "bhit": 100 * (base > 0).mean()}
+
+
+def _hist_line(st, since, what):
+    if not st:
+        return None
+    return (f"Since {since}, after {st['n']} past cases of {what}, the S&P 500 rose {st['avg']:.1f}% on average over the next 20 trading days "
+            f"(normal: {st['bavg']:.1f}%) and was higher {st['hit']:.0f}% of the time (normal: {st['bhit']:.0f}%). "
+            "A better-than-usual sign, not a guarantee.")
+
+
+@router.get("/api/cockpit/positives")
+def get_positives(date: Optional[str] = Query(None)):
+    """Positives panel (display only). Rows: panic ending (VIX 1M/3M), vol funds buying (realized 1M/3M after a 50%+ gap),
+    credit stress easing (HY/BBB/IG spreads), fear draining out (VIX back under 30). Thresholds backtested 2026-11-24."""
+    import datetime as _dt
+    import pandas as pd
+    import numpy as np
+    d = _resolve_date(date)
+    items = []
+    panic = _positives_panic(d)
+    if panic:
+        items.append(panic)
+
+    with session_scope() as s:
+        spx_rows = s.execute(text("SELECT obs_date, close FROM hist_quote_daily WHERE source='yfinance' AND symbol='^SPX' "
+                                  "AND obs_date >= '1989-01-01' AND obs_date <= :d ORDER BY obs_date"), {"d": d}).all()
+        vix_rows = s.execute(text("SELECT obs_date, close FROM hist_quote_daily WHERE source='yfinance' AND symbol='^VIX' "
+                                  "AND obs_date >= '1989-01-01' AND obs_date <= :dv ORDER BY obs_date"), {"dv": (d if date else _dt.date(2999, 1, 1))}).all()
+    if len(spx_rows) < 300:
+        return {"as_of": d.isoformat(), "items": items}
+    spx = pd.Series([float(r[1]) for r in spx_rows], index=pd.to_datetime([r[0] for r in spx_rows]))
+    fwd20 = spx.shift(-20) / spx - 1
+    N = len(spx) - 1
+    RECENT = _FLIP_RECENT_DAYS
+    START = pd.Timestamp("1990-01-01")
+
+    def _recent(sig):
+        idx = np.flatnonzero(sig.reindex(spx.index, fill_value=False).to_numpy())
+        idx = idx[idx >= N - RECENT]
+        return (N - int(idx[-1])) if len(idx) else None
+
+    # Row 2: vol funds buying -- 1M realized vol crosses under 3M after it was 50%+ above (peak within 20 days)
+    r = np.log(spx).diff()
+    rv1 = r.rolling(21).std() * np.sqrt(252) * 100
+    rv3 = r.rolling(63).std() * np.sqrt(252) * 100
+    g = rv1 / rv3 - 1
+    peak = g.rolling(20).max()
+    sig = (rv1 < rv3) & (rv1.shift(1) >= rv3.shift(1)) & (peak >= 0.50) & rv3.notna()
+    ago = _recent(sig)
+    if ago is not None:
+        txt = (f"Short-term market swings (1-month) fell back under 3-month swings {ago} trading day(s) ago, after being 50%+ above. "
+               "Funds that follow volatility start buying.")
+    elif rv1.iloc[-1] > rv3.iloc[-1]:
+        txt = (f"Not yet. 1-month swings are {100 * g.iloc[-1]:.0f}% above 3-month swings"
+               + (" (big enough to count). Turns on when they drop under." if peak.iloc[-1] >= 0.50 else " (needs to reach 50% to count)."))
+    else:
+        txt = "No big selling episode to end right now."
+    items.append({"key": "vol_funds_buying", "on": ago is not None, "title": "Vol funds are buying", "text": txt,
+                  "history": _hist_line(_fwd_stats(list(sig[sig].index), fwd20, START), 1990, "a big swing spell ending")})
+
+    # Row 3: fear draining out -- VIX closed back under 30 after being at or above it, and is not bouncing back up.
+    # 2026-11-24, user review: it was staying on while VIX ticked up the next day. Backtest (1990+): crosses where VIX rose the next day
+    # had no 5-day edge (-0.1%, up 48%), crosses where it kept falling did (+1.3%, up 68%). Uses VIX's own latest close, which can be newer than SPX's.
+    vs = pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows]))
+    crossv = (vs < 30) & (vs.shift(1) >= 30)
+    ci = np.flatnonzero(crossv.to_numpy())
+    ci = ci[ci >= len(vs) - 1 - RECENT]
+    latest = float(vs.iloc[-1])
+    on_v = False
+    if len(ci):
+        cd = int(ci[-1])
+        cross_close = float(vs.iloc[cd])
+        days_ago = len(vs) - 1 - cd
+        if latest >= 30:
+            txt = f"Not now. VIX is back above 30 ({latest:.1f})."
+        elif latest > cross_close:
+            txt = (f"Paused. VIX closed under 30 {days_ago} trading day(s) ago ({cross_close:.1f}) but is back up to {latest:.1f}. "
+                   "Turns on when it falls back to that level or lower.")
+        else:
+            on_v = True
+            txt = f"VIX closed back under 30 {days_ago} trading day(s) ago and is still falling or flat ({latest:.1f}). Fear is draining out."
+    elif latest >= 30:
+        txt = f"Not yet. VIX is {latest:.1f}. Turns on when it closes under 30."
+    else:
+        txt = f"No fear spike to recover from. VIX is {latest:.1f}."
+    good_cross = crossv & (vs.shift(-1) <= vs)
+    items.append({"key": "fear_draining", "on": on_v, "title": "Fear is draining out", "text": txt,
+                  "history": _hist_line(_fwd_stats(list(good_cross[good_cross].index), fwd20, START), 1990, "VIX falling back under 30 and not bouncing the next day")})
+
+
+    # Row 4: market is oversold -- S&P 14-day RSI under 30 AND 5%+ under its 200-day average AND VIX at 30+, all together (5% tests the same as 6%: +3.9%, up 80%).
+    # Backtest 1990+: 16 cases, next 20 days +3.9% (normal +0.8%), up 80%, but the next 10 days averaged -1.6% (stocks usually fall further first).
+    dlt = spx.diff()
+    avg_up = dlt.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+    avg_dn = (-dlt.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+    rsi14 = 100 - 100 / (1 + avg_up / avg_dn)
+    dist200 = spx / spx.rolling(200).mean() - 1
+    vxs = pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows])).reindex(spx.index).ffill()
+    three = (rsi14 < 30) & (dist200 <= -0.05) & (vxs >= 30)
+    entry3 = three & ~three.shift(1, fill_value=False)
+    ago3 = _recent(entry3)
+    rs, ds, vv = float(rsi14.iloc[-1]), 100 * float(dist200.iloc[-1]), float(vxs.iloc[-1])
+    if ago3 is not None:
+        txt = (f"The S&P 500 hit all three oversold marks {ago3} trading day(s) ago (RSI under 30, 5%+ under its 200-day average, VIX 30+). "
+               "A bounce usually comes within weeks, not days. Stocks often fall further first.")
+    else:
+        met = [("RSI under 30", rs < 30), ("5%+ under 200-day average", ds <= -5), ("VIX 30+", vv >= 30)]
+        txt = (f"Not oversold. RSI {rs:.0f}, {abs(ds):.1f}% {'under' if ds < 0 else 'over'} its 200-day average, VIX {vv:.1f}. "
+               f"Needs all three: {', '.join(n + (' (met)' if ok else '') for n, ok in met)}.")
+    items.append({"key": "market_oversold", "on": ago3 is not None, "title": "Market is oversold", "text": txt,
+                  "history": _hist_line(_fwd_stats(list(entry3[entry3].index), fwd20, START), 1990, "the S&P hitting all three oversold marks")})
+
+    for it in items:
+        if not it.get("history"):
+            it.pop("history", None)
+    return {"as_of": spx.index[-1].date().isoformat(), "items": items}
