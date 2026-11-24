@@ -33,7 +33,13 @@ log = logging.getLogger("fetch_vix9d")
 
 YF_SYMBOL = "^VIX9D"
 # 2026-11-24: ^VIX3M (3-month implied vol) added for the VIX term-structure test (1M vs 3M). Same table, same mechanics.
-YF_SYMBOLS = ["^VIX9D", "^VIX3M", "^VIX"]
+YF_SYMBOLS = ["^VIX9D", "^VIX3M", "^VIX", "^IXIC", "^RUT", "^DJI", "^VXN", "^RVX", "^VXD"]
+
+
+def _et_now():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/New_York"))
 
 
 def _fetch_yfinance(full: bool, sym: str = YF_SYMBOL) -> list[dict]:
@@ -54,6 +60,10 @@ def _fetch_yfinance(full: bool, sym: str = YF_SYMBOL) -> list[dict]:
             continue
         try:
             obs_date = dt.date() if hasattr(dt, "date") else date.fromisoformat(str(dt)[:10])
+            # 2026-11-24: today's Yahoo daily bar is a live mid-session price until the close. Saving it would freeze a wrong "close"
+            # (loads never overwrite), so skip today's bar until the market has closed (ET 16:30); the nightly run picks up the real close.
+            if obs_date == _et_now().date() and (_et_now().hour, _et_now().minute) < (16, 30) and _et_now().weekday() < 5:
+                continue
             rows.append({"symbol": sym, "obs_date": obs_date, "close": float(close_val)})
         except Exception:
             continue

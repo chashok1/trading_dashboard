@@ -3256,6 +3256,23 @@ def get_positives(date: Optional[str] = Query(None)):
     RECENT = _FLIP_RECENT_DAYS
     START = pd.Timestamp("1990-01-01")
 
+    # 2026-11-24, user: if the dashboard date is yesterday and the market is open, the oversold / fear rows also look at TODAY.
+    # Today's live price comes from the dashboard's own intraday quote cache (cache_yahoo_quote), added only when it is newer than the last stored day.
+    live = {}
+    if not date:
+        with session_scope() as s3:
+            for r3 in s3.execute(text(
+                    "SELECT tos_symbol, last_price, fetched_at AT TIME ZONE 'America/New_York' FROM cache_yahoo_quote "
+                    "WHERE fetch_status = 'ok' AND last_price IS NOT NULL AND tos_symbol IN ('SPX','VIX','RUT','$INDU','$COMP','$VXN','VXD')")).all():
+                live[r3[0]] = (float(r3[1]), pd.Timestamp(r3[2]).normalize())
+
+    def _plus_live(ser, sym):
+        if sym in live and len(ser) and live[sym][1] > ser.index[-1]:
+            out = ser.copy()
+            out.loc[live[sym][1]] = live[sym][0]
+            return out
+        return ser
+
     def _recent(sig):
         idx = np.flatnonzero(sig.reindex(spx.index, fill_value=False).to_numpy())
         idx = idx[idx >= N - RECENT]
@@ -3283,7 +3300,7 @@ def get_positives(date: Optional[str] = Query(None)):
     # Row 3: fear draining out -- VIX closed back under 30 after being at or above it, and is not bouncing back up.
     # 2026-11-24, user review: it was staying on while VIX ticked up the next day. Backtest (1990+): crosses where VIX rose the next day
     # had no 5-day edge (-0.1%, up 48%), crosses where it kept falling did (+1.3%, up 68%). Uses VIX's own latest close, which can be newer than SPX's.
-    vs = pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows]))
+    vs = _plus_live(pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows])), "VIX")
     crossv = (vs < 30) & (vs.shift(1) >= 30)
     ci = np.flatnonzero(crossv.to_numpy())
     ci = ci[ci >= len(vs) - 1 - RECENT]
@@ -3312,15 +3329,18 @@ def get_positives(date: Optional[str] = Query(None)):
 
     # Row 4: market is oversold -- S&P 14-day RSI under 30 AND 5%+ under its 200-day average AND VIX at 30+, all together (5% tests the same as 6%: +3.9%, up 80%).
     # Backtest 1990+: 16 cases, next 20 days +3.9% (normal +0.8%), up 80%, but the next 10 days averaged -1.6% (stocks usually fall further first).
-    dlt = spx.diff()
+    spx_o = _plus_live(spx, "SPX")
+    dlt = spx_o.diff()
     avg_up = dlt.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
     avg_dn = (-dlt.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
     rsi14 = 100 - 100 / (1 + avg_up / avg_dn)
-    dist200 = spx / spx.rolling(200).mean() - 1
-    vxs = pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows])).reindex(spx.index).ffill()
+    dist200 = spx_o / spx_o.rolling(200).mean() - 1
+    vxs = _plus_live(pd.Series([float(x[1]) for x in vix_rows], index=pd.to_datetime([x[0] for x in vix_rows])), "VIX").reindex(spx_o.index).ffill()
     three = (rsi14 < 30) & (dist200 <= -0.05) & (vxs >= 30)
     entry3 = three & ~three.shift(1, fill_value=False)
-    ago3 = _recent(entry3)
+    _i3 = np.flatnonzero(entry3.to_numpy())
+    _n3 = len(spx_o) - 1
+    ago3 = (_n3 - int(_i3[-1])) if (len(_i3) and int(_i3[-1]) >= _n3 - RECENT) else None
     rs, ds, vv = float(rsi14.iloc[-1]), 100 * float(dist200.iloc[-1]), float(vxs.iloc[-1])
     if ago3 is not None:
         txt = (f"The S&P 500 hit all three oversold marks {ago3} trading day(s) ago (RSI under 30, 5%+ under its 200-day average, VIX 30+). "
@@ -3331,6 +3351,49 @@ def get_positives(date: Optional[str] = Query(None)):
                f"Needs all three: {', '.join(n + (' (met)' if ok else '') for n, ok in met)}.")
     items.append({"key": "market_oversold", "on": ago3 is not None, "title": "Market is oversold", "text": txt,
                   "history": _hist_line(_fwd_stats(list(entry3[entry3].index), fwd20, START), 1990, "the S&P hitting all three oversold marks")})
+
+    # Rows 5-7: the same all-3 oversold rule for Nasdaq-100 (VXN 32+), Russell 2000 (RVX 40+, from the TOS export) and Dow (VXD 30+).
+    # 2026-11-24, user: "same as SPX", no separate backtest wanted; vol lines are the elevated buckets in ref_vol_threshold.
+    cap = d   # same dashboard date as the S&P row (VIX alone may run to its newest close, see fear row)
+    with session_scope() as s2:
+        def _closes(sym):
+            rr_ = s2.execute(text("SELECT obs_date, close FROM hist_quote_daily WHERE source='yfinance' AND symbol=:s "
+                                  "AND obs_date >= '2024-01-01' AND obs_date <= :c ORDER BY obs_date"), {"s": sym, "c": cap}).all()
+            return pd.Series([float(x[1]) for x in rr_], index=pd.to_datetime([x[0] for x in rr_]), dtype=float)
+        idx_px = {k: _closes(k) for k in ("^IXIC", "^RUT", "^DJI")}
+        idx_vol = {"^VXN": _closes("^VXN"), "^VXD": _closes("^VXD")}
+        rv = s2.execute(text("SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol='RVX' AND source='TD' AND as_of_date <= :c "
+                             "AND as_of_date >= '2025-06-01' ORDER BY as_of_date"), {"c": cap}).all()
+        idx_vol["RVX"] = pd.Series([float(x[1]) for x in rv], index=pd.to_datetime([x[0] for x in rv]), dtype=float)
+
+    def _oversold_row(key, name, vol_name, px, vol, line, live_px=None, live_vol=None):
+        px = _plus_live(px, live_px) if live_px else px
+        vol = _plus_live(vol, live_vol) if live_vol else vol
+        if len(px) < 260 or not len(vol):
+            return
+        dl = px.diff()
+        au = dl.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+        ad = (-dl.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+        rsi_ = 100 - 100 / (1 + au / ad)
+        dist_ = px / px.rolling(200).mean() - 1
+        v_ = vol.reindex(px.index.union(vol.index)).ffill().reindex(px.index)
+        three_ = (rsi_ < 30) & (dist_ <= -0.05) & (v_ >= line)
+        ent_ = three_ & ~three_.shift(1, fill_value=False)
+        n_ = len(px) - 1
+        hit_ = np.flatnonzero(ent_.to_numpy())
+        hit_ = hit_[hit_ >= n_ - RECENT]
+        r_, d_, v_now = float(rsi_.iloc[-1]), 100 * float(dist_.iloc[-1]), float(v_.iloc[-1])
+        if len(hit_):
+            t_ = (f"{name} hit all three oversold marks {n_ - int(hit_[-1])} trading day(s) ago "
+                  f"(RSI under 30, 5%+ under its 200-day average, {vol_name} {line:g}+). A bounce usually comes within weeks, not days.")
+        else:
+            t_ = (f"Not oversold. RSI {r_:.0f}, {abs(d_):.1f}% {'under' if d_ < 0 else 'over'} its 200-day average, {vol_name} {v_now:.1f}. "
+                  f"Needs all three: RSI under 30, 5%+ under 200-day average, {vol_name} {line:g}+.")
+        items.append({"key": key, "on": bool(len(hit_)), "title": f"{name} is oversold", "text": t_})
+
+    _oversold_row("nasdaq_oversold", "Nasdaq", "VXN", idx_px["^IXIC"], idx_vol["^VXN"], 32, "$COMP", "$VXN")
+    _oversold_row("russell_oversold", "Russell 2000", "RVX", idx_px["^RUT"], idx_vol["RVX"], 40, "RUT", None)
+    _oversold_row("dow_oversold", "Dow", "VXD", idx_px["^DJI"], idx_vol["^VXD"], 30, "$INDU", "VXD")
 
     for it in items:
         if not it.get("history"):
