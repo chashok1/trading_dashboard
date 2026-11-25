@@ -267,7 +267,7 @@ def _get_all_symbols() -> list[tuple[str, str]]:
     #   /xxx  — futures contracts (slash prefix)
     #   [Q26] — futures contract-month notation
     #   :FRED — FRED macro series tickers
-    return [
+    out = [
         (r[0], r[1]) for r in rows
         if r[0] and r[1]
         and not r[1].startswith('$')
@@ -275,6 +275,11 @@ def _get_all_symbols() -> list[tuple[str, str]]:
         and '[' not in r[1]
         and ':FRED' not in r[1]
     ]
+    # 2026-11-25: 3-month VIX is not in the TOS export or ref_rrt; the Positives panel needs its live price.
+    # Cache only -- the hist_y write filters it out.
+    if not any(t == "VIX3M" for t, _ in out):
+        out.append(("VIX3M", "^VIX3M"))
+    return out
 
 
 # ---------------------------------------------------------------------------

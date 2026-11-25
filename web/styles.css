@@ -4858,6 +4858,10 @@ body.portfolio-page .act-today { margin: 0 8px; }
 .rd-gauge-row.sev-pos .rd-wt   { background: var(--ok); color: #fff; }
 .rd-gauge-row.sev-pos .rd-gauge-text strong { color: var(--ok); }
 .rd-gauge-row.sev-pos:hover { background: none; }
+.rd-gauge-row.sev-warn .rd-rail { background: #f2cf5b; }   /* 2026-11-25: oversold rows -- amber warning */
+.rd-gauge-row.sev-warn .rd-wt   { background: #f2cf5b; color: #5a4300; }
+.rd-gauge-row.sev-warn .rd-gauge-text strong { color: #8a6a00; }
+.rd-gauge-row.sev-warn:hover { background: none; }
 
 /* 2026-11-24, user: inactive (quiet / not active) gauge lists read as a clear list, one gauge per line with a divider, text wraps instead of running together or being cut off */
 .rd-quiet-list .rd-q-item { display: block; white-space: normal; overflow: visible; text-overflow: clip; padding: 4px 0; margin: 0; line-height: 1.45; border-bottom: 1px solid var(--border); }

@@ -19,8 +19,10 @@
       var off = items.filter(function (it) { return !it.on; });
       var tip = function (it) { return [it.text, it.history].filter(Boolean).join('\n'); };
       var rows = on.map(function (it) {
-        return '<div class="rd-gauge-row sev-pos" title="' + esc(tip(it)) + '">' +
-          '<span class="rd-rail"></span><span class="rd-wt">&#10004;</span>' +
+        // 2026-11-25, user: "oversold" rows are a warning (stocks often fall further first), never the green tick.
+        var warn = /oversold$/.test(it.key);
+        return '<div class="rd-gauge-row ' + (warn ? 'sev-warn' : 'sev-pos') + '" title="' + esc(tip(it)) + '">' +
+          '<span class="rd-rail"></span><span class="rd-wt">' + (warn ? '&#9888;' : '&#10004;') + '</span>' +
           '<span class="rd-gauge-text"><strong>' + esc(it.title) + '</strong> — <span class="rd-desc">' + esc(it.text) + '</span></span></div>';
       }).join('');
       var quiet = off.map(function (it) {
