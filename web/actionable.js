@@ -4143,6 +4143,7 @@ async function _fetchAcctRoom() {
   for (const r of (state.allRows || [])) {
     const x = rows[r.tos_symbol] || {};
     r._a_held = x.held != null ? x.held : -1; r._a_max = x.stock != null ? x.stock : -1; r._a_bkt = x.bucket != null ? x.bucket : -1;
+    _setAcctAmt(r, x, sn);
     if (sn) {
       r._a_plan = x.planned_sell > 0 ? -x.planned_sell : (x.planned != null ? x.planned : 0);
       r._a_plan_kind = x.planned_sell > 0 ? 'Sell' : (x.planned > 0 ? 'Buy' : '');
@@ -4155,6 +4156,28 @@ async function _fetchAcctRoom() {
   }
   _applyAcctColsVisibility();
   try { _syncTriggerSourcePills(); } catch (e) { /* chips are optional */ }
+}
+// 2026-11-23, user: with an account picked, the AMT$ column shows what THIS account can do. A buy is held down to the room the account has
+// (its cash / the stock's Max / the buckets, once it has an active plan); a sell is held down to what the account actually holds of it. _amt itself is
+// untouched (sorting, filters and the Final Call still use it); _amt_acct / _amt_acct_why are display only.
+function _setAcctAmt(r, x, sn) {
+  r._amt_acct = null; r._amt_acct_why = ''; r._amt_noroom = false;
+  const amt = Math.abs(Number(r._amt) || 0);
+  if (!sn || !amt) return;
+  const d = state.acctRoom && state.acctRoom.data;
+  let sell = false;
+  try { sell = finalCall(r).side === 'sell'; } catch (e) { sell = ['REMOVE', 'REDUCE'].includes(String(r.consolidated_action || '').toUpperCase()); }
+  let cap = null, why = '';
+  if (sell) {
+    cap = Math.max(0, Number(x.held) || 0);
+    why = cap > 0 ? 'this account holds only ' + _planUsd(cap) : 'this account does not hold it';
+  } else if (d && d.state === 'active' && x.max != null) {
+    cap = Math.max(0, Number(x.max));
+    why = (cap > 0 ? 'room is ' + _planUsd(cap) : 'no room') + (x.binding ? ' (' + (x.binding === 'Cash to spend' ? 'cash' : x.binding) + ')' : '');
+  }
+  // 2026-11-23, user: a buy with NO room keeps showing the suggested amount, with a red "no room" note, instead of $0
+  if (!sell && cap === 0) { r._amt_noroom = true; r._amt_acct_why = why; return; }
+  if (cap != null && cap < amt) { r._amt_acct = cap; r._amt_acct_why = why; }
 }
 function _applyAcctColsVisibility() {
   let st = document.getElementById('acctColsStyle');
@@ -5432,7 +5455,7 @@ function _buildRowEl(r) {
       <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
       <td data-col="amt" class="num">
         <div style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</div>
-        <span class="amt-primary">${fmtUsd(r._amt)}</span>
+        ${r._amt_noroom ? `<span class="amt-primary" style="color:#dc2626;text-decoration:line-through;">${fmtUsd(r._amt)}</span><div style="font-size:9px;color:#dc2626;font-weight:600;white-space:nowrap;" title="${escapeHtml('This account has ' + r._amt_acct_why + ', so it cannot buy this now. The suggested trade is ' + fmtUsd(r._amt) + '.')}">${escapeHtml(r._amt_acct_why)}</div>` : r._amt_acct != null ? `<span class="amt-primary" title="${escapeHtml('This account: ' + fmtUsd(r._amt_acct) + ' because ' + r._amt_acct_why + '. The suggested trade before the account is ' + fmtUsd(r._amt) + '.')}">${fmtUsd(r._amt_acct)}</span><div style="font-size:9px;color:#9ca3af;white-space:nowrap;" title="${escapeHtml(r._amt_acct_why)}">of ${fmtUsd(r._amt)} &middot; ${escapeHtml(r._amt_acct_why)}</div>` : `<span class="amt-primary">${fmtUsd(r._amt)}</span>`}
         ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}
         ${r.stop_signal ? (
           // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
@@ -5709,7 +5732,8 @@ function _renderFocusCard() {
     const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#e5484d;' : fcDisp.code === 'BM' ? 'background:#2f9e2f;' : fcDisp.code === 'BS' ? 'background:#1d9e75;' : '';
     $('fcAction').innerHTML = `<span class="act-badge ${fcColorCls}" style="${fcHedgeyeStyle}font-size:16px;padding:4px 14px;" title="${escapeHtml(fc.label || fcText)}">${escapeHtml(fcText)}</span>`;
   }
-  $('fcAmt').textContent = fmtUsd(r._amt) || '—';
+  $('fcAmt').style.color = r._amt_noroom ? '#dc2626' : ''; $('fcAmt').style.textDecoration = r._amt_noroom ? 'line-through' : '';
+  $('fcAmt').textContent = r._amt_noroom ? fmtUsd(r._amt) + ' (no room in this account)' : (r._amt_acct != null ? fmtUsd(r._amt_acct) + ' (account; of ' + fmtUsd(r._amt) + ')' : fmtUsd(r._amt)) || '—';
   // "Why": top fired rule or winning source + reason snippet.
   let why = '';
   let fires = r.rules_engine_fires;
@@ -6058,7 +6082,7 @@ async function openDrilldown(row) {
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}${modalSizingPill}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}${_winningSourceEdgeHtml(row)}</dd>
-    <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
+    <dt>AMT$</dt><dd><strong${row._amt_noroom ? ' style="color:#dc2626;text-decoration:line-through;"' : ''}>${(row._amt_acct != null && !row._amt_noroom ? fmtUsd(row._amt_acct) : fmtUsd(row._amt)) || '—'}</strong>${row._amt_noroom ? ' <span style="color:#dc2626;font-size:11px;font-weight:600;">' + escapeHtml(row._amt_acct_why) + ' in this account</span>' : row._amt_acct != null ? ' <span style="color:#6b7280;font-size:11px;">of ' + fmtUsd(row._amt) + ' suggested &middot; ' + escapeHtml(row._amt_acct_why) + '</span>' : ''}</dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>
   `;
 
@@ -7798,7 +7822,7 @@ function _actionPopHtml(sym) {
     if (r.suggested_target_dollar != null)  html += kv('Target $',      fmtUsd(r.suggested_target_dollar));
     if (r.target_min_dollar != null)        html += kv('Min $',         fmtUsd(r.target_min_dollar));
     if (r.target_max_dollar != null)        html += kv('Max $',         fmtUsd(r.target_max_dollar));
-    if (r._amt != null)                     html += kv('AMT$',          fmtUsd(r._amt));
+    if (r._amt != null)                     html += kv('AMT$',          r._amt_noroom ? fmtUsd(r._amt) + ' (' + r._amt_acct_why + ' in this account)' : r._amt_acct != null ? fmtUsd(r._amt_acct) + ' (this account; of ' + fmtUsd(r._amt) + ' - ' + r._amt_acct_why + ')' : fmtUsd(r._amt));
   }
 
   return html;

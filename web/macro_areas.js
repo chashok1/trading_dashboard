@@ -1334,6 +1334,7 @@
     usd_currency:        'macroRailUsd',
     country_etfs:        'macroRailCountry',
     cannabis:            'macroRailCannabis',
+    software:            'macroRailSoftware',   // 2026-11-23, user-directed: Software panel, bottom of the last column
     crypto:               'macroRailCrypto',
     sector_etfs:         'macroRailSectorEtfs',
     remaining:           'macroRailRemaining',

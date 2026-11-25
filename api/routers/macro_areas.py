@@ -112,7 +112,7 @@ _SECTOR_ETF = {
 _AREA_ORDER = [
     "volatility", "top9", "rates_duration", "credit",
     "commodities_energy", "commodities_metals", "commodities_ag", "commodities_industrial",
-    "usd_currency", "country_etfs", "cannabis", "crypto", "sector_etfs", "remaining",
+    "usd_currency", "country_etfs", "cannabis", "crypto", "sector_etfs", "remaining", "software",
 ]
 
 # Canonical area display name, matching the side-rail section headers in
@@ -142,7 +142,8 @@ _AREA_DISPLAY_NAME = {
     "cannabis":            "Cannabis & Crypto",   # 2026-10-16: was "Cannabis" (ETHA added)
     "crypto":              "Crypto",
     "sector_etfs":         "Sectors",
-    "remaining":           "Tech & ETFs",
+    "remaining":           "Tech",
+    "software":            "Software",   # 2026-11-23, user-directed
 }
 
 # Symbols that are yield-curve members — skip rr_pos

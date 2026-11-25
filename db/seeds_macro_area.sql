@@ -628,3 +628,25 @@ ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE;
 -- The older inserts above put CRB/Copper/CPER/URA/WOOD back into the Ag rail under the old "Industrial & Ag" label.
 DELETE FROM ref_macro_area WHERE area_key = 'commodities_ag' AND member_symbol IN ('TRCCRBTR', '/HG', 'CPER', 'URA', 'WOOD');
 UPDATE ref_macro_area SET label = 'Ag' WHERE area_key = 'commodities_ag' AND role = 'dual';
+
+-- 2026-11-23, user-directed: the 'remaining' rail panel is now just "Tech" (api/routers/macro_areas.py area label). The rail shows the symbol
+-- when a row's label equals the area label, so the rows are relabelled to match.
+UPDATE ref_macro_area SET label = 'Tech' WHERE area_key = 'remaining' AND label = 'Tech & ETFs';
+
+-- 2026-11-23, user-directed: IEF removed from Rates & Duration (it was re-added 2026-10-19; the earlier inserts above still list it, so delete last).
+DELETE FROM ref_macro_area WHERE area_key = 'rates_duration' AND member_symbol = 'IEF';
+
+-- 2026-11-23, user-directed: new Software panel (bottom of the last rail column); BUG/IGV move there from Tech; ANT joins Tech.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
+  ('software', 'Software', 'GTLB', 'dual', 1,  TRUE), ('software', 'Software', 'DT',   'dual', 2,  TRUE),
+  ('software', 'Software', 'NET',  'dual', 3,  TRUE), ('software', 'Software', 'OKTA', 'dual', 4,  TRUE),
+  ('software', 'Software', 'CRWD', 'dual', 5,  TRUE), ('software', 'Software', 'PANW', 'dual', 6,  TRUE),
+  ('software', 'Software', 'DDOG', 'dual', 7,  TRUE), ('software', 'Software', 'SNOW', 'dual', 8,  TRUE),
+  ('software', 'Software', 'TEAM', 'dual', 9,  TRUE), ('software', 'Software', 'SHOP', 'dual', 10, TRUE),
+  ('software', 'Software', 'AKAM', 'dual', 11, TRUE), ('software', 'Software', 'PLTR', 'dual', 12, TRUE),
+  ('software', 'Software', 'BUG',  'dual', 13, TRUE), ('software', 'Software', 'IGV',  'dual', 14, TRUE)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET label = EXCLUDED.label, sort_order = EXCLUDED.sort_order, enabled = TRUE;
+DELETE FROM ref_macro_area WHERE area_key = 'remaining' AND member_symbol IN ('BUG', 'IGV');
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order, enabled) VALUES
+  ('remaining', 'Tech', 'ANT', 'dual', 6, TRUE)
+ON CONFLICT (area_key, member_symbol) DO UPDATE SET enabled = TRUE;
