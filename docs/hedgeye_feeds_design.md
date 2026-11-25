@@ -141,6 +141,9 @@ body give `action` (add/remove), `side` (long/short), `symbol` (also in the
   `side`, `symbol`, `price`.
 - Subject: `**Real-Time Alert: <Analyst> <Signal> Signal (<note>): <Name> (<TICKER>) -KM`
   → `analyst`, `signal_kind` (Buy/Sell/Sell-SOME/Cover-SOME/Macro), `coaching_subject`.
+- A long-side "Sell" is read as **Sell-SOME** (partial) when the prose says "sell some", or when the title or
+  notes say "some Exit Liquidity" (2026-11-25, XLV 11/23). Any other plain "Sell", including "Exit Liquidity" without
+  "some", is a full exit.
 - `Durations` row → three booleans `dur_trade/dur_trend/dur_tail` (active = colored).
 - `Coaching Notes:` ordered list → `coaching_notes` (text). **This is the rule-building
   fuel** — also copied to the rule-candidate queue (§5).

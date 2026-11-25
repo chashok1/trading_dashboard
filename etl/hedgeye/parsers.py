@@ -454,6 +454,13 @@ def parse_real_time_alert(email: Email) -> Parsed:
             coaching.append(ln)
     coaching_text = " | ".join(([intro_text] if intro_text else []) + coaching)
 
+    # 2026-11-25, user: a long-side "Sell Signal" whose title or notes say "some Exit Liquidity" (XLV 2026-11-23, "We needed
+    # some Exit Liquidity of our own today!") is a partial sale. "Exit Liquidity" without "some" stays a full exit.
+    if (signal_kind or "").strip().lower() == "sell" and side != "short" \
+            and re.search(r"\bsome\s+exit\s+liquidity\b", f"{subj} {coaching_text}", re.I):
+        signal_kind = "Sell-SOME"
+        p.flags.append("sell_some_exit_liquidity")
+
     p.add_rows("hist_rta", [{
         "message_id": email.message_id, "alert_ts": email.received,
         "snapshot_date": email.edt_date, "is_correction": False,
