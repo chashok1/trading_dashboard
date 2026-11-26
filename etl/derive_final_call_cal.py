@@ -15,7 +15,7 @@ Feasibility gates (read-only from drv_actionable, NOT from _compute_final_call):
   - If consolidated_action is 'REMOVE'/'SA' for a HELD symbol → force SA.
   - If symbol is NOT held and calibrated call is not a buy family → force HOLD
     (same don't-initiate guard as the existing final call).
-  - If over category max (current_position_dollar > target_max_dollar)
+  - If every account is over its own max (drv_account_size.over_max)
     and cal says buy → force HOLD.
 
 NULL-safe: if bull_prob is NULL the four *_cal columns remain NULL.
@@ -106,8 +106,12 @@ def derive_final_call_cal(
         SELECT tos_symbol, bull_prob,
                consolidated_action,
                held_today,
-               current_position_dollar,
-               target_max_dollar
+               NOT EXISTS (SELECT 1 FROM drv_account_size s
+                            WHERE s.as_of_date = drv_actionable.as_of_date
+                              AND s.tos_symbol = drv_actionable.tos_symbol AND NOT s.over_max)
+               AND EXISTS (SELECT 1 FROM drv_account_size s
+                            WHERE s.as_of_date = drv_actionable.as_of_date
+                              AND s.tos_symbol = drv_actionable.tos_symbol) AS all_over_max
         FROM drv_actionable
         WHERE as_of_date = :d
           AND bull_prob IS NOT NULL
@@ -123,8 +127,7 @@ def derive_final_call_cal(
         prob     = float(row[1])
         ca       = (row[2] or "").upper().strip()
         held     = bool(row[3]) if row[3] is not None else False
-        curr_pos = float(row[4] or 0)
-        tgt_max  = float(row[5]) if row[5] is not None else None
+        all_over = bool(row[4])
 
         # Raw mapping from probability bands
         lbl, code, side, strength = _prob_to_raw(prob)
@@ -143,13 +146,8 @@ def derive_final_call_cal(
             strength = 0
 
         # ── Gate 3: over-max guard ──────────────────────────────────────────
-        # Cal says buy but position already exceeds the category ceiling → hold.
-        elif (
-            code in _BUY_CODES
-            and tgt_max is not None
-            and tgt_max > 0
-            and curr_pos > tgt_max
-        ):
+        # Cal says buy but every account already exceeds its own ceiling → hold.
+        elif code in _BUY_CODES and all_over:
             lbl, code, side = "HOLD", "HOLD", "neutral"
             strength = 0
 

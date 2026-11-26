@@ -108,17 +108,15 @@ def get_briefing(date: Optional[str] = Query(None,
                  description="Snapshot date for the briefing — default = latest")):
     """One-shot morning briefing for the Dashboard landing card.
 
-    Aggregates four things for the user's first-glance check:
+    Aggregates three things for the user's first-glance check:
       1. yesterday_actions — actions logged in user_action_log on the prior day
          with their forward 5d return (if known)
       2. outlook_flips — count of symbols with non-HOLD actions in
          drv_outlook_action today (and the top 5 held flips)
-      3. allocation_drift — categories whose current $ is outside [min, max]
-         in ref_asset_allocation, computed from holdings
-      4. load_failures — files that the most recent scheduler run touched
+      3. load_failures — files that the most recent scheduler run touched
          but ended in 'error' status (meta_etl_run)
 
-    All four blocks are independent — a failure in one is logged in
+    All three blocks are independent — a failure in one is logged in
     `warnings` and the rest still return.
     """
     d = _resolve_date(date)
@@ -168,53 +166,6 @@ def get_briefing(date: Optional[str] = Query(None,
         except Exception as e:
             warnings.append(f"outlook_flips failed: {e}")
 
-        # 3. Allocation drift — categories outside [min, max]
-        # TASK_57: read from drv_category_totals (derived once by ETL).
-        # Falls back to inline aggregation when drv_category_totals has no rows
-        # for the date (e.g. before the next re-derive).
-        allocation_drift = []
-        try:
-            rows = s.execute(text("""
-                SELECT t.position_category AS category,
-                       t.total_dollar AS held,
-                       a.min_dollar, a.max_dollar, t.drift_band AS status
-                FROM drv_category_totals t
-                JOIN ref_asset_allocation a ON a.category = t.position_category
-                WHERE t.as_of_date = :d
-                  AND t.drift_band <> 'WITHIN'
-                ORDER BY t.position_category
-            """), {"d": d}).mappings().all()
-            if rows:
-                allocation_drift = [dict(r) for r in rows]
-            else:
-                # Fallback: inline aggregation when drv_category_totals is stale
-                rows2 = s.execute(text("""
-                    WITH cat AS (
-                        SELECT position_category AS category,
-                               SUM(COALESCE(current_position_dollar,0)) AS held
-                        FROM drv_actionable
-                        WHERE as_of_date = :d
-                          AND position_category IS NOT NULL
-                        GROUP BY position_category
-                    )
-                    SELECT a.category, c.held, a.min_dollar, a.max_dollar,
-                           CASE
-                             WHEN a.min_dollar IS NOT NULL AND c.held < a.min_dollar
-                               THEN 'BELOW_MIN'
-                             WHEN a.max_dollar IS NOT NULL AND c.held > a.max_dollar
-                               THEN 'ABOVE_MAX'
-                             ELSE 'WITHIN'
-                           END AS status
-                    FROM ref_asset_allocation a
-                    JOIN cat c ON c.category = a.category
-                    WHERE (a.min_dollar IS NOT NULL AND c.held < a.min_dollar)
-                       OR (a.max_dollar IS NOT NULL AND c.held > a.max_dollar)
-                    ORDER BY a.category
-                """), {"d": d}).mappings().all()
-                allocation_drift = [dict(r) for r in rows2]
-        except Exception as e:
-            warnings.append(f"allocation_drift failed: {e}")
-
         # 4. Recent ETL failures
         load_failures = []
         try:
@@ -234,7 +185,6 @@ def get_briefing(date: Optional[str] = Query(None,
         "as_of_date":         d.isoformat() if hasattr(d, "isoformat") else str(d),
         "yesterday_actions":  yesterday_actions,
         "outlook_flips":      outlook_flips,
-        "allocation_drift":   allocation_drift,
         "load_failures":      load_failures,
         "warnings":           warnings,
     }
@@ -1146,8 +1096,8 @@ def get_actionable(
             "(a.suppressed_reason IS NULL OR a.final_side = 'sell' OR "
             " (a.held_today = TRUE AND (a.suppressed_reason LIKE 'ALREADY ESTABLISHED%' "
             "  OR a.suppressed_reason LIKE 'AT CEILING%')) OR "   # shown dimmed as "Held, at target" (2026-10-19)
-            " (a.held_today = TRUE AND a.target_max_dollar > 0 "
-            "  AND a.current_position_dollar > a.target_max_dollar))"
+            " (a.held_today = TRUE AND EXISTS (SELECT 1 FROM drv_account_size s "
+            "  WHERE s.as_of_date = a.as_of_date AND s.tos_symbol = a.tos_symbol AND s.over_max)))"
         )
 
     # Pre-compute max position snapshot dates (two fast date lookups)
@@ -1460,14 +1410,14 @@ def get_actionable(
     except Exception:
         _driver_flags = {}
 
-    # TASK_151: per-account min/max/unit + held + over-max (drv_account_size).
-    # Additive display data; the household target_min/max_dollar are unchanged.
+    # Per-account min/max/unit + held + over-max + suggested buy/sell (drv_account_size). Never added across accounts.
     _acct_sizes = {}
     try:
         with session_scope() as _zs:
             for _x in _zs.execute(text("""
                 SELECT s.tos_symbol, s.account_short, s.size_mult, s.min_dollar,
-                       s.max_dollar, s.unit_dollar, s.held_dollar, s.over_max
+                       s.max_dollar, s.unit_dollar, s.held_dollar, s.over_max,
+                       s.buy_dollar, s.sell_dollar, s.size_note
                 FROM drv_account_size s
                 WHERE s.as_of_date = :d ORDER BY s.account_short
             """), {"d": d}).mappings():
@@ -1476,6 +1426,9 @@ def get_actionable(
                     "min": float(_x["min_dollar"] or 0), "max": float(_x["max_dollar"] or 0),
                     "unit": float(_x["unit_dollar"] or 0),
                     "held": float(_x["held_dollar"] or 0), "over": bool(_x["over_max"]),
+                    "buy": float(_x["buy_dollar"] or 0), "sell": float(_x["sell_dollar"] or 0),
+                    "note": _x["size_note"],
+                    "computed": _x["buy_dollar"] is not None,   # False = rows built without amounts (older run)
                 })
     except Exception:
         _acct_sizes = {}

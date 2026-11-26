@@ -2562,7 +2562,7 @@ function _heldAccountsDisplay(held) {
 
 // 2026-10-23, user: the POS cell lists each account with its own amount in brackets -- "F-A (3.2k), F-M (6.3k), IRA ($64)".
 // Amount = shares held in that account x the current price (the same maths as the Action popup's account lines).
-function _posAcctAmt(v) { return v >= 1000 ? '$' + (Math.round(v / 100) / 10) + 'k' : '$' + Math.round(v); }
+function _posAcctAmt(v) { return _amtK(v); }
 function _posBreakdown(r) {
   const px = Number(r.last_price);
   const a = (Array.isArray(r.held_by_account) ? r.held_by_account : []).filter(x => Number(x.qty) > 0);
@@ -2858,17 +2858,11 @@ function _acctSizeLines(row) {
   const L = (row && row.account_sizes) || [];
   const lines = L.map(a => `• ${a.name} x${a.mult.toFixed(1)}: min ${_fmtK(a.min)} / max ${_fmtK(a.max)}`
     + ` / unit ${_fmtK(a.unit)} / held ${_fmtK(a.held)}${a.over ? ' (OVER MAX)' : ''}`);
-  if (L.length) lines.push(`• All accounts: min ${_fmtK(L.reduce((t, a) => t + a.min, 0))}`
-    + ` / max ${_fmtK(L.reduce((t, a) => t + a.max, 0))}`);
   return lines;
 }
 function _overMaxTitle(row) {
-  if (row.account_sizes && row.account_sizes.length)
-    return 'Over its per-account max (informational only, does not change the action):\n'
-      + _acctSizeLines(row).join('\n');
-  return 'Held position exceeds its category Max by '
-    + fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar))
-    + ' — informational only, does not change the action above';
+  return 'Over its per-account max (informational only, does not change the action):\n'
+    + _acctSizeLines(row).join('\n');
 }
 
 
@@ -3017,15 +3011,15 @@ function _hasPositiveEdge(row) {
 // 2026-10-19, user-directed: a held stock whose buy signal is only suppressed because the position already meets
 // the floor / ceiling is shown dimmed with "Held, at target" instead of being hidden.
 // 2026-10-23, user-directed: "at target" is judged per ACCOUNT when one is picked in
-// the Acct dropdown (that account's own floor/max from r.account_sizes), else on the
-// household totals (the server's suppressed_reason, summed over all accounts).
+// the Acct dropdown (that account's own floor/max from r.account_sizes), else it means
+// every account is there (the server's suppressed_reason; nothing is added).
 function _acctSizeFor(r) {
   if (!state.filters.account) return null;
   const a = state.allAccounts.find(x => x.account_number === state.filters.account);
   const sn = a && a.short_name;
   return (sn && (r.account_sizes || []).find(x => x.name === sn)) || null;
 }
-// Returns null (not at target) or {scope: 'all accts' | account short name, lines: [...]}.
+// Returns null (not at target) or {scope: 'every account' | account short name, lines: [...]}.
 function _atTargetScope(r) {
   if (!r.held_today || finalCall(r).side === 'sell') return null;
   const as = _acctSizeFor(r);
@@ -3038,11 +3032,11 @@ function _atTargetScope(r) {
     return null;
   }
   if (/^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || ''))
-    return {scope: 'all accts', lines: [r.suppressed_reason, 'judged on the total across all accounts']};
+    return {scope: 'every account', lines: [r.suppressed_reason, 'judged account by account']};
   return null;
 }
 function _heldAtTarget(r) { return !!_atTargetScope(r); }
-// Household buy-suppression that doesn't apply to the picked account: keep the row live.
+// All-accounts buy-suppression that doesn't apply to the picked account: keep the row live.
 function _acctNotAtTarget(r) {
   return !!_acctSizeFor(r) && /^(ALREADY ESTABLISHED|AT CEILING)/.test(r.suppressed_reason || '') && !_atTargetScope(r);
 }
@@ -3054,7 +3048,8 @@ function _hiddenReason(r) {
   if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return 'Acted: ' + ua;
   if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return 'Acted: SNOOZED';
   if (!r.consolidated_action) return 'No action';
-  if (!_isSell && !r._amt) return 'AMT$ = 0';
+  // picked account: nothing for it to do; no account picked: nothing for ANY account to do
+  if (!_isSell && !r._amtUnknown && !(r._amt == null ? r._amtAny : r._amt)) return 'AMT$ = 0';
   const ca = (r.consolidated_action || '').toUpperCase();
   if (ca === 'REMOVE' && !r.held_today) return 'REMOVE – not held';
   return null;
@@ -3365,11 +3360,13 @@ function _netEdge(row) {
   return any ? sum : null;
 }
 
-// |_amt| for actionable rows, current position $ for HOLD/NONE rows.
+// Ordering only (never displayed): the picked account's amount, else the largest single account's, for
+// actionable rows; current position $ for HOLD/NONE rows.
 function _dollarsAtStake(row) {
   const a = _chipAction(row);
   const isActionable = a !== 'HOLD' && a !== 'NONE';
-  return Math.abs(Number(isActionable ? row._amt : row.current_position_dollar) || 0);
+  const amt = row._amt == null ? row._amtAny : row._amt;
+  return Math.abs(Number(isActionable ? amt : row.current_position_dollar) || 0);
 }
 
 // Fallback "edge" for rows with no scored fired composites: the buysell SEQ
@@ -4143,6 +4140,7 @@ async function _fetchAcctRoom() {
   for (const r of (state.allRows || [])) {
     const x = rows[r.tos_symbol] || {};
     r._a_held = x.held != null ? x.held : -1; r._a_max = x.stock != null ? x.stock : -1; r._a_bkt = x.bucket != null ? x.bucket : -1;
+    _setRowAmt(r, sn);       // 2026-11-25: the amount follows the picked account (none picked = no amount)
     _setAcctAmt(r, x, sn);
     if (sn) {
       r._a_plan = x.planned_sell > 0 ? -x.planned_sell : (x.planned != null ? x.planned : 0);
@@ -4170,14 +4168,35 @@ function _setAcctAmt(r, x, sn) {
   let cap = null, why = '';
   if (sell) {
     cap = Math.max(0, Number(x.held) || 0);
-    why = cap > 0 ? 'this account holds only ' + _planUsd(cap) : 'this account does not hold it';
+    why = cap > 0 ? 'this account holds only ' + _amtK(cap) : 'this account does not hold it';
   } else if (d && d.state === 'active' && x.max != null) {
     cap = Math.max(0, Number(x.max));
-    why = (cap > 0 ? 'room is ' + _planUsd(cap) : 'no room') + (x.binding ? ' (' + (x.binding === 'Cash to spend' ? 'cash' : x.binding) + ')' : '');
+    why = (cap > 0 ? 'room is ' + _amtK(cap) : 'no room') + (x.binding ? ' (' + (x.binding === 'Cash to spend' ? 'cash' : x.binding) + ')' : '');
   }
   // 2026-11-23, user: a buy with NO room keeps showing the suggested amount, with a red "no room" note, instead of $0
   if (!sell && cap === 0) { r._amt_noroom = true; r._amt_acct_why = why; return; }
   if (cap != null && cap < amt) { r._amt_acct = cap; r._amt_acct_why = why; }
+}
+// What the picked account's Builder plan still allows for this stock ('' without an active plan).
+function _planLimitText(sym) {
+  const d = state.acctRoom && state.acctRoom.data;
+  const x = d && d.state === 'active' && (d.rows || {})[sym];
+  if (!x || x.max == null) return '';
+  const why = x.binding ? ' (' + (x.binding === 'Cash to spend' ? 'cash' : x.binding) + ')' : '';
+  return x.max > 0 ? 'Plan limit: room is ' + _amtK(x.max) + why : 'Plan limit: no room' + why;
+}
+// The grid's suggested amount for the picked account: "Act $7.2K" / "Act $0" (hover says why). Nothing without an account.
+function _gridActHtml(r) {
+  if (r._amt == null) return '';
+  const act = v => 'Act $' + _amtK(v);
+  const col = `style="color:${_rowActColor(r)}"`;       // same colour as the Action button
+  if (r._amt_noroom) return `<span class="amt-primary" style="color:#dc2626;text-decoration:line-through;">${act(r._amt)}</span><div style="font-size:9px;color:#dc2626;font-weight:600;white-space:nowrap;" title="${escapeHtml('• Plan limit: ' + r._amt_acct_why + ', so this account cannot buy it now\n• Suggested trade: ' + _amtK(r._amt))}">${escapeHtml(r._amt_acct_why)}</div>`;
+  if (r._amt_acct != null) return `<span class="amt-primary" ${col} title="${escapeHtml('• ' + act(r._amt_acct) + ': ' + (finalCall(r).side === 'buy' ? 'Plan limit, ' : '') + r._amt_acct_why + '\n• Suggested trade before that limit: ' + _amtK(r._amt))}">${act(r._amt_acct)}</span><div style="font-size:9px;color:#9ca3af;white-space:nowrap;" title="${escapeHtml(r._amt_acct_why)}">of ${_amtK(r._amt)} &middot; ${escapeHtml(r._amt_acct_why)}</div>`;
+  if (!r._amt) {
+    const sn = _pickedAccountShort();
+    return `<span class="amt-primary" ${col} title="${escapeHtml(_zeroTip((r.account_sizes || []).find(a => a.name === sn), finalCall(r).side, r.tos_symbol))}">${r._amtUnknown ? 'Act $—' : 'Act $0'}</span>`;
+  }
+  return `<span class="amt-primary" ${col}>${act(r._amt)}</span>`;
 }
 function _applyAcctColsVisibility() {
   let st = document.getElementById('acctColsStyle');
@@ -4343,7 +4362,8 @@ function _liveShown(s) {
   return true;
 }
 function _liveDollars(s) {
-  return (s.lines || []).filter(l => !l.small && !l.optional).reduce((a, l) => a + (Number(l.size) || 0), 0);
+  // ordering only: the largest single account line (amounts are never added across accounts)
+  return (s.lines || []).filter(l => !l.small && !l.optional).reduce((a, l) => Math.max(a, Number(l.size) || 0), 0);
 }
 function _liveRankFor(s) {
   if (!_liveShown(s)) return 9e9;
@@ -4371,10 +4391,11 @@ function _liveAgeText(min) {
   const h = Math.floor(min / 60), m = min % 60;
   return h ? `${h} h ${m} m` : `${m} m`;
 }
-function _liveK(v) {
-  const x = Number(v) || 0;
-  return x >= 1000 ? '$' + (Math.round(x / 100) / 10) + 'k' : '$' + Math.round(x).toLocaleString();
-}
+function _liveK(v) { return _amtK(v); }                    // holdings / limits: 7.2K, 720
+function _liveAct(v) { return 'Act $' + _amtK(v); }         // suggested amounts
+// LIVE popup: each line's "Act $..." takes the colour of the matching Action button.
+const _LIVE_ACT_CODE = { SELL_ALL: 'SA', TRIM_TO_MAX: 'SA', TRIM: 'SS', SELL_SOME: 'SS', DIP_BUY_STRONG: 'BS', BUY_BACK: 'BS', BUY_IDEA: 'BS' };
+function _liveColorAct(html, signal) { return html.replace(/Act \$[\d.]+K?/g, m => _actSpan(m, _actColor(_LIVE_ACT_CODE[signal]))); }
 function _liveP(v) { return v == null ? '' : '$' + Number(v).toFixed(2); }
 
 // One cell per row: badge + chase / ! tags. Dash (still hoverable) when nothing is live.
@@ -4423,32 +4444,34 @@ function _buildLivePopHtml(r) {
       const a = acct(l.account);
       const sh = l.shares ? `${Math.round(l.shares)} shares` : '';
       const opt = l.optional ? ' <i style="color:#64748b;">(optional)</i>' : '';
-      const small = l.small ? ` <i style="color:#64748b;">(${_liveK(l.size)} — too small to list)</i>` : '';
+      const small = l.small ? ` <i style="color:#64748b;">(${_liveAct(l.size)} — too small to list)</i>` : '';
       let t = '';
       if (l.signal === 'TRIM_TO_MAX') {
         t = `<b>${escapeHtml(l.account)}:</b> over max (${_liveK(a.held)} vs ${_liveK(a.max)}`
-          + `${a.over_ratio ? ', ' + a.over_ratio.toFixed(2) + '×' : ''}) → sell ${sh} to max`;
+          + `${a.over_ratio ? ', ' + a.over_ratio.toFixed(2) + '×' : ''}) → sell ${sh} to max (${_liveAct(l.size)})`;
       } else if (l.signal === 'SELL_ALL') {
-        t = `<b>${escapeHtml(l.account)}:</b> sell the whole position (${sh}, ~${_liveK(l.size)})`;
+        t = `<b>${escapeHtml(l.account)}:</b> sell the whole position (${sh}, ~${_liveAct(l.size)})`;
       } else if (l.signal === 'TRIM') {
-        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveK(l.size)}) ≈ ${sh}`
+        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveAct(l.size)}) ≈ ${sh}`
           + (l.price ? ` at ${_liveP(l.price)}+` : '');
       } else if (l.signal === 'SELL_SOME') {
-        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveK(l.size)}) ≈ ${sh}`;
+        t = `<b>${escapeHtml(l.account)}:</b> sell 1 unit (${_liveAct(l.size)}) ≈ ${sh}`;
       } else if (l.signal === 'BUY_BACK') {
-        t = `<b>${escapeHtml(l.account)}:</b> buy back ${_liveK(l.size)} ≈ ${sh} at ${_liveP(l.price)} or less`
+        t = `<b>${escapeHtml(l.account)}:</b> buy back ${_liveAct(l.size)} ≈ ${sh} at ${_liveP(l.price)} or less`
           + (a.last_sell_price ? ` (you sold near ${_liveP(a.last_sell_price)})` : '');
       } else if (l.signal === 'DIP_BUY_STRONG' || l.signal === 'DIP_BUY_LIGHT') {
         const starter = (l.verb || '') === 'START';
         t = starter
-          ? `Starter in <b>${escapeHtml(l.account)}</b> at min ${_liveK(l.size)} ≈ ${sh}${_liveStarterNext(s, l.account)}`
-          : `<b>${escapeHtml(l.account)}:</b> add 1 unit (${_liveK(l.size)}) ≈ ${sh} at ${_liveP(l.price)} or less`;
+          ? `Starter in <b>${escapeHtml(l.account)}</b> at min (${_liveAct(l.size)}) ≈ ${sh}${_liveStarterNext(s, l.account)}`
+          : `<b>${escapeHtml(l.account)}:</b> add 1 unit (${_liveAct(l.size)}) ≈ ${sh} at ${_liveP(l.price)} or less`;
       } else if (l.signal === 'WAIT') {
         t = `<b>${escapeHtml(l.account)}:</b> buy-back line reached but the price is still falling — wait for it to stop`;
       } else if (l.signal === 'BUY_IDEA') {
-        t = `Trade-mode buy idea (~${_liveK(l.size)}) — the Final Call's own size`;
+        const _row = (state.allRows || []).find(x => x.tos_symbol === l.symbol || x._live === s);
+        const _bys = ((_row && _row.account_sizes) || []).filter(a => a.buy > 0).map(a => `${a.name} ${_liveAct(a.buy)}`);
+        t = `Trade-mode buy idea${_bys.length ? ' — ' + escapeHtml(_bys.join(', ')) : ''} (each account's own size)`;
       }
-      if (t) lis.push(li(t + opt + small));
+      if (t) lis.push(li(_liveColorAct(t + opt + small, l.signal)));
       if (l.hold_note) lis.push(li(`You marked this stock <b>Hold</b> — moved from required to optional`, 'color:#64748b;'));
       if (l.also) lis.push(li(`Also fired today: ${escapeHtml(String(l.also).replace(/_/g, ' ').toLowerCase())}`, 'color:#64748b;'));
     }
@@ -4477,7 +4500,8 @@ function _buildLivePopHtml(r) {
         lis.push(li(`Why required: ${escapeHtml(must.reason || 'a kept source says SELL ALL')} on a stock you hold`));
       }
     }
-    if (s.est_value) lis.push(li(`Est. value ≈ $${Math.round(s.est_value)} (size × typical edge)`));
+    const _ev = (s.lines || []).filter(l => l.est_value);
+    if (_ev.length) lis.push(li(`Est. value (size × typical edge): ${_ev.map(l => `${escapeHtml(l.account)} ≈ $${Math.round(l.est_value)}`).join(', ')}`));
     // notes
     const n = s.notes || {};
     if (n.gain_pct != null && n.gain_pct >= (n.gain_note_min || 20)) lis.push(li(`Gain +${n.gain_pct.toFixed(0)}% since cost`));
@@ -4513,7 +4537,7 @@ function _liveRuleLinesHtml(s) {
       out.push(formula('sell the whole position, in every account that holds it'));
     } else if (l.signal === 'SELL_SOME') {
       out.push(fires('a trusted source cut its weight and no other signal fired'));
-      out.push(formula('sell 1 unit (or the whole position if smaller)'));
+      out.push(formula('sell 1 unit, never below the account minimum'));
     } else if (l.signal === 'TRIM') {
       out.push(fires(`today’s high reaches the trim line${p.trim_line != null ? ' ' + _liveP(p.trim_line) : ''}`));
       out.push(formula(`trim line = lower of prior close × (1 + 1.5 SD) and max(TRR, prior close × (1 + 1.0 SD)); prior ${prior}, SD ${sd}`
@@ -4535,7 +4559,7 @@ function _liveRuleLinesHtml(s) {
       out.push(formula('no order is suggested until the price stops falling'));
     } else if (l.signal === 'BUY_IDEA') {
       out.push(fires('a strict Trade Mode buy: BM / BMN call, Technical entry-ripe, no stop, tradability score 12 or more'));
-      out.push(formula('size = the Final Call’s own AMT$'));
+      out.push(formula('size = what each account can buy under the Final Call'));
     }
   }
   return out;
@@ -5435,7 +5459,7 @@ function _buildRowEl(r) {
     // Final Call cell — reconciled action + confidence badge
     const fcHtml = _finalCallHtml(r);
 
-    let posStr = fmtCompact(r.current_position_dollar);
+    let posStr = Number(r.current_position_dollar) ? _amtK(r.current_position_dollar) : '';
     // 2026-10-23, user: with an account picked in the Acct dropdown the POS cell reads "that account's $ (total $)", e.g. "$4k ($10k)".
     const _selAmt = _posSelectedAmt(r);
     if (_selAmt != null) posStr = `${_posAcctAmt(_selAmt)} (${_posAcctAmt(Number(r.current_position_dollar) || 0)})`;
@@ -5453,21 +5477,6 @@ function _buildRowEl(r) {
           : `<span class="watch-quick-btn watch-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder. Gets a combined email if it fires and you haven't reviewed it before the close-time digest.">🔔</span>`}</div>
       </td>
       <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td data-col="amt" class="num">
-        <div style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</div>
-        ${r._amt_noroom ? `<span class="amt-primary" style="color:#dc2626;text-decoration:line-through;">${fmtUsd(r._amt)}</span><div style="font-size:9px;color:#dc2626;font-weight:600;white-space:nowrap;" title="${escapeHtml('This account has ' + r._amt_acct_why + ', so it cannot buy this now. The suggested trade is ' + fmtUsd(r._amt) + '.')}">${escapeHtml(r._amt_acct_why)}</div>` : r._amt_acct != null ? `<span class="amt-primary" title="${escapeHtml('This account: ' + fmtUsd(r._amt_acct) + ' because ' + r._amt_acct_why + '. The suggested trade before the account is ' + fmtUsd(r._amt) + '.')}">${fmtUsd(r._amt_acct)}</span><div style="font-size:9px;color:#9ca3af;white-space:nowrap;" title="${escapeHtml(r._amt_acct_why)}">of ${fmtUsd(r._amt)} &middot; ${escapeHtml(r._amt_acct_why)}</div>` : `<span class="amt-primary">${fmtUsd(r._amt)}</span>`}
-        ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}
-        ${r.stop_signal ? (
-          // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
-          // = sell = red, TD BM/TD BMN = buy = green), not r.stop_breached --
-          // stop_breached also requires held_today=True, so a sell signal on
-          // a NOT-held symbol (stop_breached=false) was wrongly rendering
-          // green here.
-          (r.stop_signal === 'TD STM' || r.stop_signal === 'TN SA')
-            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price just crossed below its ${r.stop_signal === 'TN SA' ? 'Trend' : 'Trade'} line (prior 3 days above, today below)">${escapeHtml(r.stop_signal)}</div>`
-            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price just crossed above its Trade line (prior 3 days below, today above)${r.stop_signal === 'TD BM' ? ', and is also above its Trend line today' : ' (still at/below its Trend line today)'}">${escapeHtml(r.stop_signal)}</div>`
-        ) : ''}
-      </td>
       <td data-col="chg" class="num">
         <!-- 2026-09-02, user: "make sure all vertical bars are aligned in
              the grid" -- both inner columns of _chgCandleControlsHtml are
@@ -5505,6 +5514,21 @@ function _buildRowEl(r) {
         </div>
       </td>
       <td data-col="action" style="padding:6px 4px;"><div class="hdr-anchor-box">${fcHtml}</div></td>
+      <td data-col="amt" class="num">
+        <div style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).title : 'Held in: ' + _heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_posBreakdown(r) ? _posBreakdown(r).line : _heldAccountsDisplay(r.held_accounts))}</div>` : ''}</div>
+        ${_gridActHtml(r)}
+        ${(() => { const _at = _atTargetScope(r); return _at ? `<div style="font-size:9px;color:#64748b;font-weight:600;white-space:nowrap;" title="${escapeHtml('At target (' + _at.scope + '):\n\u2022 ' + _at.lines.join('\n\u2022 '))}">At target \u00b7 ${escapeHtml(_at.scope)}</div>` : ''; })()}
+        ${r.stop_signal ? (
+          // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
+          // = sell = red, TD BM/TD BMN = buy = green), not r.stop_breached --
+          // stop_breached also requires held_today=True, so a sell signal on
+          // a NOT-held symbol (stop_breached=false) was wrongly rendering
+          // green here.
+          (r.stop_signal === 'TD STM' || r.stop_signal === 'TN SA')
+            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price just crossed below its ${r.stop_signal === 'TN SA' ? 'Trend' : 'Trade'} line (prior 3 days above, today below)">${escapeHtml(r.stop_signal)}</div>`
+            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price just crossed above its Trade line (prior 3 days below, today above)${r.stop_signal === 'TD BM' ? ', and is also above its Trend line today' : ' (still at/below its Trend line today)'}">${escapeHtml(r.stop_signal)}</div>`
+        ) : ''}
+      </td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;"><div class="hdr-anchor-box">${macroCellHtml(r)}</div></td>
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="live" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_liveCellHtml(r)}</td>
@@ -5732,8 +5756,9 @@ function _renderFocusCard() {
     const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#e5484d;' : fcDisp.code === 'BM' ? 'background:#2f9e2f;' : fcDisp.code === 'BS' ? 'background:#1d9e75;' : '';
     $('fcAction').innerHTML = `<span class="act-badge ${fcColorCls}" style="${fcHedgeyeStyle}font-size:16px;padding:4px 14px;" title="${escapeHtml(fc.label || fcText)}">${escapeHtml(fcText)}</span>`;
   }
-  $('fcAmt').style.color = r._amt_noroom ? '#dc2626' : ''; $('fcAmt').style.textDecoration = r._amt_noroom ? 'line-through' : '';
-  $('fcAmt').textContent = r._amt_noroom ? fmtUsd(r._amt) + ' (no room in this account)' : (r._amt_acct != null ? fmtUsd(r._amt_acct) + ' (account; of ' + fmtUsd(r._amt) + ')' : fmtUsd(r._amt)) || '—';
+  $('fcAmt').style.color = r._amt_noroom ? '#dc2626' : _rowActColor(r); $('fcAmt').style.textDecoration = r._amt_noroom ? 'line-through' : '';
+  $('fcAmt').textContent = r._amt == null ? '' : r._amt_noroom ? 'Act $' + _amtK(r._amt) + ' (no room in this account)' : (r._amt_acct != null ? 'Act $' + _amtK(r._amt_acct) + ' (of ' + _amtK(r._amt) + ')' : 'Act $' + _amtK(r._amt));
+  $('fcAmt').title = r._amt === 0 ? _zeroTip((r.account_sizes || []).find(a => a.name === _pickedAccountShort()), finalCall(r).side, r.tos_symbol) : '';
   // "Why": top fired rule or winning source + reason snippet.
   let why = '';
   let fires = r.rules_engine_fires;
@@ -6082,7 +6107,7 @@ async function openDrilldown(row) {
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}${modalSizingPill}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}${_winningSourceEdgeHtml(row)}</dd>
-    <dt>AMT$</dt><dd><strong${row._amt_noroom ? ' style="color:#dc2626;text-decoration:line-through;"' : ''}>${(row._amt_acct != null && !row._amt_noroom ? fmtUsd(row._amt_acct) : fmtUsd(row._amt)) || '—'}</strong>${row._amt_noroom ? ' <span style="color:#dc2626;font-size:11px;font-weight:600;">' + escapeHtml(row._amt_acct_why) + ' in this account</span>' : row._amt_acct != null ? ' <span style="color:#6b7280;font-size:11px;">of ' + fmtUsd(row._amt) + ' suggested &middot; ' + escapeHtml(row._amt_acct_why) + '</span>' : ''}</dd>
+    <dt>By account</dt><dd>${_acctTradeLines(row, finalCall(row).side, _pickedAccountShort()).map(a => `<div title="${escapeHtml([a.why, a.plan].filter(Boolean).map(t => '• ' + t).join('\n'))}"><b>${escapeHtml(a.name)}</b> holds ${_amtK(a.held)}${a.act ? ' &middot; ' + _actSpan(escapeHtml(a.act), _rowActColor(row)) : ''} <span style="color:#6b7280;font-size:11px;">(min ${_fmtK(a.min)} / max ${_fmtK(a.max)} / unit ${_fmtK(a.unit)})</span></div>`).join('') || '—'}${row._amt_noroom ? '<div style="color:#dc2626;font-size:11px;font-weight:600;">' + escapeHtml(row._amt_acct_why) + ' in this account</div>' : row._amt_acct != null ? '<div style="color:#6b7280;font-size:11px;">limited to ' + _actSpan('Act $' + _amtK(row._amt_acct), _rowActColor(row)) + ' &middot; ' + escapeHtml(row._amt_acct_why) + '</div>' : ''}</dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>
   `;
 
@@ -7814,15 +7839,11 @@ function _actionPopHtml(sym) {
   }
 
   // ── Sizing ─────────────────────────────────────────────────────────────────
-  const hasSize = r.current_position_dollar != null || r.suggested_target_dollar != null ||
-                  r.target_min_dollar != null || r.target_max_dollar != null || r._amt != null;
-  if (hasSize) {
+  const _lines = _acctTradeLines(r, finalCall(r).side, _pickedAccountShort());
+  if (r.current_position_dollar != null || _lines.length) {
     html += sec('Sizing');
-    if (r.current_position_dollar != null)  html += kv('Current Pos $', fmtUsd(r.current_position_dollar));
-    if (r.suggested_target_dollar != null)  html += kv('Target $',      fmtUsd(r.suggested_target_dollar));
-    if (r.target_min_dollar != null)        html += kv('Min $',         fmtUsd(r.target_min_dollar));
-    if (r.target_max_dollar != null)        html += kv('Max $',         fmtUsd(r.target_max_dollar));
-    if (r._amt != null)                     html += kv('AMT$',          r._amt_noroom ? fmtUsd(r._amt) + ' (' + r._amt_acct_why + ' in this account)' : r._amt_acct != null ? fmtUsd(r._amt_acct) + ' (this account; of ' + fmtUsd(r._amt) + ' - ' + r._amt_acct_why + ')' : fmtUsd(r._amt));
+    if (r.current_position_dollar != null)  html += kv('Current Pos $', _amtK(r.current_position_dollar));
+    for (const a of _lines) html += kv(a.name, `holds ${_amtK(a.held)}${a.act ? ' · ' + _actSpan(a.act, _rowActColor(r)) : ''}${a.why ? ' (' + a.why + ')' : ''} (min ${_fmtK(a.min)} / max ${_fmtK(a.max)} / unit ${_fmtK(a.unit)})`);
   }
 
   return html;

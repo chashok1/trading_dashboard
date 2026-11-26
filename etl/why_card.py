@@ -12,7 +12,7 @@ Pure function: build_why_card(ctx) takes already-derived facts and returns a JSO
      "flip": ["BUY MORE if ...: still needs ...", ...]}
 
 ctx keys (all optional): consolidated, winning_source, sources [{source, action, reason}], rr_action, trail (technical_trail output),
-held_today, held_dollar, target_max, stop_breached, stop_signal, suppressed, fc (dict from _compute_final_call incl. fc_reason),
+held_today, held_dollar, stop_breached, stop_signal, suppressed, fc (dict from _compute_final_call incl. fc_reason),
 trig_action, groups [{rule_group_code, action}], low_confidence.
 """
 from __future__ import annotations
@@ -132,12 +132,6 @@ def _position_step(ctx: dict) -> dict:
     tone = "neutral"
     if ctx.get("stop_signal") and not ctx.get("stop_breached"):   # 2026-10-26: no "Stop breached" line (Technical covers it)
         lines.append({"ok": None, "text": f"Stop signal: {ctx.get('stop_signal')}"})
-    tmax = ctx.get("target_max")
-    try:
-        if held and tmax and float(dollar or 0) >= float(tmax):
-            lines.append({"ok": None, "text": f"At or over your Max ({_usd(dollar)} of {_usd(tmax)}) - shown as OVER MAX, does not change the call"})
-    except (TypeError, ValueError):
-        pass
     if ctx.get("suppressed"):
         lines.append({"ok": None, "text": f"Suppressed: {ctx.get('suppressed')}"})
     return {"key": "position", "title": "Position", "tone": tone, "text": lines[0]["text"], "lines": lines[1:]}

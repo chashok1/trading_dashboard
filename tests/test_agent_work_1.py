@@ -309,15 +309,11 @@ class TestTask57CategoryTotals:
         block = sql[idx:idx+300]
         assert "PRIMARY KEY" in block, "drv_category_totals must have a PRIMARY KEY"
 
-    def test_derive_actionable_writes_category_totals(self):
-        src = _read(DERIVE_ACTIONABLE_PY)
-        assert "drv_category_totals" in src, \
-            "derive_actionable.py must write to drv_category_totals"
-
-    def test_dash_py_reads_category_totals(self):
-        src = _read(DASH_PY)
-        assert "drv_category_totals" in src, \
-            "dash.py /api/briefing must read from drv_category_totals"
+    def test_allocation_drift_removed(self):
+        """2026-11-25, user: the drift card compared a category total with one position's limit -- removed."""
+        for p in (DERIVE_ACTIONABLE_PY, DASH_PY):
+            src = _read(p)
+            assert "drv_category_totals" not in src and "allocation_drift" not in src
 
 
 # ─────────────────────────────────────────────────────────────────────────────

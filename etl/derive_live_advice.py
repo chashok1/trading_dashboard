@@ -424,7 +424,7 @@ def build_plan(session: Session, anchor: date, plan_date: Optional[date] = None,
                 a_line = prior * (1 + st["trim_sd"] * sd)
                 b_line = max(trr, prior * (1 + st["live_trim_trr_min_sd"] * sd)) if trr else None
                 trim_line = min(a_line, b_line) if b_line else a_line
-                trim_size = min(unit, held) if unit > 0 else None
+                trim_size = min(unit, max(0.0, held - mn)) if unit > 0 else None   # 2026-11-25: stop at the account minimum
             if sd_ok and prior and over_ratio:
                 cand = [prior * (1 + st["live_overmax_sd"] * sd)]
                 if trr and lrr is not None and trr > lrr:
@@ -614,8 +614,9 @@ def evaluate_row(p: dict, px: Optional[dict], st: dict, ctx: dict) -> dict:
         elif t2 or t1:
             cands.append(t2 or t1)
         # SELL SOME from a kept source: one unit
-        if not cands and p["kept_sellsome"] and held > 0 and unit > 0:
-            cands.append(("SELL_SOME", "sell", min(unit, held), None, "now", "CONSIDER", "sellsome",
+        some = min(unit, max(0.0, held - (_f(p["min_dollar"]) or 0.0)))     # one unit, never below the account minimum
+        if not cands and p["kept_sellsome"] and some > 0:
+            cands.append(("SELL_SOME", "sell", some, None, "now", "CONSIDER", "sellsome",
                           f"{p['winning_source']} cut its weight", "fair"))
 
     # buys (blocked by SELL ALL / stop / Avoid; buy-back also by a kept REMOVE)
@@ -741,8 +742,9 @@ def merge_lines(lines: list, stock: dict, st: dict, buyideas: list) -> dict:
                         "sellsome": st["rank_edge_sellsome"], "trim": st["rank_edge_trim"],
                         "trim_to_max": st["rank_edge_trim_to_max"]}.get(ln["kind"], 0.0)
                 ln["est_value"] = round((ln["size_dollar"] or 0.0) * edge / 100.0, 2)
-        dollars = sum((l["size_dollar"] or 0.0) for l in live if l["tier"] == stock_tier)
-        est = sum((l["est_value"] or 0.0) for l in live if l["tier"] == "CONSIDER")
+        # ordering only: the largest single account (amounts are never added across accounts)
+        dollars = max((l["size_dollar"] or 0.0 for l in live if l["tier"] == stock_tier), default=0.0)
+        est = max((l["est_value"] or 0.0 for l in live if l["tier"] == "CONSIDER"), default=0.0)
         sell_first = 0 if any(l["side"] == "sell" for l in live) else 1
         acct_best = min((ACCT_ORDER.get(l["account_short"], 9) for l in live), default=9)
         entries[sym] = {"tier": stock_tier, "dollars": dollars, "est": est,
@@ -781,17 +783,10 @@ def merge_lines(lines: list, stock: dict, st: dict, buyideas: list) -> dict:
 
 
 def _buy_amt(r: dict) -> float:
-    """AMT$ for a buy-side Final Call -- mirrors web/actionable.js r._amt."""
-    code = str(r.get("final_code") or "").upper()
-    act = str(r.get("consolidated_action") or "").upper()
-    pos = _f(r.get("current_position_dollar")) or 0.0
-    tgt = _f(r.get("suggested_target_dollar")) or 0.0
-    mn = _f(r.get("target_min_dollar"))
-    if code == "BMN" and act == "ADD" and mn is not None:
-        return mn - pos if pos < mn else 0.0
-    if code in ("BM", "BS", "BMN"):
-        return tgt - pos if tgt > pos else 0.0
-    return 0.0
+    """Size of a buy idea: the largest buy any ONE account can make (drv_account_size.buy_dollar). Never added."""
+    if str(r.get("final_code") or "").upper() not in ("BM", "BS", "BMN"):
+        return 0.0
+    return max((_f(a.get("buy")) or 0.0 for a in (r.get("account_sizes") or [])), default=0.0)
 
 
 def buyidea_candidates(anchor: date) -> list:
@@ -809,6 +804,8 @@ def buyidea_candidates(anchor: date) -> list:
         if not _is_qualifying_buy(r, True):
             continue
         out.append({"tos_symbol": r["tos_symbol"], "size_dollar": _buy_amt(r),
+                    "accounts": [{"name": a["name"], "buy": a["buy"]}
+                                 for a in (r.get("account_sizes") or []) if a.get("buy")],
                     "final_action": r.get("final_action"), "final_code": r.get("final_code"),
                     "winning_source": r.get("winning_source")})
     return out
@@ -942,6 +939,7 @@ def run_live_check(session: Session, plan_date: Optional[date] = None, prices: O
             "small_line": False, "est_value": None, "carried_days": None, "stale": False,
             "gain_pct": None, "outlook_turned": False, "sector_name": None, "sector_share_pct": None,
             "notes": json.dumps({"final_action": b.get("final_action"), "final_code": b.get("final_code"),
+                                 "accounts": b.get("accounts") or [],
                                  **({"replay": True} if replay else {})}),
         })
     if write:
@@ -1020,12 +1018,16 @@ def run_live_check_safe() -> dict:
 # ---------------------------------------------------------------------------
 
 def _k(x) -> str:
-    """$ text: $13.9k, $8k, $950."""
+    """Amount text (2026-11-25, user): 7.2K in thousands, 720 in hundreds."""
     x = float(x or 0)
-    if x >= 1000:
-        v = round(x / 1000.0, 1)
-        return f"${v:g}k"
-    return f"${x:,.0f}"
+    if round(x) >= 1000:
+        return f"{round(x / 1000.0, 1):g}K"
+    return f"{x:.0f}"
+
+
+def _act(x) -> str:
+    """A suggested amount: "Act $7.2K"."""
+    return f"Act ${_k(x)}"
 
 
 def _px(x) -> str:
@@ -1037,12 +1039,16 @@ def _group_text(sym: str, lns: list, days: int) -> str:
     lns = sorted(lns, key=lambda l: ACCT_ORDER.get(l["account_short"], 9))
     first = lns[0]
     sig, verb = first["signal"], (first.get("notes") or {}).get("verb")
-    total = sum(float(l["size_dollar"] or 0) for l in lns)
     shs = [l["shares"] for l in lns]
     names = [l["account_short"] for l in lns]
 
     def n(v) -> str:
         return str(int(v)) if v else "?"
+
+    def amts() -> str:     # 2026-11-25: each account's own dollars, never added
+        if len(lns) == 1:
+            return _act(lns[0]["size_dollar"])
+        return ", ".join(f"{l['account_short']} {_act(l['size_dollar'] or 0)}" for l in lns)
 
     def who() -> str:
         if all(s == shs[0] for s in shs):
@@ -1066,19 +1072,19 @@ def _group_text(sym: str, lns: list, days: int) -> str:
         where = ""
     tail = f" — {reason}" if reason else ""
     if sig == "SELL_ALL":
-        return f"SELL ALL {who()}{where} (~{_k(total)}){tail}"
+        return f"SELL ALL {who()}{where} (~{amts()}){tail}"
     if sig == "TRIM_TO_MAX":
-        return f"SELL {who()}{where} (back to max, {_k(total)}){tail}"
+        return f"SELL {who()}{where} (back to max: {amts()}){tail}"
     if sig == "TRIM":
-        return f"TRIM {who()}{where} ({_k(total)}){tail}"
+        return f"TRIM {who()}{where} ({amts()}){tail}"
     if sig == "SELL_SOME":
-        return f"SELL {who()} (1 unit, {_k(total)}){tail}"
+        return f"SELL {who()} (1 unit: {amts()}){tail}"
     if sig == "BUY_BACK":
-        return f"BUY BACK {who()}{where} ({_k(total)}){tail}"
+        return f"BUY BACK {who()}{where} ({amts()}){tail}"
     if sig in ("DIP_BUY_STRONG", "DIP_BUY_LIGHT"):
         v = verb or "ADD"
         extra = "min" if v == "START" else "1 unit"
-        return f"{v} {who()}{where} ({extra}, {_k(total)}){tail}"
+        return f"{v} {who()}{where} ({extra}: {amts()}){tail}"
     return f"{sig} {sym}"
 
 
@@ -1191,7 +1197,7 @@ def build_live_payload(session: Session, plan_date: Optional[date] = None,
             "bounce_price": next((_num(l["bounce_price"]) for l in lns if l["bounce_price"] is not None), None),
             "pvv_line": next((l["pvv_line"] for l in lns if l["pvv_line"]), None),
             "final_code": p0.get("final_code"), "final_action": p0.get("final_action"),
-            "est_value": sum(float(l["est_value"] or 0) for l in lns) or None,
+            "est_value": max((float(l["est_value"] or 0) for l in lns), default=0) or None,
             "carried_days": next((l["carried_days"] for l in lns if l["carried_days"] is not None), None),
             "since_date": n0["notes"].get("since_date") if n0 else None,
             "price": price, "stale": any(l["stale"] for l in lns) or out["stale"],
@@ -1226,7 +1232,7 @@ def build_live_payload(session: Session, plan_date: Optional[date] = None,
         groups: dict = {}
         for l in prim:
             groups.setdefault((l["signal"], l["verb"]), []).append(l)
-        gl = sorted(groups.values(), key=lambda g: -sum(float(x["size"] or 0) for x in g))
+        gl = sorted(groups.values(), key=lambda g: -max(float(x["size"] or 0) for x in g))
         head = gtext(sym, s, gl[0]) if gl else ""
         sub = [{"text": gtext(sym, s, g), "optional": False} for g in gl[1:]]
         og: dict = {}
@@ -1254,8 +1260,10 @@ def build_live_payload(session: Session, plan_date: Optional[date] = None,
         r = next((l for l in by_sym.get(sy, []) if l["signal"] == "BUY_IDEA"), None)
         if not r:
             continue
+        by_acct = ", ".join(f"{a['name']} {_act(a['buy'])}" for a in (r["notes"].get("accounts") or []))
         ideas_e.append({"symbol": sy, "tier": "BUYIDEA", "rank": r["list_rank"], "lines": [],
-                        "text": f"{r['notes'].get('final_action') or 'BUY'} {sy} (~{_k(r['size_dollar'])}) — {r['reason']}",
+                        "text": f"{r['notes'].get('final_action') or 'BUY'} {sy}"
+                                f"{f' ({by_acct})' if by_acct else ''} — {r['reason']}",
                         "evidence": r["evidence"], "carried_days": None, "since_date": None,
                         "hold_note": None, "est_value": None, "stale": False, "caution": None})
     # "Not listed today" counts

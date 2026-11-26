@@ -9,8 +9,9 @@ rounded to the nearest $1,000 (exactly $500 rounds up; anything above $0
 never goes below $1,000). Raw and rounded amounts are both stored, plus the
 account's own held dollars in the symbol and an over-max flag.
 
-ADDITIVE ONLY: nothing here touches drv_actionable, the Final Call,
-suggested_target_dollar or target_min/max_dollar (household sizing).
+2026-11-25: each row also carries the account's own suggested buy / sell under the Final Call
+(etl/account_sizing.py). Sizes and amounts are per account only: nothing is added across accounts.
+Reads drv_actionable; never changes it.
 
 Account value = latest position-file total per account on or before the
 position ceiling (Schwab hist_cs.market_value, Fidelity hist_f.current_value,
@@ -30,10 +31,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from etl._derive_common import position_ceiling
+from etl.account_sizing import account_trade
 
 log = logging.getLogger(__name__)
 
-_HOUSEHOLD_BASE = Decimal("400000")   # the old fixed base behind units_pct
+_UNIT_PCT_BASE = Decimal("400000")    # the old fixed base behind units_pct
 _STALE_TRADING_DAYS = 5
 _ONE_K = Decimal("1000")
 
@@ -96,85 +98,73 @@ def _account_snapshot(session: Session, acct: dict, ceil: date, anchor: date):
     return snap, total, held
 
 
-def household_alloc(session: Session, as_of_date: date) -> dict:
-    """{CATEGORY_UPPER: {'min_dollar','max_dollar','units'}} = per-account sizes
-    (same formula and $1,000 rounding as drv_account_size) summed over the active
-    trading accounts. The household sizing in derive_actionable compares ALL-account
-    holdings, so its floor/max/unit must be the all-account sum, not one account's
-    size (ref_asset_allocation's dollar columns are single-account scale).
-    Categories with a zero sum are omitted so the caller keeps its old values."""
+def account_sizer(session: Session, as_of_date: date):
+    """Returns f(tos_symbol, category) -> list of per-account sizes for that stock, one dict per trading account with a
+    fresh position file. The single source of the per-account min / max / unit / held used by derive_actionable and
+    by drv_account_size. Nothing here is ever added across accounts."""
     accounts = _load_accounts(session)
-    ceil = position_ceiling(session, as_of_date)
-    totals = []
-    for acct in accounts.values():
-        snap = _account_snapshot(session, acct, ceil, as_of_date)
-        if snap is not None:
-            totals.append(snap[1] * acct["mult"])
-    out: dict = {}
+    alloc = {}
     for r in session.execute(text(
             "SELECT category, min_pct, max_pct, units_pct, units FROM ref_asset_allocation")).fetchall():
         units_pct = r[3] if r[3] is not None else (
-            _dec(r[4]) / _HOUSEHOLD_BASE if r[4] is not None else Decimal(0))
-        mn = sum((round_to_k(b * _dec(r[1])) for b in totals), Decimal(0))
-        mx = sum((round_to_k(b * _dec(r[2])) for b in totals), Decimal(0))
-        un = sum((round_to_k(b * _dec(units_pct)) for b in totals), Decimal(0))
-        if mx > 0:
-            out[str(r[0] or "").strip().upper()] = {
-                "min_dollar": float(mn), "max_dollar": float(mx), "units": float(un)}
-    return out
+            _dec(r[4]) / _UNIT_PCT_BASE if r[4] is not None else Decimal(0))
+        alloc[str(r[0] or "").strip().upper()] = (_dec(r[1]), _dec(r[2]), _dec(units_pct))
+
+    ceil = position_ceiling(session, as_of_date)
+    snaps = []
+    for short, acct in accounts.items():
+        snap = _account_snapshot(session, acct, ceil, as_of_date)
+        if snap is None:
+            log.warning("account sizes %s: no fresh position file for %s (no rows)", as_of_date, short)
+            continue
+        snaps.append((short, acct["mult"], snap))
+
+    def sizes(sym: str, category) -> list:
+        pct = alloc.get(str(category or "").strip().upper())
+        if pct is None:
+            return []
+        out = []
+        for short, mult, (vdate, total, held) in snaps:
+            base = total * mult
+            mn, mx, un = base * pct[0], base * pct[1], base * pct[2]
+            h = held.get(sym, Decimal(0))
+            rmx = round_to_k(mx)
+            out.append({
+                "acct": short, "val": total, "mult": mult, "vd": vdate, "mnr": mn, "mxr": mx, "unr": un,
+                "mn": round_to_k(mn), "mx": rmx, "un": round_to_k(un), "held": h,
+                "over": bool(rmx > 0 and h > rmx),
+            })
+        return out
+
+    return sizes
 
 
 def _derive_account_size_impl(session: Session, as_of_date: date, run_id=None) -> int:
     d = as_of_date
     session.execute(text("DELETE FROM drv_account_size WHERE as_of_date = :d"), {"d": d})
 
-    accounts = _load_accounts(session)
-    alloc = {}
-    for r in session.execute(text(
-            "SELECT category, min_pct, max_pct, units_pct, units FROM ref_asset_allocation")).fetchall():
-        units_pct = r[3] if r[3] is not None else (
-            _dec(r[4]) / _HOUSEHOLD_BASE if r[4] is not None else Decimal(0))
-        alloc[str(r[0] or "").strip().upper()] = (_dec(r[1]), _dec(r[2]), _dec(units_pct))
-
-    ceil = position_ceiling(session, d)
+    sizes = account_sizer(session, d)
     syms = session.execute(text(
-        "SELECT tos_symbol, position_category FROM drv_actionable "
+        "SELECT tos_symbol, position_category, final_code, consolidated_action FROM drv_actionable "
         "WHERE as_of_date = :d AND position_category IS NOT NULL"), {"d": d}).fetchall()
 
     out = []
-    for short, acct in accounts.items():
-        snap = _account_snapshot(session, acct, ceil, d)
-        if snap is None:
-            log.warning("derive_account_size %s: no fresh position file for %s (no rows)", d, short)
-            continue
-        vdate, total, held = snap
-        mult = acct["mult"]
-        for sym, cat in syms:
-            pct = alloc.get(str(cat).strip().upper())
-            if pct is None:
-                continue
-            base = total * mult
-            mn, mx, un = base * pct[0], base * pct[1], base * pct[2]
-            rmx = round_to_k(mx)
-            h = held.get(sym, Decimal(0))
-            out.append({
-                "d": d, "sym": sym, "acct": short, "cat": cat, "val": total, "mult": mult,
-                "vd": vdate, "mnr": mn, "mxr": mx, "unr": un,
-                "mn": round_to_k(mn), "mx": rmx, "un": round_to_k(un),
-                "held": h, "over": bool(rmx > 0 and h > rmx),
-            })
+    for sym, cat, code, consolidated in syms:
+        for a in sizes(sym, cat):
+            buy, sell, note = account_trade(code, consolidated, a["held"], a["mn"], a["mx"], a["un"])
+            out.append({**a, "d": d, "sym": sym, "cat": cat, "buy": buy, "sell": sell, "note": note})
     if out:
         session.execute(text("""
             INSERT INTO drv_account_size
               (as_of_date, tos_symbol, account_short, category, account_value, size_mult,
                value_date, min_raw, max_raw, unit_raw, min_dollar, max_dollar, unit_dollar,
-               held_dollar, over_max)
+               held_dollar, over_max, buy_dollar, sell_dollar, size_note)
             VALUES
               (:d, :sym, :acct, :cat, :val, :mult, :vd, :mnr, :mxr, :unr, :mn, :mx, :un,
-               :held, :over)
+               :held, :over, :buy, :sell, :note)
         """), out)
     session.commit()
-    log.info("derive_account_size @ %s: %d rows (%d accounts)", d, len(out), len(accounts))
+    log.info("derive_account_size @ %s: %d rows", d, len(out))
     return len(out)
 
 

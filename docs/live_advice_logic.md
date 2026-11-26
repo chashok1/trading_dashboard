@@ -108,3 +108,10 @@ The LIVE column and the Act (N) chip carry only what TODAY'S PRICE triggered: `T
 (`web/actionable.js::_livePriceOnly`, applied in `_fetchLiveData`). The API payload and `hist_advice_live` are unchanged.
 On 2026-10-22 data: stocks with a signal 27 -> 19, Act 17 -> 7. The hover's top lines give "Fires when" and the formula
 (`_liveRuleLinesHtml`).
+
+
+## 2026-11-25 - Per account only
+Sell Some and trim sizes stop at the account's minimum (trim-to-max still goes to the maximum; Sell All sells
+everything). Texts and buy ideas list each account's own amount; amounts are never added across accounts (ordering
+uses the largest single account). A night plan frozen before this change keeps its old sizes until the next plan.
+\n

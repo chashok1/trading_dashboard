@@ -490,13 +490,11 @@ class TestDeriveFinalCallCal:
         )
 
     def test_check26_gate3_over_max_present(self, derive_cal_src):
-        """Check 26 — Gate 3: over-max guard (buy + curr_pos > tgt_max → HOLD) present."""
-        assert "tgt_max" in derive_cal_src or "target_max_dollar" in derive_cal_src, (
-            "Gate 3 over-max guard not found in derive_final_call_cal.py"
+        """Check 26 — Gate 3: over-max guard, per account (buy + EVERY account over its own max -> HOLD)."""
+        assert "drv_account_size" in derive_cal_src and "all_over" in derive_cal_src, (
+            "Gate 3 per-account over-max guard not found in derive_final_call_cal.py"
         )
-        assert "curr_pos" in derive_cal_src or "current_position_dollar" in derive_cal_src, (
-            "current_position_dollar not referenced in derive_final_call_cal.py"
-        )
+        assert "target_max_dollar" not in derive_cal_src, "Gate 3 must not use a combined max"
 
     def test_check27_returns_int(self, derive_cal_src):
         """Check 27 — Function returns int (row count)."""

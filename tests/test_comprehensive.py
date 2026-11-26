@@ -310,8 +310,7 @@ class TestD_DailyBriefing:
     def test_endpoint_returns_four_blocks(self):
         src = (PROJECT / "api/routers/dash.py").read_text(encoding="utf-8-sig")
         assert '@router.get("/api/briefing"' in src
-        for k in ("yesterday_actions", "outlook_flips",
-                  "allocation_drift", "load_failures"):
+        for k in ("yesterday_actions", "outlook_flips", "load_failures"):
             assert f'"{k}"' in src
 
     def test_dashboard_card_loader(self):

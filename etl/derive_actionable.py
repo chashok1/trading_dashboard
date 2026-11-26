@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from etl.account_sizing import account_trade, stock_suppression
 from etl._derive_common import position_ceiling, _ps_drop_verdicts
 from etl.size_class import size_class, STOCKS
 
@@ -413,16 +414,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "maintain":   bool(r[4]),
         }
 
-    # Holdings below are summed over ALL accounts, so the floor/max/unit they are
-    # compared with must be the sum of the per-account sizes (drv_account_size
-    # formula), not ref_asset_allocation's single-account dollar columns.
+    # 2026-11-25, user: min / max / unit and suggested amounts are judged ONE ACCOUNT AT A TIME and never added
+    # across accounts (etl/account_sizing.py). asset_alloc above only decides which sizing category exists.
     try:
-        from etl.derive_account_size import household_alloc
-        for _k, _v in household_alloc(session, as_of_date).items():
-            if _k in asset_alloc:
-                asset_alloc[_k].update(_v)
+        from etl.derive_account_size import account_sizer
+        _acct_sizer = account_sizer(session, as_of_date)
     except Exception:
-        log.exception("household_alloc failed; using ref_asset_allocation dollars")
+        log.exception("account sizes unavailable; no sizing suppression for %s", as_of_date)
+        _acct_sizer = None
 
     def _alloc_key(cat):
         return str(cat).strip().upper() if cat else ""
@@ -1341,62 +1340,24 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             category = _sc
         elif alloc_has(STOCKS):
             category = None            # new table in use and symbol unclassifiable: no sizing (as before)
-        params = asset_alloc.get(_alloc_key(category), {}) if category else {}
-        target_min  = params.get("min_dollar")
-        target_max  = params.get("max_dollar")
-        units       = params.get("units")
-        maintain_min = params.get("maintain", False)
-
         # ─── Current state ───
-        held_dollar = holdings.get(sym, 0.0)
+        held_dollar = holdings.get(sym, 0.0)      # what you hold, added across accounts (a summary figure only)
         held_today  = held_dollar > 0
         in_my_list  = sym in my_stocks
 
-        # ─── Compute suggested target dollar (+ position-aware suppression) ───
-        # Suppression checks: REMOVE on non-held, ADD on already-established,
-        # INCREASE on at-ceiling, REDUCE on at-floor. Each marks the row with a
-        # suppressed_reason; the action itself is preserved so the user can see
-        # what the system would have recommended.
-        suppressed = None
-        suggested = held_dollar
-        if consolidated == "REMOVE":
-            if not held_today:
-                suppressed = "NOT HELD — nothing to remove"
-                suggested = 0
-            else:
-                suggested = 0
-        elif consolidated == "ADD":
-            # ADD is for opening a new (or near-zero) position. If already
-            # established at/above the category floor, treat as INCREASE-or-skip.
-            if held_today and target_min is not None and held_dollar >= target_min:
-                suppressed = f"ALREADY ESTABLISHED — held ${held_dollar:,.0f} ≥ floor ${target_min:,.0f}"
-                suggested = held_dollar
-            else:
-                suggested = target_min if target_min is not None else None
-        elif consolidated == "INCREASE":
-            if not held_today:
-                # INCREASE with no position -> establish the base position
-                # (MIN) plus one unit block - catch-up. Applies to all sources.
-                suggested = (target_min or 0) + (units or 0)
-                if target_max is not None and suggested > target_max:
-                    suggested = target_max
-            elif target_max is not None and held_dollar >= target_max:
-                suppressed = f"AT CEILING — held ${held_dollar:,.0f} ≥ max ${target_max:,.0f}"
-                suggested = held_dollar
-            elif units is not None and target_max is not None:
-                suggested = min(held_dollar + units, target_max)
-            elif units is not None:
-                suggested = held_dollar + units
-        elif consolidated == "REDUCE":
-            if maintain_min and target_min is not None:
-                if held_dollar <= target_min:
-                    suppressed = f"AT FLOOR — held ${held_dollar:,.0f} ≤ min ${target_min:,.0f}"
-                    suggested = held_dollar
-                else:
-                    suggested = max(target_min, held_dollar - (units or 0))
-            else:
-                suggested = max(0, held_dollar - (units or held_dollar))
-        # HOLD / None / NULL: suggested stays at held_dollar
+        # ─── Per-account sizes (2026-11-25: never added across accounts) ───
+        _accts = []
+        if category and _acct_sizer is not None:
+            _accts = [{"held": float(x["held"]), "min": float(x["mn"]), "max": float(x["mx"]),
+                       "unit": float(x["un"])} for x in _acct_sizer(sym, category)]
+
+        # ─── Position-aware suppression ───
+        # Marks the row with a suppressed_reason; the action itself is preserved so the user can see what the
+        # system would have recommended. Applies only when EVERY account has nothing to do.
+        if consolidated == "REMOVE" and not held_today:
+            suppressed = "NOT HELD — nothing to remove"
+        else:
+            suppressed = stock_suppression(consolidated, held_today, _accts)
 
         # TASK_141: unproven-sell suppression reason, same pattern as the
         # position-aware reasons just above (NOT HELD / AT CEILING / AT
@@ -1505,7 +1466,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             rr_action=rr_act,
             held_today=held_today,
             current_position_dollar=held_dollar,
-            target_max_dollar=target_max,
+            target_max_dollar=None,
             stop_breached=stop_breached,
             bypass_technical=(winning_source == "RTA"),
             low_confidence=low_confidence,
@@ -1527,12 +1488,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # ILMN (ALREADY ESTABLISHED), TXG/OIH (AT CEILING).
         if suppressed and fc["final_side"] == "sell":
             suppressed = None
-        # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
-        # amt = suggested - held for buys; held for sells; 0 otherwise.
-        if suggested is not None and held_dollar is not None:
-            _amt = abs(float(suggested) - float(held_dollar))
-        else:
-            _amt = 0.0
+        # priority_rank mirrors JS _computePriority: seq * 1e6 + amt.
+        # amt = the largest single-account buy or sell (ordering only; amounts are never added).
+        _amt = max((max(account_trade(fc["final_code"], consolidated, x["held"], x["min"], x["max"],
+                                      x["unit"])[:2]) for x in _accts), default=0.0)
         fc_code_upper = (fc["final_code"] or "").upper()
         if fc_code_upper == "SO":  # OVER_MAX synthetic maps to SO for seq lookup
             _seq_key = "SO"
@@ -1567,7 +1526,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "consolidated": consolidated, "winning_source": winning_source,
                 "sources": source_actions_payload, "rr_action": rr_act,
                 "trail": tech_trail_map.get(sym), "held_today": held_today, "held_dollar": held_dollar,
-                "target_max": target_max, "stop_breached": stop_breached, "stop_signal": stop_signal_val,
+                "stop_breached": stop_breached, "stop_signal": stop_signal_val,
                 "suppressed": suppressed, "fc": fc, "trig_action": trig_action,
                 "groups": triggered_groups, "low_confidence": low_confidence,
             })
@@ -1591,11 +1550,12 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "cat":   category,
             "ac":    category,
             "sac":   source_ac,
-            "tmin":  target_min,
-            "tmax":  target_max,
-            "unit":  units,
-            "mm":    maintain_min,
-            "stgt":  suggested,
+            # 2026-11-25: no combined limits or amounts are stored; per-account ones live in drv_account_size.
+            "tmin":  None,
+            "tmax":  None,
+            "unit":  None,
+            "mm":    True,
+            "stgt":  None,
             "held":  held_today,
             "curr":  held_dollar,
             "iml":   in_my_list,
@@ -1720,7 +1680,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         if not _w:
             continue
         _lbl, _code, _side = _action_display("HOLD")
-        _amt = abs(float(b["stgt"]) - float(b["curr"])) if b["stgt"] is not None and b["curr"] is not None else 0.0
+        _amt = float(b["curr"] or 0.0)   # ordering only: what is held
         b.update({"f_action": _lbl, "f_code": _code, "f_side": _side, "f_strength": 0, "f_confidence": "gate",
                   "f_feasible": True, "f_priority": -1e6 + _amt})   # 2026-10-21: "gate"/feasible so the grid shows a HOLD badge, not a dash
         try:
@@ -1737,54 +1697,6 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # Single executemany — previous version did one INSERT per symbol.
     if batch:
         session.execute(insert_sql, batch)
-
-    # TASK_57: populate drv_category_totals once per derive (idempotent).
-    # Read back from drv_actionable now that it's been flushed so we can
-    # aggregate without holding the full Python batch in memory again.
-    try:
-        session.execute(
-            text("DELETE FROM drv_category_totals WHERE as_of_date = :d"),
-            {"d": as_of_date}
-        )
-        cat_rows = session.execute(text("""
-            SELECT a.position_category,
-                   SUM(COALESCE(a.current_position_dollar, 0)) AS total_dollar,
-                   r.min_dollar, r.max_dollar
-            FROM drv_actionable a
-            LEFT JOIN ref_asset_allocation r
-                   ON UPPER(r.category) = UPPER(a.position_category)
-            WHERE a.as_of_date = :d
-              AND a.position_category IS NOT NULL
-            GROUP BY a.position_category, r.min_dollar, r.max_dollar
-        """), {"d": as_of_date}).mappings().all()
-        if cat_rows:
-            totals_batch = []
-            for cr in cat_rows:
-                held = float(cr["total_dollar"] or 0)
-                mn   = float(cr["min_dollar"]) if cr["min_dollar"] is not None else None
-                mx   = float(cr["max_dollar"]) if cr["max_dollar"] is not None else None
-                if mn is not None and held < mn:
-                    band = "BELOW_MIN"
-                elif mx is not None and held > mx:
-                    band = "ABOVE_MAX"
-                else:
-                    band = "WITHIN"
-                totals_batch.append({
-                    "as_of_date":        as_of_date,
-                    "position_category": cr["position_category"],
-                    "total_dollar":      held,
-                    "drift_band":        band,
-                })
-            session.execute(
-                text("""
-                    INSERT INTO drv_category_totals
-                        (as_of_date, position_category, total_dollar, drift_band)
-                    VALUES (:as_of_date, :position_category, :total_dollar, :drift_band)
-                """),
-                totals_batch
-            )
-    except Exception as _ct_err:
-        log.warning("drv_category_totals failed (non-fatal): %s", _ct_err)
 
     return rows_written
 

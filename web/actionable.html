@@ -1433,10 +1433,10 @@
             <tr>
               <th data-col="bulk" style="width:30px;min-width:30px;" title="Rows below show: the ✓ button (Done / Skip / Snooze this stock, with an amount), 🔭 long-term conviction note, 🔔 watch."></th>
               <th data-col="h" style="width:18px;min-width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
-              <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" data-label="POS$ / AMT$" title="Top: current position $ held. Below: action amount $. Sorts by AMT$." style="width:68px;min-width:68px;">POS$ / AMT$</th>
               <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:112px;min-width:112px;">%CHG</th>
               <th data-col="sym" class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;min-width:68px;">Symbol</th>
               <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" data-filter-key="final_code" data-filter-type="str" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;min-width:90px;">ACTION</th>
+              <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" data-label="POS$ / AMT$" title="Top: $ you hold (by account underneath). Below: the picked account's suggested amount -- blank until an account is picked, because amounts depend on the account." style="width:68px;min-width:68px;">POS$ / AMT$</th>
               <th data-col="macro" class="sortable" data-key="macronet" data-type="num" data-filter-key="macro_action" data-filter-type="str" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;min-width:64px;">MACRO</th>
               <th data-col="pvv" class="sortable" data-key="_pvv_rank" data-type="num" data-filter-key="pvv_decision" data-filter-type="str" title="PVV: Price/Volume/Volatility ROC signal in 4 time buckets (Today/5d/3w/3m), consolidated into one decision. Informational only — not part of consolidated_action. Hover for per-bucket detail." style="width:90px;min-width:90px;">PVV</th>
               <th data-col="live" class="sortable" data-key="_live_rank" data-type="num" title="LIVE: how today's price compares with last night's plan lines (trim, dip-buy, buy-back, over-max). Sorted by tier first: required, consider, buy idea, info. Informational only; never changes the Final Call. Hover for sizes per account." style="width:90px;min-width:90px;">LIVE</th>
@@ -1685,8 +1685,8 @@
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
   <script src="/static/technical_graphs.js?v=20261025a"></script>
-  <script src="/static/actionable_pops.js?v=20261124a"></script>
-  <script src="/static/actionable.js?v=20261123h"></script>
+  <script src="/static/actionable_pops.js?v=20261125f"></script>
+  <script src="/static/actionable.js?v=20261125g"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20261107a" defer></script>
   <script src="/static/today_strip.js?v=20261113y" defer></script>

@@ -304,11 +304,10 @@ async function loadBriefing() {
     const data = await fetchJson(`/api/briefing?date=${encodeURIComponent(state.date)}`);
     const total = (data.outlook_flips && data.outlook_flips.total) || 0;
     const held  = (data.outlook_flips && data.outlook_flips.held)  || 0;
-    const nDrift   = (data.allocation_drift || []).length;
     const nFail    = (data.load_failures   || []).length;
     const nActions = (data.yesterday_actions || []).length;
 
-    if (total === 0 && nDrift === 0 && nFail === 0 && nActions === 0) {
+    if (total === 0 && nFail === 0 && nActions === 0) {
       card.hidden = true;
       return;
     }
@@ -332,15 +331,6 @@ async function loadBriefing() {
         <div class="label">Outlook flips today</div>
         <div class="value">${total}${held > 0 ? ` <span style="font-size:12px;color:#7c2d12;">(${held} held)</span>` : ''}</div>
         <div class="sub">${tops || 'none in your held set'}</div>
-      </div>`);
-    }
-    if (nDrift > 0) {
-      const blurb = data.allocation_drift.slice(0, 3)
-        .map(c => `${c.category}: ${c.status}`).join('  ·  ');
-      blocks.push(`<div class="briefing-block warn">
-        <div class="label">Allocation drift</div>
-        <div class="value">${nDrift}</div>
-        <div class="sub">${blurb}</div>
       </div>`);
     }
     if (nFail > 0) {

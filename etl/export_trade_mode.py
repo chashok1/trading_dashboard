@@ -37,6 +37,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import re
 import urllib.parse
 import urllib.request
 from typing import Optional
@@ -268,6 +269,39 @@ def _fmt_lrr_cell(row) -> str:
     return f"{lrr_str}({pos:.0f}%)"
 
 
+def _k(x) -> str:
+    """Amount text, same as the screen: 7.2K in thousands, 720 in hundreds."""
+    x = float(x or 0)
+    if round(x) >= 1000:
+        return f"{round(x / 1000.0, 1):g}K"
+    return f"{x:.0f}"
+
+
+def _acct_parts(row, side: str) -> list:
+    """["IRA holds 7K, sell Act $3K", ...] -- accounts that hold it or can act. Never added."""
+    out = []
+    for a in (row.get("account_sizes") or []):
+        held, amt = float(a.get("held") or 0), float(a.get(side) or 0)
+        if held <= 0 and amt <= 0:
+            continue
+        txt = f"{a.get('name')} holds {_k(held)}"
+        out.append(txt + (f", {side} Act ${_k(amt)}" if amt > 0 else ""))
+    if not out:     # held only in an account that has no sizes (size_mult 0): name it, no suggested amount
+        out = [f"{a.get('name')} holds {float(a.get('qty') or 0):,.0f} sh"
+               for a in (row.get("held_by_account") or []) if float(a.get("qty") or 0) > 0]
+    return out
+
+
+# the screen's Action button colours (web/actionable_pops.js::_ACT_COLORS)
+_ACT_COLORS = {"SA": "#e5484d", "SS": "#e07c1a", "STM": "#e07c1a", "BM": "#2f9e2f", "BS": "#1d9e75", "BMN": "#1f7af2"}
+
+
+def _acct_cell(row, side: str) -> str:
+    color = _ACT_COLORS.get(str(row.get("final_code") or "").upper(), "#888")
+    cell = "<br>".join(html.escape(p) for p in _acct_parts(row, side))
+    return re.sub(r"Act \$[\d.]+K?", lambda m: f'<b style="color:{color}">{m.group(0)}</b>', cell) or "—"
+
+
 def _row_html(sym, cells) -> str:
     tds = "".join(f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;">{c}</td>' for c in cells)
     return f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;">{html.escape(sym)}</td>{tds}</tr>'
@@ -300,6 +334,7 @@ def _build_email_html(export: dict) -> str:
             html.escape(str(r.get("macro_value") or "—")),
             _fmt_trade_cell(r),
             _fmt_lrr_cell(r),
+            _acct_cell(r, "buy"),
         ])
         for r in export["buys"]
     ]
@@ -308,6 +343,7 @@ def _build_email_html(export: dict) -> str:
             html.escape(str(r.get("winning_source") or "—")),
             html.escape(str(r.get("consolidated_action") or "—")),
             _fmt(r.get("last_price")),
+            _acct_cell(r, "sell"),
         ])
         for r in export["sells"]
     ]
@@ -323,8 +359,8 @@ def _build_email_html(export: dict) -> str:
         f'<div style="font-family:sans-serif;">',
         f'<h2 style="margin:0 0 4px;color:#111827;">Trade Mode Export — {html.escape(str(as_of))}</h2>',
         f'<p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Strict view, matches actionable.js Trade Mode + Strict on screen.</p>',
-        _section_html("🟢 Qualifying Buys", ["Src", "Tech", "Mcr", "Trade", "LRR"], buy_rows),
-        _section_html("🔴 Held SA Sells", ["Source", "Action", "Price"], sell_rows),
+        _section_html("🟢 Qualifying Buys", ["Src", "Tech", "Mcr", "Trade", "LRR", "By account"], buy_rows),
+        _section_html("🔴 Held SA Sells", ["Source", "Action", "Price", "By account"], sell_rows),
         _section_html("⛔ Stop Breaches", ["Action", "Price"], breach_rows),
         "</div>",
     ]
@@ -334,11 +370,12 @@ def _build_email_html(export: dict) -> str:
 def _build_email_plain(export: dict) -> str:
     lines = [f"Trade Mode Export — {export.get('as_of_date') or '—'}", ""]
     lines.append(f"Qualifying Buys ({len(export['buys'])}):")
-    lines += [f"  {r.get('tos_symbol')}"
+    lines += [f"  {r.get('tos_symbol')}: {'; '.join(_acct_parts(r, 'buy')) or '-'}"
               for r in export["buys"]] or ["  None today."]
     lines.append("")
     lines.append(f"Held SA Sells ({len(export['sells'])}):")
-    lines += [f"  {r.get('tos_symbol')}" for r in export["sells"]] or ["  None today."]
+    lines += [f"  {r.get('tos_symbol')}: {'; '.join(_acct_parts(r, 'sell')) or '-'}"
+              for r in export["sells"]] or ["  None today."]
     lines.append("")
     lines.append(f"Stop Breaches ({len(export['breaches'])}):")
     lines += [f"  {r.get('tos_symbol')}" for r in export["breaches"]] or ["  None today."]

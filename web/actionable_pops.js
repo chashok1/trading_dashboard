@@ -271,10 +271,42 @@ function actionLabel(row) {
 // informational OVER MAX pill, see _finalCallHtml). REMOVE rows are
 // excluded — sell-all already covers the position, over-max is moot.
 // TASK_151: compact $ for per-account sizes ($17k, $30.9k).
-function _fmtK(v) {
-  const n = Number(v) || 0;
-  if (Math.abs(n) < 1000) return '$' + Math.round(n);
-  return '$' + (Math.round(n / 100) / 10).toString().replace(/\.0$/, '') + 'k';
+// 2026-11-25, user: thousands as "7.2K", hundreds as "720"; suggested amounts are labelled "Act $".
+function _amtK(v) {
+  const n = Number(v) || 0, abs = Math.abs(n), sign = n < 0 ? '-' : '';
+  if (Math.round(abs) >= 1000) return sign + (Math.round(abs / 100) / 10) + 'K';
+  return sign + Math.round(abs);
+}
+function _fmtK(v) { return _amtK(v); }
+// "Act $..." takes the Action button's colour (2026-11-25, user): same values as the badge on the grid.
+var _ACT_COLORS = { SA: '#e5484d', SS: '#e07c1a', STM: '#e07c1a', BM: '#2f9e2f', BS: '#1d9e75', BMN: '#1f7af2', HOLD: '#888' };
+function _actColor(code) { return _ACT_COLORS[String(code || '').toUpperCase()] || _ACT_COLORS.HOLD; }
+function _rowActColor(row) { return _actColor(finalCall(row).code); }
+function _actSpan(html, color) { return `<span style="color:${color};font-weight:700;">${html}</span>`; }
+// Why one account's suggested amount is 0 (a = its row.account_sizes entry, or null).
+function _zeroWhy(a, side) {
+  if (side !== 'buy' && side !== 'sell') return 'the call is Hold';
+  if (!a) return 'this account has no limits set';
+  if (a.computed === false) return 'amounts are not calculated for this date yet';
+  if (a.note === 'at or below minimum') return Number(a.held) < Number(a.min) ? 'holdings are below the minimum' : 'holdings are at the minimum';
+  if (a.note === 'at maximum') return 'holdings are at the maximum';
+  if (a.note === 'already at minimum or more') return 'holdings already meet the minimum';
+  if (a.note === 'not held') return 'this account does not hold it';
+  if (a.note === 'no unit size') return 'no unit size is set';
+  return side === 'buy' ? 'no source asks to add it' : 'no suggested trade';
+}
+function _planLine(sym, side, acctShort) {
+  const picked = (typeof _pickedAccountShort === 'function') ? _pickedAccountShort() : '';
+  if (side !== 'buy' || !sym || !picked || picked !== acctShort || typeof _planLimitText !== 'function') return '';
+  return _planLimitText(sym);
+}
+function _zeroTip(a, side, sym) {
+  const unknown = a && a.computed === false;
+  const lines = [(unknown ? '• ' : '• $0: ') + _zeroWhy(a, side)];
+  const plan = a ? _planLine(sym, side, a.name) : '';
+  if (plan) lines.push('• ' + plan);
+  if (a) lines.push(`• ${a.name} holds ${_amtK(a.held)}, minimum ${_amtK(a.min)}, maximum ${_amtK(a.max)}`);
+  return lines.join('\n');
 }
 
 // Accounts whose held $ is above their own rounded max.
@@ -297,12 +329,7 @@ function _overMaxLabel(row) {
 function _isOverMaxOverlay(row) {
   if (!row) return false;
   if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
-  // TASK_151: per-account sizes (drv_account_size) decide when present; the
-  // household check below is only the fallback for rows without them.
-  if (row.account_sizes && row.account_sizes.length) return _acctOver(row).length > 0;
-  const pos = Number(row.current_position_dollar);
-  const max = Number(row.target_max_dollar);
-  return isFinite(pos) && isFinite(max) && max > 0 && pos > max;
+  return _acctOver(row).length > 0;     // per account only (drv_account_size)
 }
 
 // `>=` sibling of _isOverMaxOverlay (which stays strict `>`, "over" meaning
@@ -311,12 +338,17 @@ function _isOverMaxOverlay(row) {
 // ESTABLISHED/NEAR MAX pill in favor of OVER MAX once a position reaches
 // its ceiling (_sizingStagePill below), matching sizing's own AT CEILING
 // suppression threshold.
+function _pickedSize(row) {
+  const sn = (typeof _pickedAccountShort === 'function') ? _pickedAccountShort() : '';
+  return sn ? (row.account_sizes || []).find(a => a.name === sn) || null : null;
+}
+// The picked account is at / over its max; with no account picked, every account is.
 function _isAtOrOverMax(row) {
   if (!row) return false;
   if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
-  const pos = Number(row.current_position_dollar);
-  const max = Number(row.target_max_dollar);
-  return isFinite(pos) && isFinite(max) && max > 0 && pos >= max;
+  const one = _pickedSize(row);
+  const L = one ? [one] : (row.account_sizes || []);
+  return L.length > 0 && L.every(a => a.max > 0 && a.held >= a.max);
 }
 
 // 2026-09-12: "sizing stage" pill — same precedent as OVER MAX (2026-09-03,
@@ -342,19 +374,17 @@ function _sizingStageInfo(row) {
   if (ca !== 'ADD' && ca !== 'INCREASE') return null;
   if (!row.held_today) return null;
   if (_isAtOrOverMax(row)) return null;  // OVER MAX pill covers this instead
-  const pos = Number(row.current_position_dollar);
-  const min = Number(row.target_min_dollar);
-  const max = Number(row.target_max_dollar);
-  if (!isFinite(pos)) return null;
-  if (isFinite(max) && max > (isFinite(min) ? min : 0)) {
-    const floor = isFinite(min) ? min : 0;
-    const pct = (pos - floor) / (max - floor);
+  const a = _pickedSize(row);            // a stage belongs to one account; none picked = no pill
+  if (!a) return null;
+  const pos = Number(a.held), min = Number(a.min), max = Number(a.max);
+  if (max > min) {
+    const pct = (pos - min) / (max - min);
     if (pct >= _NEAR_MAX_PCT) {
-      return { label: 'NEAR MAX', detail: fmtUsd(pos) + ' of ' + fmtUsd(max) + ' Max (' + Math.round(pct * 100) + '% of the way there)' };
+      return { label: 'NEAR MAX', detail: a.name + ': ' + fmtUsd(pos) + ' of ' + fmtUsd(max) + ' Max (' + Math.round(pct * 100) + '% of the way there)' };
     }
   }
-  if (isFinite(min) && min > 0 && pos >= min) {
-    return { label: 'ESTABLISHED', detail: 'Held ' + fmtUsd(pos) + ' already \u2265 floor ' + fmtUsd(min) };
+  if (min > 0 && pos >= min) {
+    return { label: 'ESTABLISHED', detail: a.name + ' holds ' + fmtUsd(pos) + ' already \u2265 floor ' + fmtUsd(min) };
   }
   return null;
 }
@@ -2567,8 +2597,11 @@ function _buildActionPopHtmlV2(row) {
   const nameTxt = row.company_name ? `<span class="actpop-name" title="${escapeHtml(row.company_name)}">${escapeHtml(row.company_name)}</span>` : '';
   // Suggested trade size next to the pill (same _amt the grid's AMT column shows), only for a
   // real buy/sell call -- for HOLD _amt is just the current holding, not a trade.
+  const _pickSn = (typeof _pickedAccountShort === 'function') ? _pickedAccountShort() : '';
   const tradeAmtTxt = ((side === 'buy' || side === 'sell') && Number(row._amt) > 0)
-    ? `<span class="actpop-amt ${side === 'sell' ? 'actpop-amt-sell' : 'actpop-amt-buy'}" title="Suggested trade size">${side === 'sell' ? 'sell' : 'buy'} ${escapeHtml(_actpopFmtAmt(row._amt).replace('k', 'K'))}</span>` : '';
+    ? `<span class="actpop-amt ${side === 'sell' ? 'actpop-amt-sell' : 'actpop-amt-buy'}" title="Suggested trade size (${side})" style="color:${_rowActColor(row)}">Act $${_amtK(row._amt)}</span>`
+    : ((side === 'buy' || side === 'sell') && _pickSn
+      ? `<span class="actpop-amt" style="color:${_rowActColor(row)}" title="${escapeHtml(_zeroTip((row.account_sizes || []).find(a => a.name === _pickSn), side, row.tos_symbol))}">${row._amtUnknown ? 'Act $—' : 'Act $0'}</span>` : '');
   const pxTxt = row.last_price != null ? `<div class="actpop-px">${_fmtUsd2(row.last_price)}</div>` : '';
   const hq = Number(row.held_qty), hc = Number(row.held_cost);
   // 2026-10-03 (user): "$17K · Avg $14.20" (avg green below the current price, red above), then
@@ -2576,7 +2609,7 @@ function _buildActionPopHtmlV2(row) {
   const _px = Number(row.last_price);
   const _avg = hq > 0 && hc > 0 ? hc / hq : null;
   const _avgColor = (_avg != null && _px > 0) ? (_avg < _px ? '#15803d' : _avg > _px ? '#b91c1c' : '') : '';
-  const _acctAmt = v => v >= 1000 ? Math.round(v / 1000) + 'K' : String(Math.round(v));
+  const _acctAmt = v => _amtK(v);
   const _accts = (Array.isArray(row.held_by_account) ? row.held_by_account : []).filter(a => Number(a.qty) > 0);
   // 2026-10-23, user: the per-account amounts always take TWO fixed-height lines (first half of the accounts on line 1, the rest on
   // line 2; blank when not held) so nothing below or beside them moves with the data.
@@ -2585,7 +2618,7 @@ function _buildActionPopHtmlV2(row) {
   const _acctHalf = Math.ceil(_acctParts.length / 2);
   const acctLines = [_acctParts.slice(0, _acctHalf), _acctParts.slice(_acctHalf)].map(l => l.join(' &middot; '));
   const ownTxt = row.held_today && hq > 0
-    ? [row.current_position_dollar != null ? _actpopFmtAmt(row.current_position_dollar).replace('k', 'K') : '',
+    ? [row.current_position_dollar != null ? _amtK(row.current_position_dollar) : '',
        _avg != null ? `Avg <span${_avgColor ? ` style="color:${_avgColor};font-weight:700;"` : ''}>${_fmtUsd2(_avg)}</span>` : '']
       .filter(Boolean).join(' &middot; ')
     : 'Not held';
@@ -2630,21 +2663,18 @@ function _buildActionPopHtmlV2(row) {
   const _at = (_ai && _ai.doneOnly) ? '' : _actionTagHtml(row, true);
   // 2026-10-23, user: the Bought/Sold tag now shares the suggested-trade line (e.g. "Bought 10/22  sell $6K") in the price block.
   if (_isOverMaxOverlay(row)) {
-    symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">`
-       + (row.account_sizes && row.account_sizes.length
-          ? escapeHtml(_overMaxLabel(row))
-          : `OVER MAX by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}`)
-       + `</div>`;
+    symExtras += `<div class="actpop-xl" style="color:#b45309;font-weight:700;">${escapeHtml(_overMaxLabel(row))}</div>`;
   }
-  // 2026-10-14, user: the popup shows one reference account (IRA, size x1), not the full
-  // per-account list. The over-max tooltip still lists every account.
-  const _refAcct = (row.account_sizes || []).find(a => a.name === 'IRA');
-  if (_refAcct) {
-    symExtras += `<div class="actpop-xl" style="text-align:left;">`
-       + escapeHtml(`${_refAcct.name} x${_refAcct.mult.toFixed(1)}: min ${_fmtK(_refAcct.min)} / max ${_fmtK(_refAcct.max)}`
-         + ` / unit ${_fmtK(_refAcct.unit)} / held ${_fmtK(_refAcct.held)}${_refAcct.over ? ' (OVER MAX)' : ''}`)
-       + `</div>`;
-  }
+  // 2026-11-25, user: one line per account (only the picked one when an account is picked): holding, its own
+  // min / max / unit (hover) and its own suggested amount. Nothing is added across accounts.
+  _acctTradeLines(row, side, _pickSn).filter(a => _pickSn || a.held > 0 || a.amt > 0).forEach(a => {
+    const tip = [a.why ? `• ${a.why}` : (a.act ? `• ${a.act} (${side})` : '• No suggested trade'), ...(a.plan ? [`• ${a.plan}`] : []),
+                 `• ${a.name} holds ${_amtK(a.held)}`,
+                 `• Minimum ${_amtK(a.min)}, maximum ${_amtK(a.max)}, unit ${_amtK(a.unit)}`].join('\n');
+    symExtras += `<div class="actpop-xl" style="text-align:left;" title="${escapeHtml(tip)}"><b>${escapeHtml(a.name)}</b> ${_fmtK(a.held)}`
+      + (a.act ? ` &middot; ${_actSpan(escapeHtml(a.act), _rowActColor(row))}` : '')
+      + `${a.over ? ' <span style="color:#b45309">(over max)</span>' : ''}</div>`;
+  });
   const _sz = _sizingStageInfo(row);
   if (_sz) {
     symExtras += `<div class="actpop-xl"><b>${_sz.label}</b> ${escapeHtml(_sz.detail)}</div>`;
@@ -2764,10 +2794,6 @@ function _buildActionPopHtmlV2(row) {
   // RVOL moved 2026-08-21 to the VLM line (.actpop-rr-info) -- not
   // duplicated here anymore. Earnings dropped the same day -- already
   // shown in the header (the "Earnings in Nd" line under the action pill).
-  const details = [];
-  if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
-  if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
-
   // Tradability detail box moved to the bottom (2026-08-20) -- was between
   // driver bullets and Tug; user wanted the score breakdown last, after
   // everything else.
@@ -2790,13 +2816,13 @@ function _actionTagHtml(r, noOver) {
       ...((ai.bq || ai.sq) ? [`• Today: ${ai.bq ? 'bought ' + Math.round(ai.bq).toLocaleString() + ' sh' : ''}${ai.bq && ai.sq ? ', ' : ''}${ai.sq ? 'sold ' + Math.round(ai.sq).toLocaleString() + ' sh' : ''}`] : []),
       '• It is parked in "Actioned today" below',
       '• The signal itself is unchanged',
-      ...(ai.over > 0 ? [`• Position is over its max by ${fmtUsd(ai.over)} (sizing still says trim)`] : []),
+      ...(ai.over ? [`• Over its max: ${ai.over} (sizing still says trim)`] : []),
       ...(ai.doneOnly ? ['• Click this tag to undo Done'] : []),
     ].join(nl);
     return `<div class="action-tag" ${ai.doneOnly ? `data-done-undo="${escapeHtml(r.tos_symbol)}"` : ''} `
       + `style="margin-top:1px;font-size:9px;font-weight:700;color:#7c3aed;white-space:nowrap;${ai.doneOnly ? 'cursor:pointer;' : ''}" title="${escapeHtml(tip)}">`
       + `${escapeHtml(ai.label)} ${escapeHtml(fmtMD(ai.date) || '')}${ai.doneOnly ? ' ✎' : ''}`
-      + (ai.over > 0 && !noOver ? `<br><span style="color:#b45309;">over max ${escapeHtml(fmtUsd(ai.over))}</span>` : '')
+      + (ai.over && !noOver ? `<br><span style="color:#b45309;">over max ${escapeHtml(ai.over)}</span>` : '')
       + `</div>`;
   }
   const code = (r.final_code || '').toUpperCase();
@@ -2837,45 +2863,36 @@ function prepareActionableRow(r) {
   // under a HOLD badge. See docs/actionable_logic.md. Rows without a
   // final_code yet (pre-migration fallback) keep the original
   // consolidated_action-based math below, unchanged.
-  const finalCode = (r.final_code || '').toUpperCase();
-  if (finalCode) {
-    if (finalCode === 'SA') {
-      r._amt = r.current_position_dollar;
-    } else if (finalCode === 'SS' || finalCode === 'STM') {
-      const pos = Number(r.current_position_dollar) || 0;
-      const tgt = Number(r.suggested_target_dollar) || 0;
-      r._amt = pos > tgt ? pos - tgt : 0;
-    } else if (finalCode === 'BMN' && act === 'ADD' && r.target_min_dollar != null) {
-      const pos = Number(r.current_position_dollar) || 0;
-      const min = Number(r.target_min_dollar);
-      r._amt = pos < min ? min - pos : 0;
-    } else if (finalCode === 'BM' || finalCode === 'BS' || finalCode === 'BMN') {
-      const pos = Number(r.current_position_dollar) || 0;
-      const tgt = Number(r.suggested_target_dollar) || 0;
-      r._amt = tgt > pos ? tgt - pos : 0;
-    } else {
-      // HOLD / N / NONE -- no suggested move; show the current holding
-      // (0 if not held), never a leftover buy/sell delta from a vetoed
-      // or flipped action.
-      r._amt = Number(r.current_position_dollar) || 0;
-    }
-  } else if (act === 'REMOVE') {
-    r._amt = r.current_position_dollar;
-  } else if (act === 'ADD' && r.target_min_dollar != null) {
-    const pos = Number(r.current_position_dollar) || 0;
-    const min = Number(r.target_min_dollar);
-    r._amt = pos < min ? min - pos : 0;
-  } else if (act === 'INCREASE') {
-    const pos = Number(r.current_position_dollar) || 0;
-    const tgt = Number(r.suggested_target_dollar) || 0;
-    r._amt = tgt > pos ? tgt - pos : 0;
-  } else if (act === 'REDUCE') {
-    const pos = Number(r.current_position_dollar) || 0;
-    const tgt = Number(r.suggested_target_dollar) || 0;
-    r._amt = pos > tgt ? pos - tgt : 0;
-  } else {
-    r._amt = r.suggested_target_dollar;
-  }
+  _setRowAmt(r, (typeof _pickedAccountShort === 'function') ? _pickedAccountShort() : '');
+}
+
+// 2026-11-25, user: suggested amounts belong to ONE account and are never added. drv_account_size computes each
+// account's buy / sell (etl/account_sizing.py); the screen only picks the right one.
+//   r._amt     the picked account's amount for the Final Call's side; null when no account is picked (not shown)
+//   r._amtAny  the largest single-account amount -- ordering and "is there anything to do" only, never displayed
+function _acctTradeAmt(a, side) { return Number(side === 'sell' ? a.sell : side === 'buy' ? a.buy : 0) || 0; }
+function _setRowAmt(r, acctShort) {
+  const side = finalCall(r).side;
+  const L = r.account_sizes || [];
+  r._amtAny = L.reduce((m, a) => Math.max(m, _acctTradeAmt(a, side)), 0);
+  const a = acctShort ? L.find(x => x.name === acctShort) : null;
+  r._amt = acctShort ? (a ? _acctTradeAmt(a, side) : 0) : null;
+  // amounts missing (built by an older run): never treat that as "nothing to do"
+  r._amtUnknown = (side === 'buy' || side === 'sell') && L.some(x => x.computed === false);
+}
+// "IRA: holds $7k · sell $3k" -- one line per account (Action popup, detail window).
+function _acctTradeLines(row, side, onlyShort) {
+  const trading = side === 'buy' || side === 'sell';
+  return (row.account_sizes || []).filter(a => !onlyShort || a.name === onlyShort).map(a => {
+    const amt = _acctTradeAmt(a, side);
+    // a call with nothing to do in this account shows "Act $0" (hover says why); non-holders stay blank unless picked
+    const act = (trading && a.computed === false) ? 'Act $—'
+      : amt > 0 ? 'Act $' + _amtK(amt) : (trading && (Number(a.held) > 0 || onlyShort) ? 'Act $0' : '');
+    return { name: a.name, held: Number(a.held) || 0, min: Number(a.min) || 0, max: Number(a.max) || 0,
+             unit: Number(a.unit) || 0, amt, act, over: !!a.over,
+             why: amt > 0 ? '' : (act ? (a.computed === false ? '' : '$0: ') + _zeroWhy(a, side) : ''),
+             plan: _planLine(row.tos_symbol, side, a.name) };
+  });
 }
 
 // Normalize real_asset_class into a small set of display/filter buckets --
@@ -2982,8 +2999,8 @@ function _actionedInfo(r) {
   const sd = r.last_sold_date === day;
   const done = !!r.done_today;
   if (!b && !sd && !done) return null;
-  const mx = Number(r.target_max_dollar), cur = Number(r.current_position_dollar);
-  const over = (r.held_today && mx > 0 && cur > mx) ? cur - mx : 0;
+  // per account only (2026-11-25): "IRA $1,200" for each account over its own max
+  const over = _acctOver(r).map(a => `${a.name} ${fmtUsd(a.held - a.max)}`).join(', ');
   // Exact wording from the server (api/_recent_buys.py::classify_today): new position vs
   // adding, sold some vs sold all. Falls back to the plain buy/sell/done wording.
   const KIND = { bought_new: 'Bought', bought_more: 'Bought more', sold_some: 'Sold some',

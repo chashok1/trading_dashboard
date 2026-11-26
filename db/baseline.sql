@@ -9318,6 +9318,10 @@ CREATE TABLE IF NOT EXISTS drv_account_size (
 );
 CREATE INDEX IF NOT EXISTS ix_drv_account_size_sym
     ON drv_account_size(as_of_date, tos_symbol);
+-- 2026-11-25, user: suggested amounts are per account (etl/account_sizing.py), never added across accounts.
+ALTER TABLE drv_account_size ADD COLUMN IF NOT EXISTS buy_dollar  NUMERIC;
+ALTER TABLE drv_account_size ADD COLUMN IF NOT EXISTS sell_dollar NUMERIC;
+ALTER TABLE drv_account_size ADD COLUMN IF NOT EXISTS size_note   TEXT;
 
 -- =====================================================
 -- 2026-10-12 TASK_152: frozen night plan + saved live checks

@@ -979,3 +979,24 @@ Replaces the old source-list rows (Call, Sig, RR, II, PS, ETF, CAll*, My, ...) i
 | Other | 0 / 0 / 0.125 | index, future, other non-tradable |
 
 "On a list" = the source row exists and is not a REMOVE. A stock that leaves Signal Strength drops to half strength the same day (held amount above the new max then shows as over max). Unknown symbol on no list: no sizing (unchanged). Table rewritten by `python -m scripts.migrate_asset_alloc_by_class` (old rows backed up to `data/ref_asset_allocation_backup_2026-11-19.csv`, ignored). Portfolio limit status (`dash.py`) and the Builder class bands (`Equities` uses the Stocks row) read the same rows.
+
+## 2026-11-25 - Limits and suggested amounts are per account (replaces household sizing)
+User rule: minimum, maximum, unit and suggested buy / sell amounts apply to ONE account and are never added across
+accounts. Holdings are added only in summaries (total value, sector totals, the grid's holding figure).
+
+- Calculation: `etl/account_sizing.py` (pure). `drv_account_size` stores each account's `buy_dollar`, `sell_dollar`,
+  `size_note`. `drv_actionable.target_min/max_dollar`, `units_dollar`, `suggested_target_dollar` are now always NULL.
+- Sell All = everything that account holds. Sell Some = one unit, stopping at the account minimum. Sell To Min = down
+  to the minimum. A sell call can show with no amount ("at minimum"); the Final Call itself is not changed by sizing.
+- Buys follow the sources' action per account: ADD fills to the minimum; INCREASE adds one unit (new position =
+  minimum + one unit), never past the maximum.
+- "Already established / at ceiling / at floor" suppression applies only when EVERY trading account is there.
+- Actionable screen: no account picked = no suggested amount (call + holdings by account). Account picked = that
+  account's amount. Action popup and Trade Mode email: one line per account with its own suggestion.
+- Live advice: Sell Some / trim stop at the account minimum; texts list each account's amount, never a total.
+- Ordering only (never shown): the largest single-account amount.
+- Accounts with `ref_accounts.size_mult = 0` (A, Ra, HSA) have no limits, so no suggested amounts.
+- The older "household sizing" notes above are historical.
+- Display (screen, popup, detail window): thousands as `7.2K`, hundreds as `720`; suggested amounts are prefixed
+  `Act $`; `Act $0` carries a hover saying why (e.g. "$0: holdings are below the minimum").
+- `Act $...` uses the Action button's colour (grid, popup, detail window, LIVE popup, Trade Mode email).
