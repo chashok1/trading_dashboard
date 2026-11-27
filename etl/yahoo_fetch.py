@@ -71,10 +71,9 @@ def _is_at_or_after(hour: int, minute: int) -> bool:
 
 
 def _is_trading_day(d: date | None = None) -> bool:
-    """True if the given date (default: today) is Mon-Fri."""
-    if d is None:
-        d = date.today()
-    return d.weekday() < 5
+    """True if the market trades on the given date (default: today): Mon-Fri and not a holiday."""
+    from etl.market_date import is_trading_day
+    return is_trading_day(d or date.today())
 
 
 def is_auto_refresh_window() -> bool:
@@ -89,14 +88,10 @@ def is_auto_refresh_window() -> bool:
     2026-09-24, user-directed: narrowed from 9:30 AM-8 PM (deliberately wider
     than the trading session, for after-hours coverage) down to the actual
     9:30 AM-4 PM market session -- "market hours are 9:30AM - 4PM ET not
-    8PM ... narrow it to only market hours"."""
-    if _ET:
-        now = datetime.now(_ET)
-    else:
-        now = datetime.now(timezone.utc)
-    if now.weekday() >= 5:
-        return False
-    return (9, 30) <= (now.hour, now.minute) < (16, 0)
+    8PM ... narrow it to only market hours".
+    2026-11-26: closed on holidays, and from 1:00 PM on early-close days."""
+    from etl.market_date import is_market_open
+    return is_market_open(datetime.now(_ET) if _ET else None)
 
 
 def _init_last_auto_fetch_date() -> None:
@@ -1130,8 +1125,8 @@ def fetch_ext_quotes() -> dict:
     """Pre-market / after-hours price refresh (2026-11-10). DISPLAY ONLY.
 
     5-minute bars with prepost=True for the last 5 days. The newest bar decides the session: before 9:30 ET = PRE (measured from the
-    previous regular close), at/after 16:00 ET = POST (measured from the last regular bar of the same day), otherwise the market is
-    open and the symbol is skipped. Writes cache_ext_quote only: no hist_y row, no derive, nothing the rules or the Final Call read.
+    previous regular close), at/after that day's close (16:00 ET, 13:00 on early-close days) = POST (measured from the last regular
+    bar of the same day), otherwise the market is open and the symbol is skipped. Writes cache_ext_quote only: no hist_y row, no derive, nothing the rules or the Final Call read.
     Indices, futures, FX and FRED series have no extended hours and simply get no row."""
     global _fetch_running
     if _is_any_fetch_running():
@@ -1144,6 +1139,13 @@ def fetch_ext_quotes() -> dict:
     _mark_fetch_running(True)
     ok = err = 0
     try:
+        from etl.market_date import close_time, market_calendar
+        early = market_calendar()[1]
+
+        def _close_hm(d):
+            c_ = close_time(d, early)
+            return (c_.hour, c_.minute)
+
         tickers = _get_all_symbols()
         fetched_at = datetime.now(timezone.utc)
         for i in range(0, len(tickers), 100):
@@ -1167,14 +1169,16 @@ def fetch_ext_quotes() -> dict:
                     idx = c.index.tz_convert("America/New_York") if c.index.tz is not None else c.index
                     last_ts, last_px = idx[-1], float(c.iloc[-1])
                     hm = (last_ts.hour, last_ts.minute)
-                    if hm >= (16, 0):
+                    if hm >= _close_hm(last_ts.date()):
                         sess = "POST"
-                        ref = [float(v) for t, v in zip(idx, c) if t.date() == last_ts.date() and (9, 30) <= (t.hour, t.minute) < (16, 0)]
+                        end = _close_hm(last_ts.date())
+                        ref = [float(v) for t, v in zip(idx, c) if t.date() == last_ts.date() and (9, 30) <= (t.hour, t.minute) < end]
                     elif hm < (9, 30):
                         sess = "PRE"
                         prev = [t.date() for t in idx if t.date() < last_ts.date()]
                         pd_ = prev[-1] if prev else None
-                        ref = [float(v) for t, v in zip(idx, c) if pd_ is not None and t.date() == pd_ and (9, 30) <= (t.hour, t.minute) < (16, 0)]
+                        end = _close_hm(pd_) if pd_ is not None else (16, 0)
+                        ref = [float(v) for t, v in zip(idx, c) if pd_ is not None and t.date() == pd_ and (9, 30) <= (t.hour, t.minute) < end]
                     else:
                         continue   # regular session: no extended price
                     ref_close = ref[-1] if ref else None
@@ -1220,7 +1224,7 @@ def get_auto_fetch_status() -> dict:
     if _fetch_running:
         next_info = "running now"
     elif not is_trading:
-        next_info = "weekend — skipped"
+        next_info = "market closed — skipped"
     elif eod_done:
         next_info = "done for today"
     elif is_after:
@@ -1274,11 +1278,13 @@ async def auto_fetch_loop() -> None:
 
 
 def ext_weekend_catchup_due(now_et, last_fetched_at) -> bool:
-    """2026-11-21, user-directed: on Saturday/Sunday, run the pre/post-market price fetch once, but only if no fetch has happened since
-    Friday 8:00 PM ET (i.e. the 8:05 PM Friday slot was missed). last_fetched_at = newest cache_ext_quote.fetched_at (None = never)."""
+    """2026-11-21, user-directed: on a day the market is closed (weekend or holiday), run the pre/post-market price fetch once, but
+    only if no fetch has happened since after-hours ended on the last trading day -- 4 hours after its close, normally 8:00 PM ET
+    (i.e. the 8:05 PM slot was missed). last_fetched_at = newest cache_ext_quote.fetched_at (None = never)."""
     from datetime import datetime, timedelta
-    if now_et.weekday() < 5:
+    from etl.market_date import close_time, is_trading_day, previous_trading_day
+    if is_trading_day(now_et.date()):
         return False
-    friday = (now_et - timedelta(days=now_et.weekday() - 4)).date()
-    cutoff = datetime(friday.year, friday.month, friday.day, 20, 0, tzinfo=now_et.tzinfo)
+    last_day = previous_trading_day(now_et.date())
+    cutoff = datetime.combine(last_day, close_time(last_day), tzinfo=now_et.tzinfo) + timedelta(hours=4)
     return last_fetched_at is None or last_fetched_at < cutoff

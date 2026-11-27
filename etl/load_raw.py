@@ -286,6 +286,11 @@ def load_one_tab(session: Session, wb: Workbook, mapping: dict,
 
     print(f"\n{table_name}: started. tab rows - {rows_read}")
 
+    # 2026-11-27: a TOSD row dated on a weekend/holiday must not advance the anchor.
+    if records and table_name == "hist_td":
+        from etl.market_date import drop_closed_day_rows
+        records = drop_closed_day_rows(session, records, source_file, skip_reasons)
+
     # 2026-10-01: same file-date policy as the Schwab positions loader (see
     # etl/market_date.py) for the Fidelity positions snapshot.
     if records and table_name == "hist_f":

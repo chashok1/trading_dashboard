@@ -161,6 +161,15 @@ via carry-forward).
 the only valid anchor dates. See `api/routers/monitor.py::_find_missing_derive_dates`.
 
 
+## Market calendar: holidays and early closes -- 2026-11-27
+
+One calendar, in `etl/market_date.py` (`is_trading_day`, `close_time`, `previous_trading_day`, `is_market_open`). Full-day closures come from `ref_holiday`; 1:00 PM ET early closes from `ref_early_close` (seeded in `db/baseline.sql`, 2026-2027; add later years to both). Cached for 1 hour.
+
+- **Anchor:** TOSD rows dated on a weekend or holiday are not loaded into `hist_td` (`drop_closed_day_rows`; status-bar warning `file_date_TOSD`, cleared by the next clean TOSD load). `derive_all` also refuses those dates. Rows already stored for past holidays are left as they are.
+- **Signal windows:** RTA (today + previous trading day) and the TOP5 3-day active window skip holidays (`etl/derive_outlook_action.py`).
+- **Yahoo jobs:** end-of-day, close history, intraday and pre/after-hours fetches run on trading days only; on an early-close day the 3:00 PM intraday slot moves to 1:15 PM. A market-closed day runs the after-hours fetch once, only if the last trading day's final one was missed. Hedgeye email polling uses the off-hours pace. Manual fetch buttons are not gated.
+- **Screens:** open/closed checks use `GET /api/market-session` (browser) or `is_market_open` (server). The end-of-day job times and the "data behind market close" cutoff are unchanged on early-close days.
+
 ## Position file dating (CS / F) -- 2026-10-01
 
 A Schwab (CS) or Fidelity (F) positions file downloaded before 9:30 AM ET on a trading day, or any time on a weekend/holiday, holds the PREVIOUS market day's close even though its Date column shows the download day. `etl/market_date.py::resolve_snapshot_date` re-dates such a file to the previous trading day. Guards: only fresh downloads (< 24 h old), only when the inside date equals the download day, and only if no later snapshot is already stored (latest market day only -- old/backfill files are never shifted).

@@ -896,8 +896,9 @@ _IVRV_GROUPS = [
 @router.get("/api/cockpit/ext-quotes")
 def get_ext_quotes():
     """Pre-market / after-hours prices for the Macro Rail 'Ext' option. Display only (cache_ext_quote, see etl/yahoo_fetch.py::fetch_ext_quotes).
-    During regular hours (9:30-16:00 ET, weekdays) returns no rows: the extended price is then out of date."""
+    During regular hours (9:30 ET to the close on trading days) returns no rows: the extended price is then out of date."""
     from datetime import datetime
+    from etl.market_date import is_market_open
     try:
         from zoneinfo import ZoneInfo
         tz = ZoneInfo("America/New_York")
@@ -905,8 +906,7 @@ def get_ext_quotes():
     except Exception:
         tz = None
         now = datetime.utcnow()
-    is_open = now.weekday() < 5 and (9, 30) <= (now.hour, now.minute) < (16, 0)
-    if is_open:
+    if is_market_open(now if tz else None):
         return {"market_open": True, "rows": {}}
     with session_scope() as s:
         rows = s.execute(text("""

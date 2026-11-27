@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date, datetime, time, timedelta
+from time import monotonic
 from typing import Iterable, Optional
 
 from sqlalchemy import text
@@ -33,6 +34,81 @@ WARNING_SCREEN = "ingest"
 
 def _is_session(d: date, holidays: set) -> bool:
     return d.weekday() < 5 and d not in holidays
+
+
+# ---------------------------------------------------------------------------
+# Market calendar -- THE single "is the market open" answer (2026-11-26).
+# Full-day closures: ref_holiday. Early (1:00 PM ET) closes: ref_early_close.
+# Each helper takes the calendar as an optional argument so it is testable
+# without a DB; leave it out to read the saved tables (cached for 1 hour).
+# ---------------------------------------------------------------------------
+
+REGULAR_CLOSE = time(16, 0)
+CALENDAR_TTL_SEC = 3600
+_cal_cache: Optional[tuple] = None   # (loaded_at_monotonic, holidays, early_closes)
+
+
+def market_calendar() -> tuple[set, dict]:
+    """(holiday dates, {early-close date: close time}). A table that cannot be
+    read counts as empty (weekday-only behaviour) and is retried next call."""
+    global _cal_cache
+    if _cal_cache and monotonic() - _cal_cache[0] < CALENDAR_TTL_SEC:
+        return _cal_cache[1], _cal_cache[2]
+    holidays, early, complete = set(), {}, True
+    try:
+        from etl.db import session_scope
+        with session_scope() as s:
+            holidays = {r[0] for r in s.execute(text(
+                "SELECT holiday_date FROM ref_holiday")).all()}
+    except Exception:
+        complete = False
+        log.warning("market calendar: could not read ref_holiday", exc_info=True)
+    try:
+        from etl.db import session_scope
+        with session_scope() as s:
+            early = {r[0]: r[1] for r in s.execute(text(
+                "SELECT close_date, close_time FROM ref_early_close")).all()}
+    except Exception:
+        complete = False
+        log.warning("market calendar: could not read ref_early_close", exc_info=True)
+    if complete:
+        _cal_cache = (monotonic(), holidays, early)
+    return holidays, early
+
+
+def is_trading_day(d: Optional[date] = None,
+                   holidays: Optional[Iterable[date]] = None) -> bool:
+    """True when the market trades on `d` (default: today, ET)."""
+    d = d or _now_et().date()
+    hol = market_calendar()[0] if holidays is None else set(holidays)
+    return _is_session(d, hol)
+
+
+def close_time(d: Optional[date] = None, early: Optional[dict] = None) -> time:
+    """Regular-session closing time (ET) for `d`: 16:00 unless an early close."""
+    d = d or _now_et().date()
+    early = market_calendar()[1] if early is None else early
+    return early.get(d, REGULAR_CLOSE)
+
+
+def previous_trading_day(d: date, holidays: Optional[Iterable[date]] = None) -> date:
+    """The last trading day strictly before `d`."""
+    hol = market_calendar()[0] if holidays is None else set(holidays)
+    d -= timedelta(days=1)
+    while not _is_session(d, hol):
+        d -= timedelta(days=1)
+    return d
+
+
+def is_market_open(now_et: Optional[datetime] = None,
+                   holidays: Optional[Iterable[date]] = None,
+                   early: Optional[dict] = None) -> bool:
+    """True during the regular session. `now_et` is an ET clock (naive or aware)."""
+    now_et = now_et or _now_et()
+    d = now_et.date()
+    if not is_trading_day(d, holidays):
+        return False
+    return MARKET_OPEN <= now_et.time().replace(tzinfo=None) < close_time(d, early)
 
 
 def add_trading_days(d: date, n: int, holidays: Optional[Iterable[date]] = None) -> date:
@@ -147,6 +223,33 @@ def _set_warning(session, feed: str, message: Optional[str]) -> None:
     if message:
         from etl.warnings import add_warning
         add_warning(session, WARNING_SCREEN, message, code=code)
+
+
+def drop_closed_day_rows(session, records: list, source_path: str,
+                         skip_reasons: dict,
+                         holidays: Optional[Iterable[date]] = None) -> list:
+    """TOSD only (hist_td sets the dashboard's day): leave out rows whose export
+    date is a weekend or holiday, so that date can never become the anchor.
+    Counts them in `skip_reasons` and raises/clears the status-bar warning.
+    Rows with no export date are passed through unchanged."""
+    hol = market_calendar()[0] if holidays is None else set(holidays)
+    keep, closed = [], []
+    for r in records:
+        d = r.get("export_date")
+        if d and not _is_session(d, hol):
+            closed.append(d)
+        else:
+            keep.append(r)
+    message = None
+    if closed:
+        days = ", ".join(f"{d:%m/%d}" for d in sorted(set(closed)))
+        reason = f"market closed on {days} (weekend/holiday)"
+        skip_reasons[reason] = skip_reasons.get(reason, 0) + len(closed)
+        message = (f"{os.path.basename(source_path)}: {len(closed)} rows not loaded, "
+                   f"{reason}. The dashboard stays on the last trading day.")
+        log.warning(message)
+    _set_warning(session, "TOSD", message)
+    return keep
 
 
 def apply_position_date_policy(session, table: str, feed: str,

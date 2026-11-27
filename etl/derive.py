@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from etl.db import get_table, replace_for_date
+from etl.market_date import is_trading_day
 from etl.rule_groups import eval_rule_group
 from etl import ma_codegen
 from etl.warnings import clear_screen_warnings, add_warning
@@ -3690,10 +3691,11 @@ def _derive_all_impl(session: Session, as_of_date: date,
     # every subsequent file load, silently shadowing the real anchor row
     # in any query that does `MAX(as_of_date)`. Refuse instead of silently
     # building a row nothing should ever read.
-    if as_of_date.weekday() >= 5:
-        log.warning("derive_all: refusing as_of_date=%s (%s) -- weekends are "
-                     "never a real anchor; check the caller for a "
-                     "date.today()/similar bug instead of the true anchor",
+    # 2026-11-27: market holidays (ref_holiday) are refused the same way.
+    if not is_trading_day(as_of_date):
+        log.warning("derive_all: refusing as_of_date=%s (%s) -- weekends and "
+                     "market holidays are never a real anchor; check the caller "
+                     "for a date.today()/similar bug instead of the true anchor",
                      as_of_date, as_of_date.strftime("%A"))
         return {}
 

@@ -116,6 +116,20 @@ def eod_feed_status(date: Optional[str] = Query(None)):
     return _check(d)
 
 
+@router.get("/api/market-session")
+def market_session():
+    """Today's session (ET) from the saved market calendar, for the screens'
+    own open/closed checks: {date, trading_day, close_min, open}. close_min is
+    minutes after midnight ET (960 normal, 780 early close), null when closed."""
+    from etl.market_date import _now_et, close_time, is_market_open, is_trading_day
+    now = _now_et()
+    trading = is_trading_day(now.date())
+    close = close_time(now.date()) if trading else None
+    return {"date": now.date().isoformat(), "trading_day": trading,
+            "close_min": close.hour * 60 + close.minute if close else None,
+            "open": is_market_open(now)}
+
+
 @router.get("/api/anchor-status")
 def anchor_status():
     """Anchor date (MAX(export_date) FROM hist_td) vs the expected market close.

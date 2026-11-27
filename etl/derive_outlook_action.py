@@ -19,6 +19,7 @@ from typing import Optional
 from sqlalchemy import text, insert
 from sqlalchemy.orm import Session
 
+from etl.market_date import previous_trading_day
 from etl._derive_common import (
     position_ceiling,
     _open_drv_run, _close_drv_run,          # TASK_56: use canonical parameterized versions
@@ -836,12 +837,10 @@ _OUTDATED = "OUTDATED"          # reason prefix; derive_actionable keeps these r
 _TOP5_ACTIVE_WEEKDAYS = 3       # 2026-10-29, user: TOP5 can drive a few days (longer than same-day RTA)
 
 
-def _weekdays_back(d, n):
-    """d minus n weekdays (weekday-based; exchange holidays are not skipped)."""
-    while n > 0:
-        d -= timedelta(days=1)
-        if d.weekday() < 5:
-            n -= 1
+def _weekdays_back(d, n, holidays=None):
+    """d minus n trading days: weekends and market holidays (ref_holiday) are skipped."""
+    for _ in range(n):
+        d = previous_trading_day(d, holidays)
     return d
 
 
@@ -1363,7 +1362,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # alert, not a periodic snapshot). RTA (side='long') and
                 # RTAINFO (side='short') are two ref_outlook_source rows
                 # over the same hist_rta table, split by side. Window =
-                # today + previous weekday (see rta_start below); the most recent
+                # today + previous trading day (see rta_start below); the most recent
                 # non-corrected, non-superseded alert per symbol wins.
                 side_filter = "long" if sc == "RTA" else "short"
                 # On the LIVE anchor, ceiling is real "today" so an RTA alert
@@ -1374,11 +1373,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # as_of_date and no look-ahead is introduced. Same pattern as
                 # position_ceiling() for F/CS carry-forward.
                 rta_ceil = position_ceiling(session, as_of_date)
-                # 2026-10-19, user-directed: RTA counts only today + the previous weekday (not lookback_days);
-                # Monday reaches back to Friday. Weekday-based, so exchange holidays are not skipped.
-                rta_start = as_of_date - timedelta(days=1)
-                while rta_start.weekday() >= 5:
-                    rta_start -= timedelta(days=1)
+                # 2026-10-19, user-directed: RTA counts only today + the previous trading day (not lookback_days);
+                # Monday reaches back to Friday. 2026-11-27: market holidays are skipped too.
+                rta_start = previous_trading_day(as_of_date)
                 rta_rows = session.execute(text(f"""
                     WITH ranked AS (
                         SELECT COALESCE(tos_symbol, symbol) AS sym,

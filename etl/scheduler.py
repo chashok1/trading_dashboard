@@ -52,6 +52,7 @@ from watchdog.observers import Observer
 from config.settings import settings
 from etl.db import session_scope
 from etl.etl_load import load_one_file
+from etl.market_date import close_time, is_trading_day
 
 from etl._logging import setup_logging
 setup_logging()
@@ -895,8 +896,8 @@ def maybe_run_yahoo_fetch() -> None:
     import threading
 
     now_et = _yahoo_fetch_et_now()
-    # Only run Mon–Fri at or after 16:15 ET
-    if now_et.weekday() >= 5:
+    # Only run on trading days (not weekends/holidays) at or after 16:15 ET
+    if not is_trading_day(now_et.date()):
         return
     if (now_et.hour, now_et.minute) < (16, 15):
         return
@@ -939,17 +940,24 @@ _MARKET_CLOSE_ET = (16, 0)
 _hourly_quote_done_today: set = set()  # {(date, (hour, minute)), ...}
 
 
+def _intraday_slots(close) -> list:
+    """The day's fetch times. A slot at/after an early close moves to 15 minutes
+    after that close, so a 1:00 PM day picks up closing prices at 1:15 PM."""
+    c = (close.hour, close.minute)
+    return [t if t < c else (c[0], c[1] + 15) for t in _INTRADAY_QUOTE_TIMES]
+
+
 _quote_hist_done_date = None
 
 
 def maybe_run_quote_history_fetch() -> None:
     """2026-09-30: nightly Yahoo daily-CLOSE pull (etl/fetch_quotes.py) for the
     USD-correlation panel, then re-derive the correlation for the anchor date.
-    Mon-Fri at/after 16:30 ET, once per day. Independent of whether any TOS
-    export was loaded that day, and the 45d pull window heals missed days."""
+    Trading days at/after 16:30 ET, once per day. Independent of whether any
+    TOS export was loaded that day, and the 45d pull window heals missed days."""
     global _quote_hist_done_date
     now_et = _yahoo_fetch_et_now()
-    if now_et.weekday() >= 5 or (now_et.hour, now_et.minute) < (16, 30):
+    if not is_trading_day(now_et.date()) or (now_et.hour, now_et.minute) < (16, 30):
         return
     if _quote_hist_done_date == now_et.date():
         return
@@ -997,8 +1005,8 @@ def maybe_run_ext_quote_refresh() -> None:
     now_et = _yahoo_fetch_et_now()
     today, now_hm = now_et.date(), (now_et.hour, now_et.minute)
     _ext_quote_done_today = {k for k in _ext_quote_done_today if k[0] == today}
-    if now_et.weekday() >= 5:
-        # 2026-11-21, user-directed: weekends run only if Friday's 8:05 PM fetch did not happen (nothing fetched since Fri 8 PM ET).
+    if not is_trading_day(today):
+        # 2026-11-21, user-directed: weekends (2026-11-26: and holidays) run only if the last trading day's 8:05 PM fetch did not happen.
         if (today, "wkend") in _ext_quote_done_today:
             return
         from etl.db import session_scope
@@ -1009,11 +1017,11 @@ def maybe_run_ext_quote_refresh() -> None:
         if not ext_weekend_catchup_due(now_et, last):
             return
         _ext_quote_done_today.add((today, "wkend"))   # mark first: no retry storm on failure
-        log.info("scheduler: weekend catch-up of the after-hours price (last fetch %s, now %s ET)", last, now_et.strftime("%a %H:%M"))
+        log.info("scheduler: market-closed catch-up of the after-hours price (last fetch %s, now %s ET)", last, now_et.strftime("%a %H:%M"))
         try:
-            log.info("scheduler: weekend after-hours price refresh complete: %s", fetch_ext_quotes())
+            log.info("scheduler: market-closed after-hours price refresh complete: %s", fetch_ext_quotes())
         except Exception:
-            log.exception("scheduler: weekend after-hours price refresh crashed")
+            log.exception("scheduler: market-closed after-hours price refresh crashed")
         return
     due = [st for st, end in _EXT_QUOTE_SLOTS if st <= now_hm < end and (today, st) not in _ext_quote_done_today]
     if not due:
@@ -1041,10 +1049,10 @@ def maybe_run_hourly_quote_refresh() -> None:
     global _hourly_quote_done_today
 
     now_et = _yahoo_fetch_et_now()
-    if now_et.weekday() >= 5:
+    today = now_et.date()
+    if not is_trading_day(today):
         return
 
-    today = now_et.date()
     now_hm = (now_et.hour, now_et.minute)
     if now_hm >= _MARKET_CLOSE_ET:
         return
@@ -1052,7 +1060,7 @@ def maybe_run_hourly_quote_refresh() -> None:
     # Drop any stale entries from a previous day.
     _hourly_quote_done_today = {k for k in _hourly_quote_done_today if k[0] == today}
 
-    overdue = [t for t in _INTRADAY_QUOTE_TIMES
+    overdue = [t for t in _intraday_slots(close_time(today))
                if now_hm >= t and (today, t) not in _hourly_quote_done_today]
     if not overdue:
         return
@@ -1117,9 +1125,10 @@ def maybe_run_hedgeye_poll() -> None:
         _morning_start = int(_hcfg.get("poll_morning_start_min") or 360)   # 06:00
         _morning_end = int(_hcfg.get("poll_morning_end_min") or 630)      # 10:30
         _biz_end = int(_hcfg.get("poll_biz_end_min") or 960)              # 16:00
-        if _now.weekday() < 5 and _morning_start <= _minute_of_day < _morning_end:
+        _trading = is_trading_day(_now.date())
+        if _trading and _morning_start <= _minute_of_day < _morning_end:
             interval = int(_hcfg.get("poll_morning_sec") or 300)
-        elif _now.weekday() < 5 and _morning_end <= _minute_of_day < _biz_end:
+        elif _trading and _morning_end <= _minute_of_day < _biz_end:
             interval = int(_hcfg.get("poll_biz_sec") or 900)
         else:
             interval = int(_hcfg.get("poll_off_sec") or 3600)

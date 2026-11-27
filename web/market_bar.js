@@ -715,7 +715,17 @@
     }
   }
 
-  function _checkAutoRefresh() {
+  // Holidays and early closes come from the saved market calendar; the
+  // weekday/clock check above is only the fallback if that call fails.
+  async function _isMarketOpenNow() {
+    try {
+      const r = await fetch('/api/market-session');
+      if (r.ok) return (await r.json()).open;
+    } catch (_) {}
+    return _isAutoRefreshWindowET();
+  }
+
+  async function _checkAutoRefresh() {
     const btn = document.getElementById('mtQuotesIconBtn');
     if (!btn) return;
     const lastIso = _mostRecentYahooFetch(_lastYahooStatus);
@@ -731,6 +741,8 @@
     if (staleMinutes <= 30) return;
     if (document.visibilityState !== 'visible') return;
     if (!_isAutoRefreshWindowET()) return;
+    if (!(await _isMarketOpenNow())) return;
+    if (_autoRefreshAttempted) return;   // another check got here while we waited
     _autoRefreshAttempted = true;
     _runQuoteRefresh(btn, true);
   }

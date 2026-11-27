@@ -96,8 +96,8 @@ def expected_market_close_date(now: Optional[datetime] = None) -> date:
     (ref_settings.market_timezone, default 'America/New_York'). So Friday after
     16:30 ET → Friday; Sat/Sun → Friday; Monday before 16:30 ET → Friday.
 
-    Weekday-based: it does NOT account for market holidays, so on a holiday it
-    may name a session that didn't trade until the next real session loads. On
+    Weekends and ref_holiday dates are not sessions. The cutoff stays the same
+    on early-close days (end-of-day files arrive at the usual time). On
     Windows, accurate tz handling needs the `tzdata` package; without it this
     falls back to the server's local clock."""
     cutoff_str = _get_ref_setting("market_close_cutoff", "16:30")

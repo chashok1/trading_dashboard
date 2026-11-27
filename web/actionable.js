@@ -7189,11 +7189,12 @@ const _TV_SYMS_FUTURES = [
 ];
 
 // Returns 'regular' | 'futures' | 'none'
-// Regular:  Mon–Fri 09:30–16:00 ET
+// Regular:  trading days 09:30 ET to the close (session = GET /api/market-session;
+//           without it, Mon–Fri to 16:00)
 // Futures:  Sun 18:00 ET through Fri 17:00 ET, outside regular hours
 //           (US equity futures run Sun 18:00 – Fri 17:00 ET with daily ~5–5:15 PM break)
 // None:     Fri 17:00 ET – Sun 18:00 ET (weekend, futures closed)
-function _tvMode() {
+function _tvMode(session) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
@@ -7206,7 +7207,9 @@ function _tvMode() {
   if (day === 'Sun' && mins < 1080) return 'none';   // before 18:00 ET Sunday
   if (day === 'Fri' && mins >= 1020) return 'none';  // Fri 17:00 ET and later
   // Regular trading window
-  if (['Mon','Tue','Wed','Thu','Fri'].includes(day) && mins >= 570 && mins < 960) return 'regular';
+  const trading = session ? session.trading_day : ['Mon','Tue','Wed','Thu','Fri'].includes(day);
+  const close = (session && session.close_min) || 960;
+  if (trading && mins >= 570 && mins < close) return 'regular';
   return 'futures';
 }
 
@@ -7243,8 +7246,13 @@ function _setTvTape(visible) {
   try { localStorage.setItem(_TV_LS_KEY, visible ? '1' : '0'); } catch (_) {}
 }
 
-function _initTvToggle() {
-  const mode = _tvMode();
+async function _initTvToggle() {
+  let session = null;
+  try {
+    const r = await fetch('/api/market-session');
+    if (r.ok) session = await r.json();
+  } catch (_) {}
+  const mode = _tvMode(session);
   const btn = $('tvToggleBtn');
 
   if (mode === 'none') {

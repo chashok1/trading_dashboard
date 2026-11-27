@@ -457,7 +457,7 @@
 <script src="/static/file_monitor.js?v=20261108a"></script>
 <script src="/static/rebuild_modal.js"></script>
 <script src="/static/ingest_log_panel.js?v=1"></script>
-<script src="/static/market_bar.js?v=20261107a" defer></script>
+<script src="/static/market_bar.js?v=20261126a" defer></script>
 <script src="/static/warning_badge.js"></script>
 
 <script>
@@ -507,7 +507,7 @@ function yahooAutoStatus() {
         btn.disabled    = true;
         btn.title       = 'Fetch already in progress';
       } else if (!d.is_trading_day) {
-        el.textContent  = 'Weekend - resumes Monday';
+        el.textContent  = 'Market closed today';
         el.style.color  = 'var(--text-3)';
         btn.disabled    = false;
         btn.title       = '';

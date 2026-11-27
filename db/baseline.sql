@@ -172,6 +172,23 @@ CREATE TABLE IF NOT EXISTS ref_holiday (
 
 
 
+-- ref_early_close (2026-11-26): days the market closes early (1:00 PM ET).
+-- Read with ref_holiday by etl/market_date.py. Dates: NYSE published calendar.
+CREATE TABLE IF NOT EXISTS ref_early_close (
+    close_date   DATE PRIMARY KEY,
+    close_time   TIME NOT NULL DEFAULT '13:00',
+    description  TEXT,
+    loaded_at    TIMESTAMP NOT NULL DEFAULT now()
+);
+
+INSERT INTO ref_early_close (close_date, description) VALUES
+    ('2026-11-27', 'Day after Thanksgiving'),
+    ('2026-12-24', 'Christmas Eve'),
+    ('2027-11-26', 'Day after Thanksgiving')
+ON CONFLICT (close_date) DO NOTHING;
+
+
+
 -- -----------------------------------------------------
 
 -- ref_econ_indicator  <- Data!B:M

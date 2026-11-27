@@ -76,7 +76,7 @@ const _DTV_SYMS_FUTURES = [
 
 // Same session-window definition as actionable.js::_tvMode -- kept
 // byte-for-byte equivalent so behavior matches across both pages.
-function _dtvMode() {
+function _dtvMode(session) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
@@ -88,7 +88,9 @@ function _dtvMode() {
   if (day === 'Sat') return 'none';
   if (day === 'Sun' && mins < 1080) return 'none';
   if (day === 'Fri' && mins >= 1020) return 'none';
-  if (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(day) && mins >= 570 && mins < 960) return 'regular';
+  const trading = session ? session.trading_day : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(day);
+  const close = (session && session.close_min) || 960;
+  if (trading && mins >= 570 && mins < close) return 'regular';
   return 'futures';
 }
 
@@ -125,11 +127,16 @@ function _dtvEnsureMount() {
   return tape;
 }
 
-function _dtvInit() {
+async function _dtvInit() {
   const tape = _dtvEnsureMount();
   if (!tape) return;
 
-  const mode = _dtvMode();
+  let session = null;
+  try {
+    const r = await fetch('/api/market-session');
+    if (r.ok) session = await r.json();
+  } catch (_) {}
+  const mode = _dtvMode(session);
   if (mode === 'none') {
     tape.style.display = 'none';
     return;
