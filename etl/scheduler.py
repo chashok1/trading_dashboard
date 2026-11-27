@@ -467,6 +467,27 @@ def _get_nightly_hour(default: int = 22) -> int:
         return default
 
 
+def _nightly_derive_rr(today: date) -> None:
+    """Risk ranges for `today`, trading days only (2026-11-27): on a closed day
+    the rows were mostly blank yet became the newest ones screens read."""
+    if not is_trading_day(today):
+        log.info("nightly: derive_rr skipped -- market closed on %s", today)
+        return
+    log.info("nightly: derive_rr for today starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive import derive_rr, _derive_rr_outlook_from_qe
+        with session_scope() as s:
+            n = derive_rr(s, today)
+            # derive_rr leaves outlook NULL on BB-fallback rows; derive_all fills it from QE
+            # in a second pass. Without this, the nightly rebuild wiped ~950 outlooks a night
+            # (grey symbols, PVV reading NULL) until the next full derive.
+            filled = _derive_rr_outlook_from_qe(s, today, 0)
+        log.info("nightly: derive_rr done: %d rows for %s (%d outlooks refilled)", n, today, filled)
+    except Exception:
+        log.exception("nightly: derive_rr crashed")
+
+
 def run_nightly_outcomes() -> None:
     """Fire compute_outcomes + derive_rr for today + the drv_actionable stale-heal."""
     log.info("nightly: compute_outcomes starting")
@@ -477,20 +498,7 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: compute_outcomes crashed")
 
-    log.info("nightly: derive_rr for today starting")
-    try:
-        from etl.db import session_scope
-        from etl.derive import derive_rr, _derive_rr_outlook_from_qe
-        today = date.today()
-        with session_scope() as s:
-            n = derive_rr(s, today)
-            # derive_rr leaves outlook NULL on BB-fallback rows; derive_all fills it from QE
-            # in a second pass. Without this, the nightly rebuild wiped ~950 outlooks a night
-            # (grey symbols, PVV reading NULL) until the next full derive.
-            filled = _derive_rr_outlook_from_qe(s, today, 0)
-        log.info("nightly: derive_rr done: %d rows for %s (%d outlooks refilled)", n, today, filled)
-    except Exception:
-        log.exception("nightly: derive_rr crashed")
+    _nightly_derive_rr(date.today())
 
     log.info("nightly: stale-heal starting")
     try:

@@ -163,7 +163,10 @@ the only valid anchor dates. See `api/routers/monitor.py::_find_missing_derive_d
 
 ## Market calendar: holidays and early closes -- 2026-11-27
 
-One calendar, in `etl/market_date.py` (`is_trading_day`, `close_time`, `previous_trading_day`, `is_market_open`). Full-day closures come from `ref_holiday`; 1:00 PM ET early closes from `ref_early_close` (seeded in `db/baseline.sql`, 2026-2027; add later years to both). Cached for 1 hour.
+One calendar, in `etl/market_date.py` (`is_trading_day`, `close_time`, `previous_trading_day`, `is_market_open`). Full-day closures come from `ref_holiday`; 1:00 PM ET early closes from `ref_early_close`. Cached for 1 hour.
+
+- **Where the dates come from:** typed in, no job fetches them. Holidays 2025-2027 came from the old workbook's Data tab; 2028 holidays and all early closes are seeded in `db/baseline.sql` from the NYSE announcement. Add each new year to both lists. `GET /api/warnings` raises a status-bar warning when either list ends within 120 days (`calendar_expiry_warnings`).
+- **Nightly risk ranges:** the nightly job builds `drv_rr` for today on trading days only (`etl/scheduler.py::_nightly_derive_rr`); its other steps run every day. Rows already stored for past weekends/holidays are left.
 
 - **Anchor:** TOSD rows dated on a weekend or holiday are not loaded into `hist_td` (`drop_closed_day_rows`; status-bar warning `file_date_TOSD`, cleared by the next clean TOSD load). `derive_all` also refuses those dates. Rows already stored for past holidays are left as they are.
 - **Signal windows:** RTA (today + previous trading day) and the TOP5 3-day active window skip holidays (`etl/derive_outlook_action.py`).

@@ -1,9 +1,9 @@
 """Market calendar: weekends, holidays and early closes decide whether the market is open."""
 from datetime import date, datetime, time
 
-from etl import market_date
+from etl import market_date, scheduler
 from etl.derive_outlook_action import _weekdays_back
-from etl.market_date import close_time, is_market_open, is_trading_day, previous_trading_day
+from etl.market_date import calendar_expiry_warnings, close_time, is_market_open, is_trading_day, previous_trading_day
 from etl.scheduler import _intraday_slots
 
 HOL = {date(2026, 11, 26)}
@@ -53,3 +53,19 @@ def test_holiday_tosd_rows_are_left_out(monkeypatch):
 def test_signal_lookbacks_skip_the_holiday():
     assert _weekdays_back(date(2026, 11, 27), 1, HOL) == date(2026, 11, 25)
     assert _weekdays_back(date(2026, 11, 30), 3, HOL) == date(2026, 11, 24)
+
+
+def test_calendar_warns_only_when_a_list_is_running_out():
+    hol, early = {date(2028, 12, 25)}, {date(2028, 11, 24): time(13, 0)}
+    assert calendar_expiry_warnings(date(2028, 1, 3), hol, early) == []
+    late = calendar_expiry_warnings(date(2028, 9, 1), hol, early)
+    assert len(late) == 2 and "12/25/2028" in late[0] and "ref_early_close" in late[1]
+    assert "empty" in calendar_expiry_warnings(date(2028, 1, 3), set(), early)[0]
+
+
+def test_nightly_risk_ranges_skip_closed_days(monkeypatch):
+    called = []
+    monkeypatch.setattr(scheduler, "is_trading_day", lambda d: False)
+    monkeypatch.setattr("etl.derive.derive_rr", lambda *a: called.append(a))
+    scheduler._nightly_derive_rr(date(2026, 11, 28))
+    assert called == []

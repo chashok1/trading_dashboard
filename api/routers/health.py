@@ -1155,6 +1155,15 @@ def get_warnings():
     except Exception:
         pass
 
+    # E) Holiday / early-close lists running out (typed in, nothing fetches them)
+    try:
+        from etl.market_date import calendar_expiry_warnings
+        for i, message in enumerate(calendar_expiry_warnings()):
+            warnings.append({"id": f"market_calendar_{i}", "level": "warning",
+                             "title": message, "items": []})
+    except Exception:
+        pass
+
     return warnings
 
 

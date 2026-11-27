@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS ref_holiday (
 
 -- ref_early_close (2026-11-26): days the market closes early (1:00 PM ET).
 -- Read with ref_holiday by etl/market_date.py. Dates: NYSE published calendar.
+-- Add each new year to BOTH lists (a status-bar warning says when they run low).
 CREATE TABLE IF NOT EXISTS ref_early_close (
     close_date   DATE PRIMARY KEY,
     close_time   TIME NOT NULL DEFAULT '13:00',
@@ -184,8 +185,24 @@ CREATE TABLE IF NOT EXISTS ref_early_close (
 INSERT INTO ref_early_close (close_date, description) VALUES
     ('2026-11-27', 'Day after Thanksgiving'),
     ('2026-12-24', 'Christmas Eve'),
-    ('2027-11-26', 'Day after Thanksgiving')
+    ('2027-11-26', 'Day after Thanksgiving'),
+    ('2028-07-03', 'Day before Independence Day'),
+    ('2028-11-24', 'Day after Thanksgiving')
 ON CONFLICT (close_date) DO NOTHING;
+
+-- 2028 full holidays (NYSE announcement of 2025-12-23; New Year's Day 2028
+-- falls on a Saturday and is not observed).
+INSERT INTO ref_holiday (holiday_date, description) VALUES
+    ('2028-01-17', 'Martin Luther King, Jr. Day'),
+    ('2028-02-21', 'Washington''s Birthday'),
+    ('2028-04-14', 'Good Friday'),
+    ('2028-05-29', 'Memorial Day'),
+    ('2028-06-19', 'Juneteenth National Independence Day'),
+    ('2028-07-04', 'Independence Day'),
+    ('2028-09-04', 'Labor Day'),
+    ('2028-11-23', 'Thanksgiving Day'),
+    ('2028-12-25', 'Christmas Day')
+ON CONFLICT (holiday_date) DO NOTHING;
 
 
 

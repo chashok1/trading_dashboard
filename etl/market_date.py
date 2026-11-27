@@ -45,6 +45,7 @@ def _is_session(d: date, holidays: set) -> bool:
 
 REGULAR_CLOSE = time(16, 0)
 CALENDAR_TTL_SEC = 3600
+CALENDAR_WARN_DAYS = 120   # warn this long before a saved list runs out
 _cal_cache: Optional[tuple] = None   # (loaded_at_monotonic, holidays, early_closes)
 
 
@@ -89,6 +90,28 @@ def close_time(d: Optional[date] = None, early: Optional[dict] = None) -> time:
     d = d or _now_et().date()
     early = market_calendar()[1] if early is None else early
     return early.get(d, REGULAR_CLOSE)
+
+
+def calendar_expiry_warnings(today: Optional[date] = None,
+                             holidays: Optional[Iterable[date]] = None,
+                             early: Optional[dict] = None) -> list[str]:
+    """One message per saved list whose last date is under CALENDAR_WARN_DAYS
+    away (or that is empty). Nothing fetches these dates; they are typed in."""
+    today = today or _now_et().date()
+    if holidays is None or early is None:
+        saved_hol, saved_early = market_calendar()
+        holidays = saved_hol if holidays is None else holidays
+        early = saved_early if early is None else early
+    out = []
+    for name, table, dates in (("Market holiday", "ref_holiday", holidays),
+                               ("Early-close", "ref_early_close", early)):
+        last = max(dates, default=None)
+        if last is None:
+            out.append(f"{name} list is empty: add dates to {table}.")
+        elif (last - today).days < CALENDAR_WARN_DAYS:
+            out.append(f"{name} list ends {last:%m/%d/%Y}: add the next year's "
+                       f"NYSE dates to {table}.")
+    return out
 
 
 def previous_trading_day(d: date, holidays: Optional[Iterable[date]] = None) -> date:
